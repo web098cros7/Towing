@@ -35,6 +35,27 @@ export const env = {
   mockPlacesState: (process.env.EXPO_PUBLIC_MOCK_PLACES_STATE ?? '') as MockState,
   /** Dev-only: force the nearby-driver supply read into empty/error. */
   mockNearbyState: (process.env.EXPO_PUBLIC_MOCK_NEARBY_STATE ?? '') as MockState,
+  /**
+   * Dev-only: forces §11.6's honesty states, which a mock cannot reach on its
+   * own because a mock fix never goes stale. `stale` ages the position past
+   * `PRESENCE_STALE_MS` (ghost marker + "reconnecting…"), `offline` past
+   * `PRESENCE_OFFLINE_MS` (the support banner), `error` fails the request.
+   */
+  mockTrackingState: (process.env.EXPO_PUBLIC_MOCK_TRACKING_STATE ?? '') as
+    | MockState
+    | 'stale'
+    | 'offline',
+  /**
+   * Dev-only (Phase 19): forces §19.2's `COMPLETED (unpaid)` branch, which a
+   * mock gateway cannot reach on its own — a fake capture never fails. Without
+   * it the failure ladder would be code nobody had ever seen run, and a ladder
+   * that has never executed is not a ladder.
+   */
+  mockPaymentState: (process.env.EXPO_PUBLIC_MOCK_PAYMENT_STATE ?? '') as MockState | 'failed',
+  /** Dev-only: force the §9.1.9 wallet into empty/error. */
+  mockWalletState: (process.env.EXPO_PUBLIC_MOCK_WALLET_STATE ?? '') as MockState,
+  /** Dev-only: force §9.4.11's coupon check into error. */
+  mockCouponState: (process.env.EXPO_PUBLIC_MOCK_COUPON_STATE ?? '') as MockState,
 
   /**
    * Google Maps SDK key for ANDROID (Phase 16).

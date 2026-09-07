@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme, motion } from '@towing/theme';
 import type { RootStackParamList } from './types';
+import { navigationRef } from './navigationRef';
 import { BottomTabs } from './BottomTabs';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { SplashScreen } from '@/screens/auth/SplashScreen';
@@ -19,6 +20,7 @@ import { AddVehicleScreen } from '@/screens/account/AddVehicleScreen';
 import { SavedLocationsScreen } from '@/screens/account/SavedLocationsScreen';
 import { AddSavedLocationScreen } from '@/screens/account/AddSavedLocationScreen';
 import { PaymentMethodsScreen } from '@/screens/account/PaymentMethodsScreen';
+import { WalletScreen } from '@/screens/account/WalletScreen';
 import { NotificationsSettingsScreen } from '@/screens/account/NotificationsSettingsScreen';
 import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen';
 import {
@@ -71,7 +73,7 @@ export function RootNavigator() {
 
   return (
     <>
-      <NavigationContainer theme={theme.isDark ? navDarkTheme : navLightTheme}>
+      <NavigationContainer ref={navigationRef} theme={theme.isDark ? navDarkTheme : navLightTheme}>
         <Stack.Navigator
           screenOptions={{
             headerShown: false,
@@ -143,6 +145,7 @@ export function RootNavigator() {
               <Stack.Screen name="SavedLocations" component={SavedLocationsScreen} />
               <Stack.Screen name="AddSavedLocation" component={AddSavedLocationScreen} />
               <Stack.Screen name="PaymentMethods" component={PaymentMethodsScreen} />
+              <Stack.Screen name="Wallet" component={WalletScreen} />
               <Stack.Screen name="NotificationsSettings" component={NotificationsSettingsScreen} />
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
               <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />

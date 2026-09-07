@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common';
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { NotificationChannel } from '@towing/api-contracts';
 import { DB, type Database } from '../../db/db.module';
@@ -11,13 +11,15 @@ import {
 import { ENV, type Env } from '../../config/env';
 import { MetricsService } from '../observability/metrics.service';
 import { QUEUE, type JobName, type QueuePort } from '../queue/queue.port';
+import { ATTACHMENT_RESOLVER, type AttachmentResolverPort } from './attachment.port';
+import type { ChannelSendParams } from './channel.port';
 import { maskDestination } from './channels/log-channel.adapter';
 import { ExpoPushAdapter } from './channels/expo-push.adapter';
 import { NOTIFICATIONS, type NotificationPort } from './notification.port';
 import { PreferenceService } from './preference.service';
 import { RecipientResolverService } from './recipient-resolver.service';
 import { TRIGGERS_BY_EVENT } from './registry/triggers';
-import type { Recipient, RegisteredTrigger } from './registry/trigger.types';
+import type { AttachmentRef, Recipient, RegisteredTrigger } from './registry/trigger.types';
 import { renderTemplate, TEMPLATES, type TemplateKey } from './template-catalog';
 
 /** Per-channel retry budgets. SMS is cheapest to retry; email is slowest to matter. */
@@ -55,6 +57,11 @@ export class NotificationDispatcherService implements OnModuleInit {
     private readonly preferences: PreferenceService,
     private readonly metrics: MetricsService,
     private readonly expo: ExpoPushAdapter,
+    // OPTIONAL: a deployment with no producer bound sends emails without
+    // files, which is the correct degraded behaviour rather than a failure.
+    @Optional()
+    @Inject(ATTACHMENT_RESOLVER)
+    private readonly attachmentResolver?: AttachmentResolverPort,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -293,6 +300,13 @@ export class NotificationDispatcherService implements OnModuleInit {
       )
       .limit(1);
 
+    // §12.2's attachment, resolved HERE rather than in the registry: the
+    // registry is pure data and has no storage port, and it must not carry a
+    // megabyte of PDF through a `defineTrigger` literal. EMAIL ONLY — there is
+    // nothing to attach a file to on push, SMS or WhatsApp.
+    const attachments =
+      channel === 'email' ? await this.resolveAttachments(trigger, event.payload) : undefined;
+
     const result = await this.notifications.notify(channel, {
       to,
       rendered: renderTemplate(trigger.template as TemplateKey, variables),
@@ -303,6 +317,7 @@ export class NotificationDispatcherService implements OnModuleInit {
       priority: trigger.priority ?? 'normal',
       data: buildPushData(event.event, trigger, inbox?.id ?? claimed.id),
       androidChannelId: trigger.priority === 'high' ? 'job-offer-v1' : undefined,
+      attachments,
       deliveryId: claimed.id,
     });
 
@@ -475,6 +490,32 @@ export class NotificationDispatcherService implements OnModuleInit {
       return recipient.pushTokens.find((d) => d.deviceId === deviceId)?.token ?? null;
     }
     return channel === 'email' ? recipient.email : recipient.mobile;
+  }
+
+  /**
+   * Fetches what a trigger declared it wanted attached.
+   *
+   * BEST-EFFORT, DELIBERATELY. An invoice that cannot be read is a worse email,
+   * not a failed delivery — the customer still gets the receipt telling them
+   * the trip is paid, and the app can still download the PDF. Failing the whole
+   * send because a blob store hiccuped would turn a cosmetic problem into a
+   * missing notification.
+   */
+  private async resolveAttachments(
+    trigger: { attachmentsFor?: (payload: never) => AttachmentRef },
+    payload: Record<string, unknown>,
+  ): Promise<ChannelSendParams['attachments']> {
+    if (!trigger.attachmentsFor) return undefined;
+
+    if (!this.attachmentResolver) return undefined;
+
+    try {
+      const resolved = await this.attachmentResolver.resolve(trigger.attachmentsFor(payload as never));
+      return resolved.length > 0 ? resolved : undefined;
+    } catch (error) {
+      this.logger.warn(`attachment could not be resolved: ${String(error)}`);
+      return undefined;
+    }
   }
 
   private async markFailed(deliveryId: string, reason: string): Promise<void> {

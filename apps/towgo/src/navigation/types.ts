@@ -49,6 +49,8 @@ export type RootStackParamList = {
   SavedLocations: undefined;
   AddSavedLocation: { locationId?: string } | undefined;
   PaymentMethods: undefined;
+  /** §9.1.9's in-app wallet — refunds and §14.5 adjustments, read-only. */
+  Wallet: undefined;
   NotificationsSettings: undefined;
   /** The in-app notification centre — what the AppHeader bell opens (Phase 13). */
   Notifications: undefined;

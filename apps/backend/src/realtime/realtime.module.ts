@@ -29,6 +29,17 @@ import { WsTicketService } from './ws-ticket.service';
     PositionsRepo,
     PositionsService,
   ],
-  exports: [FleetGateway, WsTicketService],
+  /**
+   * `RealtimeSubscriberService` is exported for Phase 18 (`TrackingModule`'s
+   * position relay and `JobExecutionModule`'s en-route watcher).
+   *
+   * IT IS SAFE TO SHARE PRECISELY BECAUSE IT HOLDS A LIST OF HANDLERS PER
+   * CHANNEL, not one. That was the Phase 5 bug — a single-handler map, where
+   * whichever consumer registered second silently erased the other and
+   * `ops:metrics` simply never arrived with no error anywhere. Three consumers
+   * now subscribe to overlapping channels, and the list is what makes that a
+   * composition rather than a race.
+   */
+  exports: [FleetGateway, WsTicketService, RealtimeSubscriberService],
 })
 export class RealtimeModule {}

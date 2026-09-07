@@ -1,11 +1,13 @@
 import type {
   BookingStatusEvent,
   CustomerBookingStatusEvent,
+  CustomerLocationUpdateEvent,
   CustomerReadyEvent,
   DriverConfigUpdateEvent,
   DriverLocationAccepted,
   DriverLocationPing,
   DriverReadyEvent,
+  EtaUpdateEvent,
   FleetId,
   JobOfferEvent,
   JobRevokedEvent,
@@ -134,6 +136,18 @@ export interface CustomerServerToClientEvents {
   'realtime:ready': (payload: CustomerReadyEvent) => void;
   'search:progress': (payload: SearchProgressEvent) => void;
   'booking:status': (payload: CustomerBookingStatusEvent) => void;
+  /**
+   * §11.4's moving truck and §11.5's estimate (Phase 18).
+   *
+   * BOTH ARE ROOMED TO ONE BOOKING, like everything else on this namespace, so
+   * both carry the customer's own full-precision view. §11.7's share-link
+   * viewers do NOT receive these: the public page polls `GET /v1/track/:token`
+   * on the §19.2 cadence instead of holding a socket — a deliberate deviation,
+   * recorded in `customer/track.ts`, because an unauthenticated socket is a new
+   * abuse surface opened for one read-only page.
+   */
+  'location:update': (payload: CustomerLocationUpdateEvent) => void;
+  'eta:update': (payload: EtaUpdateEvent) => void;
 }
 
 /**

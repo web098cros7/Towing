@@ -60,9 +60,33 @@ export const fareBreakdownSchema = z.object({
   accidentPaise: unsignedPaiseSchema,
   /** §7.4 surge, by the resolved zone's band. */
   surgePaise: unsignedPaiseSchema,
-  /** Coupon. Always 0 until Phase 20 ships promotions; present so the row can appear. */
+  /**
+   * §7.4 waiting, accrued on-site past the free window. Zero on an estimate —
+   * nobody has waited yet — and finalized by `complete`.
+   */
+  waitingPaise: unsignedPaiseSchema.default(0),
+  /**
+   * The coupon's discount. LIVE SINCE PHASE 19 — the previous comment here
+   * said "always 0 until Phase 20 ships promotions", which the plan's own B1
+   * slice contradicted by putting `POST /v1/coupons/validate` and the `coupons`
+   * table in Phase 19. Applied inside the same transaction that locks the fare,
+   * so a booking never carries a discount whose redemption went unrecorded.
+   */
   discountPaise: unsignedPaiseSchema,
-  /** base + night + highway + accident + surge − discount. */
+  /**
+   * §14 GST on the taxable subtotal. ZERO until an admin sets
+   * `charge_config.tax_pct`, which is the entire premise of Phase 19's
+   * GST-ready-but-off schema — so the line renders only when it is non-zero.
+   */
+  taxPaise: unsignedPaiseSchema.default(0),
+  /**
+   * base + night + highway + accident + waiting + surge − discount + tax.
+   *
+   * The pre-tax half of that is the TAXABLE amount, and it — not this total —
+   * is what §14.3's commission split is computed on. Crediting a driver a share
+   * of the tax is the mistake `ck_bookings_payout_within_total` exists to
+   * catch.
+   */
   totalPaise: unsignedPaiseSchema,
 });
 export type FareBreakdown = z.infer<typeof fareBreakdownSchema>;

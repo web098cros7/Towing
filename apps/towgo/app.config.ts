@@ -53,6 +53,24 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'in.mitow.customer',
+    infoPlist: {
+      /**
+       * §9.1.9's UPI apps, declared so Razorpay's sheet can SEE them.
+       *
+       * iOS 9+ requires an app to whitelist every URL scheme it intends to
+       * probe with `canOpenURL`. Razorpay's checkout uses exactly that to
+       * decide which UPI apps to offer — so without this list the sheet still
+       * opens, still works, and silently shows FEWER PAYMENT OPTIONS than the
+       * customer has installed. There is no error and no warning; the only
+       * symptom is a shorter list, which is precisely the class of defect that
+       * survives until somebody with GPay installed asks why it is not there.
+       *
+       * ⚠ NEVER VERIFIED. No iOS build of this app has ever been produced, so
+       * this list is from Razorpay's documentation and has not been checked
+       * against a real sheet on a real device.
+       */
+      LSApplicationQueriesSchemes: ['gpay', 'phonepe', 'paytmmp', 'credpay', 'upi'],
+    },
   },
   android: {
     /**
@@ -199,8 +217,16 @@ const config: ExpoConfig = {
    * changes, never for a JS-only release.
    *
    * `1` was Phase 12 (MMKV, expo-location, the pickers); `2` was Phase 13
-   * adding `expo-notifications`; `3` is Phase 16 adding `react-native-maps`.
-   * None has ever been built.
+   * adding `expo-notifications`; `3` was Phase 16 adding `react-native-maps`;
+   * `4` is Phase 19 adding `react-native-razorpay`. None has ever been built.
+   *
+   * ⚠ THE FOURTH RUNG, AND THE PLAN SAID THERE WOULD BE THREE. Phases 12, 13
+   * and 16 were the declared rebuild points and Phase 18 went out of its way to
+   * add none — using RN core `Share` over `expo-sharing` specifically to avoid
+   * a fourth. §9.1.9's payment sheet needed a native SDK, so this is a
+   * deliberate exception rather than a drift, and the practical cost is
+   * currently zero because no binary exists to be invalidated. It stops being
+   * zero the moment one does.
    *
    * Declared even though `expo-updates` is NOT installed, so this is currently
    * inert: the plan's "bump runtime versions in lockstep with native changes"
@@ -209,7 +235,7 @@ const config: ExpoConfig = {
    * back-filled from memory — which is exactly how an update lands on an
    * incompatible binary.
    */
-  runtimeVersion: '3',
+  runtimeVersion: '4',
   extra: {
     // Toggle mock data source vs the (future) real REST backend.
     useMocks: process.env.EXPO_PUBLIC_USE_MOCKS ?? 'true',

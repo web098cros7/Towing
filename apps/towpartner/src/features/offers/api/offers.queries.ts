@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { DriverJob, JobReject } from '@towing/api-contracts';
+import type { DriverJob, JobReject, JobUnableReason } from '@towing/api-contracts';
 import { useDriverStatusStore } from '@/features/dashboard/store/driverStatusStore';
+import { track } from '@/lib/analytics/analytics';
 import { offersDataSource } from './offersDataSource';
 import { offersKeys } from './offers.keys';
 
@@ -99,6 +100,78 @@ export function useRejectOffer() {
       queryClient.setQueryData(offersKeys.current(), null);
     },
     onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: offersKeys.current() });
+    },
+  });
+}
+
+/**
+ * §5.2's execution chain (Phase 18).
+ *
+ * ALL FOUR SHARE ONE `onSuccess`: write the returned job into `offersKeys.job()`.
+ * The server answers every transition with the whole `DriverJob` precisely so the
+ * screen can re-render against the server's view without a refetch — waiting
+ * charges start accruing at `arrived`, the navigation target flips at `start`,
+ * and the earnings become final at `complete`. Patching a status string instead
+ * would leave the rest of the object describing the previous step.
+ *
+ * NO OPTIMISTIC UPDATES. Each of these can legitimately fail — a wrong OTP, a
+ * proximity refusal, a job taken away by an admin — and showing the next state
+ * before the server agrees would mean rolling a driver backwards at the kerbside.
+ * The accept mutation made the same call for the same reason.
+ */
+export function useArriveAtJob() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bookingId: string) => offersDataSource.arrived(bookingId),
+    onSuccess: (job: DriverJob) => queryClient.setQueryData(offersKeys.job(), job),
+  });
+}
+
+export function useStartJob() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, otp }: { bookingId: string; otp: string }) =>
+      offersDataSource.start(bookingId, otp),
+    onSuccess: (job: DriverJob) => {
+      queryClient.setQueryData(offersKeys.job(), job);
+      // §22.1. Emitted here rather than in the screen because the OTP gate can
+      // fail several times before it passes, and only the pass is a job start.
+      track('job_started');
+    },
+  });
+}
+
+export function useCompleteJob() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bookingId: string) => offersDataSource.complete(bookingId),
+    onSuccess: (job: DriverJob) => {
+      // The completed job, not null: §9.2.3's completion screen renders the
+      // final gross → commission → net from it. `GET /driver/jobs/current` is
+      // scoped to ACTIVE statuses and would return null, so a refetch here would
+      // erase the screen the driver is looking at.
+      queryClient.setQueryData(offersKeys.job(), job);
+      track('job_completed');
+    },
+  });
+}
+
+/**
+ * §9.2.3's unable-to-deliver.
+ *
+ * CLEARS THE JOB RATHER THAN STORING ONE. The booking has gone back to §6.5's
+ * search and belongs to nobody; leaving the last job in the cache would show a
+ * driver an active job they are no longer on, and let them tap Complete on it.
+ */
+export function useUnableToDeliver() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, reason, note }: { bookingId: string; reason: JobUnableReason; note?: string }) =>
+      offersDataSource.unable(bookingId, { reason, ...(note ? { note } : {}) }),
+    onSuccess: () => {
+      queryClient.setQueryData(offersKeys.job(), null);
+      // The driver is available again, so an offer may already be waiting.
       void queryClient.invalidateQueries({ queryKey: offersKeys.current() });
     },
   });

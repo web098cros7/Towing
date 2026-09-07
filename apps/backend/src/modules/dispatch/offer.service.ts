@@ -18,6 +18,8 @@ import { BookingStateMachineService } from '../bookings/booking-state-machine.se
 import { CustomerGateway } from '../bookings/customer.gateway';
 import { DriverGateway } from '../driver-presence/driver.gateway';
 import { PresenceStore } from '../driver-presence/presence-store';
+import { EtaService } from '../tracking/eta.service';
+
 import { CandidateSelectionService, type ScoredCandidate } from './candidate-selection.service';
 import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
 
@@ -57,6 +59,7 @@ export class OfferService {
     private readonly customerGateway: CustomerGateway,
     private readonly machine: BookingStateMachineService,
     private readonly notifications: NotificationService,
+    private readonly tracking: EtaService,
   ) {}
 
   /**
@@ -311,6 +314,23 @@ export class OfferService {
       to: 'assigned',
       fleetId,
     });
+
+    // §11.5's route and first ETA (Phase 18) — the ONE Directions call this
+    // booking will ever make. Deliberately last, deliberately not awaited by the
+    // accept response's critical path, and deliberately outside the transaction:
+    // a four-second vendor timeout must not roll back an assignment, and a
+    // driver who tapped Accept must not stare at a spinner waiting for a map
+    // line. `planRoute` swallows its own failures and the trip runs fine with a
+    // straight-line ETA — which is what the router falls back to anyway.
+    //
+    // The driver's last fix is passed rather than re-read: `PresenceStore`
+    // already had it a moment ago to score this candidate, and it is fresher
+    // than the ~30 s Postgres flush.
+    const fix = await this.presence.lastFix(driverId).catch(() => null);
+    void this.tracking.planRoute(
+      booking.id,
+      fix ? { lat: fix.lat, lng: fix.lng } : null,
+    );
   }
 
   /** `GET /v1/driver/offers/current` — §19.2's resync for a dropped socket. */
@@ -411,6 +431,28 @@ export class OfferService {
       // the code itself never travels to this phone.
       otpPending: booking.status === 'assigned' || booking.status === 'en_route' || booking.status === 'arrived',
       assignedAt: booking.updatedAt?.toISOString() ?? null,
+
+      // §5.2's instants (Phase 18). ABSOLUTE, on the server's clock, for the
+      // same reason `JobOffer.expiresAt` is: `arrivedAt` is what TowPartner's
+      // waiting ticker counts from, and unlike a countdown the result is
+      // BILLABLE — the number on the driver's screen has to be the number
+      // `complete` charges.
+      arrivedAt: booking.arrivedAt?.toISOString() ?? null,
+      startedAt: booking.startedAt?.toISOString() ?? null,
+
+      // §7.4's waiting rules as LOCKED on this booking (§3.4), not as currently
+      // configured, so the live ticker and the final bill cannot disagree. The
+      // fallbacks cover rows predating migration 0015.
+      waiting: {
+        freeMinutes: booking.waitingFreeMinutes ?? 15,
+        perMinutePaise:
+          booking.waitingPerMinute === null ? 500 : rupeeStringToPaise(booking.waitingPerMinute),
+      },
+
+      // §11.4/§11.5 — the driver draws the same route line the customer sees.
+      etaSeconds: booking.etaSeconds,
+      routePolyline: booking.routePolyline,
+      routeDropPolyline: booking.routeDropPolyline,
     };
   }
 

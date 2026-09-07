@@ -11,6 +11,8 @@ import {
   CUSTOMER_NAMESPACE,
   bookingRoom,
   type CustomerBookingStatusEvent,
+  type CustomerLocationUpdateEvent,
+  type EtaUpdateEvent,
   type JobStatus,
   type SearchProgressEvent,
 } from '@towing/api-contracts';
@@ -128,6 +130,39 @@ export class CustomerGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       at: new Date().toISOString(),
     };
     this.namespace.to(bookingRoom(bookingId)).emit(CUSTOMER_EVENT.BOOKING_STATUS, payload);
+  }
+
+  /**
+   * §11.4's moving truck (Phase 18).
+   *
+   * `.local`, AND IT IS THE ONLY EMITTER ON THIS GATEWAY THAT IS. Everything
+   * else here originates on one worker and has to cross the adapter to reach a
+   * socket attached elsewhere. This one is fanned out from `location:driver`, a
+   * Redis channel every node is subscribed to and every node already holds the
+   * message from — so a cross-node emit would republish through the adapter and
+   * each customer would receive N copies, one per task.
+   *
+   * That is the Phase 5 rule, learned the hard way there and asserted by
+   * `multi-instance.e2e.spec.ts`: originates here → `.to()`, fanning out a
+   * shared channel → `.local.to()`. `TrackingRelayService` is the only caller,
+   * and it gates on `localRoomSize` first so a node with nobody watching does no
+   * work at all for the stream.
+   */
+  emitLocationUpdate(payload: CustomerLocationUpdateEvent): void {
+    this.namespace.local
+      .to(bookingRoom(payload.bookingId))
+      .emit(CUSTOMER_EVENT.LOCATION_UPDATE, payload);
+  }
+
+  /**
+   * §11.5's smoothed estimate (Phase 18).
+   *
+   * Cross-node, unlike the position above: a recompute runs on whichever worker
+   * handled the trigger, and the customer's socket is very likely somewhere
+   * else.
+   */
+  emitEtaUpdate(payload: EtaUpdateEvent): void {
+    this.namespace.to(bookingRoom(payload.bookingId)).emit(CUSTOMER_EVENT.ETA_UPDATE, payload);
   }
 
   /** How many sockets are watching this booking on THIS node. */

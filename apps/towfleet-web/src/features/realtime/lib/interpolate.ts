@@ -1,3 +1,10 @@
+import {
+  frameFor,
+  isAnimating,
+  retarget,
+  type AnimatedFrame,
+  type MotionTrack,
+} from '@towing/api-contracts';
 import type { FleetPosition } from '../types';
 
 /**
@@ -6,39 +13,22 @@ import type { FleetPosition } from '../types';
  * the screen for updates <= 10s apart".
  *
  * Pings land once a second in one batch, so without this every marker jumps.
+ *
+ * THE MATHS MOVED OUT IN PHASE 18. Easing, the shortest-arc heading, the teleport
+ * threshold and the retarget-from-where-the-marker-actually-is rule now live in
+ * `@towing/api-contracts` (`realtime/interpolation.ts`), because TowGo's tracking
+ * screen needs exactly the same behaviour and cannot import a DOM component or a
+ * react-native one. This class is what remains: the fleet-shaped collection
+ * wrapper — many trucks, keyed by id, pruned when they leave the snapshot.
+ *
+ * The numbers and the behaviour are unchanged; `interpolation.ts` carries the
+ * reasoning for each of them.
  */
 
-export interface AnimatedFrame {
-  lat: number;
-  lng: number;
-  heading: number;
-}
-
-interface Track {
-  fromLat: number;
-  fromLng: number;
-  fromHeading: number;
-  toLat: number;
-  toLng: number;
-  toHeading: number;
-  startedAt: number;
-}
-
-/** Matches the 1s flush cadence: the tween finishes just as the next batch lands. */
-const TWEEN_MS = 1_000;
-
-/** Beyond this the jump is real (a resync, a GPS fix) — snap rather than glide. */
-const TELEPORT_DEG = 0.25;
-
-const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
-
-/** Shortest way round the compass: 350° → 10° is +20°, not −340°. */
-function shortestArc(from: number, to: number): number {
-  return ((((to - from + 180) % 360) + 360) % 360) - 180;
-}
+export type { AnimatedFrame };
 
 export class PositionAnimator {
-  private tracks = new Map<string, Track>();
+  private tracks = new Map<string, MotionTrack>();
 
   /** Retargets each tween at the newest position; call on every data change. */
   update(positions: FleetPosition[], nowMs: number): void {
@@ -48,43 +38,14 @@ export class PositionAnimator {
       if (position.lat === null || position.lng === null) continue;
       seen.add(position.truckId);
 
-      const heading = position.heading ?? 0;
+      const next = { lat: position.lat, lng: position.lng, heading: position.heading ?? 0 };
       const existing = this.tracks.get(position.truckId);
 
-      if (!existing) {
-        this.tracks.set(position.truckId, {
-          fromLat: position.lat,
-          fromLng: position.lng,
-          fromHeading: heading,
-          toLat: position.lat,
-          toLng: position.lng,
-          toHeading: heading,
-          startedAt: nowMs - TWEEN_MS,
-        });
-        continue;
-      }
+      // Nothing moved — leave the tween alone rather than restarting it, which
+      // would make a stationary truck ease in place once a second.
+      if (existing && existing.toLat === next.lat && existing.toLng === next.lng) continue;
 
-      if (existing.toLat === position.lat && existing.toLng === position.lng) continue;
-
-      const jumped =
-        Math.abs(position.lat - existing.toLat) > TELEPORT_DEG ||
-        Math.abs(position.lng - existing.toLng) > TELEPORT_DEG;
-
-      // Start the new tween wherever the marker actually IS, not at the previous
-      // target — otherwise a batch arriving mid-tween snaps it backwards first.
-      const current = jumped
-        ? { lat: position.lat, lng: position.lng, heading }
-        : this.frameFor(existing, nowMs);
-
-      this.tracks.set(position.truckId, {
-        fromLat: current.lat,
-        fromLng: current.lng,
-        fromHeading: current.heading,
-        toLat: position.lat,
-        toLng: position.lng,
-        toHeading: heading,
-        startedAt: nowMs,
-      });
+      this.tracks.set(position.truckId, retarget(existing, next, nowMs));
     }
 
     // Drop trucks that left the snapshot so the map cannot animate a ghost.
@@ -95,25 +56,15 @@ export class PositionAnimator {
 
   frames(nowMs: number): Map<string, AnimatedFrame> {
     const out = new Map<string, AnimatedFrame>();
-    for (const [truckId, track] of this.tracks) out.set(truckId, this.frameFor(track, nowMs));
+    for (const [truckId, track] of this.tracks) out.set(truckId, frameFor(track, nowMs));
     return out;
   }
 
   /** True while any marker is still moving — lets the caller idle the rAF loop. */
   isAnimating(nowMs: number): boolean {
     for (const track of this.tracks.values()) {
-      if (nowMs - track.startedAt < TWEEN_MS) return true;
+      if (isAnimating(track, nowMs)) return true;
     }
     return false;
-  }
-
-  private frameFor(track: Track, nowMs: number): AnimatedFrame {
-    const progress = Math.min(1, Math.max(0, (nowMs - track.startedAt) / TWEEN_MS));
-    const eased = easeOutCubic(progress);
-    return {
-      lat: track.fromLat + (track.toLat - track.fromLat) * eased,
-      lng: track.fromLng + (track.toLng - track.fromLng) * eased,
-      heading: track.fromHeading + shortestArc(track.fromHeading, track.toHeading) * eased,
-    };
   }
 }

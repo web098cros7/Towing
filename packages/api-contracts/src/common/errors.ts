@@ -138,6 +138,81 @@ export const ErrorCodes = {
    */
   DISPATCH_PAUSED: 'dispatch_paused',
 
+  // --- Job execution (Phase 18) -------------------------------------------
+  /**
+   * §9.2.3's "job cannot start without a valid OTP" — the driver typed six
+   * digits and they were not the ones the customer is holding.
+   *
+   * ONE CODE FOR FOUR DIFFERENT FAILURES, deliberately: wrong code, expired
+   * window, attempt cap exhausted, and no code ever minted all return this.
+   * `BookingOtpService.verify` was written to be indistinguishable across those
+   * cases for the same reason `login_challenges` is — anything finer is an
+   * oracle against a six-digit space, and the space is small enough to matter.
+   *
+   * `details.attemptsRemaining` is safe to send and is the one thing the driver
+   * actually needs, because the alternative to knowing is finding out by being
+   * locked out mid-handover.
+   */
+  INVALID_BOOKING_OTP: 'invalid_booking_otp',
+  /**
+   * The driver has no active job, or is not the driver on the booking they are
+   * trying to move. Distinct from `FORBIDDEN`: the common cause is not an attack
+   * but a stale screen — a job that was completed on another device, or a
+   * re-dispatch that already took it away.
+   */
+  NOT_ASSIGNED_DRIVER: 'not_assigned_driver',
+  /**
+   * §11.7's link is dead: revoked from the tracking screen, or past the
+   * completion + 30 min grace.
+   *
+   * NOT A 404, and the distinction is the point. A 404 says "no such trip",
+   * which invites the recipient to think they mistyped; this says the link
+   * worked and has ended, which is the true and less alarming answer for
+   * somebody who was sent it precisely because they were worried.
+   */
+  SHARE_LINK_EXPIRED: 'share_link_expired',
+
+  /**
+   * The gateway does not report this payment as captured. Deliberately NOT an
+   * error about the customer: §19.2's ladder says a booking legitimately sits
+   * at COMPLETED (unpaid) when Razorpay is slow or down, and the 5-minute sweep
+   * resolves it. The app should say "we are confirming your payment", not
+   * "your payment failed".
+   */
+  PAYMENT_NOT_CAPTURED: 'payment_not_captured',
+  /**
+   * The captured amount is not the booking's total.
+   *
+   * A REAL ATTACK, not a rounding guard: create a ₹1 order out of band and
+   * present it against a ₹2,000 tow. Without this check the ledger credits a
+   * driver from money that was never collected, and every invariant stays
+   * green because they all reconcile against `bookings.total`.
+   */
+  PAYMENT_AMOUNT_MISMATCH: 'payment_amount_mismatch',
+  /** The checkout signature does not verify against the merchant secret. */
+  INVALID_PAYMENT_SIGNATURE: 'invalid_payment_signature',
+  /**
+   * §3.5's chargeable tiers need the fee collected before the trip is
+   * cancelled — otherwise the platform cancels and then chases the customer.
+   * The app must run the payment sheet and retry with the result.
+   */
+  CANCELLATION_REQUIRES_PAYMENT: 'cancellation_requires_payment',
+  /**
+   * The coupon ran out between validate and confirm. The whole confirm
+   * transaction rolls back — fare lock, OTP, booking row and redemption
+   * together — so there is no orphan booking carrying a discount nobody
+   * recorded.
+   */
+  COUPON_EXHAUSTED: 'coupon_exhausted',
+  /** The coupon is not applicable; `details.reason` says why. */
+  COUPON_INVALID: 'coupon_invalid',
+  /** Approve/reject on a payout that some other admin already decided. */
+  PAYOUT_ALREADY_DECIDED: 'payout_already_decided',
+  /** The booking has no invoice yet — it has not been paid. */
+  INVOICE_NOT_READY: 'invoice_not_ready',
+  /** Rating a booking that has not finished, or that is not the caller's. */
+  RATING_NOT_ALLOWED: 'rating_not_allowed',
+
   INTERNAL: 'internal_error',
 } as const;
 

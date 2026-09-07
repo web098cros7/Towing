@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Alert, Linking, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@towing/theme';
@@ -21,6 +21,8 @@ import {
   Receipt,
   ShieldCheck,
   ArrowLeft,
+  Download,
+  Star,
 } from '@/icons';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useTabBarSpace } from '@/navigation/TabBar';
@@ -28,6 +30,8 @@ import { useBooking } from '@/features/bookings/api/bookings.queries';
 import { BookingHero } from '@/features/bookings/components/BookingHero';
 import { RouteRows } from '@/features/bookings/components/RouteRows';
 import { DetailRow, RowDivider } from '@/components/DetailRow';
+import { RatingSheet } from '@/features/payments/components/RatingSheet';
+import { useInvoiceLink, useRatingState } from '@/features/payments/api/payments.queries';
 import { BookingDetailSkeleton } from '@/features/bookings/components/BookingDetailSkeleton';
 import { PAYMENT_LABEL } from '@/features/bookings/labels';
 import { towTypes } from '@/features/booking/data/towTypes.data';
@@ -55,6 +59,35 @@ export function BookingDetailsScreen() {
 
   const goBack = useCallback(() => navigation.goBack(), [navigation]);
   const openSupport = useCallback(() => navigation.navigate('ContactUs'), [navigation]);
+
+  const [rateOpen, setRateOpen] = useState(false);
+  const invoice = useInvoiceLink();
+  // Only fetched once the trip is finished — an unrated-state read on a live
+  // trip is a request nobody needs.
+  const rating = useRatingState(bookingId, data?.status === 'paid' || data?.status === 'completed');
+
+  /**
+   * §9.1.10's invoice download.
+   *
+   * `Linking.openURL` ON A SIGNED URL, which is what keeps this from adding a
+   * native module: `expo-file-system` and `expo-sharing` are both native, and
+   * Phase 19 already spends its one rebuild point on `react-native-razorpay`.
+   * The URL expires in five minutes, so it is fetched on tap rather than held.
+   */
+  const openInvoice = useCallback(() => {
+    invoice.mutate(bookingId, {
+      onSuccess: (link) => {
+        void Linking.openURL(link.url).catch(() =>
+          Alert.alert('Could not open the invoice', 'Please try again in a moment.'),
+        );
+      },
+      onError: () =>
+        Alert.alert(
+          'Invoice not ready',
+          'We are still preparing this invoice. Please try again shortly.',
+        ),
+    });
+  }, [bookingId, invoice]);
   const notReady = useCallback(() => {}, []);
 
   const towName = data ? (towTypes.find((t) => t.id === data.towTypeId)?.name ?? 'Tow') : '';
@@ -149,6 +182,42 @@ export function BookingDetailsScreen() {
             tabular
           />
           <RowDivider />
+
+          {/*
+            §9.1.10's "invoice (PDF) download".
+            Gated on `paid`, following this screen's omit-when-unknown rule —
+            an invoice row on an unpaid trip is a row that 409s when tapped.
+          */}
+          {data.status === 'paid' ? (
+            <>
+              <DetailRow
+                icon={Download}
+                label="Download invoice"
+                description={invoice.isPending ? 'Preparing…' : undefined}
+                chevron
+                onPress={openInvoice}
+              />
+              <RowDivider />
+            </>
+          ) : null}
+
+          {/* §9.1.10's "rate & review", reachable for anyone who dismissed the prompt. */}
+          {data.status === 'paid' || data.status === 'completed' ? (
+            <>
+              <DetailRow
+                icon={Star}
+                label={rating.data?.mine ? 'Edit your rating' : 'Rate this trip'}
+                description={
+                  rating.data?.mine
+                    ? `You rated ${rating.data.mine.rating} out of 5`
+                    : 'Your rating decides who we send next time'
+                }
+                chevron
+                onPress={() => setRateOpen(true)}
+              />
+              <RowDivider />
+            </>
+          ) : null}
         </View>
 
         <View style={{ gap: theme.spacing.sm }}>
@@ -171,6 +240,13 @@ export function BookingDetailsScreen() {
             />
           </View>
         </View>
+
+        <RatingSheet
+          bookingId={bookingId}
+          driverName={data.driverName}
+          visible={rateOpen}
+          onDismiss={() => setRateOpen(false)}
+        />
       </>
     );
   }

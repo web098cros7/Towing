@@ -207,6 +207,16 @@ export interface ChargeConfigValues {
   surgePctHigh: number;
   surgePctPeak: number;
   haversineRoadFactor: number;
+  /** §14 GST on the taxable subtotal. Zero until an accountant says otherwise. */
+  taxPct: number;
+  taxLabel: string;
+  /** §3.5's cancellation ladder, admin-configurable since Phase 19. */
+  cancelFreeMinutes: number;
+  cancelPartialMinutes: number;
+  cancelPartialFeePaise: number;
+  cancelDriverCompPct: number;
+  /** §14.4's Finance gate. At or below this, a payout skips the queue. */
+  payoutAutoApproveMaxPaise: number;
 }
 
 /** The launch values, mirroring `charge_config`'s column defaults. */
@@ -221,6 +231,23 @@ export const DEFAULT_CHARGE_CONFIG: ChargeConfigValues = {
   surgePctHigh: 10,
   surgePctPeak: 25,
   haversineRoadFactor: 1.3,
+  // §14 GST. ZERO, and that is the entire premise of Phase 19 shipping the tax
+  // schema without a tax: nothing computes differently until an admin sets a
+  // rate, and the rate needs an Indian indirect-tax professional rather than an
+  // engineer. See ToBeDoneEhsan.md.
+  taxPct: 0,
+  taxLabel: 'GST',
+  // §3.5's ladder. These reproduce `cancellation-policy.ts`'s constants
+  // exactly, so its §3.5 worked examples keep passing untouched.
+  cancelFreeMinutes: 2,
+  cancelPartialMinutes: 10,
+  cancelPartialFeePaise: 15_000,
+  // 50, not 0 — see the schema. The chargeable tiers were refused outright
+  // until Phase 19, so there is no prior behaviour to preserve, and §3.5 says
+  // the driver IS compensated when a customer cancels on them.
+  cancelDriverCompPct: 50,
+  // §14.4's Finance gate: ₹1,00,000. Everything at or below this auto-approves.
+  payoutAutoApproveMaxPaise: 10_000_000,
 };
 
 /**
@@ -255,6 +282,30 @@ export interface FareInput {
   discountPaise?: number;
   rules?: PricingRuleSet;
   charges?: ChargeConfigValues;
+}
+
+/**
+ * §7.4/§7.6's waiting charge — free for the first N minutes, then per-minute.
+ *
+ * EXTRACTED SO PHASE 18 CAN CALL IT WITHOUT CALLING `computeFare`, and that is
+ * the point rather than tidiness. When a job completes, waiting is the ONLY
+ * component that may move: base, night, highway, accident, surge and discount
+ * were all locked at confirm (§3.4) and re-running the whole formula against
+ * today's rules risks quietly re-deriving one of them — a rate-card edit made
+ * mid-trip would then reach a booking it must never touch. The finalizer adds
+ * this one number to the locked total and leaves everything else alone.
+ *
+ * It takes the free window and the per-minute rate as ARGUMENTS rather than
+ * reading a config, because the finalizer passes the values snapshotted on the
+ * booking row (migration 0015), not the live ones.
+ */
+export function waitingChargePaise(
+  waitedMinutes: number,
+  freeMinutes: number,
+  perMinutePaise: number,
+): number {
+  const billable = Math.max(0, waitedMinutes - freeMinutes);
+  return billable * perMinutePaise;
 }
 
 export interface FareResult {
@@ -297,11 +348,11 @@ export function computeFare(input: FareInput): FareResult {
   const accidentPaise =
     input.service === 'accident_recovery' ? charges.accidentChargePaise : 0;
 
-  const billableWaitingMinutes = Math.max(
-    0,
-    (input.waitingMinutes ?? 0) - charges.waitingFreeMinutes,
+  const waitingPaise = waitingChargePaise(
+    input.waitingMinutes ?? 0,
+    charges.waitingFreeMinutes,
+    charges.waitingPerMinutePaise,
   );
-  const waitingPaise = billableWaitingMinutes * charges.waitingPerMinutePaise;
 
   const preSurgePaise = basePaise + nightPaise + highwayPaise + accidentPaise + waitingPaise;
   const surgePct = surgePctFor(input.surgeBand, charges);

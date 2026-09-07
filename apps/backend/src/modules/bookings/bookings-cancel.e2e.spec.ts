@@ -1,22 +1,40 @@
+import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { bookingCancelResponseSchema } from '@towing/api-contracts';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { bookingStatusHistory, bookings } from '../../db/schema';
 import { createTestApp, customerAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
-import { seedCustomer, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
+import {
+  seedCustomer,
+  seedDriver,
+  setupTestDatabase,
+  truncateAll,
+  type TestDatabase,
+} from '../../test/db';
 import { seedBooking } from '../../test/fixtures';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
+import { ENV, type Env } from '../../config/env';
+import {
+  devCheckoutSignature,
+  devPaymentRef,
+} from '../money/dev-payment.adapter';
 
 /**
- * `POST /v1/bookings/:id/cancel` — §3.5's FREE branches.
+ * `POST /v1/bookings/:id/cancel` — §3.5, all three tiers.
  *
- * The chargeable tiers are computed, reported and refused: collecting a fee
- * needs a ledger entry and a driver-compensation leg, both Phase 19. Cancelling
- * for ₹0 instead would be a revenue bug nobody notices until a month's numbers
- * come out.
+ * PHASE 15 REFUSED THE CHARGEABLE TIERS with a 409 and this file asserted that
+ * refusal, deliberately: cancelling for ₹0 instead would have been a revenue
+ * bug nobody notices until a month's numbers come out. Phase 19 gave those
+ * tiers the ledger leg and the collection path they were waiting for, so the
+ * refusal tests are REWRITTEN rather than deleted — the behaviour they pinned
+ * has genuinely changed, and the new shape deserves the same scrutiny.
+ *
+ * The chargeable path is now two calls: the fee is collected BEFORE the trip is
+ * cancelled, because cancelling first and chasing the money afterwards leaves
+ * the platform holding nothing.
  */
 describe('POST /v1/bookings/:id/cancel', () => {
   let app: INestApplication;
@@ -120,27 +138,122 @@ describe('POST /v1/bookings/:id/cancel', () => {
     });
   });
 
-  describe('the chargeable branches are refused, not silently zeroed', () => {
-    it('409s a partial-fee cancellation and reports the fee', async () => {
+  describe('the chargeable branches collect first, then cancel', () => {
+    /** Opens an intent for the fee and returns a valid checkout result. */
+    const payFeeFor = async (id: string) => {
+      const intent = await request(app.getHttpServer())
+        .post(`/v1/payments/${id}/intent`)
+        .set('Authorization', auth)
+        .set('Idempotency-Key', randomUUID())
+        .send({ purpose: 'cancellation_fee' })
+        .expect(201);
+
+      const orderRef = intent.body.orderRef as string;
+      const gatewayRef = devPaymentRef(orderRef);
+      const secret = app.get<Env>(ENV).PAYMENT_WEBHOOK_SECRET;
+
+      return { orderRef, gatewayRef, signature: devCheckoutSignature(orderRef, gatewayRef, secret) };
+    };
+
+    it('REFUSES a chargeable cancel with no payment, and nothing moves', async () => {
       const id = await seedIn('assigned', { minutesAgo: 6 });
 
-      const response = await cancel(id).expect(409);
-      expect(response.body.error.code).toBe('cancellation_not_free');
+      const response = await cancel(id).expect(422);
+      expect(response.body.error.code).toBe('cancellation_requires_payment');
       expect(response.body.error.details.tier).toBe('partial');
       expect(response.body.error.details.feePaise).toBe(15_000); // §3.5's ₹150
 
-      // Nothing moved.
       const [row] = await db.select().from(bookings).where(eq(bookings.id, id));
       expect(row!.status).toBe('assigned');
     });
 
-    it('409s a full-fare cancellation once the driver is en route', async () => {
-      const id = await seedIn('en_route', { minutesAgo: 1 });
+    it('cancels a partial-fee trip once the fee is paid, and records it', async () => {
+      const id = await seedIn('assigned', { minutesAgo: 6 });
+      const payment = await payFeeFor(id);
 
-      const response = await cancel(id).expect(409);
-      expect(response.body.error.details.tier).toBe('full');
-      // §3.5 example C — the full base fare, from the booking's own locked fare.
-      expect(response.body.error.details.feePaise).toBe(99_900);
+      const response = await request(app.getHttpServer())
+        .post(`/v1/bookings/${id}/cancel`)
+        .set('Authorization', auth)
+        .send({ payment })
+        .expect(200);
+
+      expect(response.body).toMatchObject({ status: 'cancelled', tier: 'partial', feePaise: 15_000 });
+
+      const [row] = await db.select().from(bookings).where(eq(bookings.id, id));
+      expect(row!.status).toBe('cancelled');
+      expect(row!.cancellationFee).toBe('150.00');
+    });
+
+    it('compensates the driver with an `adjustment`, NEVER an earning leg', async () => {
+      // ⚠ THE MOST LIKELY SILENT BUG IN PHASE 19. A `fare_credit` or
+      // `driver_share_credit` here would make the earnings projector count
+      // `gross = booking.total` for a trip that NEVER RAN — inflating
+      // `earnings_daily`, every fleet report and the §9.4.13 GMV chart — while
+      // tripping no invariant at all, because `ledgerDrift` filters
+      // `status = 'paid'` and `projectionDrift` compares the projection against
+      // the same wrong query.
+      const driverId = await seedDriver(db, { name: 'Compensated Driver' });
+      const id = await seedIn('en_route', { minutesAgo: 1 });
+      await db.update(bookings).set({ driverId }).where(eq(bookings.id, id));
+
+      const payment = await payFeeFor(id);
+
+      const response = await request(app.getHttpServer())
+        .post(`/v1/bookings/${id}/cancel`)
+        .set('Authorization', auth)
+        .send({ payment })
+        .expect(200);
+
+      // §3.5 example C — the full base fare, and 50 % of it to the driver.
+      expect(response.body.feePaise).toBe(99_900);
+      expect(response.body.driverCompensationPaise).toBe(49_950);
+
+      const legs = (await db.execute(sql`
+        select type, amount from wallet_transactions where ref_id = ${id}::uuid
+      `)) as unknown as Array<{ type: string; amount: string }>;
+
+      expect(legs).toHaveLength(1);
+      expect(legs[0]!.type).toBe('adjustment');
+      expect(legs[0]!.amount).toBe('499.50');
+
+      // AND THE ASSERTION THAT CATCHES A REGRESSION: the earnings projection
+      // for this driver is untouched by a trip that never happened.
+      const [cells] = (await db.execute(sql`
+        select count(*)::int as count from earnings_daily where driver_id = ${driverId}::uuid
+      `)) as unknown as [{ count: number }];
+      expect(cells.count).toBe(0);
+    });
+
+    it('pays no compensation when there was no driver to compensate', async () => {
+      const id = await seedIn('assigned', { minutesAgo: 6 });
+      const payment = await payFeeFor(id);
+
+      const response = await request(app.getHttpServer())
+        .post(`/v1/bookings/${id}/cancel`)
+        .set('Authorization', auth)
+        .send({ payment })
+        .expect(200);
+
+      expect(response.body.driverCompensationPaise).toBe(0);
+
+      const [legs] = (await db.execute(sql`
+        select count(*)::int as count from wallet_transactions where ref_id = ${id}::uuid
+      `)) as unknown as [{ count: number }];
+      expect(legs.count).toBe(0);
+    });
+
+    it('refuses a forged payment signature', async () => {
+      const id = await seedIn('assigned', { minutesAgo: 6 });
+      const payment = await payFeeFor(id);
+
+      await request(app.getHttpServer())
+        .post(`/v1/bookings/${id}/cancel`)
+        .set('Authorization', auth)
+        .send({ payment: { ...payment, signature: 'deadbeef'.repeat(8) } })
+        .expect(401);
+
+      const [row] = await db.select().from(bookings).where(eq(bookings.id, id));
+      expect(row!.status).toBe('assigned');
     });
   });
 

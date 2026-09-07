@@ -42,14 +42,21 @@ async function main(): Promise<void> {
 
     // The invariants are scale-independent, which is what lets `--scale` ship
     // with no automated test of its own: a ×10 seed exceeds vitest's timeout,
-    // but every run of it verifies the same three §14 properties that
+    // but every run of it verifies the same §14 properties that
     // `seed.spec.ts` pins at scale 1.
     const invariants = await verifySeedInvariants(db);
     console.log(
       `[seed] invariants — wallet balance drift: ${invariants.walletDrift}, ` +
-        `booking money drift: ${invariants.bookingDrift}, ledger-vs-payout drift: ${invariants.ledgerDrift}`,
+        `booking money drift: ${invariants.bookingDrift}, ledger-vs-payout drift: ${invariants.ledgerDrift}, ` +
+        `reversal drift: ${invariants.reversalDrift}, coupon drift: ${invariants.couponDrift}`,
     );
-    if (invariants.walletDrift + invariants.bookingDrift + invariants.ledgerDrift > 0) {
+    const drift =
+      invariants.walletDrift +
+      invariants.bookingDrift +
+      invariants.ledgerDrift +
+      invariants.reversalDrift +
+      invariants.couponDrift;
+    if (drift > 0) {
       throw new Error('seed invariants violated — see counts above');
     }
 

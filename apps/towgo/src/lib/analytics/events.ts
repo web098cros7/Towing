@@ -33,9 +33,32 @@ export interface AnalyticsEventMap {
    * `estimate_viewed → booking_confirmed` is the conversion rate §2.5 asks for.
    */
   booking_confirmed: Record<string, never>;
-  // Customer-side events named by the spec for later phases to emit into —
-  // Phase 18: trip_shared
-  // Phase 19: payment_success, payment_failure, booking_cancelled, booking_completed
+  /**
+   * Phase 18 — §11.7's share link was actually SENT.
+   *
+   * Emitted after the OS share sheet returns, not when the button is tapped: a
+   * dismissed sheet is a customer who changed their mind, and counting it would
+   * overstate the one safety feature whose adoption is worth knowing honestly.
+   */
+  trip_shared: Record<string, never>;
+  /**
+   * §22.1's — and the ONLY two payment events this app emits.
+   *
+   * `booking_completed`, `payment_success`, `payment_failure` and
+   * `booking_cancelled` are all emitted SERVER-SIDE, at the ledger and
+   * state-machine truth points, and deliberately not here: a client-emitted
+   * `payment_success` counts SHEETS THAT RETURNED SUCCESS, which is not the
+   * same fact as money landing — and two numbers for one KPI is exactly what
+   * §2.5's dashboards would then have to reconcile.
+   *
+   * These two are the ones the server genuinely cannot see. It knows it created
+   * an intent; it cannot know whether a sheet appeared or why it closed. The
+   * gap between `payment_sheet_opened` and the server's `payment_success` is
+   * the checkout abandonment rate, which nothing else measures.
+   */
+  payment_sheet_opened: Record<string, never>;
+  payment_sheet_dismissed: { reason: 'cancelled' | 'error' };
+
   // Phase 20: sos_triggered
 }
 

@@ -54,7 +54,16 @@ export type RootStackParamList = {
   PersonalInformation: undefined;
   /** Vehicle class + long-distance opt-in (`PUT /driver/capabilities`). Was `MyVehicles`. */
   Capabilities: undefined;
+  /** §9.2.4's Route linked-account onboarding. A `PlaceholderScreen` until Phase 19. */
   BankDetails: undefined;
+
+  // §9.2.4 money (Phase 19)
+  /** Payout history plus the request entry point. */
+  Payouts: undefined;
+  /** §12.2's weekly summary, on screen — the "View Report" the Earnings tab has always offered. */
+  WeeklyEarnings: undefined;
+  /** §9.2.4's per-trip gross → commission → net feed — the "View All". */
+  EarningsTrips: undefined;
   Insurance: undefined;
   HelpSupport: undefined;
   /** Privacy/terms copy plus the §20.4 DPDP export + account-deletion actions. */

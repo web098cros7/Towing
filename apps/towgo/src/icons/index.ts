@@ -65,4 +65,9 @@ export {
   IndianRupee,
   WifiOff,
   Download,
+  // Phase 18 (§9.1.7 live tracking): the share sheet, the arrival cue, and
+  // the §11.6 support banner.
+  Share2,
+  TriangleAlert,
+  Copy,
 } from 'lucide-react-native';

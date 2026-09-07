@@ -89,10 +89,29 @@ export const earningsEmptyMock: EarningsSummary = {
 
 export const payoutsMock: Payout[] = [
   {
+    /**
+     * §14.4's Finance gate, which fleet payouts joined in Phase 19 — they
+     * bypassed approval entirely from Track A Phase 7 until then. Without a row
+     * in this state the console's "awaiting approval" branch would be
+     * unreachable without a live server and an above-threshold request.
+     */
+    id: 'po-4',
+    amountPaise: 18_500_000,
+    status: 'requested',
+    approvalState: 'pending_approval',
+    rejectionReason: null,
+    requestedAt: new Date(Date.now() - 0.2 * DAY).toISOString(),
+    paidAt: null,
+    providerRef: null,
+    failureReason: null,
+  },
+  {
     id: 'po-3',
     amountPaise: 4_230_000,
     // `requested`, not `pending` — the Phase 2 mock predated the contract.
     status: 'failed',
+    approvalState: 'auto_approved',
+    rejectionReason: null,
     requestedAt: new Date(Date.now() - 1.2 * DAY).toISOString(),
     paidAt: null,
     providerRef: null,
@@ -102,6 +121,8 @@ export const payoutsMock: Payout[] = [
     id: 'po-2',
     amountPaise: 6_100_000,
     status: 'paid',
+    approvalState: 'auto_approved',
+    rejectionReason: null,
     requestedAt: new Date(Date.now() - 8 * DAY).toISOString(),
     paidAt: new Date(Date.now() - 7.7 * DAY).toISOString(),
     providerRef: 'pout_mock_2',
@@ -111,6 +132,8 @@ export const payoutsMock: Payout[] = [
     id: 'po-1',
     amountPaise: 5_725_000,
     status: 'paid',
+    approvalState: 'auto_approved',
+    rejectionReason: null,
     requestedAt: new Date(Date.now() - 15 * DAY).toISOString(),
     paidAt: new Date(Date.now() - 14.8 * DAY).toISOString(),
     providerRef: 'pout_mock_1',

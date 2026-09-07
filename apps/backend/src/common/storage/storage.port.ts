@@ -31,6 +31,17 @@ export interface PresignedUrl {
  */
 export interface StoragePort {
   put(params: PutFileParams): Promise<StoredFile>;
+  /**
+   * Reads bytes back out. Added in Phase 19 for the §12.2 invoice ATTACHMENT:
+   * an email needs the actual file, and `presignGet` hands out a URL rather
+   * than content.
+   *
+   * The alternative — re-rendering the invoice inside the email worker — would
+   * produce an attachment that can silently differ from the artifact the
+   * customer downloads from the app, which is the one thing a tax document must
+   * never do.
+   */
+  get(key: string): Promise<Buffer>;
   /** `key` is caller-chosen (e.g. `driver-documents/<driverId>/<uuid>.jpg`) — the caller owns naming because the bytes don't exist yet to derive one from. */
   presignPut(key: string, ttlSeconds: number, contentType?: string): Promise<PresignedUrl>;
   presignGet(key: string, ttlSeconds: number): Promise<PresignedUrl>;

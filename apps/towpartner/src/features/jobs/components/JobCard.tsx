@@ -5,7 +5,7 @@ import { Card, Text, Skeleton, type IconComponent } from '@towing/ui';
 import { MapPin, CreditCard, Route, Calendar, Truck } from '@/icons';
 import { IconChip } from '@/components/IconChip';
 import { driverColors } from '@/theme/driverColors';
-import { formatINR } from '@/utils/format';
+import { formatPaise } from '@/utils/format';
 import { JOB_STATUS_META } from '../statusMeta';
 import type { Job, JobPayment } from '../types';
 
@@ -66,7 +66,7 @@ export function JobCard({ job, onPress }: { job: Job; onPress?: () => void }) {
 
         <View style={{ alignItems: 'flex-end', gap: 4 }}>
           <Text weight="semibold" tabular style={{ fontSize: 18, lineHeight: 25 }}>
-            {formatINR(job.fare)}
+            {formatPaise(job.farePaise)}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text color="secondary" style={{ fontSize: 15, lineHeight: 22 }}>

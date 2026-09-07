@@ -12,6 +12,8 @@ export * from './SectionHeader';
 export * from './ListRow';
 export * from './Badge';
 export * from './StatusBadge';
+export * from './OtpInput';
+export * from './RatingInput';
 export * from './RatingStars';
 export * from './Skeleton';
 export * from './BottomScrim';

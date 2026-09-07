@@ -116,6 +116,23 @@ export const driverOfferLockKey = (driverId: string): string => `offer:${driverI
 export const bookingSearchLockKey = (bookingId: string): string => `dispatch:lock:${bookingId}`;
 
 /**
+ * §19.4's per-booking settlement lock (Phase 19).
+ *
+ * Serialises the three callers that can settle one payment — the capture
+ * route, the Razorpay webhook and the five-minute sweep — so two Fargate tasks
+ * cannot credit one booking twice. 15 seconds: long enough for a vendor
+ * `fetchPayment` plus two transactions, short enough that a crashed worker
+ * frees it fast.
+ *
+ * DELIBERATELY NOT A CORRECTNESS DEPENDENCY. Capture and the webhook take it
+ * with `required: false` and proceed without it when Redis is down, because
+ * §19.2 never says a degraded cache stops payments. The guarantees that hold
+ * regardless are database facts: `uq_payments_one_captured_per_booking`, the
+ * state machine's FOR UPDATE legality check, and the `bk:v1:*` ledger keys.
+ */
+export const paymentCaptureLockKey = (bookingId: string): string => `payment:lock:${bookingId}`;
+
+/**
  * §19.8's kill switches — Redis-backed so an operator can stop dispatch without
  * a deploy, which is the entire requirement.
  *

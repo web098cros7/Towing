@@ -14,8 +14,11 @@ import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
  * §6.2 acceptance rate.
  */
 
-/** The five legal `outcome` values, constrained by `ck_dispatch_attempts_outcome` (0014). */
-export type AttemptOutcome = 'offered' | 'accepted' | 'rejected' | 'expired' | 'revoked';
+/**
+ * The legal `outcome` values, constrained by `ck_dispatch_attempts_outcome`
+ * (0014, widened by 0015 with `unable` — see `recordUnable`).
+ */
+export type AttemptOutcome = 'offered' | 'accepted' | 'rejected' | 'expired' | 'revoked' | 'unable';
 
 /** Everything the §3.2 filter and the §6.2 scorer need that the hot hash cannot hold. */
 export interface DriverEligibilityRow {
@@ -217,6 +220,58 @@ export class DispatchRepo {
       })
       .returning({ id: dispatchAttempts.id });
     return row!.id;
+  }
+
+  /**
+   * §9.2.3's unable-to-deliver, recorded as an attempt (Phase 18).
+   *
+   * A NEW ROW RATHER THAN A RESOLVED ONE. The driver's `accepted` row is the
+   * truth about what happened at offer time and must stay exactly as it is —
+   * `recomputeAcceptanceRate` counts it, and rewriting it to `unable` would
+   * quietly dock the acceptance rate of somebody who did accept. Two rows say
+   * two true things: they took the job, and they could not finish it.
+   *
+   * IT IS NOT WHAT EXCLUDES THEM FROM THE RE-DISPATCH — their `accepted` row
+   * already does that, since `excludedDrivers()` counts every outcome. This row
+   * is the AUDIT: §9.4.6's dispatch inspector reconstructs a booking's history
+   * from this table, and without it a trip that was accepted, abandoned and
+   * re-matched reads as a driver who simply vanished. It also makes "how often
+   * does this driver bail after accepting" answerable from one table instead of
+   * a scan over `bookings.unable_reason`.
+   *
+   * It leaves the acceptance rate untouched by construction:
+   * `recomputeAcceptanceRate`'s denominator is an explicit
+   * `('accepted','rejected','expired')` allowlist, so a sixth outcome cannot
+   * silently join it. The number that SHOULD move is `completion_rate`, and
+   * `DriverStatsService` moves it from the booking row.
+   *
+   * `outcome = 'unable'` is legal from migration 0015, which widened the CHECK
+   * 0014 deliberately left widenable.
+   */
+  async recordUnable(bookingId: string, driverId: string): Promise<void> {
+    // The wave and radius are copied from the attempt that produced the
+    // assignment, so the dispatch inspector (§9.4.6) shows the failure on the
+    // rung it actually happened on rather than on a fabricated wave 0.
+    const [accepted] = await this.db
+      .select({ wave: dispatchAttempts.wave, radiusKm: dispatchAttempts.radiusKm })
+      .from(dispatchAttempts)
+      .where(
+        and(
+          eq(dispatchAttempts.bookingId, bookingId),
+          eq(dispatchAttempts.driverId, driverId),
+          eq(dispatchAttempts.outcome, 'accepted'),
+        ),
+      )
+      .limit(1);
+
+    await this.db.insert(dispatchAttempts).values({
+      bookingId,
+      driverId,
+      wave: accepted?.wave ?? 1,
+      radiusKm: accepted?.radiusKm ?? '0.00',
+      outcome: 'unable',
+      respondedAt: new Date(),
+    });
   }
 
   /**

@@ -67,18 +67,45 @@ export const TERMINAL_BOOKING_STATUSES = ['paid', 'cancelled'] as const satisfie
  * | completed    | payment captured      | paid              |
  * | any active   | cancel                | cancelled         |
  * | in_progress  | failure               | disputed          |
+ * | assigned/en_route/arrived | unable to deliver | searching |
  *
  * `disputed` keeps an edge to `completed` and `paid`: §5.1 sends a dispute to
  * "ops review", and a review that cannot resolve anything is not a review —
  * Phase 20 needs a way back out. `no_drivers_found` keeps an edge back to
  * `searching` for §9.1.6's "retry / widen" prompt, which is the loop the
  * diagram draws at the top.
+ *
+ * PHASE 18 ADDS THREE EDGES BACK TO `searching`, and they are the only ones this
+ * table gained after Phase 15. §5.2's `unable_to_deliver` branch — customer not
+ * there, wrong address, refused — has to put the booking back into §6.5's search:
+ * §3.5 says it "never charges the customer" and triggers "automatic re-dispatch",
+ * so the customer's vehicle is still broken and the platform still owes them a
+ * driver. Cancelling would end a trip they never cancelled; leaving it
+ * `in_progress` would strand it.
+ *
+ * They are a genuine cycle in a table that is otherwise a DAG, which is worth
+ * being deliberate about: `bookings.dispatch_deadline_at` is what terminates it.
+ * `redispatch` extends the deadline rather than clearing it, so a booking cannot
+ * loop through drivers indefinitely — it runs out of time and lands on
+ * `no_drivers_found` like any other unsuccessful search.
  */
 export const LEGAL_TRANSITIONS: Record<JobStatus, readonly JobStatus[]> = {
   searching: ['assigned', 'no_drivers_found', 'cancelled'],
-  assigned: ['en_route', 'cancelled'],
-  en_route: ['arrived', 'cancelled'],
-  arrived: ['in_progress', 'cancelled'],
+  // `assigned → arrived` skips `en_route`, and it is not a loophole — it is the
+  // driver who was already there. §5.2's `arriving` step is derived from
+  // MOVEMENT (`EnRouteWatcher`, 150 m), so a driver offered a vehicle parked
+  // fifty metres away never trips it and would otherwise be refused when they
+  // tapped "Mark arrived" on a job they are standing next to. Writing a
+  // synthetic `en_route` history row for a journey nobody made would be worse:
+  // the history would claim a trip that did not happen.
+  //
+  // The abuse this appears to open — marking arrival early to start §7.4's
+  // waiting clock — is closed server-side in `JobExecutionService.arrived` by a
+  // proximity check against the driver's last fix, which guards the
+  // `en_route → arrived` edge equally. The table was never the thing stopping it.
+  assigned: ['en_route', 'arrived', 'searching', 'cancelled'],
+  en_route: ['arrived', 'searching', 'cancelled'],
+  arrived: ['in_progress', 'searching', 'cancelled'],
   in_progress: ['completed', 'disputed', 'cancelled'],
   completed: ['paid', 'disputed'],
   disputed: ['completed', 'paid', 'cancelled'],

@@ -76,6 +76,10 @@ export {
   Route,
   IndianRupee,
   WifiOff,
+  // Phase 18 (§9.2.3 job execution): the unable-to-deliver branch.
+  TriangleAlert,
+  // Phase 19 (§14.5): a reversed ledger leg in the wallet feed.
+  RotateCcw,
 } from 'lucide-react-native';
 
 // Custom brand marks (react-native-svg components, not Lucide).

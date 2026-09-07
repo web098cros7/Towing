@@ -95,8 +95,13 @@ export class PricingService {
         nightPaise: priced.fare.nightPaise,
         highwayPaise: priced.fare.highwayPaise,
         accidentPaise: priced.fare.accidentPaise,
+        // Zero on an estimate, and both for the same reason: neither is known
+        // yet. Nobody has waited on-site, and §14's tax is applied at confirm
+        // against the rate snapshotted onto the booking.
+        waitingPaise: priced.fare.waitingPaise,
         surgePaise: priced.fare.surgePaise,
         discountPaise: priced.fare.discountPaise,
+        taxPaise: 0,
         totalPaise: priced.fare.totalPaise,
       },
       surgeActive: priced.fare.surgePaise > 0,

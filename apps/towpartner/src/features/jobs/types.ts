@@ -24,7 +24,12 @@ export type Job = {
   pickup: string;
   /** Drop-off area label. */
   drop: string;
-  fare: number;
+  /**
+   * INTEGER PAISE since Phase 19. It was a rupee number fed by a mock while
+   * every live money field on the wire was paise, which is the arrangement in
+   * which one missed conversion is a 100× error on a driver's screen.
+   */
+  farePaise: number;
   payment: JobPayment;
   status: JobStatus;
   /** Derived tow-type label, e.g. "Car Tow" / "SUV Tow". */

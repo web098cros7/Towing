@@ -210,6 +210,22 @@ const EXCLUDED = new Set([
   // `booking-otp.e2e.spec.ts`.
   '/v1/bookings/:id',
   '/v1/bookings/:id/otp',
+  // Phase 18's three, same reason and the same discipline: each is asserted
+  // with `expectMatchesContract` in `share-trip.e2e.spec.ts` against
+  // `bookingTrackingSchema`, `cancellationQuoteSchema` and `callContactSchema`
+  // respectively. Excluded here only because this table's paths are static and
+  // these need a real booking.
+  '/v1/bookings/:id/tracking',
+  '/v1/bookings/:id/cancellation-quote',
+  '/v1/bookings/:id/contact',
+  // Phase 19's, same reason and the same discipline: asserted with
+  // `expectMatchesContract` against `ratingStateSchema` in
+  // `ratings.e2e.spec.ts`. Needs a real, finished booking.
+  '/v1/bookings/:id/rating',
+  // §9.1.10's invoice link, asserted with `expectMatchesContract` against
+  // `invoiceLinkSchema` in `invoice.e2e.spec.ts` — it needs a PAID booking,
+  // which this table's static paths cannot produce.
+  '/v1/bookings/:id/invoice',
   // Development-only OTP echo (`AUTH_DEV_OTP_ECHO`, and production refuses to
   // boot with it set). It has no contract schema ON PURPOSE: publishing one in
   // `@towing/api-contracts` would advertise to every client a route that must

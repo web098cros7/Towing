@@ -6,6 +6,7 @@ import {
   rupeeStringToPaise,
   type BookingCancel,
   type BookingCancelResponse,
+  type CancellationQuote,
   type BookingCreate,
   type BookingDetail,
   type BookingOtpResponse,
@@ -25,6 +26,11 @@ import { BookingOtpService } from './booking-otp.service';
 import { BookingStateMachineService } from './booking-state-machine.service';
 import { BookingsRepo, isOtpAvailable } from './bookings.repo';
 import { cancellationPolicy } from './cancellation-policy';
+import { CouponsService } from '../coupons/coupons.service';
+import { CancellationFeeService } from '../money/cancellation-fee.service';
+import { PricingConfigRepo } from '../pricing/pricing-config.repo';
+import { LedgerService } from '../../db/ledger/ledger.service';
+import { ledgerKeys } from '../../db/ledger/idempotency-keys';
 import { DispatchConfigRepo } from './dispatch-config.repo';
 
 /**
@@ -51,6 +57,10 @@ export class BookingsService {
     private readonly otp: BookingOtpService,
     private readonly machine: BookingStateMachineService,
     private readonly config: DispatchConfigRepo,
+    private readonly rateCards: PricingConfigRepo,
+    private readonly coupons: CouponsService,
+    private readonly payments: CancellationFeeService,
+    private readonly ledger: LedgerService,
     private readonly notifications: NotificationService,
     private readonly tickets: WsTicketService,
     private readonly killSwitch: KillSwitchService,
@@ -121,6 +131,11 @@ export class BookingsService {
 
     const minted = this.otp.mintForCreate();
 
+    // §14's tax, snapshotted onto the booking like `commission_pct` and the
+    // waiting rules. ZERO unless an admin has set a rate, which is the whole
+    // premise of Phase 19's GST-ready-but-off schema.
+    const taxPct = locked.rateCard.charges.taxPct;
+
     const created = await this.db.transaction(async (tx) => {
       const [row] = await tx
         .insert(bookings)
@@ -145,8 +160,10 @@ export class BookingsService {
           highwayCharge: paiseToRupeeString(locked.fare.highwayPaise),
           accidentCharge: paiseToRupeeString(locked.fare.accidentPaise),
           surgeAmount: paiseToRupeeString(locked.fare.surgePaise),
-          discount: paiseToRupeeString(locked.fare.discountPaise),
+          discount: '0.00',
           total: paiseToRupeeString(locked.fare.totalPaise),
+          taxPct: taxPct.toFixed(2),
+          taxAmount: '0.00',
 
           // Locked here and never recomputed. §3.8: "Commission band changed by
           // admin mid-search: irrelevant to the active booking — band + % were
@@ -159,6 +176,17 @@ export class BookingsService {
           commissionAmount: '0.00',
           driverPayout: '0.00',
 
+          // §3.4's lock, extended to the ONE charge that cannot be computed here
+          // (Phase 18, migration 0015). Nobody knows at confirm how long the
+          // driver will wait at the pickup, so waiting has always been billed at
+          // completion — and billing it against LIVE `charge_config` meant an
+          // admin raising the per-minute rate at 14:00 re-priced every trip
+          // still running from 13:40. The customer agreed to a rate card; they
+          // did not agree to that one. `JobExecutionService.complete` reads
+          // these two columns and never the config.
+          waitingFreeMinutes: locked.rateCard.charges.waitingFreeMinutes,
+          waitingPerMinute: paiseToRupeeString(locked.rateCard.charges.waitingPerMinutePaise),
+
           ...minted,
           scheduledAt,
           note: body.note ?? null,
@@ -166,6 +194,54 @@ export class BookingsService {
           contactMobile: body.contact?.mobile ?? null,
         })
         .returning({ id: bookings.id });
+
+      // ── §9.4.11's coupon, IN THE SAME TRANSACTION AS THE FARE LOCK ──────
+      //
+      // Consumed here, never earlier, so there is no window in which a booking
+      // carries a discount whose redemption went unrecorded — and none in which
+      // a redemption survives a booking that rolled back. A `COUPON_EXHAUSTED`
+      // throw takes the whole thing with it: the fare lock, the OTP, the
+      // booking row and the redemption together.
+      let discountPaise = 0;
+      if (body.couponCode) {
+        const applied = await this.coupons.applyInTransaction(tx, {
+          userId,
+          bookingId: row!.id,
+          code: body.couponCode,
+          subtotalPaise: locked.fare.totalPaise,
+        });
+        discountPaise = applied.discountPaise;
+
+        await tx
+          .update(bookings)
+          .set({ couponId: applied.couponId, couponCode: applied.code })
+          .where(eq(bookings.id, row!.id));
+      }
+
+      // §14's arithmetic, in one place:
+      //   taxable = locked total − discount
+      //   tax     = round(taxable × pct / 100)
+      //   total   = taxable + tax
+      //
+      // COMMISSION IS COMPUTED ON `taxable` AT CAPTURE, not on this total — so
+      // a coupon costs the platform and the driver proportionally, and the tax
+      // is neither party's money. §3.3 is silent on the first point and the
+      // pricing code already behaved this way before coupons existed; it is a
+      // deliberate no-change, written down so nobody "fixes" it into a rule
+      // that makes the driver eat the whole promotion.
+      const taxablePaise = locked.fare.totalPaise - discountPaise;
+      const taxAmountPaise = Math.round((taxablePaise * taxPct) / 100);
+
+      if (discountPaise > 0 || taxAmountPaise > 0) {
+        await tx
+          .update(bookings)
+          .set({
+            discount: paiseToRupeeString(discountPaise),
+            taxAmount: paiseToRupeeString(taxAmountPaise),
+            total: paiseToRupeeString(taxablePaise + taxAmountPaise),
+          })
+          .where(eq(bookings.id, row!.id));
+      }
 
       // The §5.1 machine has no edge INTO `searching` from nothing, so creation
       // writes the opening history row directly rather than through
@@ -343,14 +419,45 @@ export class BookingsService {
    * 409 that names the fee is honest; silently cancelling for ₹0 would be a
    * revenue bug nobody notices until the first month's numbers.
    */
-  async cancel(userId: string, bookingId: string, body: BookingCancel): Promise<BookingCancelResponse> {
+  /**
+   * §9.1.7's "cancel button (policy-aware, shows fee before confirming)".
+   *
+   * THE SAME `cancellationPolicy()` THE CANCEL ROUTE RUNS, called with the same
+   * three arguments — the whole point is that there is exactly one
+   * implementation of §3.5. A separate quoting calculation is the arrangement
+   * where a customer is shown ₹0 and billed ₹150, and Phase 19 is the phase that
+   * starts actually collecting.
+   *
+   * `chargeable` reports the current truth rather than the policy's: today every
+   * non-free tier is refused at the point of cancelling, so the app shows the
+   * fee AND says it cannot be taken yet. Quoting a charge we cannot collect is
+   * honest; hiding one we are about to collect is not, and this field is what
+   * lets the app stop hiding it the day Phase 19 flips it.
+   */
+  async cancellationQuote(userId: string, bookingId: string): Promise<CancellationQuote> {
+    const { row, outcome } = await this.cancellationFor(userId, bookingId);
+
+    return {
+      tier: outcome.tier,
+      feePaise: outcome.feePaise,
+      reason: outcome.reason,
+      driverCompensationPaise: outcome.driverCompensationPaise,
+      // TRUE FOR EVERY TIER SINCE PHASE 19 — the field's own contract comment
+      // explains why it survives anyway. `row` is read so the free branch
+      // cannot drift from the chargeable one.
+      chargeable: outcome.tier === 'free' || row.driverId !== null || outcome.feePaise > 0,
+    };
+  }
+
+  /** The quote and the cancel route must never disagree, so both come from here. */
+  private async cancellationFor(userId: string, bookingId: string) {
     const [row] = await this.db
       .select({
-        id: bookings.id,
         userId: bookings.userId,
         status: bookings.status,
         createdAt: bookings.createdAt,
         baseFare: bookings.baseFare,
+        driverId: bookings.driverId,
       })
       .from(bookings)
       .where(eq(bookings.id, bookingId))
@@ -358,23 +465,60 @@ export class BookingsService {
 
     if (!row || row.userId !== userId) throw ApiException.notFound('Booking not found');
 
+    const { charges } = await this.rateCards.load();
+
     const outcome = cancellationPolicy({
       status: row.status,
       confirmedAt: row.createdAt,
       basePaise: rupeeStringToPaise(row.baseFare),
+      hasDriver: row.driverId !== null,
+      // §3.5's knobs, live from `charge_config` since Phase 19 — the comment in
+      // `cancellation-policy.ts` promised exactly this.
+      config: {
+        freeWindowMs: charges.cancelFreeMinutes * 60_000,
+        partialWindowMs: charges.cancelPartialMinutes * 60_000,
+        partialFeePaise: charges.cancelPartialFeePaise,
+        driverCompensationPct: charges.cancelDriverCompPct,
+      },
     });
 
+    return { row, outcome };
+  }
+
+  /**
+   * §3.5's cancel, with the chargeable tiers finally able to proceed.
+   *
+   * THE FEE IS COLLECTED BEFORE THE TRIP IS CANCELLED, which is why the
+   * chargeable path is two calls rather than one: the app opens an intent with
+   * `purpose: 'cancellation_fee'`, runs the sheet, and passes the result back
+   * here. Cancelling first and chasing the money afterwards would leave the
+   * platform holding nothing.
+   */
+  async cancel(userId: string, bookingId: string, body: BookingCancel): Promise<BookingCancelResponse> {
+    const { row, outcome } = await this.cancellationFor(userId, bookingId);
+
     if (outcome.tier !== 'free') {
-      throw new ApiException(
-        409,
-        ErrorCodes.CANCELLATION_NOT_FREE,
-        `${outcome.reason} — cancellation fees are not collectable yet`,
-        { tier: outcome.tier, feePaise: outcome.feePaise },
-      );
+      if (!body.payment) {
+        throw new ApiException(
+          422,
+          ErrorCodes.CANCELLATION_REQUIRES_PAYMENT,
+          `${outcome.reason} — the cancellation fee must be paid first`,
+          { tier: outcome.tier, feePaise: outcome.feePaise },
+        );
+      }
+
+      await this.payments.capture(bookingId, body.payment, outcome.feePaise);
     }
 
-    const result = await this.db.transaction((tx) =>
-      this.machine.transition(tx, {
+    const result = await this.db.transaction(async (tx) => {
+      // A FREE cancellation returns the coupon; a chargeable one keeps it
+      // burnt. Burning a single-use code on a ninety-second cancellation is
+      // user-hostile; keeping it burnt when a driver actually turned up is not.
+      if (outcome.tier === 'free') {
+        await this.coupons.releaseForBooking(tx, bookingId);
+      }
+
+      return this.machine.transition(tx, {
         bookingId,
         to: 'cancelled',
         actor: 'customer',
@@ -382,14 +526,42 @@ export class BookingsService {
         patch: {
           cancelledBy: 'customer',
           cancellationReason: body.reason ?? null,
-          cancellationFee: '0.00',
+          cancellationFee: paiseToRupeeString(outcome.feePaise),
+          driverCompensation: paiseToRupeeString(outcome.driverCompensationPaise),
         },
-      }),
-    );
+      });
+    });
+
+    // §3.5's driver compensation, AFTER the transition commits.
+    //
+    // ⚠ `adjustment`, NEVER an earning type — see
+    // `ledgerKeys.cancellationCompensation`. An earning leg here would make the
+    // projector count `gross = booking.total` for a trip that never ran, and no
+    // invariant would notice.
+    if (row.driverId && outcome.driverCompensationPaise > 0) {
+      await this.ledger.post([
+        {
+          owner: { ownerType: 'driver', ownerId: row.driverId },
+          type: 'adjustment',
+          amountPaise: outcome.driverCompensationPaise,
+          reason: `Cancellation compensation (${outcome.tier})`,
+          refId: bookingId,
+          idempotencyKey: ledgerKeys.cancellationCompensation(bookingId),
+        },
+      ]);
+    }
 
     await this.machine.announce(result);
     await this.otp.forget(bookingId);
 
-    return { id: bookingId, status: 'cancelled', tier: outcome.tier, feePaise: outcome.feePaise };
+    this.logger.log(`event=booking_cancelled booking=${bookingId} tier=${outcome.tier}`);
+
+    return {
+      id: bookingId,
+      status: 'cancelled',
+      tier: outcome.tier,
+      feePaise: outcome.feePaise,
+      driverCompensationPaise: outcome.driverCompensationPaise,
+    };
   }
 }

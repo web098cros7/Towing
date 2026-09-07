@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Screen, Skeleton, ErrorState, OfflineBanner } from '@towing/ui';
+import { Button, Screen, Skeleton, ErrorState, OfflineBanner } from '@towing/ui';
 import { Wallet, FileText, IndianRupee, Gift, CalendarDays, RefreshCw } from '@/icons';
 import { DriverHeader } from '@/components/DriverHeader';
 import { SectionHeading } from '@/components/SectionHeading';
@@ -16,7 +16,7 @@ import { TotalEarningsCard } from '@/features/earnings/components/TotalEarningsC
 import { EarningsTrendChart } from '@/features/earnings/components/EarningsTrendChart';
 import { TransactionRow } from '@/features/earnings/components/TransactionRow';
 import type { EarningsPeriod } from '@/features/earnings/types';
-import { formatINR, pad2 } from '@/utils/format';
+import { formatPaise, pad2 } from '@/utils/format';
 import type { RootStackParamList } from '@/navigation/types';
 
 const PERIODS: FilterTabOption<EarningsPeriod>[] = [
@@ -53,6 +53,22 @@ export function EarningsScreen() {
               <TotalEarningsCard summary={data.summary} />
             )}
 
+            {/*
+              §9.2.4's payout entry point. The Earnings tab has shown a balance
+              since Phase 12 with no way to withdraw it — which is the half of
+              "earnings" a driver actually cares about.
+            */}
+            {data ? (
+              <Button
+                variant="secondary"
+                label={`Withdraw ${formatPaise(data.wallet.availablePaise)}`}
+                leftIcon={Wallet}
+                onPress={() => navigation.navigate('Payouts')}
+                accessibilityLabel="Payouts"
+                fullWidth
+              />
+            ) : null}
+
             <FilterTabs options={PERIODS} value={period} onChange={setPeriod} labelSize={12} />
 
             {/* Earnings Summary */}
@@ -68,7 +84,7 @@ export function EarningsScreen() {
                     {
                       icon: Wallet,
                       tone: 'gold',
-                      value: formatINR(data.summary.total),
+                      value: formatPaise(data.summary.totalPaise),
                       label: 'Total Earnings',
                       tabular: true,
                     },
@@ -82,14 +98,14 @@ export function EarningsScreen() {
                     {
                       icon: IndianRupee,
                       tone: 'blue',
-                      value: formatINR(data.summary.avgPerJob),
+                      value: formatPaise(data.summary.avgPerJobPaise),
                       label: 'Avg. Per Job',
                       tabular: true,
                     },
                     {
                       icon: Gift,
                       tone: 'purple',
-                      value: formatINR(data.summary.bonus),
+                      value: formatPaise(data.summary.bonusPaise),
                       label: 'Bonus',
                       tabular: true,
                     },
@@ -100,7 +116,11 @@ export function EarningsScreen() {
 
             {/* Earnings Trend */}
             <View style={{ gap: 12 }}>
-              <SectionHeading title="Earnings Trend" actionLabel="View Report ›" />
+              <SectionHeading
+                title="Earnings Trend"
+                actionLabel="View Report ›"
+                onAction={() => navigation.navigate('WeeklyEarnings')}
+              />
               {isPending || !data ? (
                 <Skeleton width="100%" height={235} radius={16} />
               ) : (
@@ -110,7 +130,11 @@ export function EarningsScreen() {
 
             {/* Recent Transactions */}
             <View style={{ gap: 12 }}>
-              <SectionHeading title="Recent Transactions" actionLabel="View All" />
+              <SectionHeading
+                title="Recent Transactions"
+                actionLabel="View All"
+                onAction={() => navigation.navigate('EarningsTrips')}
+              />
               {isPending || !data ? (
                 <Skeleton width="100%" height={240} radius={16} />
               ) : (

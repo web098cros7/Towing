@@ -141,6 +141,45 @@ export const driverJobSchema = z.object({
    */
   otpPending: z.boolean(),
   assignedAt: z.iso.datetime().nullable(),
+
+  /**
+   * §5.2's instants, ABSOLUTE and on the server's clock — the same rule
+   * `expiresAt` follows above, for the same reason.
+   *
+   * `arrivedAt` is what the waiting ticker counts from. A relative
+   * "waiting for N minutes" would drift by every second of latency and by
+   * whatever clock the handset keeps, and unlike a countdown this one is
+   * BILLABLE: the number on the driver's screen has to be the number the
+   * finalizer charges.
+   */
+  arrivedAt: z.iso.datetime().nullable(),
+  startedAt: z.iso.datetime().nullable(),
+
+  /**
+   * §7.4's waiting rules as LOCKED on this booking (§3.4), not as currently
+   * configured. Sent so the handset can render an accruing charge that matches
+   * what `complete` will bill to the paisa — the app must never carry its own
+   * copy of a rate the admin can edit.
+   */
+  waiting: z.object({
+    freeMinutes: z.number().int().nonnegative(),
+    perMinutePaise: unsignedPaiseSchema,
+  }),
+
+  /**
+   * Seconds to the ACTIVE leg's destination: the pickup before `in_progress`,
+   * the drop after. `null` when no route has been computed — the ETA engine
+   * runs once at assignment and a Directions failure is a legitimate outcome
+   * (§19.2), not an error to hide behind a fabricated number.
+   */
+  etaSeconds: z.number().int().nonnegative().nullable(),
+
+  /**
+   * §11.4's route line, as an encoded Google polyline. Two legs so the driver's
+   * map can switch target at `in_progress` without a second billable call.
+   */
+  routePolyline: z.string().nullable(),
+  routeDropPolyline: z.string().nullable(),
 });
 export type DriverJob = z.infer<typeof driverJobSchema>;
 
@@ -170,3 +209,94 @@ export const jobRejectSchema = z.object({
   reason: z.string().max(200).optional(),
 });
 export type JobReject = z.infer<typeof jobRejectSchema>;
+
+/**
+ * §5.2's execution chain (Phase 18): `arrived → otp_verified(started) → completed`,
+ * with `unable_to_deliver` as the branch out.
+ *
+ * ALL FOUR RETURN THE WHOLE `DriverJob`, not a status string. The screen has to
+ * re-render against the server's view anyway — waiting charges start accruing at
+ * `arrived`, the ETA target flips at `start`, the earnings change at `complete` —
+ * and returning a partial forces a refetch the mutation could have avoided.
+ */
+export const jobArrivedSchema = z.object({});
+export type JobArrived = z.infer<typeof jobArrivedSchema>;
+
+/**
+ * §9.2.3's "job cannot start without a valid OTP".
+ *
+ * The six digits the CUSTOMER reads off their tracking screen. Compared against
+ * `bookings.booking_otp_hash`; a mismatch, an expired window and an exhausted
+ * attempt counter are all one indistinguishable refusal, because a caller able
+ * to tell them apart is an oracle for a six-digit space.
+ */
+export const jobStartSchema = z.object({
+  otp: z.string().regex(/^\d{6}$/, 'A booking OTP is six digits'),
+});
+export type JobStart = z.infer<typeof jobStartSchema>;
+
+export const jobCompleteSchema = z.object({});
+export type JobComplete = z.infer<typeof jobCompleteSchema>;
+
+/**
+ * §3.5's "unable to deliver" reasons, which §9.2.3 names verbatim.
+ *
+ * An ENUM, not free text. This branch never charges the customer, counts against
+ * `drivers.completion_rate` and triggers §6.5 re-dispatch — three consequences
+ * that ops has to be able to aggregate. A free-text field would make "customer
+ * unavailable" and "cust not there" different reasons forever.
+ */
+export const jobUnableReasonSchema = z.enum([
+  'customer_unavailable',
+  'wrong_address',
+  'customer_refused',
+  'vehicle_inaccessible',
+  'unsafe_conditions',
+  'breakdown',
+]);
+export type JobUnableReason = z.infer<typeof jobUnableReasonSchema>;
+
+export const jobUnableSchema = z.object({
+  reason: jobUnableReasonSchema,
+  /** Optional colour for ops. Never shown to the customer. */
+  note: z.string().max(500).optional(),
+});
+export type JobUnable = z.infer<typeof jobUnableSchema>;
+
+/** Every §5.2 transition answers with the job as it now stands. */
+export const jobTransitionResponseSchema = z.object({
+  job: driverJobSchema,
+});
+export type JobTransitionResponse = z.infer<typeof jobTransitionResponseSchema>;
+
+/**
+ * `unable` is the one that does NOT answer with a job — the driver no longer has
+ * one. The booking has gone back to `searching` and been handed to §6.5.
+ */
+export const jobUnableResponseSchema = z.object({
+  bookingId: z.uuid(),
+  redispatched: z.boolean(),
+});
+export type JobUnableResponse = z.infer<typeof jobUnableResponseSchema>;
+
+/**
+ * `GET /v1/jobs/:id/contact` (driver) and `GET /v1/bookings/:id/contact`
+ * (customer) — §9.1.7 / §9.2.3's call button, behind `TelephonyPort`.
+ *
+ * `masked: false` MEANS THE REAL NUMBER IS IN THIS RESPONSE, and the client is
+ * required to say so before dialling. No masked-calling provider is provisioned
+ * (SETUP-CHECKLIST item 13), so the direct-dial adapter is the live path and
+ * both apps show a privacy warning. Shipping the flag rather than two different
+ * response shapes means the app cannot forget to check.
+ */
+export const callContactSchema = z.object({
+  /** E.164. Either a provider-issued proxy number or, today, the real one. */
+  dialNumber: z.string().nullable(),
+  masked: z.boolean(),
+  /** Whose number this is, for the app's own labelling. */
+  party: z.enum(['customer', 'driver']),
+  displayName: z.string().nullable(),
+  /** Present only on a masked call, for provider-side correlation. */
+  reference: z.string().nullable(),
+});
+export type CallContact = z.infer<typeof callContactSchema>;

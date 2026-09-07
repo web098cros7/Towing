@@ -1,0 +1,84 @@
+# Track B Phase 19 — §9.1.9's payment, the invoice and the rating prompt.
+#
+# ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
+# Maestro flow in this repo has ever run. Reviewed against the screens as
+# written; that is all.
+#
+# Runs against `paymentsMockSource` (no backend, no gateway), the hermetic CI
+# path Phase 12 established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
+#
+# WHY IT CAN RUN AT ALL WITHOUT RAZORPAY. The mock intent returns
+# `autoSettles: true`, which is the server's way of saying "there is no vendor
+# here" — `openCheckout` then skips `react-native-razorpay` entirely and returns
+# the server-supplied dev checkout result. That is the same branch every local
+# run and the whole backend suite take, because no merchant account exists
+# (SETUP-CHECKLIST item 12). It is ALSO the only branch that could ever run in
+# Expo Go, where the native module does not exist.
+#
+# WHAT IT PROVES — the entire post-trip moment, which did not exist before this
+# phase. `TrackingScreen` had NO reaction to a terminal status at all: the badge
+# flipped to "Completed", the ten-second poll kept running, and the customer sat
+# on a live map of a finished trip. There was no way to pay, no invoice and no
+# rating.
+#
+# WHAT IT CANNOT PROVE:
+#   · the real Razorpay sheet — a native module, never built, never opened;
+#   · that money moved — the mock settles itself, and the ledger assertions live
+#     in `payments-capture.e2e.spec.ts` where a real Postgres can be inspected;
+#   · the emailed invoice — SES has never sent anything.
+#
+# No `testID` convention exists in this repo. Every step below matches visible
+# copy or an `accessibilityLabel` via `id:`.
+
+appId: in.mitow.customer
+---
+- runFlow: customer-login.yaml
+
+# ── Reach a finished trip ───────────────────────────────────────────────────
+#
+# The bookings list's fixtures include a completed trip; opening it is cheaper
+# and more reliable than driving a whole booking to completion, which
+# `customer-booking.yaml` already covers.
+- tapOn: 'Trips'
+- assertVisible: 'Your trips'
+
+- tapOn: 'Completed'
+- assertVisible: 'Total'
+
+# ── §9.1.9's rating entry, for a customer who dismissed the prompt ──────────
+- assertVisible: 'Rate this trip'
+- tapOn: 'Rate this trip'
+
+- assertVisible: 'How was your tow'
+# `RatingInput` labels each star for accessibility, which is the only handle a
+# flow has on it — there is no testID convention here.
+- tapOn:
+    id: '5 stars'
+- tapOn:
+    id: 'Submit rating'
+
+# Back on the detail, the row now offers to amend rather than to rate.
+- assertVisible: 'Edit your rating'
+- assertVisible: 'You rated 5 out of 5'
+
+# ── §9.1.10's invoice download ─────────────────────────────────────────────
+#
+# The tap is asserted, NOT the PDF: `Linking.openURL` hands the signed URL to
+# the OS browser, which is outside the app under test. That the URL resolves to
+# real `%PDF-` bytes is asserted in `invoice.e2e.spec.ts`.
+- assertVisible: 'Download invoice'
+
+# ── §9.1.9's wallet ────────────────────────────────────────────────────────
+- tapOn: 'Profile'
+- tapOn: 'Payments'
+
+# The screen that showed a fictional "HDFC Visa •••• 4321" from a hardcoded
+# fixture until Phase 19, with every row wired to `const notReady = () => {}`.
+- assertVisible: 'Wallet'
+- assertVisible: 'saved securely by our payment provider'
+
+- tapOn: 'Wallet'
+- assertVisible: 'Balance'
+# The first NEGATIVE money this app ever rendered. `formatPaise(-25000)`
+# produced "₹-,500" before this phase, on every engine, silently.
+- assertVisible: 'Reversed — booking refunded'

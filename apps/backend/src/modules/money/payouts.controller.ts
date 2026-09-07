@@ -37,11 +37,11 @@ export class PayoutsController {
     @ZodBody(payoutRequestSchema) body: PayoutRequest,
     @IdempotencyKey() key: string,
   ) {
-    return this.payouts.request(fleetId, body.amountPaise, key);
+    return this.payouts.request({ ownerType: 'fleet', ownerId: fleetId }, body.amountPaise, key);
   }
 
   @Get()
   list(@CurrentFleet() fleetId: FleetId, @ZodQuery(payoutsQuerySchema) query: PayoutsQuery) {
-    return this.payouts.list(fleetId, query);
+    return this.payouts.list({ ownerType: 'fleet', ownerId: fleetId }, query);
   }
 }

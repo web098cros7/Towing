@@ -3,3 +3,4 @@ export * from './auth';
 export * from './dispatch';
 export * from './drivers';
 export * from './pricing';
+export * from './finance';

@@ -1,7 +1,7 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useTheme } from '@towing/theme';
-import { Text } from '@towing/ui';
+import { Text } from './Text';
 
 const LENGTH = 6;
 const DIGITS_ONLY = /\D/g;
@@ -32,9 +32,16 @@ export type OtpInputProps = {
  * `autoComplete="sms-otp"` on Android) lands as a single insertion. Six inputs
  * break both, and their focus choreography is where OTP screens usually bug out.
  *
+ * LIFTED INTO `packages/ui` IN PHASE 18, unchanged. It lived in TowGo's auth
+ * feature and was the app's login code entry; §9.2.3's booking-OTP keypad on the
+ * driver side needs exactly the same component, and the two must not diverge —
+ * a code entry that behaves differently in the two apps is a support call. It
+ * moved rather than being copied because it already imported nothing app-local:
+ * only the theme and `Text`, both of which live here.
+ *
  * The hidden input carries `accessibilityLabel="One-time code"`: it is the
- * screen-reader target AND the Maestro handle (`customer-login.yaml` taps it by
- * that label — no testID convention exists in this repo).
+ * screen-reader target AND the Maestro handle (`customer-login.yaml` and the driver
+ * job flow both tap it by that label — no testID convention exists in this repo).
  */
 export const OtpInput = forwardRef<OtpInputHandle, OtpInputProps>(function OtpInput(
   { value, onChange, error = false, autoFocus = false },

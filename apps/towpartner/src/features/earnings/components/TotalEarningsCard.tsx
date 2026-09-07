@@ -4,7 +4,7 @@ import { Text } from '@towing/ui';
 import { TrendingUp, TrendingDown } from '@/icons';
 import { HeroCard } from '@/components/HeroCard';
 import { driverColors } from '@/theme/driverColors';
-import { formatINR, formatSignedPercent } from '@/utils/format';
+import { formatPaise, formatSignedPercent } from '@/utils/format';
 import type { EarningsSummary } from '../types';
 
 const wallet = require('@/assets/illustrations/wallet.png');
@@ -29,7 +29,7 @@ export function TotalEarningsCard({ summary }: { summary: EarningsSummary }) {
             numberOfLines={1}
             style={{ fontSize: 44, lineHeight: 53, letterSpacing: -1, marginTop: 2 }}
           >
-            {formatINR(summary.total)}
+            {formatPaise(summary.totalPaise)}
           </Text>
           <View
             style={{

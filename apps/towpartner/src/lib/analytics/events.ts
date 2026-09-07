@@ -44,8 +44,27 @@ export interface AnalyticsEventMap {
   offer_declined: { wave: number; secondsLeft: number };
   // Driver-side events named by the spec for later phases to emit into —
   // Phase 12 (KYC): kyc_submit
-  // Phase 18 (jobs): job_started, job_completed
-  // Phase 19 (payouts): payout_requested
+  /**
+   * Phase 18 — §5.2 execution. Emitted on the mutation, not on the tap:
+   * `job_started` fires only when the OTP gate PASSES (a driver may guess wrong
+   * several times first, and none of those is a start), and `job_completed`
+   * when the fare is finalized.
+   */
+  job_started: Record<string, never>;
+  job_completed: Record<string, never>;
+  /**
+   * §22.1's payout journey event.
+   *
+   * A CLIENT-JOURNEY EMIT, unlike Phase 19's other four —
+   * `booking_completed`, `payment_success`, `payment_failure` and
+   * `booking_cancelled` are emitted SERVER-SIDE at the ledger and
+   * state-machine truth points, because a client-emitted `payment_success`
+   * counts sheets that returned success rather than money that landed. This one
+   * the server cannot see any differently — a payout request IS an HTTP call —
+   * but it is emitted in the mutation's `onSuccess` rather than the tap
+   * handler, so it counts requests that were accepted.
+   */
+  payout_requested: Record<string, never>;
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;

@@ -17,6 +17,12 @@ import { KycStatusScreen } from '@/screens/kyc/KycStatusScreen';
 import { CapabilitiesScreen } from '@/screens/capabilities/CapabilitiesScreen';
 import { LegalScreen } from '@/screens/account/LegalScreen';
 import { PlaceholderScreen } from '@/screens/placeholder/PlaceholderScreen';
+// §9.2.4 money (Phase 19). `BankDetails` was a `PlaceholderScreen` for seven
+// phases because there was nowhere for the money to go.
+import { BankDetailsScreen } from '@/screens/earnings/BankDetailsScreen';
+import { EarningsTripsScreen } from '@/screens/earnings/EarningsTripsScreen';
+import { PayoutsScreen } from '@/screens/earnings/PayoutsScreen';
+import { WeeklyEarningsScreen } from '@/screens/earnings/WeeklyEarningsScreen';
 import { OfferTakeoverScreen } from '@/screens/newjob/OfferTakeoverScreen';
 import { AssignedJobScreen } from '@/screens/activejob/AssignedJobScreen';
 import { useOfferTakeover } from '@/features/offers/hooks/useOfferTakeover';
@@ -33,7 +39,6 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 // Module-scope wrappers so each placeholder route has a stable component identity.
 const JobDetailsScreen = () => <PlaceholderScreen title="Job Details" />;
 const PersonalInformationScreen = () => <PlaceholderScreen title="Personal Information" />;
-const BankDetailsScreen = () => <PlaceholderScreen title="Bank Details" />;
 const InsuranceScreen = () => <PlaceholderScreen title="Insurance" />;
 const HelpSupportScreen = () => <PlaceholderScreen title="Help & Support" />;
 
@@ -171,6 +176,9 @@ export function RootNavigator() {
               <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
               <Stack.Screen name="Legal" component={LegalScreen} />
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
+              <Stack.Screen name="Payouts" component={PayoutsScreen} />
+              <Stack.Screen name="WeeklyEarnings" component={WeeklyEarningsScreen} />
+              <Stack.Screen name="EarningsTrips" component={EarningsTripsScreen} />
             </>
           )}
         </Stack.Navigator>

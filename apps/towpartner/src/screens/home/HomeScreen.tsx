@@ -20,7 +20,7 @@ import { LocationDisclosureSheet } from '@/features/presence/components/Location
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { RecentActivityRow } from '@/features/dashboard/components/RecentActivityRow';
 import { driverColors } from '@/theme/driverColors';
-import { formatINR, pad2 } from '@/utils/format';
+import { formatPaise, pad2 } from '@/utils/format';
 import type { RootStackParamList } from '@/navigation/types';
 
 function timeGreeting(): string {
@@ -136,7 +136,7 @@ export function HomeScreen() {
                     {
                       icon: IndianRupee,
                       tone: 'green',
-                      value: formatINR(data.summary.earnings),
+                      value: formatPaise(data.summary.earningsPaise),
                       label: 'Earnings',
                       tabular: true,
                     },

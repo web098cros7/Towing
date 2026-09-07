@@ -5,7 +5,7 @@ export const dashboardMock: DashboardData = {
   driverName: 'Rahul',
   summary: {
     jobsCompleted: 8,
-    earnings: 6480,
+    earningsPaise: 648_000,
     rating: 4.8,
   },
   recentActivity: [
@@ -14,7 +14,7 @@ export const dashboardMock: DashboardData = {
       vehicleName: 'Maruti Swift',
       pickup: 'Palam, Delhi',
       drop: 'Dwarka, Delhi',
-      fare: 850,
+      farePaise: 85000,
       status: 'completed',
     },
     {
@@ -22,7 +22,7 @@ export const dashboardMock: DashboardData = {
       vehicleName: 'Hyundai i20',
       pickup: 'Gurgaon Sector 45',
       drop: 'Sector 29, Gurgaon',
-      fare: 1200,
+      farePaise: 120000,
       status: 'completed',
     },
     {
@@ -30,7 +30,7 @@ export const dashboardMock: DashboardData = {
       vehicleName: 'Tata Nexon',
       pickup: 'Janakpuri, Delhi',
       drop: 'Mukherjee Nagar, Delhi',
-      fare: 950,
+      farePaise: 95000,
       status: 'cancelled',
     },
   ],

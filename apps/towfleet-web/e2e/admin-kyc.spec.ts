@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { adminLogin } from './support/adminLogin';
 
 /**
  * Phase 11 admin console, hermetic (mocks-on): realm separation and the queue
@@ -31,13 +32,10 @@ test('the fleet session does not authenticate the admin console (realm separatio
 });
 
 test('admin login → KYC queue renders, and a submitted driver has a real drawer', async ({ page }) => {
-  await page.goto('/admin/login');
-  await page.getByLabel('Email').fill('ops@towing.local');
-  await page.getByLabel('Password').fill('AdminPass123!');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByLabel('One-time code').fill('123456');
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/admin\/drivers/);
+  // Hoisted into `support/adminLogin.ts` in Phase 19, when §9.4.10's Finance
+  // queue became the console's second spec — the same move `support/login.ts`
+  // made for the fleet console once it had two.
+  await adminLogin(page);
 
   await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
   await expect(page.getByText('Prakash Naik')).toBeVisible();

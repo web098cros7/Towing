@@ -139,6 +139,13 @@ function toChargeValues(row: ChargeRow | undefined): ChargeConfigValues {
     surgePctHigh: Number(row.surgePctHigh),
     surgePctPeak: Number(row.surgePctPeak),
     haversineRoadFactor: Number(row.haversineRoadFactor),
+    taxPct: Number(row.taxPct),
+    taxLabel: row.taxLabel,
+    cancelFreeMinutes: row.cancelFreeMinutes,
+    cancelPartialMinutes: row.cancelPartialMinutes,
+    cancelPartialFeePaise: rupeeStringToPaise(row.cancelPartialFee),
+    cancelDriverCompPct: Number(row.cancelDriverCompPct),
+    payoutAutoApproveMaxPaise: rupeeStringToPaise(row.payoutAutoApproveMax),
   };
 }
 

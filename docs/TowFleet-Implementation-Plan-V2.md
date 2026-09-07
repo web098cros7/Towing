@@ -4,7 +4,7 @@
 
 **Scope:** two tracks over one backend. **Track A** = TowFleet Web Console (fleet-owner web app, spec §8.3/§9.3) + the shared NestJS backend that powers it (spec §15–§17). **Track B** = the marketplace and the two mobile apps (TowGo customer §9.1, TowPartner driver §9.2) plus the minimum Admin Ops surface (§9.4) they cannot function without — organized in V2 as one shared spine (**B0**) and three surface lanes (**B1 TowGo · B2 TowPartner · B3 Admin Ops**).
 **Source of truth for product behavior:** [Towing-Project-Specification_v3.md](./Towing-Project-Specification_v3.md).
-**Status (20 Aug 2026, after Phase 17):** Track A phases 1–8 complete and verified · **the Phase 8 deploy gate is released** (Redis throttler storage + shared refresh fix, both proven across two instances), though two further items belong on it — see Phase 8 · Track A phase 9a next · **Track B Phases 10 (multi-realm identity), 11 (KYC + minimal Admin Ops, the §3.1 gate), 12 (mobile foundations), 13 (notifications spine), 14 (pricing engine, service catalog, zone & dispatch config) and 15 (booking lifecycle & the §5.1 state machine) are all COMPLETE** — the backend serves four auth realms, the §3.1 supply-side gate is real end to end (a driver can submit KYC, an admin can approve it through a working console, and the driver's own app now enforces the same gate on the online toggle), both TowGo and TowPartner run real sign-in, real network and real on-device storage instead of mocks, the §12.2 trigger matrix has a registry plus a test that fails on an unregistered row, the §7 fare engine prices from admin-editable config behind a 5–10 % commission guardrail, and a customer can create a real booking that locks its fare and commission, mints a hashed collection OTP and legitimately sits in `SEARCHING`. **Phase 16 (driver presence, the location pipeline & mobile maps) is COMPLETE** — §6.1's candidate store exists and is written by every ping, an approved driver goes online through the §3.1 gate and streams location over two doors into one pipeline, the Phase 5 fleet map shows a real human through a fan-out adapter that left `<FleetMap>` untouched (proven across two gateway processes), the customer can finally TYPE AN ADDRESS and drop a pin, and `/drivers/nearby` serves anonymous coarsened supply. **Phase 17 (the dispatch engine) is COMPLETE** — the loop is closed: a booking in `SEARCHING` now runs a progressive-radius search, offers to scored eligible drivers over the `/driver` socket and a high-priority push, and assigns exactly one of them in a four-check transaction backed by a partial unique index; the customer watches real wave transitions on a new `/customer` namespace instead of a timer; `drivers.acceptance_rate` has its first writer, so a quarter of the §6.2 score stops running on frozen seed values; and dispatch config plus §19.8's kill switches are editable without a deploy. Measured against §6.10's p50 < 30 s target, a live bench run assigned every booking at **p50 0.9 s / p90 3.2 s**. Track A phase 9a (staging) is next for Track A; **Phase 18 (job execution & live tracking) is next for Track B**. Track B was never blocked on Track A: Phases 5, 6 and 7 have all landed, so the 16/13/17/19 interlocks are met.
+**Status (3 Sep 2026, after Phase 18):** Track A phases 1–8 complete and verified · **the Phase 8 deploy gate is released** (Redis throttler storage + shared refresh fix, both proven across two instances), though two further items belong on it — see Phase 8 · Track A phase 9a next · **Track B Phases 10 (multi-realm identity), 11 (KYC + minimal Admin Ops, the §3.1 gate), 12 (mobile foundations), 13 (notifications spine), 14 (pricing engine, service catalog, zone & dispatch config) and 15 (booking lifecycle & the §5.1 state machine) are all COMPLETE** — the backend serves four auth realms, the §3.1 supply-side gate is real end to end (a driver can submit KYC, an admin can approve it through a working console, and the driver's own app now enforces the same gate on the online toggle), both TowGo and TowPartner run real sign-in, real network and real on-device storage instead of mocks, the §12.2 trigger matrix has a registry plus a test that fails on an unregistered row, the §7 fare engine prices from admin-editable config behind a 5–10 % commission guardrail, and a customer can create a real booking that locks its fare and commission, mints a hashed collection OTP and legitimately sits in `SEARCHING`. **Phase 16 (driver presence, the location pipeline & mobile maps) is COMPLETE** — §6.1's candidate store exists and is written by every ping, an approved driver goes online through the §3.1 gate and streams location over two doors into one pipeline, the Phase 5 fleet map shows a real human through a fan-out adapter that left `<FleetMap>` untouched (proven across two gateway processes), the customer can finally TYPE AN ADDRESS and drop a pin, and `/drivers/nearby` serves anonymous coarsened supply. **Phase 17 (the dispatch engine) is COMPLETE** — the loop is closed: a booking in `SEARCHING` now runs a progressive-radius search, offers to scored eligible drivers over the `/driver` socket and a high-priority push, and assigns exactly one of them in a four-check transaction backed by a partial unique index; the customer watches real wave transitions on a new `/customer` namespace instead of a timer; `drivers.acceptance_rate` has its first writer, so a quarter of the §6.2 score stops running on frozen seed values; and dispatch config plus §19.8's kill switches are editable without a deploy. Measured against §6.10's p50 < 30 s target, a live bench run assigned every booking at **p50 0.9 s / p90 3.2 s**. **Phase 18 (job execution, live tracking & share trip) is COMPLETE** — the loop is not just closed but RUN: an assigned job now goes arrive → OTP → start → complete through a job machine on the Phase 15 transition service, the customer watches a real driver move on a real map instead of a frozen mock and a hardcoded SVG path, §11.7's share link exists as a public page anyone can open without a login, and `drivers.completion_rate` and `drivers.total_trips` got their first writers — which retires half of the quarter of the §6.2 score that has been running on seed fixtures since Phase 3. Measured across two gateway processes, §11.10 came in at **p95 557 ms against a 2-second budget, zero duplicate frames and zero teleports**; the full backend suite is **1,084 green across 99 files**. Nothing mobile has run on a device, which the phase block states in full. Track A phase 9a (staging) is next for Track A; **Phase 19 (money: capture, ledger credit, earnings, payouts, ratings) is next for Track B**, and it starts against an existing ledger because Phase 7 landed first. Track B was never blocked on Track A: Phases 5, 6 and 7 have all landed, so the 16/13/17/19 interlocks are met.
 
 **How to read V2.** Phases **10–21** are the *execution sequence*, unchanged from V1 — the dependency graph, the track-interlock table and the external-dependencies table all reference them, and none of it is renumbered. Lanes **B0–B3** are *ownership*, orthogonal to sequence: **B0** is the shared spine (work serving two or more surfaces, plus pure platform), **B1** is TowGo (customer app), **B2** is TowPartner (driver app), **B3** is Admin Ops (API + `/admin/*` web UI inside `apps/towfleet-web`). Every Track B work item is tagged `[PNN]` and lives in exactly one lane; where an engine and its thin route/UI split across lanes, the semantics are stated once in the engine's lane and the consumer carries a cross-reference. Each phase has one **canonical block in B0** carrying its Goal, Spec targets, Depends on, Effort, status and cross-surface acceptance chain, plus a slice index; the B1/B2/B3 *slices* carry only that surface's work and surface-local verification. A slice of Phase N obeys Phase N's dependencies — lanes never alter the order.
 
@@ -32,9 +32,9 @@
 | 13 | Notifications & push spine (FCM/APNs, SMS, WhatsApp, SES) | **L** | B0 · B1 · B2 | ✅ Complete |
 | 14 | Pricing engine, service catalog, zone & dispatch config | M | B0 · B1 · B3 | ✅ Complete |
 | 15 | Booking lifecycle & the §5.1 state machine | L | B0 · B1 | ✅ Complete ² |
-| 16 | Driver presence, the location pipeline & mobile maps | L | B0 · B1 · B2 | ⬜ Planned |
-| 17 | Dispatch engine (progressive-radius) | **XL** | B0 · B1 · B2 · B3 | ⬜ Planned |
-| 18 | Job execution, live tracking & share trip | **XL** | B0 · B1 · B2 | ⬜ Planned |
+| 16 | Driver presence, the location pipeline & mobile maps | L | B0 · B1 · B2 | ✅ Complete |
+| 17 | Dispatch engine (progressive-radius) | **XL** | B0 · B1 · B2 · B3 | ✅ Complete |
+| 18 | Job execution, live tracking & share trip | **XL** | B0 · B1 · B2 | ✅ Complete |
 | 19 | Money: capture, ledger credit, earnings, payouts, ratings | L¹ | B0 · B1 · B2 · B3 | ⬜ Planned |
 | 20 | Safety, support, admin live-ops & the long tail | M | B0 · B1 · B2 · B3 | ⬜ Planned |
 | 21 | Mobile release engineering & launch gates | L | B0 · B1 · B2 | ⬜ Planned |
@@ -80,7 +80,7 @@ graph TD
     P16 --> P17
     P13 --> P17
     P14 --> P17
-    P17 --> P18["18 · Job execution + live tracking XL"]
+    P17 --> P18["18 · Job execution + live tracking XL ✅"]
     P18 --> P19["19 · Capture, ledger credit, payouts, ratings"]
     P18 --> P20["20 · Safety, support, admin live-ops"]
     P13 --> P20
@@ -1878,7 +1878,7 @@ Spec targets: §6 (whole), §3.2, §3.4, §6.7 + §16.5 + §19.8 (config & kill 
 **Verification (B0-local):** the heaviest test phase in the plan. Concurrency: two simultaneous accepts → exactly one assignment, loser 409s; the offer lock prevents double-offer under a 50-driver fixture. **Durability: kill the worker mid-wave and assert the search resumes at the correct wave with the correct exclusions** (§19.7's game day does exactly this). `sim:drivers` at 200 drivers / 2 km measures time-to-match against the §6.10 p50 < 30 s / p90 < 90 s target. Flush Redis mid-search and assert the PostGIS fallback still matches. Table-driven ladder + deadline tests, including the NULL-`dispatch_config` default path. Acceptance-rate recomputation asserted across accept / reject / expire.
 **Effort:** **XL — the genuinely hard phase.** It is simultaneously stateful, latency-critical, correctness-critical and money-critical. Budget accordingly and do not compress it.
 
-### ⬜ [P18] Job execution, live tracking & share trip
+### ✅ [P18] Job execution, live tracking & share trip — **COMPLETE (3 Sep 2026)**
 
 **Goal:** the assigned job runs to completion — arrive, OTP, start, complete — with a live map on both sides and a shareable public trip link.
 
@@ -1893,12 +1893,181 @@ Spec targets: §5.2, §9.1.7, §9.2.3, §11.4–§11.7, §11.10, §16.6.
 - §19.2 fallback in both apps: built-in REST polling every 10 s when the socket is unavailable.
 - **§12.2:** register and wire *driver en route*, *arrived* and *job started* (Push + WhatsApp).
 
-**Depends on:** 17. **Track A Phase 7 must complete before this phase finishes** — Phase 19 starts immediately after and must not have to build the ledger.
+**Depends on:** 17. **Track A Phase 7 must complete before this phase finishes** — Phase 19 starts immediately after and must not have to build the ledger. **Met:** Phase 7 landed before this one started.
 **Acceptance chain (cross-surface):** two-device manual run of the full §5.2 chain.
-**Verification (B0-local):** §11.10 acceptance **measured, not asserted** — p95 ping → customer-render ≤ 2 s under `sim:drivers` load; no teleporting for updates ≤ 10 s apart; resync ≤ 3 s. Supertest: wrong OTP capped, `start` blocked without OTP, `unable` re-dispatches, `complete` increments `total_trips` and moves `completion_rate`.
+**Verification (B0-local):** §11.10 acceptance **measured, not asserted** — p95 ping → customer-render ≤ 2 s; no teleporting for updates ≤ 10 s apart; resync ≤ 3 s. Supertest: wrong OTP capped, `start` blocked without OTP, `unable` re-dispatches, `complete` increments `total_trips` and moves `completion_rate`.
 **Effort:** **XL** — the second genuinely hard phase, mostly on the client.
 
-### ⬜ [P19] Money: capture, ledger credit, earnings, payouts, ratings
+---
+
+#### Delivered
+
+**Backend — the §5.2 machine.** `modules/job-execution/` over the Phase 15 transition
+service: `POST /v1/jobs/:id/{arrived,start,complete,unable}`, thin routes on the
+`DispatchController` shape (`@Realms('driver')` + `KycApprovedGuard`). Every method has the
+Phase 17 accept's shape — authorise outside the transaction, one `transition()` with a
+`patch` writing this step's columns in the same UPDATE, everything else after the commit.
+`start` consumes the OTP through `BookingOtpService.verify` (written in Phase 15 *for* this),
+**before** the transaction opens, so a failed guess cannot roll back its own attempt count.
+
+**`drivers.completion_rate` and `total_trips` got their first writers.**
+`candidate-selection.service.ts` has carried a comment since Phase 17 saying a quarter of the
+§6.2 score runs on seed fixtures; this retires half of it. Recomputed over a rolling 30 days,
+never incremented — `recomputeAcceptanceRate`'s shape, for its reasons. NULL, not 100, when
+there is no signal.
+
+**ETA engine (§11.5)** — `DirectionsPort` beside `RoutingPort` (different budget, different
+vendor, different call shape), a hand-written polyline codec in `api-contracts`, and
+`EtaService`. All four §11.5 recompute triggers are honoured; **none of them re-bills.**
+
+**§11.4's customer tracking.** `TrackingRelayService` is the second subscriber on
+`location:driver` — the channel Phase 16 built and left unread, whose docblock named this
+phase. Three gates before any work: is this driver on a job (cached, negative cached too), is
+anybody watching **on this node** (`localRoomSize`), then coalesce and emit `.local`.
+
+**§11.7's share trip** — `POST`/`DELETE /v1/bookings/:id/share` and a `@Public()`
+`GET /v1/track/:shareToken`, with a public Next page at `/t/{token}`.
+
+**`TelephonyPort`** (absent from §16.2, added here) with a `DirectDialAdapter`, and a
+`GET /:id/contact` on both surfaces.
+
+**Mobile.** TowGo's TrackingScreen is rebuilt — `assignedDriverMock` and every
+percent-positioned SVG deleted. TowPartner's `AssignedJobScreen` gained the action rail the
+Phase 17 layout left room for, plus the app's first map.
+
+#### New surface
+
+- **Dependencies: none.** The share sheet is RN core `Share`, the polyline codec is forty
+  lines, the interpolation moved rather than arrived. **No new native module**, which is the
+  OTA boundary this phase was required to respect.
+- **Migration 0015** — `bookings` gains `arrived_at`/`started_at`/`completed_at`,
+  `waiting_free_minutes`/`waiting_per_minute` (snapshotted, backfilled), the route/ETA
+  columns; `ck_dispatch_attempts_outcome` widened with `unable` (0014 chose a CHECK over an
+  enum expressly so this would be one reversible line); `idx_bookings_driver_outcome`.
+  **⚠ The plan doc's numbering was stale by 4 — see the note on Phase 14. This is 0015.**
+- **Env** — `DIRECTIONS_*`, `HAVERSINE_ROUTE_FACTOR`, `FALLBACK_SPEED_KPH`,
+  `PUBLIC_TRACK_BASE_URL`, `SHARE_LINK_GRACE_MINUTES`, `TELEPHONY_PROVIDER`, `EXOTEL_*`. All
+  in `.env.example` and `Aws/04`.
+- **Scripts** — `pnpm --filter @towing/backend bench:tracking` (the §11.10 harness).
+
+#### Do not regress these
+
+1. **§3.4's lock now covers waiting.** Base, night, highway, accident and surge were always
+   frozen on the row; waiting was computed at completion against **live** `charge_config`, so
+   an admin raising the per-minute rate at 14:00 re-priced every trip still running from
+   13:40. The rules are snapshotted at confirm and the finalizer reads them from the booking.
+   `complete` **adds one number to the locked total** — it does not re-run `computeFare`.
+2. **`unable` transitions BEFORE it re-dispatches.** `DispatchService.redispatch`
+   early-returns unless the booking is already `searching`; the other order silently does
+   nothing and leaves a customer with no driver and no search.
+3. **The tracking relay emits `.local`; the ETA emitter does not.** Phase 5's rule: fanning
+   out a Redis channel every node holds → `.local`, originating here → `.to()`. Backwards
+   gives N copies per customer or zero delivery.
+4. **The public projection is a hand-written allowlist, never a `.omit()`.** A derived schema
+   inherits every field added upstream, and this is the one route reachable by anyone
+   forwarded a link. `track-projection.spec.ts` asserts the exact key list.
+5. **`middleware.ts` is deny-by-default and needs an explicit branch for `/t/`.** The failure
+   is invisible to anyone developing while logged in. `e2e/track.spec.ts` visits it cookieless.
+6. **`arrived` has a server-side proximity backstop.** It is the only step that starts
+   charging; §11.5's 100 m assist is a prompt on a screen a driver can ignore, and a
+   convenience is not a control. Permissive on a missing fix, by design.
+7. **`assigned → arrived` is legal.** A driver offered a vehicle parked fifty metres away
+   never trips the 150 m en-route threshold, and fabricating an `en_route` history row for a
+   journey nobody made would be worse than the skip.
+8. **Never start a client clock.** The waiting ticker and the ETA countdown both recompute
+   from an absolute server instant. The ticker's number is **billed**, so the figure on the
+   driver's screen has to be the figure `complete` charges.
+
+#### Deviations from the plan as written
+
+- **The public share page polls; it does not hold a socket.** §11.7 asks for a
+  `track:{shareToken}` pub/sub channel. Every socket here is authenticated by a single-use
+  ticket minted after an ownership check, and a share-token room has no owner to check — it
+  would be the first unauthenticated socket surface in the product. A 10 s poll is the same
+  §19.2 rung the customer's own app falls back to. Recorded at both seams it touches
+  (`realtime/customer-events.ts`, `customer/track.ts`).
+- **One Directions call per booking, at assignment**, with the pickup as a waypoint so both
+  legs return together. §11.5 read literally is ~one billable call per active booking per
+  minute against an account with **no hard spend cap** (SETUP-CHECKLIST item 7, both cap
+  routes checked and closed). What is lost is traffic forming mid-trip; what is kept is the
+  route's own traffic-aware pace and the driver's real progress along it.
+- **No `en_route` endpoint.** §5.2 has an `arriving` step; the plan's route list has four, not
+  five. A driver does not tap "I have set off". `EnRouteWatcher` derives it from movement.
+- **In-app chat stays deferred to Phase 20**, as the plan directs. `DriverInfoCard`'s message
+  button is now `optional` and the tracking screen omits it — a button that opens nothing is
+  worse than no button.
+- **The interpolation maths and the polyline codec moved into `api-contracts`.** Four
+  surfaces need them and three cannot import each other; `presence.ts` set the precedent for
+  exactly this.
+
+#### Verification
+
+Backend **1,084 tests / 99 files**, all green — +83 over Phase 17. `pnpm -r typecheck` clean
+across 9 packages. Playwright **35/35** (+6), including `/t/{token}` opened from a **cookieless**
+browser context, an expired link, an unknown link, a failed poll that must not blank the page,
+and a regression check that the console is still deny-by-default for everything else.
+`next build` clean, with `/t/[token]` and `/api/track/[token]` in the route manifest. Migration
+0015 applies to a live database and `pnpm db:reset` still reports all three §14 money
+invariants at zero drift.
+
+**§11.10 MEASURED, across two gateway processes against one Redis** — the Phase 5 rehearsal,
+which is what makes the duplicate count mean anything:
+
+```
+frames         72 from 128 pings — coalesced at 1000ms, floor ~64
+silent trips   0
+p50            306 ms
+p95            557 ms   (budget 2000)
+duplicates     0
+teleports      0
+REST resync    35 ms    (budget 3000)   carried a fix: yes
+```
+
+**Four defects the suite and the bench found that nothing else would have**, recorded because
+they are the argument for running both:
+
+1. **`RealtimeModule` never exported `RealtimeSubscriberService`** and `DriverPresenceModule`
+   never exported `LocationFlushService`. Nest resolves providers at boot, so this was invisible
+   to `tsc` and to every unit test — it failed the moment a real `AppModule` was constructed.
+2. **`completion_rate` could never move on an `unable`.** `DriverStatsService` counted failures
+   off `bookings` scoped to `driver_id`, and `unable` nulls `driver_id` in the same UPDATE —
+   correctly, since the booking goes back into the search. The one failure the rate exists to
+   punish was structurally invisible to it. Now counted from the `dispatch_attempts` row, which
+   survives re-dispatch — making that audit row load-bearing rather than decorative.
+3. **The §19.2 poll had no position for the first ~30 seconds of a trip.** It read
+   `drivers.current_location`, which `LocationFlushService` writes on a coalescing cadence. A
+   customer with a dead socket — the entire case the route exists for — saw no driver at all,
+   then a position up to half a minute stale. Now Redis-first, Postgres-fallback: the same split
+   `GET /v1/fleet/realtime/positions` has used since Phase 5. Found by `bench:tracking`
+   printing `carried a fix: no`.
+4. **The bench itself had two bugs** — it attached its `realtime:ready` listener after the setup
+   loop (localhost connects faster than six database inserts, so the event was already gone) and
+   generated seed-derived mobile numbers that collided across runs.
+
+**⚠ What is still NOT verified — the standing caveat, unchanged since Phase 12.** No EAS or
+dev-client build has ever been produced for either app. The two-device §5.2 chain, the on-device
+map, the interpolated bearing marker, the pan-pause, the waiting ticker, the arrival assist, the
+OTP keypad and every Maestro flow in this repo remain **unrun**. `bench:tracking` measures
+ping → socket frame and deliberately does not claim to measure the pixel, so §11.10's
+"customer-render" is verified up to the frame and no further.
+
+**Also not done:** `Aws/migrations/` and `Aws/db/schema-snapshot.sql` were not regenerated. The
+mirror has been stale since Phase 10 — it stops at 0007 while `apps/backend/drizzle/` is at 0015.
+Recorded in `ToBeDoneEhsan.md` 18v rather than silently left.
+
+**One environment note for whoever runs this next.** `apps/backend/.env` sets
+`GEOCODING_PROVIDER=google_places` and `ROUTING_PROVIDER=google_distance_matrix` now that real
+keys exist, and `places.e2e.spec.ts` and the pricing estimate contract both assert the LOCAL
+gazetteer's answers. Run the suite with `GEOCODING_PROVIDER=local ROUTING_PROVIDER=haversine`
+or six tests fail against live Google — a pre-existing condition, not a Phase 18 regression
+(confirmed by stashing this phase's work and reproducing it).
+
+**Before believing any dispatch or tracking change, run the benches.** Phase 17's two
+worst bugs — a hot-looping empty wave and a read-repair that ZREM'd live drivers on one Redis
+blip — were both invisible to a green test suite and found only by `bench:dispatch`. Nothing
+about this phase makes that lesson less applicable.
+
+### ✅ [P19] Money: capture, ledger credit, earnings, payouts, ratings — **COMPLETE (4 Sep 2026)**
 
 **Goal:** a completed job gets paid, the ledger credits the driver at the locked commission, and both apps display math that reconciles to the paisa.
 
@@ -1919,6 +2088,107 @@ Spec targets: §14 (whole), §3.3, §3.5 (chargeable branches), §9.1.9, §9.1.1
 **Depends on:** 18; **Track A Phase 7**; **Phase 6's `QueuePort`**.
 **Verification (B0-local):** extend the existing seed invariants (wallet = SUM ledger; commission + payout = total; ledger legs = payout) to cover every path this phase adds. Idempotent double-capture and a replayed webhook produce exactly one ledger effect. **Two workers racing the reconciliation sweep produce one capture, not two.** A dispute reversal leaves the original entries intact. A capture failure leaves `COMPLETED (unpaid)` and the sweep resolves it. Razorpay sandbox e2e. (The §9.2.4 paisa-reconciliation acceptance criterion is B2-local.)
 **Effort:** **L if Track A Phase 7 has run; XL if it has not.** The schema and the seed have de-risked most of the L branch; the XL branch adds `LedgerService`, split math, `earnings_daily` projections and `PayoutProviderPort` on top of an already large scope.
+
+---
+
+#### Phase 19 — what shipped, what deviated, what is unverified
+
+**Migration `0016_money_capture_and_ratings.sql`** — not the doc's stale numbering. (The plan's
+numbers have been four behind since Phase 14; Phase 18 landed as 0015.)
+
+**Four decisions taken up front, all confirmed with the user before implementation:**
+
+1. **GST-ready schema, rate defaulting to ZERO.** Tax columns on `bookings` (snapshotted at confirm
+   like `commission_pct`), `tax_pct`/`tax_label` on `charge_config`, a tax line on the invoice, and a
+   GST-aware `bookingDrift`. Behaviour is byte-identical until an admin sets a rate. **The arithmetic
+   that matters:** `commission = commissionPaise(taxable, band)` where `taxable = total − tax`, never
+   `commissionPaise(total)`. `ck_bookings_payout_within_total` was tightened to
+   `commission + payout + tax <= total` so the mistake is a constraint violation on the capture path
+   rather than a nightly-job alarm.
+2. **`react-native-razorpay` — the FOURTH native rebuild point**, against a plan that budgeted three
+   and a Phase 18 that deliberately added none. `runtimeVersion` `'3' → '4'`. Imported lazily
+   (`pushClient.ts`'s precedent) so a missing module is a clear error on one screen rather than a
+   startup crash, and so the app still runs in Expo Go. iOS `LSApplicationQueriesSchemes` added for
+   the UPI apps — without it the sheet silently offers fewer options.
+3. **Real server-side PDF via `pdf-lib`.** ⚠ Standard-14 fonts are WinAnsiEncoding and cannot encode
+   U+20B9 — the invoice renders `INR 2,000.00`. Embedding a TTF is the alternative and is recorded in
+   ToBeDoneEhsan.
+4. **Threshold-based payout approval**, and **fleet payouts joined it** — they bypassed approval
+   entirely from Phase 7 until now. A behaviour change, called out in the release note.
+
+**Deviations from the plan block, each deliberate:**
+
+- **`approval_state` is a COLUMN, not a fifth `payout_status` value.** Decisive reason:
+  `uq_payouts_one_open_per_owner` is partial on `status IN ('requested','processing')`, so a payout
+  awaiting Finance is *already inside that predicate* with no index change. A new enum value would
+  have meant altering a partial unique index on money, and would have made `PayoutReconcileService`
+  start polling Razorpay about payouts it never sent.
+- **Driver earnings read the LEDGER, not `earnings_daily`.** That projection is keyed
+  `(fleet_id, day, driver_id)` with `fleet_id` NOT NULL, so an independent driver has no cell at all —
+  a projection-based design would have returned zero for them and passed every other test. §9.2.4's AC
+  is "earnings derived from ledger", which reading the ledger satisfies by construction. The
+  settlement lateral is now hoisted and shared with `EarningsRepo.splitFeed` so the two cannot drift.
+- **`PaymentGatewayPort` has no `capture()`.** Standard Checkout auto-captures at the customer's
+  confirm; the server *learns* that one happened. `POST /payments/:id/capture` keeps the plan's route
+  name but its job is verify-and-settle.
+- **The webhook verifies against BOTH secrets and cross-falls-back the parsers.** Razorpay PG and
+  RazorpayX are separate dashboards that may or may not share a webhook secret; without the fallback,
+  a deployment that shares one would have the payment port verify every payout event, its parser
+  return null, and the controller 200-and-drop every payout webhook silently.
+- **`PaymentGatewayModule` was split out of `MoneyModule`** to break a real cycle: money imports
+  bookings (for the state machine), and §3.5's chargeable cancellation needs bookings to import the
+  gateway. The split is along a real line — the port and the `payments` table are infrastructure,
+  settlement is domain — rather than `forwardRef` papering over it.
+- **The ledger commits BEFORE the status transition.** The other order leaves, on a crash, a `paid`
+  booking with money columns and no legs — `ledgerDrift = 1` and the nightly job throws. This order
+  leaves credits on a still-`completed` booking, which `ledgerDrift` filters out, and the sweep
+  converges.
+- **`paid → disputed` added and `paid` removed from `TERMINAL_BOOKING_STATUSES`.** §14.5's reversal
+  was otherwise unreachable. The admin dispute route stays Phase 20; this ships the edge, the
+  mechanics, `reversalDrift` and the specs.
+- **`bookings-cancel.e2e.spec.ts`'s two 409 tests were REWRITTEN, not deleted** — the behaviour they
+  pinned genuinely changed.
+- **A third `.sql`-parsing spec** (`migration-0016.spec.ts`), per the convention 0012 and 0014 set.
+
+**Four faults found only by running it:**
+
+1. **Driver earnings computed their window in UTC while the query filtered in IST** — between 00:00
+   and 05:30 IST a driver's night shift was invisible. Found by a spec that happened to run at 02:33.
+2. **`AdminFinanceService.updateConfig` silently no-opped** on a database with no `charge_config`
+   row: 200, nothing changed. Now an upsert.
+3. **`sole-writer.spec.ts` flagged its own documentation** — the source-text guard matched a comment
+   naming the forbidden calls. A fair demonstration that it works.
+4. **Postgres orders enum columns by DECLARATION order, not alphabetically** — a spec assertion failed
+   for a reason that looked like a defect in the code under test.
+
+**Verified:** backend **1,178 / 110 files** (from 1,084 / 99) · Playwright **41/41** (from 35) ·
+`pnpm -r typecheck` clean across all nine packages · migration 0016 applied to a live DB · the
+byte-identical-green gate held (suite unchanged after the migration, before any code).
+
+The assertions that carry the phase: forged signature → 401 with **zero** ledger rows; amount
+mismatch → 409 (the ₹1-order attack); **two Nest apps racing one Postgres settle exactly once**, and
+again with the Redis lock deleted mid-flight; §9.2.4's per-trip net summed **equals** a direct
+`sum(amount)` for both a fleet and an independent driver; a chargeable cancellation leaves
+`earnings_daily` **unchanged**; two concurrent confirms on a `max_uses: 1` coupon produce one booking
+and **no orphan row**; the invoice link yields real `%PDF-` bytes and a second call returns the same
+key; `ledger.invariants()` all five zero at the end of **every** money test.
+
+**NOT verified, stated plainly:**
+
+- **`RazorpayPaymentsAdapter` has never executed.** No merchant account (SETUP-CHECKLIST 12). Order
+  creation, the checkout signature, the webhook envelope and the refund call are written from
+  documentation. The dev adapter proves the *chain*, not the *vendor* — so the plan's "Razorpay
+  sandbox e2e" line **could not be satisfied this phase**, and that is a procurement dependency rather
+  than an engineering one.
+- **SES has never sent an email.** The hand-built MIME multipart is untested against a real MTA;
+  the 76-character base64 wrap is asserted by a spec and by nothing else.
+- **The PDF is not a compliant Indian tax invoice** — no GSTIN, HSN/SAC, place of supply or number
+  series. A launch blocker for the day GST is switched on.
+- **Nothing mobile has run on a phone**, unchanged since Phase 12 and now including the payment sheet,
+  the wallet, the earnings breakdown, the bank screen and the payout request. Both Maestro flows carry
+  the verbatim `⚠ NEVER EXECUTED` header.
+- **No `bench:payments`.** Phases 17 and 18 each shipped a benchmark because a green suite proved
+  nothing about their real failure modes; this phase did not add an equivalent.
 
 ### ⬜ [P20] Safety, support, admin live-ops & the long tail
 
@@ -2087,7 +2357,7 @@ subtitle naming the actual radius and the actual cumulative count; the retry but
 
 - **TowGo:** `features/booking/hooks/useSearchSimulation.ts` is **deleted** — it is a pure timer producing fixed phase transitions, and "wave transitions reflect the actual engine state (no fake progress)" is a literal AC. Replaced by the socket plus `GET /bookings/:id` resync. Cancel wires to the real endpoint.
 
-### [P18] Live tracking & share trip — TowGo slice
+### ✅ [P18] Live tracking & share trip — TowGo slice — **COMPLETE (3 Sep 2026)**
 
 *(canonical block: B0 · P18)*
 
@@ -2095,9 +2365,41 @@ subtitle naming the actual radius and the actual cumulative count; the retry but
 - **TowGo TrackingScreen rebuild** — takes a real `bookingId` (`navigation/types.ts` declares `Tracking: undefined` today, so the screen cannot know which booking it is showing), status timeline, booking OTP display, share sheet, policy-aware cancel showing the fee before confirming, and the §11.6 honesty states: ghost marker + "reconnecting…" at ping age > 15 s, support banner at > 60 s, REST resync on reconnect. The frozen `assignedDriver` mock the screen imports directly — which is why tracking would show the same driver forever regardless of who matched — is deleted. Every route line and driver marker in TowGo today is a hardcoded percent-positioned SVG path; all of it is deleted.
 - **§22.1:** emit `trip_shared`.
 
-**Verification (surface-local):** a contract test on the public share projection asserts it leaks nothing beyond first name and plate.
+**Delivered as sketched**, with three corrections to the sketch worth recording:
 
-### [P19] Money — TowGo slice
+- **`Tracking: { bookingId: string }` already existed.** The bullet above says
+  `navigation/types.ts` declares `Tracking: undefined` — Phase 15 had already fixed that, and
+  the screen has taken a real id since. What was frozen was the DRIVER, not the route param.
+- **The share token's unique index is in migration 0012, not "0008".** The plan's numbering
+  has been stale by 4 since Phase 14; `uq_bookings_share_token` has existed, partial and
+  unused, since then. No migration was needed for the columns.
+- **`MapRouteOverlay.tsx` was NOT dead code** and was not deleted — `BookTowScreen` imports
+  it. `TrackingMapCard.tsx`, `EtaStatusCard.tsx` and `assignedDriver.mock.ts` were the three
+  artifacts that went.
+
+Plus a §11.6 mock-state flag (`EXPO_PUBLIC_MOCK_TRACKING_STATE=stale|offline|error`) the
+sketch did not call for: a mock fix never ages, so the ghost marker and the support banner
+were otherwise unreachable without a device and a real driver going quiet. The mock driver
+also WALKS a fixed approach path with a computed bearing, for the same reason — a static
+fixture makes interpolation, rotation and the pan-pause untestable.
+
+`DriverInfoCard` was reshaped to the API rather than to the fixture: `photoUrl: string | null`
+replaced an `ImageSourcePropType`, `rating` became nullable (a driver nobody has rated has no
+rating — a 5.0 default advertises one that does not exist), and `onMessage` became optional so
+the screen can omit a chat button that opens nothing until Phase 20.
+
+**Verification (surface-local):** `track-projection.spec.ts` **14/14** — the projection's exact
+key list, a strict-mode parse, and a serialised-body search proving no phone number, surname,
+booking id, user id, driver id or share token appears anywhere in it. `share-trip.e2e.spec.ts`
+**19/19** over real HTTP, including `expectMatchesContract` against `publicTrackSchema` on the
+unauthenticated route — which fails on an UNDECLARED key as well as a missing one, the direction
+that matters there. Playwright `track.spec.ts`
+**6/6** covers the page itself from a cookieless context.
+`apps/towgo/maestro/customer-tracking.yaml` authored; **never executed** (no dev-client build).
+`customer-booking.yaml`'s stale `appId` (`com.towing.towgo`, which could never launch) fixed
+to `in.mitow.customer` while in there.
+
+### ✅ [P19] Money — TowGo slice — **COMPLETE (4 Sep 2026)**
 
 *(canonical block: B0 · P19)*
 
@@ -2224,7 +2526,7 @@ seen.
 - **TowPartner:** the offer becomes a full-screen takeover with sound, haptic and a 20 s countdown ring (a bottom-tab screen cannot do this); the offer card gains gross → commission → net and the customer rating (§9.2.2 AC — it shows one unqualified fare number today, and a relative `expiresInSeconds` is replaced by an absolute server `expiresAt`); Accept stops landing on `PlaceholderScreen`.
 - `POST /v1/jobs/:id/{accept,reject}` — idempotent thin driver routes over the B0 · P17 offer engine.
 
-### [P18] Job execution — TowPartner slice
+### ✅ [P18] Job execution — TowPartner slice — **COMPLETE (3 Sep 2026)**
 
 *(canonical block: B0 · P18 — the job machine, OTP consumption and fare finalization live there)*
 
@@ -2233,9 +2535,46 @@ seen.
 - **TowPartner ActiveJob screen**, replacing the `PlaceholderScreen` that Accept currently lands on: OTP entry, arrived / start / complete, unable-to-deliver, navigation hand-off, live waiting-charge ticker.
 - **§22.1:** emit `job_started`.
 
-**Verification (surface-local):** airplane-mode toggle mid-job proves buffered pings flush in order.
+**Delivered as sketched**, with one correction and two pre-existing gaps this slice had to
+close before its own verification could pass:
 
-### [P19] Money — TowPartner slice
+- **Accept did NOT land on `PlaceholderScreen`.** Phase 17 already replaced that with a real
+  `AssignedJobScreen`, whose header, `navigation/types.ts` and OTP-notice comment all
+  pre-committed to being EXTENDED here rather than replaced. It was — the action rail sits
+  exactly where "the layout below leaves the bottom of the screen to them" said it would.
+- **The ping buffer never flushed on reconnect**, which is the very thing this slice's
+  verification asserts. `flush()` had exactly two callers — the end of the location task and
+  `stop()` — so a driver coming out of a tunnel waited for the next location tick, and if the
+  tunnel was long enough for the OS to suspend the task, until they next looked at their
+  phone. `initOnlineManager` flushed only the MUTATION queue. Now wired to the NetInfo
+  offline→online edge.
+- **`reconnectDriverSocket()` had no caller anywhere in the app.** The `/driver` socket sets
+  `reconnection: false` because its ticket is single-use, so a connection dropped mid-shift
+  stayed dropped until the driver toggled offline and back — and a driver with no socket gets
+  no `job:offer` frame. Wired to the same edge, guarded on `isOnline`.
+
+Two additions the sketch did not call for. **`lastFixStore`** — a zustand store written from
+`enqueue()` in the location task — because nothing in the app exposed the driver's own
+position to React, and §11.5's arrival assist needs one on screen; a second
+`watchPositionAsync` would have been a second GPS subscription for the same data, going blind
+exactly when the phone is in a cradle with the screen off. And the **navigation hand-off now
+flips to the DROP at `in_progress`**: it was hardcoded to the pickup, which was right for the
+only states Phase 17 could reach and sent a driver with a vehicle on their flatbed back to
+where they collected it.
+
+`OtpInput` was lifted from TowGo's auth feature into `packages/ui` unchanged — the booking-OTP
+keypad needs exactly the same component and the two must not diverge. It already imported
+nothing app-local.
+
+**Verification (surface-local):** `job-execution.e2e.spec.ts` **29/29** over real HTTP covers the
+server half — the OTP cap refusing even the CORRECT code once exhausted, the proximity backstop
+on arrival, waiting billed from the snapshotted rules while an admin edits the live rate card
+mid-trip, and `unable` returning the booking to the search with the driver excluded. The
+airplane-mode flush is now WIRED but **not executed** — it needs a device, and no dev-client
+build exists. `driver-job-execution.yaml` authored (the full chain including a wrong-OTP refusal
+and its remaining-attempts count); never run.
+
+### ✅ [P19] Money — TowPartner slice — **COMPLETE (4 Sep 2026)**
 
 *(canonical block: B0 · P19 — capture, the ledger credit and the reconciliation sweep live there)*
 
@@ -2337,7 +2676,7 @@ does not silently freeze today's code defaults into that zone's data. The form o
 
 - **`GET/PUT /v1/admin/dispatch-config` (§16.5)** — owned here because this phase is the consumer and already reads `service_zones.dispatch_config`: radius ladder, offer countdown, offers per wave, max search time, scoring weights, stale-ping threshold, all editable with **no deploy** per §6.7, validated against the same typed schema Phase 14 seeds, and audited to `admin_actions`. The thin admin form is Phase 20 · B3.
 
-### [P19] Finance approval queue — Admin Ops slice
+### ✅ [P19] Finance approval queue — Admin Ops slice — **COMPLETE (4 Sep 2026)**
 
 *(canonical block: B0 · P19)*
 

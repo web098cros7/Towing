@@ -23,6 +23,8 @@ export const env = {
   mockSettingsState: (process.env.NEXT_PUBLIC_MOCK_SETTINGS_STATE ?? '') as MockState,
   mockReportsState: (process.env.NEXT_PUBLIC_MOCK_REPORTS_STATE ?? '') as MockState,
   mockAdminDriversState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_DRIVERS_STATE ?? '') as MockState,
+  /** §9.4.10's Finance queue (Phase 19). */
+  mockAdminFinanceState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_FINANCE_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless

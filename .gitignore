@@ -40,6 +40,7 @@ yarn-error.*
 /Detailed-Overview.md
 /SETUP-CHECKLIST.md
 /ToBeDoneEhsan.md
+/ImplementNow.md
 
 # pnpm workspace: pnpm-lock.yaml is the ONLY lockfile. A root package-lock.json
 # or yarn.lock makes EAS Build (and anyone else) detect the wrong package

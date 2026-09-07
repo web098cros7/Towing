@@ -59,6 +59,15 @@ export interface RecipientResolver {
  * would put it, in plaintext, in a table with no TTL and no purge until Phase
  * 20 — reversing the hash-at-rest posture `login_challenges.code_hash` has.
  */
+/**
+ * What to attach, named rather than carried.
+ *
+ * One kind today. A union rather than a bare `bookingId` because the next one
+ * (a monthly statement, say) should widen this type rather than overload the
+ * field's meaning.
+ */
+export type AttachmentRef = { kind: 'invoice'; bookingId: string };
+
 export interface RegisteredTrigger<P = Record<string, unknown>> {
   /** Event key, e.g. `driver.kyc.approved`. Matches `PushDataPayload.event`. */
   event: string;
@@ -87,6 +96,15 @@ export interface RegisteredTrigger<P = Record<string, unknown>> {
    * one forever. Each trigger below documents its choice.
    */
   dedupeKey?: (payload: P) => string;
+  /**
+   * §12.2's attachment, resolved for the EMAIL channel only.
+   *
+   * A REFERENCE, NOT BYTES. The registry is pure data — it has no database, no
+   * storage port and no business being handed a megabyte of PDF — so a trigger
+   * declares WHAT to attach and the dispatcher fetches it. Push, SMS and
+   * WhatsApp ignore this entirely; there is nothing to attach to them.
+   */
+  attachmentsFor?: (payload: P) => AttachmentRef;
   /** Turns domain ids into addresses. THE ONLY producer of a deliverable `to`. */
   resolve: (payload: P, ctx: TriggerContext) => Promise<Recipient[]>;
   /** Template variables. Rendered by the catalog, never by an adapter. */

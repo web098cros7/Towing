@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PricingModule } from '../pricing/pricing.module';
+import { CouponsModule } from '../coupons/coupons.module';
+import { PaymentGatewayModule } from '../money/payment-gateway.module';
 import { RealtimeModule } from '../../realtime/realtime.module';
 import { BookingOtpService } from './booking-otp.service';
 import { BookingStateMachineService } from './booking-state-machine.service';
@@ -23,7 +25,11 @@ import { DispatchConfigRepo } from './dispatch-config.repo';
  * verifies the OTP, and neither may reimplement them.
  */
 @Module({
-  imports: [AuthModule, PricingModule, RealtimeModule],
+  // `PaymentGatewayModule`, not `MoneyModule`: §3.5's chargeable cancellation
+  // needs to COLLECT a fee, not to settle a fare. Importing the whole money
+  // domain would be a cycle, since `MoneyModule` imports this one for the
+  // state machine — see `PaymentGatewayModule`'s header.
+  imports: [AuthModule, PricingModule, RealtimeModule, CouponsModule, PaymentGatewayModule],
   controllers: [BookingsController],
   providers: [
     BookingsService,

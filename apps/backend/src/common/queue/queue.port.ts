@@ -47,6 +47,30 @@ export interface JobPayloads {
    */
   'payouts.dev-settle': { payoutId: string; providerRef: string };
   /**
+   * §19.3's payment status sweep. THE REASON THIS PORT EXISTS AT ALL, per this
+   * file's own header: implemented as a `setInterval` or `@Cron` it would run N
+   * times concurrently across N Fargate tasks against the same uncaptured
+   * payment. `schedule()` keys the timer in Redis, so every task converges on
+   * one.
+   */
+  'payments.reconcile': { reason: 'cron' | 'manual' };
+  /**
+   * The dev gateway's settle timer — only enqueued when
+   * `PAYMENT_DEV_SETTLE_MS > 0`, because the default of 0 captures inline and
+   * needs no job at all.
+   */
+  'payments.dev-settle': { paymentId: string; gatewayRef: string };
+  /**
+   * §14.2's invoice PDF, off the hot path per §19.5 ("invoice generation … so
+   * the booking hot path never blocks on a slow side effect"). Collapsed on
+   * `invoice:<bookingId>` and idempotent on `bookings.invoice_key`, so a
+   * redelivery re-serves the same bytes rather than rendering a second,
+   * subtly different document.
+   */
+  'invoice.generate': { bookingId: string };
+  /** §12.2's weekly earnings summary for every driver who earned last week. */
+  'earnings.weekly-digest': { reason: 'cron' | 'manual' };
+  /**
    * §12.3's fan-out. One job per event: resolve recipients, write the delivery
    * rows, then enqueue one `notifications.deliver.*` per row.
    */

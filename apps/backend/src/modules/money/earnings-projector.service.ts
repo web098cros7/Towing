@@ -15,6 +15,8 @@ export interface ReconcileReport {
   walletDrift: number;
   bookingDrift: number;
   ledgerDrift: number;
+  reversalDrift: number;
+  couponDrift: number;
   projectionDrift: number;
   maxDeltaPaise: number;
   payoutAlertsReconciled: number;
@@ -107,6 +109,8 @@ export class EarningsProjectorService implements OnModuleInit {
       walletDrift: invariants.walletDrift,
       bookingDrift: invariants.bookingDrift,
       ledgerDrift: invariants.ledgerDrift,
+      reversalDrift: invariants.reversalDrift,
+      couponDrift: invariants.couponDrift,
       projectionDrift: stale.length,
       maxDeltaPaise: drifted.reduce((max, w) => Math.max(max, Math.abs(w.deltaPaise)), 0),
       payoutAlertsReconciled,
@@ -114,12 +118,18 @@ export class EarningsProjectorService implements OnModuleInit {
 
     await this.redis.set(LAST_RECONCILE_KEY, JSON.stringify(report), 'EX', 172_800);
 
-    const totalDrift = invariants.walletDrift + invariants.bookingDrift + invariants.ledgerDrift;
+    const totalDrift =
+      invariants.walletDrift +
+      invariants.bookingDrift +
+      invariants.ledgerDrift +
+      invariants.reversalDrift +
+      invariants.couponDrift;
 
     this.logger.log(
       `ledger reconcile (${reason}) in ${Date.now() - started}ms — ` +
         `wallet ${invariants.walletDrift}, booking ${invariants.bookingDrift}, ` +
-        `ledger ${invariants.ledgerDrift}, projection ${stale.length}, ` +
+        `ledger ${invariants.ledgerDrift}, reversal ${invariants.reversalDrift}, ` +
+        `coupon ${invariants.couponDrift}, projection ${stale.length}, ` +
         `payout alerts ${payoutAlertsReconciled}`,
     );
 

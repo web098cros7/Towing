@@ -16,7 +16,7 @@ import { CountdownRing } from '@/features/offers/components/CountdownRing';
 import { OfferCard } from '@/features/offers/components/OfferCard';
 import { useOfferCountdown } from '@/features/offers/hooks/useOfferCountdown';
 import { driverColors } from '@/theme/driverColors';
-import { formatINR } from '@/utils/format';
+import { formatPaise } from '@/utils/format';
 import type { RootStackParamList } from '@/navigation/types';
 import { Pressable, haptics } from '@/motion';
 
@@ -174,7 +174,7 @@ export function OfferTakeoverScreen() {
               tabular
               style={{ fontSize: 30, lineHeight: 36, color: driverColors.online }}
             >
-              {formatINR(offer.earnings.netPaise / 100)}
+              {formatPaise(offer.earnings.netPaise)}
             </Text>
             <EarningsBreakdown earnings={offer.earnings} />
             {offer.customerRating !== null || offer.customerName !== null ? (
@@ -248,7 +248,7 @@ export function OfferTakeoverScreen() {
               label={
                 accept.isPending
                   ? 'Accepting…'
-                  : `Accept · ${formatINR(offer.earnings.netPaise / 100)}`
+                  : `Accept · ${formatPaise(offer.earnings.netPaise)}`
               }
               fullWidth
               loading={accept.isPending}
@@ -312,7 +312,7 @@ function EarningsBreakdown({
 }) {
   return (
     <Text tabular style={{ fontSize: 12, lineHeight: 17, color: '#6B7280' }}>
-      {formatINR(earnings.grossPaise / 100)} fare − {formatINR(earnings.commissionPaise / 100)}
+      {formatPaise(earnings.grossPaise)} fare − {formatPaise(earnings.commissionPaise)}
       {earnings.commissionPct === null ? '' : ` (${earnings.commissionPct}%)`} platform fee
     </Text>
   );

@@ -16,6 +16,7 @@ import { KillSwitchModule } from './common/killswitch/killswitch.module';
 import { FleetEventsModule } from './common/events/fleet-events.module';
 import { QueueModule } from './common/queue/queue.module';
 import { ExternalCallModule } from './common/http/external-call.module';
+import { TelephonyModule } from './common/telephony/telephony.module';
 import { NotificationsModule } from './common/notifications/notifications.module';
 import { StorageModule } from './common/storage/storage.module';
 import { ConfigModule } from './config/config.module';
@@ -25,6 +26,10 @@ import { LedgerModule } from './db/ledger/ledger.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminConfigModule } from './modules/admin-config/admin-config.module';
 import { AdminDriversModule } from './modules/admin-drivers/admin-drivers.module';
+import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
+import { RatingsModule } from './modules/ratings/ratings.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { InvoicesModule } from './modules/invoices/invoices.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthPublicModule } from './modules/auth-public/auth-public.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
@@ -32,6 +37,8 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DriverKycModule } from './modules/driver-kyc/driver-kyc.module';
 import { DriverPresenceModule } from './modules/driver-presence/driver-presence.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { JobExecutionModule } from './modules/job-execution/job-execution.module';
+import { TrackingModule } from './modules/tracking/tracking.module';
 import { DriversNearbyModule } from './modules/drivers-nearby/drivers-nearby.module';
 import { PlacesModule } from './modules/places/places.module';
 import { DriversModule } from './modules/drivers/drivers.module';
@@ -71,11 +78,16 @@ import { RedisModule } from './redis/redis.module';
     QueueModule,
     StorageModule,
     ExternalCallModule,
+    TelephonyModule,
     NotificationsModule,
     AuthModule,
     AuthPublicModule,
     AdminAuthModule,
     AdminDriversModule,
+    AdminFinanceModule,
+    RatingsModule,
+    CouponsModule,
+    InvoicesModule,
     AdminConfigModule,
     TrucksModule,
     DriversModule,
@@ -83,6 +95,8 @@ import { RedisModule } from './redis/redis.module';
     DriverPresenceModule,
     DriversNearbyModule,
     DispatchModule,
+    TrackingModule,
+    JobExecutionModule,
     PlacesModule,
     FilesModule,
     DashboardModule,

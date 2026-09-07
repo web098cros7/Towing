@@ -58,6 +58,18 @@ export interface ChannelSendParams {
   data: Record<string, string>;
   /** Android channel id for `priority: 'high'`. See TowPartner's `job-offer-v1`. */
   androidChannelId?: string;
+  /**
+   * §12.2's invoice attachment. EMAIL ONLY — push, SMS and WhatsApp adapters
+   * ignore it, because there is nothing to attach it to.
+   *
+   * Carried as bytes rather than a link because §14.2 asks for an invoice, and
+   * a customer forwarding one to their insurer wants a file rather than a URL
+   * that expires. `SesEmailAdapter` switches from `Content.Simple` to
+   * `Content.Raw` when this is present — a MIME multipart it builds by hand,
+   * because pulling in `nodemailer` for that would be an entire SMTP stack for
+   * a boundary string.
+   */
+  attachments?: Array<{ filename: string; contentType: string; content: Buffer }>;
   /** The `notification_deliveries.id` this send belongs to — the correlation id. */
   deliveryId: string;
 }

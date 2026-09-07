@@ -1,0 +1,97 @@
+# Track B Phase 19 — §9.2.4's earnings breakdown, bank onboarding and payouts.
+#
+# ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
+# Maestro flow in this repo has ever run. Reviewed against the screens as
+# written; that is all.
+#
+# Runs against `earningsMockSource` (no backend), the hermetic CI path Phase 12
+# established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
+#
+# WHAT IT PROVES — three things that did not exist before this phase:
+#   · `earningsDataSource` was PINNED to the mock with no `env.useMocks` branch
+#     and no REST source at all (`export const earningsDataSource =
+#     earningsMockSource`), so this screen could not show real money however the
+#     app was configured. It was the last such pin in the driver app.
+#   · §3.3's driver-transparency clause — "every completed trip shows gross,
+#     commission % and net" — had nowhere to render. The Earnings tab's
+#     "View All" and "View Report ›" were `SectionHeading actionLabel`s with no
+#     `onPress` at all.
+#   · "Bank Details" has been a `PlaceholderScreen` reading "Coming soon" since
+#     Phase 12, because there was nowhere for money to go.
+#
+# WHAT IT CANNOT PROVE:
+#   · that a payout reached a bank — no Razorpay Route account exists
+#     (SETUP-CHECKLIST item 12), and the dev adapter settles on a timer;
+#   · §9.2.4's paisa reconciliation — that is asserted against a real ledger in
+#     `driver-earnings.e2e.spec.ts`, which is where it means something.
+#
+# No `testID` convention exists in this repo. Every step matches visible copy or
+# an `accessibilityLabel` via `id:`.
+
+appId: in.mitow.partner
+---
+# THE LOGIN IS INLINED, not a `runFlow`. Unlike the customer app there is no
+# `driver-login.yaml` to chain off — every driver flow spells out these six
+# steps, and inventing a shared one here would leave the other four inconsistent
+# with it.
+- launchApp:
+    clearState: true
+
+- assertVisible: 'Enter your mobile number'
+- tapOn: 'Mobile number'
+- inputText: '9876543210'
+- tapOn: 'Continue'
+- tapOn: '••••••'
+- inputText: '123456'
+
+- tapOn: 'Earnings'
+- assertVisible: 'Total Earnings'
+
+# ── §9.2.4's per-trip breakdown ────────────────────────────────────────────
+#
+# "View All" was a dead affordance from Phase 12 until Phase 19.
+- tapOn: 'View All'
+- assertVisible: 'Trip earnings'
+
+# §3.3's transparency, on the row: a net figure with no band beside it is not a
+# breakdown. "No surprises = supply retention" is the spec's own reasoning.
+- assertVisible: 'Fare'
+- assertVisible: 'Commission (Band A · 10%)'
+- assertVisible: 'You earned'
+
+- back
+
+# ── §12.2's weekly report ──────────────────────────────────────────────────
+- tapOn: 'View Report ›'
+- assertVisible: 'Weekly report'
+- assertVisible: 'trips'
+- back
+
+# ── §14.4's payout ─────────────────────────────────────────────────────────
+- tapOn:
+    id: 'Payouts'
+- assertVisible: 'Available to withdraw'
+
+# The history renders §14.4's approval state, not just §5.5's vendor status —
+# without it a driver above the threshold watches "Requested" sit there
+# indefinitely with no explanation.
+- assertVisible: 'Awaiting approval'
+
+- tapOn:
+    id: 'Request payout'
+- assertVisible: 'Request a payout'
+- assertVisible: 'available'
+- tapOn:
+    id: 'Cancel payout request'
+
+# ── §9.2.4's Route onboarding ──────────────────────────────────────────────
+- back
+- tapOn: 'Profile'
+- tapOn: 'Bank Details'
+
+# NOT "Coming soon" any more.
+- assertVisible: 'Bank Details'
+- assertVisible: 'Linked'
+# The ONLY account-number form that exists on the device: the full number goes
+# to the provider at onboarding and is never persisted.
+- assertVisible: '4021'

@@ -9,3 +9,6 @@ export * from './pricing-estimate';
 export * from './bookings';
 export * from './nearby';
 export * from './places';
+export * from './track';
+export * from './payments';
+export * from './coupons';

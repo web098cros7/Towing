@@ -140,6 +140,55 @@ export const TEMPLATES = {
   },
 
   /**
+   * §12.2's *driver assigned / en route / arrived* — the second of three
+   * emissions on that row (Phase 18).
+   */
+  booking_driver_en_route: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['driver', 'reference'],
+    render: (v) => ({
+      title: 'Your driver has set off',
+      body: `${v.driver || 'Your driver'} is on the way to your pickup (${v.reference ?? '—'}). You can follow them live in the app.`,
+      subject: null,
+    }),
+  },
+
+  /**
+   * The third emission, and the one the customer most needs to act on.
+   *
+   * IT NAMES THE OTP WITHOUT CARRYING IT. §7.4's waiting clock starts here — 15
+   * free minutes, then per-minute — so the body has to move somebody who may be
+   * indoors, and the thing they have to do is read a code to the driver. The code
+   * itself stays out of every channel: it lives hashed on the booking and is
+   * readable only through `GET /bookings/:id/otp` by its owner, which is the
+   * posture Phase 13 declined to reverse for login OTPs and this does not reverse
+   * either.
+   */
+  booking_driver_arrived: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['driver', 'reference'],
+    render: (v) => ({
+      title: 'Your driver has arrived',
+      body: `${v.driver || 'Your driver'} is at your pickup location (${v.reference ?? '—'}). Open the app for your collection code.`,
+      subject: null,
+    }),
+  },
+
+  /** §12.2's *job started (OTP verified)* — the receipt for the handover. */
+  booking_job_started: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['driver', 'reference'],
+    render: (v) => ({
+      title: 'Your tow has started',
+      body: `${v.driver || 'Your driver'} has collected your vehicle (${v.reference ?? '—'}) and is on the way to the drop location.`,
+      subject: null,
+    }),
+  },
+
+  /**
    * §12.2's *search widening*.
    *
    * Names the radius rather than saying "still looking", because a customer
@@ -225,6 +274,38 @@ export const TEMPLATES = {
       title: 'Your trip is complete',
       body: `Thanks for riding with us. Booking ${v.bookingRef ?? ''} is complete and your invoice for ${v.amount ?? ''} is attached.`,
       subject: `Invoice for booking ${v.bookingRef ?? ''}`,
+    }),
+  },
+
+  /**
+   * §12.2 "Earnings credited (per trip)" — Driver, PUSH ONLY.
+   *
+   * The matrix grants this row exactly one channel and `registry.spec.ts`
+   * refuses any trigger that uses more, which is right: a driver completing
+   * eight trips a day does not want eight emails, and the number is already in
+   * the app.
+   */
+  earnings_credited: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['amount', 'bookingRef'],
+    render: (v) => ({
+      title: `${v.amount ?? ''} credited`,
+      body: `Your earnings for booking ${v.bookingRef ?? ''} are in your wallet.`,
+      // Push and WhatsApp only — neither has a subject.
+      subject: null,
+    }),
+  },
+
+  /** §12.2 "Weekly earnings summary" — Driver. The `weeklySummary` opt-out has shipped since Phase 13. */
+  weekly_earnings: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['amount', 'jobs', 'weekLabel'],
+    render: (v) => ({
+      title: 'Your week in numbers',
+      body: `You earned ${v.amount ?? ''} across ${v.jobs ?? '0'} trips in the week of ${v.weekLabel ?? ''}.`,
+      subject: null,
     }),
   },
 

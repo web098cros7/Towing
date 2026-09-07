@@ -31,12 +31,15 @@ const mockSource: EarningsDataSource = {
   getSummary: () => resolveMock(env.mockEarningsState, earningsMock, earningsEmptyMock),
   listSplits: () => resolveMock(env.mockEarningsState, splitsMock, [] as JobSplit[]),
   listPayouts: () => resolveMock(env.mockEarningsState, payoutsMock, [] as Payout[]),
-  requestPayout: async (input) => {
+  requestPayout: async (input, _idempotencyKey) => {
     await mockDelay();
     return {
       id: `po-mock-${Date.now()}`,
       amountPaise: input.amountPaise,
       status: 'requested',
+      // §14.4's threshold, mirrored so the queue branch is reachable here too.
+      approvalState: input.amountPaise > 10_000_000 ? 'pending_approval' : 'auto_approved',
+      rejectionReason: null,
       requestedAt: new Date().toISOString(),
       paidAt: null,
       providerRef: null,

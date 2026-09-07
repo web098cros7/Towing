@@ -1,0 +1,95 @@
+# Track B Phase 18 — live tracking, the share link, and the honest states.
+#
+# Runs against `trackingMockSource` (no backend), the hermetic CI path Phase 12
+# established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
+#
+# WHY THE MOCK MOVES. `trackingMockSource` walks the driver along a fixed
+# approach path, one step per read, and reports a bearing between each pair of
+# points. A static fixture would make §11.4's interpolation, the bearing marker,
+# the pan-pause and the ETA countdown all unreachable without a device and a real
+# driver — which, given no dev-client build exists, means unreachable full stop.
+#
+# What it proves — everything the Phase 12 screen faked:
+#   the tracking screen shows a REAL driver (it showed `assignedDriverMock` —
+#   the same "Ramesh Kumar / KA 03 AB 1234" for every trip) → an ETA that counts
+#   down → the collection OTP, from a hook that existed unused since Phase 15 →
+#   §11.7's share link → a cancel that quotes §3.5's fee BEFORE confirming
+#   (the old button called `navigation.popToTop()` and cancelled nothing).
+#
+# WHAT IT CANNOT PROVE, and why the map assertions below are absent: the map is
+# `react-native-maps`, a native module. Under mocks-on with no Google key the
+# facade renders `MapPreviewPlaceholder`, so there is no marker to assert on and
+# asserting the placeholder would test the fallback rather than the feature.
+# The interpolation and the pan-pause are covered by the shared maths' unit
+# tests; the drawing is not covered at all.
+#
+# Matches on visible copy and accessibilityLabel only — no testID convention.
+#
+# ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
+# Maestro flow in this repo has ever run. Reviewed against the screens as
+# written; that is all.
+appId: in.mitow.customer
+---
+- runFlow: customer-login.yaml
+
+# ── Reach a trip that is in flight ──────────────────────────────────────────
+# The booking flow leaves a booking in SEARCHING and the active-trip card is the
+# recoverable way back to it (Phase 15). In mocks-on the tracking source reports
+# `en_route` regardless, which is what puts this screen into its live state.
+- runFlow: customer-booking.yaml
+- tapOn: 'Current trip'
+
+# ── §9.1.7: a REAL driver, not the frozen fixture ───────────────────────────
+# The name comes from `trackingMockSource`, which is a different person from the
+# deleted `assignedDriverMock` on purpose: if this assertion ever passes against
+# "Ramesh Kumar" again, the mock driver has come back.
+- assertVisible: 'Anita Sharma'
+- assertVisible: 'KA 05 MJ 8842'
+- assertNotVisible: 'Ramesh Kumar'
+
+# ── §11.4's ETA chip ────────────────────────────────────────────────────────
+- assertVisible: 'Driver is on the way'
+- assertVisible: 'Arriving in'
+# The mock has no Directions result, so the estimate is honestly labelled.
+- assertVisible: 'Estimated — live route unavailable'
+
+# ── §9.1.7's status timeline ────────────────────────────────────────────────
+- assertVisible: 'Driver assigned'
+- assertVisible: 'On the way'
+- assertVisible: 'Arrived at pickup'
+
+# ── §9.1.7's collection OTP ─────────────────────────────────────────────────
+# The card is gated on `booking.otpAvailable`, which the bookings mock reports
+# once a driver exists. `useBookingOtp` has been wired to a real endpoint since
+# Phase 15 and had no caller until now.
+- assertVisible: 'Your collection code'
+- assertVisible: '482913'
+
+# ── §11.7's share trip ──────────────────────────────────────────────────────
+- assertVisible: 'Share trip'
+- tapOn:
+    id: 'Share this trip'
+# The OS share sheet is outside the app; Maestro cannot assert inside it. What
+# CAN be asserted is that the link was minted and the app now offers to revoke
+# it — which is the state the server's `shared` flag drives.
+- pressKey: back
+- assertVisible: 'Stop sharing'
+
+# ── §9.1.7's policy-aware cancel ────────────────────────────────────────────
+# The fee is quoted BEFORE the customer commits. The old screen had no sheet at
+# all: "Cancel Request" called `popToTop()` and the booking stayed live.
+- tapOn:
+    id: 'Cancel this trip'
+- assertVisible: 'Cancel this trip?'
+- assertVisible: 'Your driver is already on the way'
+- assertVisible: 'Cancellation fee ₹1,200'
+# PHASE 19 SHIPPED COLLECTION, so the "We cannot take this fee yet" line this
+# flow used to assert is gone — `CancelTripSheet` drops it whenever the quote
+# says `chargeable`, which is now every tier. The confirm button opens the fee
+# payment sheet instead of being disabled.
+- assertVisible: 'Yes, cancel trip'
+- tapOn:
+    id: 'Keep my trip'
+
+# ── The trip is still there ─────────────────────────────────────────────────
+- assertVisible: 'Anita Sharma'

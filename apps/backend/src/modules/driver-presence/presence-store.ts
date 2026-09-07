@@ -160,6 +160,31 @@ export class PresenceStore {
     return { status: 'unknown' };
   }
 
+  /**
+   * The driver's last hot fix (Phase 18).
+   *
+   * FROM THE HASH, NOT FROM POSTGRES, and that is why it exists. The database
+   * column is refreshed on `LocationFlushService`'s ~30 s cadence, which is a
+   * perfectly good answer for a polled tracking screen and a poor one for
+   * `EtaService.planRoute`: the route is drawn ONCE, at assignment, from wherever
+   * the driver is at that instant, and starting it from a fix half a minute old
+   * puts the line — and the first ETA the customer ever sees — a city block
+   * behind them.
+   *
+   * `null` on a miss rather than a throw: the 30-second hash TTL means a driver
+   * who went quiet legitimately has no fix, and the caller falls back to the
+   * Postgres column or to no route at all.
+   */
+  async lastFix(
+    driverId: string,
+  ): Promise<{ lat: number; lng: number; at: string | null } | null> {
+    const raw = await this.redis.hmget(driverHashKey(driverId), 'lat', 'lng', 'at');
+    const lat = Number(raw[0]);
+    const lng = Number(raw[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng, at: raw[2] ?? null };
+  }
+
   /** The stored sequence, so a reconnecting handset can resume above it. */
   async currentSeq(driverId: string): Promise<number> {
     const raw = await this.redis.hget(driverHashKey(driverId), 'seq');

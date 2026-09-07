@@ -1,20 +1,29 @@
 import React from 'react';
-import { Image, View, type ImageSourcePropType } from 'react-native';
+import { Image, View } from 'react-native';
 import { useTheme } from '@towing/theme';
 import { Text, type IconComponent } from '@towing/ui';
 import { Star, Truck, Phone, MessageCircle } from '@/icons';
 import { Pressable } from '@/motion';
 
 /**
- * What the card renders — a structural subset, so both a live `AssignedDriver`
- * and a finished booking (which has no ETA) can feed it.
+ * What the card renders.
+ *
+ * SHAPED AFTER THE API, NOT AFTER THE MOCK IT USED TO TAKE (Phase 18). Two of
+ * these were non-nullable because the frozen fixture always had them:
+ *
+ *  · `photoUrl` replaced an `ImageSourcePropType`. The server returns a URL or
+ *    null; a bundled asset was only ever the placeholder.
+ *  · `rating` is nullable. A driver nobody has rated has NO rating, and
+ *    defaulting to 5.0 advertises one that does not exist — the same call
+ *    `jobOfferSchema` makes for `customerRating`. §6.2 will not have a real
+ *    writer for it until Phase 19 either way.
  */
 export type DriverCardInfo = {
   name: string;
-  photo: ImageSourcePropType;
-  rating: number;
+  photoUrl: string | null;
+  rating: number | null;
   trips: number;
-  vehiclePlate: string;
+  vehiclePlate: string | null;
 };
 
 function ActionCircle({
@@ -74,7 +83,13 @@ export function DriverInfoCard({
   driver: DriverCardInfo;
   vehicleLabel: string;
   onCall: () => void;
-  onMessage: () => void;
+  /**
+   * OPTIONAL, and omitted by the tracking screen (Phase 18). In-app chat is
+   * deferred to Phase 20 — §17 has no messages table — and a button that opens
+   * nothing is worse than a button that is not there. The masked call satisfies
+   * §9.1.7 contact requirement on its own.
+   */
+  onMessage?: () => void;
 }) {
   const theme = useTheme();
 
@@ -93,7 +108,9 @@ export function DriverInfoCard({
       }}
     >
       <Image
-        source={driver.photo}
+        // A null URL renders the tinted circle alone rather than a broken-image
+        // glyph: most drivers have no photo, so the empty state is the common one.
+        source={driver.photoUrl ? { uri: driver.photoUrl } : undefined}
         style={{
           width: theme.sizes.avatar.lg,
           height: theme.sizes.avatar.lg,
@@ -109,6 +126,11 @@ export function DriverInfoCard({
         </Text>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {/*
+            A driver with no rating gets NO pill rather than a 5.0 one — see
+            `DriverCardInfo`. Phase 19 writes the first real values.
+          */}
+          {driver.rating !== null ? (
           <View
             accessible
             accessibilityLabel={`Rated ${driver.rating.toFixed(1)} out of 5`}
@@ -127,6 +149,7 @@ export function DriverInfoCard({
               {driver.rating.toFixed(1)}
             </Text>
           </View>
+          ) : null}
           <Text variant="caption" color="secondary">
             ({driver.trips} trips)
           </Text>
@@ -135,7 +158,7 @@ export function DriverInfoCard({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Truck size={theme.sizes.icon.sm} color={theme.colors.textSecondary} strokeWidth={2} />
           <Text variant="body" weight="semibold" numberOfLines={1}>
-            {driver.vehiclePlate}
+            {driver.vehiclePlate ?? "Vehicle details to follow"}
           </Text>
         </View>
         <Text variant="caption" color="secondary" numberOfLines={1}>
@@ -152,14 +175,16 @@ export function DriverInfoCard({
           caption="Call"
           onPress={onCall}
         />
-        <ActionCircle
-          icon={MessageCircle}
-          bg={theme.colors.infoSoftBg}
-          color={theme.colors.info}
-          label="Message driver"
-          caption="Message"
-          onPress={onMessage}
-        />
+        {onMessage ? (
+          <ActionCircle
+            icon={MessageCircle}
+            bg={theme.colors.infoSoftBg}
+            color={theme.colors.info}
+            label="Message driver"
+            caption="Message"
+            onPress={onMessage}
+          />
+        ) : null}
       </View>
     </View>
   );

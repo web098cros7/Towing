@@ -20,6 +20,7 @@
     "sim:locations": "tsx src/scripts/simulate-locations.ts",
     "sim:drivers": "tsx src/scripts/simulate-drivers.ts",
     "bench:dispatch": "tsx src/scripts/bench-dispatch.ts",
+    "bench:tracking": "tsx src/scripts/bench-tracking.ts",
     "smoke:realtime": "tsx src/scripts/realtime-load.ts",
     "load:tokens": "tsx src/scripts/mint-load-tokens.ts"
   },
@@ -41,6 +42,7 @@
     "ioredis": "^6.0.0",
     "nestjs-pino": "^4.6.1",
     "papaparse": "^5.5.4",
+    "pdf-lib": "^1.17.1",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "postgres": "^3.4.9",

@@ -1,0 +1,110 @@
+# Track B Phase 18 — the §5.2 chain: accept → arrive → OTP → start → complete.
+#
+# Runs against `offersMockSource` (no backend), the hermetic CI path Phase 12
+# established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
+#
+# WHY THE MOCK KNOWS THE OTP. §9.2.3's gate is the one step in this chain that
+# needs a value from the OTHER app — the customer reads it aloud and the driver
+# types it. A random mock code would make the whole second half of the flow
+# unreachable without two devices and a backend, so `offersMockSource` holds a
+# fixed one (`MOCK_BOOKING_OTP`) and this flow types it.
+#
+# The mock also BACKDATES the arrival by sixteen minutes, one past §7.4's free
+# window, so the waiting ticker is on screen and ticking rather than sitting at
+# zero for a quarter of an hour. That is the one thing this screen adds which
+# cannot be checked any other way.
+#
+# What it proves — everything below "Accept" that did not exist:
+#   the assigned-job screen gains a real action rail (it ended at a "Waiting for
+#   pickup OTP" notice) → arrive → the OTP keypad and its capped, honest failure
+#   → start → the navigation target flips to the DROP → complete → the driver is
+#   idle again.
+#
+# WHAT IT CANNOT PROVE: the map (`JobMapCard`) is `react-native-maps`, a native
+# module, and under mocks-on with no Google key the facade renders the
+# placeholder. The arrival assist is also absent here — it reads `lastFixStore`,
+# which is written only by the background location task, and that task does not
+# run under Maestro.
+#
+# Matches on visible copy and accessibilityLabel only — no testID convention.
+#
+# ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
+# Maestro flow in this repo has ever run. Reviewed against the screens as
+# written; that is all.
+appId: in.mitow.partner
+---
+- launchApp:
+    clearState: true
+
+# ── Sign in and go online, so an offer can exist ────────────────────────────
+- assertVisible: 'Enter your mobile number'
+- tapOn: 'Mobile number'
+- inputText: '9876543210'
+- tapOn: 'Continue'
+- tapOn: '••••••'
+- inputText: '123456'
+- assertVisible: 'Go Online'
+- tapOn: 'Go Online'
+
+# ── §6.3's offer takeover, and Accept (Phase 17) ────────────────────────────
+- assertVisible: 'New job'
+- tapOn: 'Accept'
+- assertVisible: 'Your Job'
+
+# ── Before arrival: the code is the customer's, and the app says so ─────────
+- assertVisible: 'Pickup code at arrival'
+- assertVisible: 'never sent to your phone'
+# The keypad must NOT be reachable yet — §5.2 has no path from `assigned` to
+# `in_progress`, and offering the field early is how a driver tries to start a
+# job they have not reached.
+- assertNotVisible: 'Start trip'
+
+# ── §5.2: arrive ────────────────────────────────────────────────────────────
+- tapOn:
+    id: 'Mark arrived'
+- assertVisible: 'Arrived'
+
+# ── §7.4's waiting meter, running ───────────────────────────────────────────
+# The mock backdated `arrivedAt` past the free window, so this is the charging
+# branch: 16 minutes waited, 1 billable, ₹5.
+- assertVisible: 'Waiting 16 min'
+- assertVisible: '1 min charged at ₹5/min'
+
+# ── §9.2.3's OTP gate: the wrong code is refused, and counted ───────────────
+- assertVisible: 'Ask the customer for their 6-digit code'
+- tapOn:
+    id: 'One-time code'
+- inputText: '000000'
+- tapOn:
+    id: 'Start trip'
+- assertVisible: 'That code is not correct'
+# The remaining-attempts count is the one detail the refusal carries — the
+# alternative is a driver discovering the cap by being locked out mid-handover.
+- assertVisible: 'tries left'
+# Still `arrived`: a failed guess must not move the booking.
+- assertVisible: 'Arrived'
+
+# ── The right code starts the job ───────────────────────────────────────────
+- tapOn:
+    id: 'One-time code'
+- inputText: '482913'
+- tapOn:
+    id: 'Start trip'
+- assertVisible: 'In Progress'
+# The keypad is gone: §5.1 has no way back into `arrived`.
+- assertNotVisible: 'Ask the customer for their 6-digit code'
+# And the meter stops — `useWaitingCharge` freezes at `startedAt`, because after
+# the OTP the driver is towing, not waiting.
+- assertNotVisible: 'Waiting 16 min'
+
+# ── §5.2: complete ──────────────────────────────────────────────────────────
+- assertVisible: 'Complete job'
+- tapOn:
+    id: 'Complete job'
+- assertVisible: 'Complete this job?'
+- tapOn: 'Complete'
+
+# ── The driver is idle again ────────────────────────────────────────────────
+# `GET /driver/jobs/current` is scoped to ACTIVE statuses, so a completed job
+# leaves the driver available — which is what the mock reproduces.
+- assertVisible: 'Completed'

@@ -73,12 +73,52 @@ describe('the §5.1 forward path is walkable end to end', () => {
     // The one that matters most: §5.1 reaches IN_PROGRESS only through OTP
     // verification, so a driver must not be able to jump ARRIVED.
     expect(BookingStateMachineService.isLegal('en_route', 'in_progress')).toBe(false);
-    expect(BookingStateMachineService.isLegal('assigned', 'arrived')).toBe(false);
     expect(BookingStateMachineService.isLegal('searching', 'en_route')).toBe(false);
     expect(BookingStateMachineService.isLegal('in_progress', 'paid')).toBe(false);
+    // Nothing reaches a booking's end without going through the driver's chain.
+    expect(BookingStateMachineService.isLegal('assigned', 'completed')).toBe(false);
+    expect(BookingStateMachineService.isLegal('arrived', 'completed')).toBe(false);
   });
 
-  it('never runs backwards', () => {
+  /**
+   * The one skip that IS legal, and why (Phase 18).
+   *
+   * §5.2's `arriving` step is derived from MOVEMENT — `EnRouteWatcher` fires
+   * `en_route` when the driver gets 150 m from where they accepted. A driver
+   * offered a vehicle parked fifty metres away never trips that, so refusing
+   * `assigned → arrived` would 409 them on a job they are standing next to.
+   *
+   * What stops this being a loophole for starting §7.4's waiting clock early is
+   * NOT the table — it is `JobExecutionService.arrived`'s proximity check
+   * against the driver's last fix, which guards `en_route → arrived` exactly as
+   * much. Asserted in `job-execution.e2e.spec.ts`.
+   */
+  it('lets a driver who was already at the pickup mark arrival directly', () => {
+    expect(BookingStateMachineService.isLegal('assigned', 'arrived')).toBe(true);
+  });
+
+  /**
+   * ONE BACKWARD EDGE EXISTS, AND IT IS ENUMERATED HERE RATHER THAN EXCUSED.
+   *
+   * This test asserted a strict forward-only order until Phase 18, which added
+   * §5.2's `unable_to_deliver` branch: a driver who cannot deliver — customer
+   * not there, wrong address, refused — puts the booking back into §6.5's
+   * search. §3.5 requires it ("trigger automatic re-dispatch", "never charge the
+   * customer"), and neither alternative is acceptable: cancelling ends a trip the
+   * customer never cancelled, and staying put strands them.
+   *
+   * The allowance is a LITERAL SET, not a relaxed rule. Anything that runs
+   * backwards and is not in this set still fails, so the next phase that wants
+   * an edge has to come here and say which one.
+   */
+  const LEGAL_BACKWARD_EDGES = new Set([
+    // §5.2's unable-to-deliver, from each state a driver can hold a job in.
+    'assigned→searching',
+    'en_route→searching',
+    'arrived→searching',
+  ]);
+
+  it('never runs backwards, except for §5.2 unable-to-deliver', () => {
     const order: JobStatus[] = [
       'searching',
       'assigned',
@@ -90,12 +130,36 @@ describe('the §5.1 forward path is walkable end to end', () => {
     ];
     for (let i = 0; i < order.length; i += 1) {
       for (let j = 0; j < i; j += 1) {
+        const from = order[i]!;
+        const to = order[j]!;
+        const expected = LEGAL_BACKWARD_EDGES.has(`${from}→${to}`);
         expect(
-          BookingStateMachineService.isLegal(order[i]!, order[j]!),
-          `${order[i]} must not go back to ${order[j]}`,
-        ).toBe(false);
+          BookingStateMachineService.isLegal(from, to),
+          expected
+            ? `${from} → ${to} is §5.2's unable-to-deliver and must stay legal`
+            : `${from} must not go back to ${to}`,
+        ).toBe(expected);
       }
     }
+  });
+
+  /**
+   * The cycle §5.2 introduces is bounded, and this says by what.
+   *
+   * `assigned → searching → assigned` is a genuine loop in a table that is
+   * otherwise a DAG. What stops a booking bouncing between drivers forever is
+   * not the transition table — it is `bookings.dispatch_deadline_at`, which
+   * `DispatchService.redispatch` extends rather than clears, so the search runs
+   * out of time and lands on `no_drivers_found` like any other.
+   *
+   * Asserted here because the guarantee lives in two files and the one somebody
+   * reads first is this one.
+   */
+  it('leaves in_progress with no way back to searching', () => {
+    // Past the OTP the vehicle is on the truck. There is no honest re-dispatch
+    // from here — the branch out is `disputed`, which is ops review.
+    expect(BookingStateMachineService.isLegal('in_progress', 'searching')).toBe(false);
+    expect(BookingStateMachineService.isLegal('in_progress', 'disputed')).toBe(true);
   });
 });
 

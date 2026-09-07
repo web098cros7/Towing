@@ -9,6 +9,7 @@ import {
   walletTxnTypeEnum,
 } from './enums';
 import { bookings } from './bookings';
+import { adminUsers } from './admin';
 
 /**
  * Money is ledger-first (§3.4): `wallets.balance` is a cached projection and
@@ -64,12 +65,40 @@ export const payments = pgTable(
     bookingId: uuid('booking_id')
       .notNull()
       .references(() => bookings.id),
+    /** Razorpay `pay_…`, set once the gateway confirms a capture. */
     gatewayRef: text('gateway_ref'),
+    /**
+     * Razorpay `order_…`. A different object with a different lifetime from
+     * `gateway_ref`, and a webhook can legitimately arrive keyed on either —
+     * which is why both carry their own partial unique index.
+     */
+    gatewayOrderRef: text('gateway_order_ref'),
     amount: money('amount').notNull(),
+    /** The GST component of `amount`, mirrored from the booking. Zero today. */
+    taxAmount: money('tax_amount').notNull().default('0'),
     method: paymentMethodEnum('method').notNull(),
     status: paymentStatusEnum('status').notNull().default('pending'),
-    idempotencyKey: text('idempotency_key'),
+    /**
+     * `booking` or `cancellation_fee`. §3.5's fee is a genuinely separate
+     * collection against the same booking, so it needs its own row — and
+     * `uq_payments_one_captured_per_booking` is scoped to `booking` so the two
+     * can coexist.
+     */
+    purpose: text('purpose').notNull().default('booking'),
+    /** Which adapter created it — `dev` rows must be obvious in a prod dump. */
+    provider: text('provider'),
+    /** Populated on `failed`; rendered verbatim to the customer. */
+    failureReason: text('failure_reason'),
+    /**
+     * NOT NULL since 0016. It was nullable under a GLOBAL unique index from
+     * 0001, and Postgres treats NULLs as distinct — so a keyless payment was
+     * exempt from the dedup §14.1 requires. The same hole 0006 closed on
+     * `wallet_transactions`.
+     */
+    idempotencyKey: text('idempotency_key').notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique('uq_payments_idempotency_key').on(t.idempotencyKey),
@@ -108,6 +137,23 @@ export const payouts = pgTable(
     provider: text('provider'),
     /** Last time the reconciliation poll asked the provider for the truth. */
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    /**
+     * §14.4's Finance gate, and deliberately NOT a `payout_status` value.
+     *
+     * `payout_status` is the VENDOR lifecycle; approval decides whether the
+     * vendor is called at all. Keeping them on separate axes means a payout
+     * awaiting approval is still `status = 'requested'` and is therefore
+     * already inside `uq_payouts_one_open_per_owner`'s predicate — so an owner
+     * cannot queue five while Finance sleeps, with no change to that index.
+     *
+     * `auto_approved` is the default because everything at or below
+     * `charge_config.payout_auto_approve_max` skips the queue entirely.
+     */
+    approvalState: text('approval_state').notNull().default('auto_approved'),
+    approvedBy: uuid('approved_by').references(() => adminUsers.id),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    /** Required on reject; surfaced to the owner so they know what to fix. */
+    rejectionReason: text('rejection_reason'),
     requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
     paidAt: timestamp('paid_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -119,11 +165,16 @@ export const payouts = pgTable(
 );
 
 /**
- * §14.5. No `idempotency_key` column, unlike every other money table — that
- * matches §17's schema exactly, and no refund writer exists yet (the customer
- * app and the admin console own that path in Track B). Adding a nullable column
- * plus a unique index now would mean inventing a key grammar for a writer that
- * does not exist, then altering it later. Whichever phase ships refunds adds it.
+ * §14.5. Phase 19 gave this table its first writer (`RefundsService`) and, with
+ * it, the `idempotency_key` the previous docstring deferred to "whichever phase
+ * ships refunds". The grammar it invented is `rf:v1:<bookingId>:<reason>` —
+ * booking-scoped because there is at most one refund per booking per reason,
+ * while the LEDGER leg keys are refund-scoped (`rf:v1:<refundId>:driver`)
+ * because one booking can carry a cancellation refund and later a dispute one.
+ *
+ * A reversal is always a NEW leg with the opposite sign, never an edit — §14.5's
+ * "compensating ledger entries (never edits)", which `sole-writer.spec.ts`
+ * enforces mechanically.
  */
 export const refunds = pgTable(
   'refunds',
@@ -136,7 +187,16 @@ export const refunds = pgTable(
     reason: text('reason'),
     gatewayRef: text('gateway_ref'),
     status: refundStatusEnum('status').notNull().default('pending'),
+    idempotencyKey: text('idempotency_key').notNull(),
+    /** `system` for the §3.5 cancellation path, an admin id for a dispute. */
+    initiatedBy: text('initiated_by').notNull().default('system'),
+    failureReason: text('failure_reason'),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('idx_refunds_booking').on(t.bookingId)],
+  (t) => [
+    unique('uq_refunds_idempotency_key').on(t.idempotencyKey),
+    index('idx_refunds_booking').on(t.bookingId),
+  ],
 );

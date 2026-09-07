@@ -101,7 +101,8 @@ export const bookingsMockSource: BookingsDataSource = {
     await delay(400);
     const booking = created.find((b) => b.id === bookingId);
     if (booking) booking.status = 'cancelled';
-    return { id: bookingId, status: 'cancelled', tier: 'free', feePaise: 0 };
+    // The FREE tier, so no fee and nothing to compensate a driver with.
+    return { id: bookingId, status: 'cancelled', tier: 'free', feePaise: 0, driverCompensationPaise: 0 };
   },
 
   async getOtp(): Promise<BookingOtpResponse> {

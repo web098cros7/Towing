@@ -49,6 +49,12 @@ import { PresenceStore } from './presence-store';
     DriverPresenceRepo,
     PresenceStore,
     DriverGateway,
+    /**
+     * Exported for Phase 18's completion path: §11.2's trip replay wants the
+     * last positions, and the flush is otherwise on a ~30 s timer that a driver
+     * who finishes a job and immediately goes offline can beat.
+     */
+    LocationFlushService,
   ],
 })
 export class DriverPresenceModule {}

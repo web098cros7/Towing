@@ -73,11 +73,13 @@ describe('seed (deterministic dataset + §14 invariants)', () => {
     await expect(runSeed(db, { reset: false })).resolves.toBeNull();
   });
 
-  it('holds all three §14 money invariants', async () => {
+  it('holds every §14 money invariant', async () => {
     await expect(verifySeedInvariants(db)).resolves.toEqual({
       walletDrift: 0,
       bookingDrift: 0,
       ledgerDrift: 0,
+      reversalDrift: 0,
+      couponDrift: 0,
     });
   });
 

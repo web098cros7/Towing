@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { BookingsModule } from '../bookings/bookings.module';
 import { DriverPresenceModule } from '../driver-presence/driver-presence.module';
 import { PricingModule } from '../pricing/pricing.module';
+import { TrackingModule } from '../tracking/tracking.module';
 import { CandidateSelectionService } from './candidate-selection.service';
 import { DispatchController } from './dispatch.controller';
 
@@ -29,13 +30,21 @@ import { OfferService } from './offer.service';
  * Every one of those had to be functioning before a candidate could be filtered.
  * Notifications, the queue, Redis and the DB are `@Global()`.
  *
- * Exports `DispatchService` for Phase 18's §6.5 re-dispatch (a driver who
- * cancels an assigned job puts the booking back into the search). The kill
- * switches live in `common/killswitch` and are `@Global()` — all three ticket
- * routes read them, and none of those should import a dispatch module.
+ * `TrackingModule` (18) joins the list: `afterAssign` fires the one Directions
+ * call this booking will ever make, and assignment is the only moment at which
+ * both endpoints of the route are known. The edge points this way and not back —
+ * `TrackingModule` knows nothing about dispatch.
+ *
+ * Exports `DispatchService` and `DispatchRepo` for Phase 18's §6.5 re-dispatch
+ * (a driver who cannot deliver puts the booking back into the search, and the
+ * attempt is recorded for §9.4.6's inspector). The docblock claimed this export
+ * from Phase 17 while the `exports` key was absent — reaching for it is what
+ * found that. The kill switches live in `common/killswitch` and are `@Global()`
+ * — all three ticket routes read them, and none of those should import a
+ * dispatch module.
  */
 @Module({
-  imports: [AuthModule, DriverPresenceModule, BookingsModule, PricingModule],
+  imports: [AuthModule, DriverPresenceModule, BookingsModule, PricingModule, TrackingModule],
   controllers: [DispatchController],
   providers: [
     DispatchService,
@@ -43,5 +52,6 @@ import { OfferService } from './offer.service';
     OfferService,
     DispatchRepo,
   ],
+  exports: [DispatchService, DispatchRepo, OfferService],
 })
 export class DispatchModule {}

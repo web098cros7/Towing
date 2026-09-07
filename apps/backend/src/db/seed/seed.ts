@@ -54,7 +54,7 @@ import {
   type FleetFixture,
 } from './fixtures';
 import type { SurgeBand } from '@towing/api-contracts';
-import { DEFAULT_PRICING_RULES } from '../../modules/pricing/pricing.math';
+import { DEFAULT_CHARGE_CONFIG, DEFAULT_PRICING_RULES } from '../../modules/pricing/pricing.math';
 import {
   BAND_PCT,
   commissionPaise,
@@ -202,6 +202,8 @@ export interface SeedInvariants {
   walletDrift: number;
   bookingDrift: number;
   ledgerDrift: number;
+  reversalDrift: number;
+  couponDrift: number;
 }
 
 interface SeededDriver {
@@ -895,6 +897,34 @@ export async function runSeed(
         driverPayout: progressed || settled ? toRupees(poolPaise) : '0.00',
         bookingOtpHash: driver ? otpCodeHash(rng) : null,
         otpVerified: progressed,
+
+        /**
+         * §7.4's waiting rules, snapshotted as §3.4 requires (migration 0015).
+         *
+         * The seed is the executable specification for a booking's shape, so a
+         * seeded row that lacked these would be a booking `complete` could not
+         * finalize the same way a real one does — and the fallback it takes
+         * instead (15 / ₹5) would silently agree, hiding the gap.
+         *
+         * Written unconditionally rather than only for progressed bookings: they
+         * are locked at CONFIRM, so every booking has them from the moment it
+         * exists, including one that was cancelled during the search.
+         */
+        waitingFreeMinutes: DEFAULT_CHARGE_CONFIG.waitingFreeMinutes,
+        waitingPerMinute: toRupees(DEFAULT_CHARGE_CONFIG.waitingPerMinutePaise),
+
+        /**
+         * §5.2's instants for the bookings that reached those states.
+         *
+         * `booking_status_history` already carries the transitions; these are the
+         * denormalised copies the app renders from, and a seeded `completed`
+         * booking with a null `completed_at` would make the fixture data
+         * distinguishable from real data in exactly the place Phase 18's screens
+         * read.
+         */
+        arrivedAt: progressed ? new Date(createdAt.getTime() + 12 * 60_000) : null,
+        startedAt: progressed ? new Date(createdAt.getTime() + 18 * 60_000) : null,
+        completedAt: settled || status === 'completed' ? (paidAt ?? createdAt) : null,
         cancelledBy: status === 'cancelled' ? (cancelledByDriver ? 'driver' : 'customer') : null,
         cancellationReason:
           status === 'cancelled' ? (cancelledByDriver ? 'Vehicle issue' : 'Customer cancelled') : null,
@@ -1020,7 +1050,14 @@ export async function runSeed(
           method: bookingRows[i]!.paymentMethod ?? 'upi',
           status: 'captured',
           idempotencyKey: `seed:v1:pay:${i}`,
+          // Phase 19 columns. `purpose` is what lets a §3.5 cancellation fee
+          // coexist with a fare on one booking under
+          // `uq_payments_one_captured_per_booking`.
+          purpose: 'booking',
+          provider: 'dev',
+          capturedAt: b.paidAt!,
           createdAt: b.paidAt!,
+          updatedAt: b.paidAt!,
         });
 
         // §14.3: pool splits at the payout layer; ledger legs must sum to the

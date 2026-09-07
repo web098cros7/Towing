@@ -9,6 +9,7 @@ import {
   type BookingDetail,
   type BookingListResponse,
   type BookingOtpResponse,
+  type CancellationQuote,
   type WsTicketResponse,
 } from '@towing/api-contracts';
 import { z } from 'zod';
@@ -122,6 +123,22 @@ export class BookingsController {
     @Req() request: AuthedRequest,
   ): Promise<WsTicketResponse> {
     return this.bookings.issueRealtimeTicket(customerId(request), bookingId);
+  }
+
+  /**
+   * §9.1.7's "cancel button (policy-aware, shows fee before confirming)".
+   *
+   * A READ, not a mutation, and it runs the SAME `cancellationPolicy()` the
+   * cancel route below runs. Two implementations of §3.5 — one to quote and one
+   * to charge — is the arrangement where a customer is shown ₹0 and billed ₹150,
+   * and Phase 19 is the phase that starts collecting.
+   */
+  @Get(':id/cancellation-quote')
+  cancellationQuote(
+    @ZodParam(z.uuid(), 'id') bookingId: string,
+    @Req() request: AuthedRequest,
+  ): Promise<CancellationQuote> {
+    return this.bookings.cancellationQuote(customerId(request), bookingId);
   }
 
   /**

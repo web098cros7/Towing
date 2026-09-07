@@ -5,7 +5,7 @@ import { Card, Text, Skeleton, type IconComponent } from '@towing/ui';
 import { MapPin, Wallet, Truck, Route, Clock, Car, MessageCircle } from '@/icons';
 import { Pill } from '@/components/Pill';
 import { driverColors } from '@/theme/driverColors';
-import { formatINR } from '@/utils/format';
+import { formatPaise } from '@/utils/format';
 import type { JobPayment } from '@/features/jobs/types';
 import type { JobOffer } from '../types';
 import { Pressable } from '@/motion';
@@ -118,7 +118,7 @@ export function OfferCard({
         />
         <View style={{ alignItems: 'flex-end' }}>
           <Text weight="medium" tabular style={{ fontSize: 22, lineHeight: 29 }}>
-            {formatINR(offer.earnings.netPaise / 100)}
+            {formatPaise(offer.earnings.netPaise)}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={{ fontSize: 14, lineHeight: 22, color: driverColors.online }}>

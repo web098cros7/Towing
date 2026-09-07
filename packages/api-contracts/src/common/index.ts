@@ -9,3 +9,4 @@ export * from './money';
 export * from './notifications';
 export * from './pagination';
 export * from './pricing';
+export * from './ratings';

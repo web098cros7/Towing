@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { LOW_ACCURACY_METERS, PING_CADENCE, type DriverLocationPing } from '@towing/api-contracts';
 import { presenceDataSource } from '@/features/presence/api/presenceDataSource';
+import { clearLastFix, recordLastFix } from './lastFixStore';
 import { bufferPing, clearBufferedUpTo, nextSeq, readBuffer } from './pingBuffer';
 
 /**
@@ -79,6 +80,24 @@ function enqueue(location: Location.LocationObject): void {
   };
 
   bufferPing(ping);
+
+  /**
+   * The app's own copy (Phase 18), for §11.5's arrival assist.
+   *
+   * HERE RATHER THAN IN A SECOND WATCHER: this handler already has the freshest
+   * fix the OS will give us, and subscribing again from a screen would run two
+   * GPS streams for one position — double the battery against §11.10's drain
+   * budget — and would go blind the moment the screen unmounted, which is
+   * exactly when a driver is approaching a pickup with the phone in a cradle.
+   */
+  recordLastFix({
+    lat: ping.lat,
+    lng: ping.lng,
+    accuracyM: ping.accuracyM ?? null,
+    speedKph: ping.speedKph ?? null,
+    headingDeg: ping.headingDeg ?? null,
+    atMs: location.timestamp,
+  });
 }
 
 let flushing = false;
@@ -202,6 +221,10 @@ export async function stop(): Promise<void> {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK).catch(() => undefined);
   }
   await flush();
+  // Capture has stopped, so the last fix is now only getting older. Holding it
+  // would let the arrival assist compare a pickup against a position from the
+  // end of the previous shift.
+  clearLastFix();
 }
 
 /** One immediate fix, for the go-online call — which cannot resolve a zone without one. */

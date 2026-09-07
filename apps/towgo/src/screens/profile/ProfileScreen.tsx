@@ -27,7 +27,6 @@ import { useProfile } from '@/features/account/api/profile.queries';
 import { useVehicles } from '@/features/account/api/vehicles.queries';
 import { useAddresses } from '@/features/account/api/addresses.queries';
 import { useUnreadCount } from '@/features/notifications/api/notifications.queries';
-import { paymentMethodsMock } from '@/features/account/data/paymentMethods.mock';
 import { ProfileHeroCard } from '@/features/account/components/ProfileHeroCard';
 import {
   QuickTile,
@@ -72,7 +71,12 @@ export function ProfileScreen() {
       !!profile?.email?.trim(),
       vehicleCount > 0,
       addressCount > 0,
-      paymentMethodsMock.length > 0,
+      // ⚠ THE SIXTH CHECK WAS `paymentMethodsMock.length > 0` — a hardcoded
+      // fixture that was ALWAYS non-empty, so this term contributed a constant
+      // 1/6 to every customer's completion percentage regardless of anything
+      // they had done. Phase 19 removed the mock (Razorpay's sheet owns saved
+      // instruments — §9.1.9's "no raw card data stored"), so the term goes
+      // with it rather than being replaced by another always-true one.
     ];
     const done = checks.filter(Boolean).length;
     return Math.round((done / checks.length) * 100);

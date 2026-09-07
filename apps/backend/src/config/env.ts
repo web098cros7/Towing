@@ -211,8 +211,69 @@ const EnvSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_BASE_URL: z.url().default('https://api.razorpay.com'),
 
-  /** §19.3's 2–5 s external-call budget. */
+  /** §19.3's 2–5 s external-call budget. Shared by both Razorpay adapters. */
   RAZORPAY_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+
+  // ── Payment gateway, money IN (Phase 19) ────────────────────────────
+
+  /**
+   * §14.2's gateway, on its own switch — separate from `PAYOUT_PROVIDER`
+   * because Razorpay's payment gateway and RazorpayX Route are different
+   * products with independent availability, separate dashboards and separate
+   * webhook secrets. One switch for both would mean a payouts outage
+   * configured a customer out of paying.
+   *
+   * The same credentials serve both (`RAZORPAY_KEY_ID`/`_SECRET` above): one
+   * merchant, one base URL. `assertProductionSafety` refuses to boot production
+   * on `dev`.
+   */
+  PAYMENT_GATEWAY: z.enum(['dev', 'razorpay']).default('dev'),
+
+  /**
+   * HMAC-SHA256 key for the payment half of `POST /v1/webhooks/razorpay`.
+   *
+   * DISTINCT from `PAYOUT_WEBHOOK_SECRET`, because the two products are
+   * configured in separate dashboards and are not obliged to share one. The
+   * webhook controller verifies against BOTH and routes by whichever matched,
+   * so a deployment that does share one secret still works.
+   */
+  PAYMENT_WEBHOOK_SECRET: z.string().min(16).default('dev-only-payment-webhook-secret-change-me'),
+
+  /**
+   * How long the dev gateway waits before reporting a payment `captured`.
+   *
+   * DEFAULT 0, unlike `PAYOUT_DEV_SETTLE_MS`'s 5000, and the asymmetry is
+   * honest rather than convenient: a bank transfer is asynchronous by nature,
+   * while a UPI or card capture is synchronous from the app's point of view —
+   * the sheet returns success. Zero also means the whole chain runs with NO
+   * QUEUE AT ALL, which is what the test suite needs (`QUEUE_ENABLED=false`,
+   * where a delayed job never fires). Raise it locally to watch §19.2's
+   * COMPLETED (unpaid) state.
+   */
+  PAYMENT_DEV_SETTLE_MS: z.coerce.number().int().min(0).default(0),
+
+  /**
+   * §19.3's payment status sweep — "a missed webhook is reconciled by
+   * scheduled polling (e.g., payment status sweep every 5 min)", almost
+   * verbatim. A BullMQ repeatable, not a cron: `QueuePort.schedule` keys the
+   * timer in Redis so N Fargate tasks converge on one, which is exactly the
+   * double-capture the §19.4 idempotency ladder should never have to catch.
+   */
+  PAYMENT_RECONCILE_CRON: z.string().default('*/5 * * * *'),
+
+  /**
+   * A payment the gateway has never confirmed after this long is marked
+   * `failed` — and the BOOKING STAYS `completed`, per §19.2. Longer than the
+   * payout equivalent (15) because a customer can legitimately leave a UPI
+   * collect request pending for a while before approving it in their bank app.
+   */
+  PAYMENT_STUCK_MINUTES: z.coerce.number().int().positive().default(30),
+
+  /**
+   * §12.2's weekly earnings summary. Monday 03:30 UTC = 09:00 IST, chosen so
+   * it lands in a driver's morning rather than overnight.
+   */
+  EARNINGS_WEEKLY_CRON: z.string().default('30 3 * * 1'),
 
   // ── Hardening: multi-instance, observability (Phase 8) ──────────────────
 
@@ -462,6 +523,99 @@ const EnvSchema = z.object({
   ROUTING_TIMEOUT_MS: z.coerce.number().int().positive().default(1_500),
 
   /**
+   * §11.4/§11.5 route lines and ETAs (Phase 18). `haversine` is the LIVE DEFAULT
+   * and a first-class §19.2 path for the same reason `ROUTING_PROVIDER`'s is.
+   *
+   * A THIRD SWITCH RATHER THAN A FOURTH USE OF `ROUTING_PROVIDER`, on the
+   * argument `GEOCODING_PROVIDER` already won: Directions is enabled and billed
+   * independently of Distance Matrix in Google Cloud — it is currently enabled
+   * and dormant on the project (SETUP-CHECKLIST item 7) — so "routes on, fare
+   * distances off" is a real configuration somebody will want on the day the
+   * Directions bill surprises them.
+   */
+  DIRECTIONS_PROVIDER: z.enum(['haversine', 'google_directions']).default('haversine'),
+
+  GOOGLE_DIRECTIONS_URL: z
+    .url()
+    .default('https://maps.googleapis.com/maps/api/directions/json'),
+
+  /**
+   * §19.3's full 2–5 s band, unlike `ROUTING_TIMEOUT_MS` — and the contrast is
+   * the point. Distance Matrix runs inside §7.6's 2-second estimate guarantee
+   * with a customer waiting on a price. This runs once at assignment, after the
+   * customer has been told a driver is coming, on a screen that works without
+   * it. Nothing is blocked, so patience is cheap and a route obtained slowly
+   * beats a straight line for the whole trip.
+   */
+  DIRECTIONS_TIMEOUT_MS: z.coerce.number().int().positive().default(4_000),
+
+  /**
+   * §19.8's kill switch for the one thing in this system billed per call on an
+   * account with **no hard spend cap** — both cap routes were checked and both
+   * are closed for Maps (SETUP-CHECKLIST item 7).
+   *
+   * Off means every trip still gets a route line and an ETA; they are straight
+   * and labelled `haversine`. That is a degradation, not an outage, and it is
+   * reachable without a deploy at two in the morning.
+   */
+  DIRECTIONS_ENABLED: z.coerce.boolean().default(true),
+
+  /**
+   * Great-circle → road correction for the ETA fallback, mirroring §7.4's
+   * `charge_config.haversine_road_factor` (which is a PRICING knob and stays
+   * where the other rates live). Measured over seven real Bengaluru/Chennai
+   * routes: mean 1.307, median 1.304, spread 1.203–1.419 — SETUP-CHECKLIST
+   * item 7 records the table.
+   */
+  HAVERSINE_ROUTE_FACTOR: z.coerce.number().positive().default(1.3),
+
+  /**
+   * Assumed average speed for the straight-line ETA, km/h. Urban Indian traffic
+   * with a tow truck — deliberately pessimistic, because §11.5's whole purpose
+   * is that the number does not lurch upward later, and an ETA that improves is
+   * a much better experience than one that slips.
+   */
+  FALLBACK_SPEED_KPH: z.coerce.number().positive().default(22),
+
+  /**
+   * Public origin of the §11.7 share page, e.g. `https://towing.app`. The
+   * `/t/{token}` URL is composed SERVER-SIDE and returned whole, exactly as
+   * `wsUrl` rides the realtime ticket response — relocating the page must not
+   * need a mobile release, and two apps composing it themselves would eventually
+   * compose it differently.
+   */
+  PUBLIC_TRACK_BASE_URL: z.url().default('http://localhost:3000'),
+
+  /**
+   * §11.7's "expires when the trip completes (+30 min grace)". A knob rather
+   * than a constant because the grace exists for a human — somebody following
+   * the link who wants to see it ended well — and how long that is worth is an
+   * operations question.
+   */
+  SHARE_LINK_GRACE_MINUTES: z.coerce.number().int().positive().default(30),
+
+  /**
+   * §9.1.7 / §9.2.3's call button, behind `TelephonyPort` (Phase 18).
+   *
+   * `direct` is the LIVE DEFAULT and the permanent local path — but unlike
+   * `haversine` or `local` it is NOT a first-class §19.2 rung, and the difference
+   * matters. A straight-line ETA is a worse answer to the same question; a direct
+   * dial answers a different question, because it hands over a personal phone
+   * number that the masked path would never have disclosed. It is honest for
+   * development and refused in production (see `assertProductionSafety`).
+   *
+   * No provider account exists — SETUP-CHECKLIST item 13, still open.
+   */
+  TELEPHONY_PROVIDER: z.enum(['direct', 'exotel']).default('direct'),
+
+  EXOTEL_BASE_URL: z.url().default('https://api.exotel.com/v1/Accounts'),
+  EXOTEL_SID: z.string().optional(),
+  EXOTEL_TOKEN: z.string().optional(),
+  /** The DID the connect leg originates from. Exotel issues it with the account. */
+  EXOTEL_CALLER_ID: z.string().optional(),
+  EXOTEL_TIMEOUT_MS: z.coerce.number().int().positive().default(4_000),
+
+  /**
    * §9.1.5 address search. `local` is the LIVE DEFAULT and a first-class §19.2
    * path, not a stub: no Places key exists (SETUP-CHECKLIST item 7), and a
    * gazetteer over the two seeded cities exercises the whole typed-address flow
@@ -572,6 +726,18 @@ export function assertProductionSafety(env: Env): void {
     throw new Error('PAYOUT_WEBHOOK_SECRET is still the development placeholder');
   }
 
+  // Same standing, same reason, other direction: a gateway that reports every
+  // payment captured with no bank involved credits drivers from money nobody
+  // ever sent — and every ledger invariant stays green while it does, because
+  // they all reconcile against what the booking SAYS it charged.
+  if (env.PAYMENT_GATEWAY === 'dev') {
+    throw new Error('The dev payment gateway must never run in production — set PAYMENT_GATEWAY');
+  }
+
+  if (env.PAYMENT_WEBHOOK_SECRET.includes('dev-only')) {
+    throw new Error('PAYMENT_WEBHOOK_SECRET is still the development placeholder');
+  }
+
   if (!env.RAZORPAY_KEY_ID || !env.RAZORPAY_KEY_SECRET) {
     throw new Error('RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required in production');
   }
@@ -639,6 +805,39 @@ export function assertProductionSafety(env: Env): void {
   // to call.
   if (env.GEOCODING_PROVIDER === 'google_places' && !env.GOOGLE_MAPS_API_KEY) {
     throw new Error('GOOGLE_MAPS_API_KEY is required when GEOCODING_PROVIDER=google_places');
+  }
+
+  // Directions, identically (Phase 18). `haversine` in production is ALLOWED and
+  // is what the breaker falls back to; the misconfiguration is refused.
+  if (env.DIRECTIONS_PROVIDER === 'google_directions' && !env.GOOGLE_MAPS_API_KEY) {
+    throw new Error('GOOGLE_MAPS_API_KEY is required when DIRECTIONS_PROVIDER=google_directions');
+  }
+
+  // §11.7's share links are composed against this origin and sent to people
+  // outside the app — over WhatsApp, to a spouse standing beside a broken car.
+  // A production build that ships `http://localhost:3000` produces a link that
+  // is not merely broken but confusing, and it is unrecoverable once sent.
+  if (env.PUBLIC_TRACK_BASE_URL.includes('localhost')) {
+    throw new Error('PUBLIC_TRACK_BASE_URL must be a public origin in production');
+  }
+
+  // §11.7 and §9.1.7 both promise the other party can be reached WITHOUT either
+  // real number being exposed. The direct-dial adapter is the permanent local
+  // path and an honest dev default — in production it publishes a customer's
+  // personal mobile to every driver who is offered their job, which is a privacy
+  // commitment (§20.4) broken by a default rather than a decision.
+  //
+  // Same standing as `PAYOUT_PROVIDER=dev`, and refused for the same reason: it
+  // works, which is exactly what makes shipping it by accident plausible. The
+  // masked-calling account is SETUP-CHECKLIST item 13.
+  if (env.TELEPHONY_PROVIDER === 'direct') {
+    throw new Error(
+      'TELEPHONY_PROVIDER=direct exposes both parties real numbers — configure a masked-calling provider in production',
+    );
+  }
+
+  if (env.TELEPHONY_PROVIDER === 'exotel' && (!env.EXOTEL_SID || !env.EXOTEL_TOKEN)) {
+    throw new Error('EXOTEL_SID and EXOTEL_TOKEN are required when TELEPHONY_PROVIDER=exotel');
   }
 }
 

@@ -5,7 +5,7 @@ import { Text } from '@towing/ui';
 import { ArrowRight } from '@/icons';
 import { IconChip } from '@/components/IconChip';
 import { driverColors } from '@/theme/driverColors';
-import { formatINR } from '@/utils/format';
+import { formatPaise } from '@/utils/format';
 import { JOB_STATUS_META } from '@/features/jobs/statusMeta';
 import type { RecentJob } from '../types';
 import { Pressable } from '@/motion';
@@ -25,7 +25,7 @@ export function RecentActivityRow({ item, onPress }: { item: RecentJob; onPress?
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${item.vehicleName}, ${meta.label}, ${formatINR(item.fare)}`}
+      accessibilityLabel={`${item.vehicleName}, ${meta.label}, ${formatPaise(item.farePaise)}`}
       style={() => ({
         flexDirection: 'row',
         alignItems: 'center',
@@ -53,7 +53,7 @@ export function RecentActivityRow({ item, onPress }: { item: RecentJob; onPress?
 
       <View style={{ alignItems: 'flex-end', gap: 2 }}>
         <Text weight="medium" tabular style={{ fontSize: 15, lineHeight: 22 }}>
-          {formatINR(item.fare)}
+          {formatPaise(item.farePaise)}
         </Text>
         <Text style={{ fontSize: 12, lineHeight: 17, color: statusColor }}>{meta.label}</Text>
       </View>

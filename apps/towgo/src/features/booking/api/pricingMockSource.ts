@@ -77,8 +77,13 @@ export const pricingMockSource: PricingDataSource = {
         nightPaise: 0,
         highwayPaise: 0,
         accidentPaise,
+        // Zero on an estimate, both for the same reason: nobody has waited
+        // on-site yet, and §14's tax is applied at confirm against the rate
+        // snapshotted onto the booking.
+        waitingPaise: 0,
         surgePaise,
         discountPaise: 0,
+        taxPaise: 0,
         totalPaise: preSurge + surgePaise,
       },
       surgeActive: surgePaise > 0,

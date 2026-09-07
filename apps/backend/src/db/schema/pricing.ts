@@ -157,6 +157,54 @@ export const chargeConfig = pgTable('charge_config', {
   haversineRoadFactor: numeric('haversine_road_factor', { precision: 4, scale: 2 })
     .notNull()
     .default('1.30'),
+
+  /**
+   * §14 GST on the fare. DEFAULTS TO ZERO, so nothing computes differently
+   * until somebody sets it — which is the entire point of shipping the tax
+   * schema in Phase 19 rather than migrating live money rows later. The rate
+   * itself needs an Indian indirect-tax professional, not an engineer; see
+   * ToBeDoneEhsan.md. `tax_label` is what the invoice prints beside the line.
+   */
+  taxPct: numeric('tax_pct', { precision: 5, scale: 2 }).notNull().default('0.00'),
+  taxLabel: text('tax_label').notNull().default('GST'),
+
+  /**
+   * §3.5's cancellation ladder. These three were TypeScript `export const`s in
+   * `cancellation-policy.ts` from Phase 15, whose own comment promised the
+   * admin-configurable versions to Phase 19. The defaults reproduce those
+   * constants exactly, so the §3.5 worked examples in
+   * `cancellation-policy.spec.ts` keep passing untouched.
+   */
+  cancelFreeMinutes: integer('cancel_free_minutes').notNull().default(2),
+  cancelPartialMinutes: integer('cancel_partial_minutes').notNull().default(10),
+  cancelPartialFee: money('cancel_partial_fee').notNull().default('150.00'),
+
+  /**
+   * The driver's share of a chargeable cancellation fee.
+   *
+   * 50, NOT ZERO — and the asymmetry with `tax_pct` above is deliberate.
+   * `tax_pct` is zero to keep behaviour byte-identical, but there is no
+   * equivalent "today" here: every chargeable tier was refused outright with
+   * 409 `cancellation_not_free` until Phase 19, so this is the first release in
+   * which the branch is reachable at all. §3.5 says the driver IS compensated
+   * when a customer cancels on them; a 0 % default would quietly stiff them on
+   * the very first one.
+   */
+  cancelDriverCompPct: numeric('cancel_driver_comp_pct', { precision: 5, scale: 2 })
+    .notNull()
+    .default('50.00'),
+
+  /**
+   * §14.4's Finance gate. "Admin Finance approves where required" never says
+   * WHICH payouts require it; this is the answer. At or below the threshold a
+   * payout auto-approves and goes straight to the provider; above it, it waits
+   * in §9.4.10's queue. ₹1,000.00 at launch.
+   *
+   * FLEET PAYOUTS JOIN THIS RULE. They bypassed approval entirely from Phase 7
+   * until Phase 19 — a behaviour change, not a new feature, and one that
+   * belongs in a release note.
+   */
+  payoutAutoApproveMax: money('payout_auto_approve_max').notNull().default('100000.00'),
   ...timestamps,
 });
 

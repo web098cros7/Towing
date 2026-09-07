@@ -2,16 +2,19 @@
 export const formatEta = (minutes: number): string => `${minutes} min${minutes === 1 ? '' : 's'}`;
 
 /**
- * Indian-grouped rupee amount, e.g. 1250 → "₹1,250", 100000 → "₹1,00,000".
- * Manual grouping — Hermes' Intl/toLocaleString support is unreliable.
+ * Money formatting, from `@towing/api-contracts` since Phase 19.
+ *
+ * ⚠ `formatINR` IS GONE, and its removal is the point rather than a side
+ * effect. It took RUPEES while everything on the wire is integer paise, so
+ * every real call site divided by 100 inline and every mock-fed one passed a
+ * rupee float — an arrangement in which one missed conversion is a 100× error
+ * rendered on a driver's earnings screen. §9.2.4's "reconciles to the paisa"
+ * was unpassable while it existed.
+ *
+ * `formatPaise` takes what the API sends. `formatRupees` survives for axis
+ * labels and other places that genuinely hold a rupee number already.
  */
-export function formatINR(amount: number): string {
-  const digits = Math.round(amount).toString();
-  const last3 = digits.slice(-3);
-  const rest = digits.slice(0, -3);
-  const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${last3}` : last3;
-  return `₹${grouped}`;
-}
+export { formatPaise, formatRupees } from '@towing/api-contracts';
 
 /** "8" → "08"; keeps 2+ digit values as-is. */
 export const pad2 = (n: number): string => n.toString().padStart(2, '0');
@@ -35,7 +38,7 @@ export function formatSignedPercent(value: number): string {
  * "2d", then an absolute date past a week.
  *
  * Hand-rolled rather than `Intl.RelativeTimeFormat` for the same reason
- * `formatINR` is: Hermes' Intl support is unreliable across the RN versions
+ * `formatPaise` is: Hermes' Intl support is unreliable across the RN versions
  * this app targets, and a formatter that silently returns the wrong string on
  * one engine is worse than a plain one that is the same everywhere.
  */

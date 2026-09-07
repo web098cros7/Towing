@@ -13,7 +13,7 @@ import { motion, useTheme } from '@towing/theme';
 import { Button, Text } from '@towing/ui';
 import { Logo } from '@/components/Logo';
 import { TextField } from '@/components/TextField';
-import { OtpInput, type OtpInputHandle } from '@/features/auth/components/OtpInput';
+import { OtpInput, type OtpInputHandle } from '@towing/ui';
 import { useSendOtp, useVerifyOtp } from '@/features/auth/api/auth.queries';
 import { Phone } from '@/icons';
 import { env } from '@/lib/env';

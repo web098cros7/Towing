@@ -205,8 +205,19 @@ describe('production safety', () => {
       FILE_SIGNING_SECRET: 'y'.repeat(48),
       PAYOUT_PROVIDER: 'razorpay_route',
       PAYOUT_WEBHOOK_SECRET: 'z'.repeat(32),
+      PAYMENT_GATEWAY: 'razorpay',
+      PAYMENT_WEBHOOK_SECRET: 'y'.repeat(32),
       RAZORPAY_KEY_ID: 'rzp_live_x',
       RAZORPAY_KEY_SECRET: 'secret',
+      // Phase 18 added two more hard production requirements, and every
+      // minimal-prod-env fixture has to satisfy them the way it already
+      // satisfies the payout ones: a share link composed against localhost is
+      // unrecoverable once somebody has sent it, and the direct-dial telephony
+      // adapter publishes personal phone numbers (§20.4).
+      PUBLIC_TRACK_BASE_URL: 'https://towing.app',
+      TELEPHONY_PROVIDER: 'exotel',
+      EXOTEL_SID: 'sid',
+      EXOTEL_TOKEN: 'token',
     } as NodeJS.ProcessEnv);
 
     expect(() => assertProductionSafety(env)).toThrow(/GOOGLE_MAPS_API_KEY is required/);
@@ -221,8 +232,19 @@ describe('production safety', () => {
       FILE_SIGNING_SECRET: 'y'.repeat(48),
       PAYOUT_PROVIDER: 'razorpay_route',
       PAYOUT_WEBHOOK_SECRET: 'z'.repeat(32),
+      PAYMENT_GATEWAY: 'razorpay',
+      PAYMENT_WEBHOOK_SECRET: 'y'.repeat(32),
       RAZORPAY_KEY_ID: 'rzp_live_x',
       RAZORPAY_KEY_SECRET: 'secret',
+      // Phase 18 added two more hard production requirements, and every
+      // minimal-prod-env fixture has to satisfy them the way it already
+      // satisfies the payout ones: a share link composed against localhost is
+      // unrecoverable once somebody has sent it, and the direct-dial telephony
+      // adapter publishes personal phone numbers (§20.4).
+      PUBLIC_TRACK_BASE_URL: 'https://towing.app',
+      TELEPHONY_PROVIDER: 'exotel',
+      EXOTEL_SID: 'sid',
+      EXOTEL_TOKEN: 'token',
     } as NodeJS.ProcessEnv);
 
     expect(() => assertProductionSafety(env)).not.toThrow();

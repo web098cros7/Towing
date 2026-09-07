@@ -67,6 +67,23 @@ export function useSearchProgress(
          */
         void queryClient.invalidateQueries({ queryKey: bookingsKeys.detail(bookingId) });
       },
+      /**
+       * Both no-ops HERE, and that is correct rather than lazy: the search
+       * screen has no driver to place and no arrival to estimate. The socket is
+       * a shared singleton whose handler set is replaced per screen, so the
+       * tracking screen supplies real implementations when it takes over —
+       * see `useLiveTracking`.
+       */
+      onLocationUpdate: () => undefined,
+      onEtaUpdate: () => undefined,
+      /**
+       * §18's resync. Phase 17 had no equivalent, so a search screen whose
+       * socket connected late showed whatever the initial fetch had until the
+       * next wave — up to twenty seconds of a stale radius.
+       */
+      onResync: () => {
+        void queryClient.invalidateQueries({ queryKey: bookingsKeys.detail(bookingId) });
+      },
     });
 
     return () => disconnectBookingSocket();

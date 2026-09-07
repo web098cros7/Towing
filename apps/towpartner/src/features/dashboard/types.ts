@@ -3,7 +3,8 @@ import type { JobStatus } from '@/features/jobs/types';
 /** Today's headline numbers on the driver dashboard. */
 export type DriverSummary = {
   jobsCompleted: number;
-  earnings: number;
+  /** INTEGER PAISE since Phase 19 — see `farePaise` below. */
+  earningsPaise: number;
   rating: number;
 };
 
@@ -13,7 +14,12 @@ export type RecentJob = {
   vehicleName: string;
   pickup: string;
   drop: string;
-  fare: number;
+  /**
+   * INTEGER PAISE since Phase 19. It was a rupee number fed by a mock while
+   * every live money field on the wire was paise, which is the arrangement in
+   * which one missed conversion is a 100× error on a driver's screen.
+   */
+  farePaise: number;
   status: JobStatus;
 };
 

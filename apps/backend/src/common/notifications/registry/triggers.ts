@@ -39,6 +39,35 @@ export interface ComplianceExpiringPayload extends Record<string, unknown> {
   daysLeft: number;
 }
 
+/** §12.2's four Phase 19 rows. Domain ids and PRE-FORMATTED money only. */
+export interface PaymentStatusPayload extends Record<string, unknown> {
+  bookingId: string;
+  userId: string;
+  paymentId: string;
+  /** Already formatted — templates never do money arithmetic. */
+  amount: string;
+  reason?: string;
+}
+
+export interface CompletedInvoicePayload extends Record<string, unknown> {
+  bookingId: string;
+  userId: string;
+  amount: string;
+}
+
+export interface EarningsCreditedPayload extends Record<string, unknown> {
+  bookingId: string;
+  driverId: string;
+  amount: string;
+}
+
+export interface WeeklyEarningsPayload extends Record<string, unknown> {
+  driverId: string;
+  amount: string;
+  jobs: string;
+  weekLabel: string;
+}
+
 export interface PayoutStatusPayload extends Record<string, unknown> {
   payoutId: string;
   /**
@@ -380,10 +409,119 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
      * cancels goes through `searching` again via §6.5, which is a genuinely new
      * assignment the customer must be told about.
      *
-     * ⚠ That makes this key WRONG for the re-dispatch case: the second
+     * ⚠ That made this key WRONG for the re-dispatch case: the second
      * assignment would be suppressed as a duplicate of the first. Phase 18 owns
-     * driver-side cancellation and must widen this key when it lands — noted
-     * here rather than in a ticket, because this is the file that will be open.
+     * driver-side cancellation and was told to widen this key when it landed —
+     * noted here rather than in a ticket, because this is the file that would be
+     * open.
+     *
+     * ✅ WIDENED, PHASE 18. §9.2.3's unable-to-deliver puts a booking back into
+     * §6.5's search, and the driver who takes it next is a genuinely new fact the
+     * customer must hear — they were told "Ramesh is on the way" twenty minutes
+     * ago and Ramesh is not coming. The key now carries the DRIVER, so a second
+     * assignment to a different person is a different notification, while a
+     * retried fan-out for the same (booking, driver) pair is still suppressed —
+     * which is the duplicate the key existed to catch.
+     *
+     * The remaining collision is the same driver being re-assigned to the same
+     * booking after failing on it, which §6.5 forbids: `excludedDrivers()` counts
+     * every attempt outcome, so that driver is not a candidate again.
+     */
+    dedupeKey: (p: DriverAssignedPayload) => `${p.bookingId}:${p.driverId}`,
+    resolve: (p: DriverAssignedPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: DriverAssignedPayload) => ({
+      driver: p.driverName ?? '',
+      reference: p.reference,
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §12.2 row *driver assigned / en route / arrived* — the EN ROUTE third
+     * (Phase 18).
+     *
+     * The row's own note in `matrix-12-2.ts` said this was coming: "Three
+     * distinct emissions sharing one matrix row: assigned is Phase 17, en route
+     * and arrived are Phase 18." `registry.spec.ts` counts a ROW as covered
+     * rather than counting triggers, which is what makes three legal.
+     *
+     * WHY THE CUSTOMER IS TOLD AT ALL, given they were told sixty seconds ago
+     * that a driver accepted. Because those are different facts and the gap
+     * between them is the anxious one: "someone took your job" is a promise, and
+     * "they have set off" is the first evidence of it. §5.1 fires this from
+     * actual movement (`EnRouteWatcher`), not from a tap, so it cannot be
+     * announced by a driver who has not moved.
+     */
+    event: 'booking.driver_en_route',
+    matrixRow: 'driver_assigned_en_route_arrived',
+    channels: ['push', 'whatsapp'],
+    template: 'booking_driver_en_route',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'towgo://bookings' },
+    /**
+     * Keyed on the pair, like the assignment above. §5.1 has exactly one
+     * `assigned → en_route` edge per assignment, and a re-dispatched booking
+     * gets a new driver — so this fires once per driver who actually sets off.
+     */
+    dedupeKey: (p: DriverAssignedPayload) => `${p.bookingId}:${p.driverId}`,
+    resolve: (p: DriverAssignedPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: DriverAssignedPayload) => ({
+      driver: p.driverName ?? '',
+      reference: p.reference,
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §12.2 row *driver assigned / en route / arrived* — the ARRIVED third
+     * (Phase 18).
+     *
+     * THE MOST TIME-CRITICAL OF THE THREE, and the reason it is `alwaysOn`
+     * without argument: the driver is now standing beside a vehicle whose owner
+     * may be in a café, and the §7.4 waiting clock has started. Fifteen free
+     * minutes then five rupees a minute — a customer who does not know their
+     * driver has arrived is being charged for not knowing.
+     *
+     * §9.1.7 pairs this with a haptic and the OTP card coming forward on the
+     * tracking screen; the push is what reaches the phone in a pocket.
+     */
+    event: 'booking.driver_arrived',
+    matrixRow: 'driver_assigned_en_route_arrived',
+    channels: ['push', 'whatsapp'],
+    template: 'booking_driver_arrived',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'towgo://bookings' },
+    dedupeKey: (p: DriverAssignedPayload) => `${p.bookingId}:${p.driverId}`,
+    resolve: (p: DriverAssignedPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: DriverAssignedPayload) => ({
+      driver: p.driverName ?? '',
+      reference: p.reference,
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §12.2's *job started (OTP verified)* — deferred since Phase 13 with the
+     * reason "the job-start OTP that triggers it is Phase 18". It is Phase 18.
+     *
+     * PUSH ONLY, exactly as the matrix row specifies. The customer has just read
+     * a six-digit code aloud to a driver standing in front of them, so this is
+     * not news — it is a receipt, and the value of it is that it is the moment
+     * the vehicle legally changed hands. A WhatsApp for that would be noise.
+     */
+    event: 'booking.job_started',
+    matrixRow: 'job_started',
+    channels: ['push'],
+    template: 'booking_job_started',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'towgo://bookings' },
+    /**
+     * The booking alone. §5.1 permits exactly one `arrived → in_progress`
+     * transition per booking and there is no edge back into `arrived`, so unlike
+     * the two above this genuinely cannot happen twice for one trip.
      */
     dedupeKey: (p: DriverAssignedPayload) => p.bookingId,
     resolve: (p: DriverAssignedPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
@@ -508,6 +646,125 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
       driftPaise: String(p.driftPaise),
     }),
   }),
+  // ── Phase 19: money ─────────────────────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * §12.2 row *Completed + invoice*.
+     *
+     * `money`, not `transactional`, and that is a deliberate opt-out decision:
+     * the registry FORCES `transactional` and `safety` to be `alwaysOn`, and an
+     * invoice email is not a legally unsuppressible message the way an OTP or a
+     * safety alert is. `SUBJECT_NOTIFICATION_PREF_DEFAULTS` already ships the
+     * toggle this honours.
+     *
+     * The EMAIL CARRIES THE PDF — `attachmentsFor` below. §12.2's own note said
+     * "the attachment wiring lands with the invoice PDF in Phase 19"; this is it.
+     */
+    event: 'booking.completed_invoice',
+    matrixRow: 'completed_invoice',
+    channels: ['push', 'whatsapp', 'email'],
+    template: 'job_invoice_email',
+    category: 'money',
+    alwaysOn: false,
+    push: { action: 'open', route: 'moveyo://bookings', invalidate: 'bookings' },
+    dedupeKey: (p: CompletedInvoicePayload) => p.bookingId,
+    attachmentsFor: (p: CompletedInvoicePayload) => ({ kind: 'invoice', bookingId: p.bookingId }),
+    resolve: (p: CompletedInvoicePayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: CompletedInvoicePayload) => ({
+      bookingRef: p.bookingId.slice(0, 8).toUpperCase(),
+      amount: p.amount,
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §12.2 row *Payment success / failure*, the SUCCESS half.
+     *
+     * TWO TRIGGERS SHARE THIS ROW, because the matrix note says "SMS is marked
+     * (fail) — success does not SMS", and `registry.spec.ts` permits a trigger
+     * to use FEWER channels than its row grants but never more. Exactly the
+     * shape `payout.processed` and `payout.failed` already use.
+     */
+    event: 'payment.succeeded',
+    matrixRow: 'payment_status',
+    channels: ['push', 'email'],
+    template: 'payment_receipt_email',
+    category: 'money',
+    alwaysOn: false,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'moveyo://bookings' },
+    dedupeKey: (p: PaymentStatusPayload) => p.paymentId,
+    resolve: (p: PaymentStatusPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: PaymentStatusPayload) => ({
+      bookingRef: p.bookingId.slice(0, 8).toUpperCase(),
+      amount: p.amount,
+      status: 'successful',
+    }),
+  }),
+
+  defineTrigger({
+    /** The FAILURE half — and the only one that SMSes, per the matrix note. */
+    event: 'payment.failed',
+    matrixRow: 'payment_status',
+    channels: ['push', 'sms', 'email'],
+    template: 'payment_receipt_email',
+    category: 'money',
+    alwaysOn: false,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'moveyo://bookings' },
+    dedupeKey: (p: PaymentStatusPayload) => `${p.paymentId}:failed`,
+    resolve: (p: PaymentStatusPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: PaymentStatusPayload) => ({
+      bookingRef: p.bookingId.slice(0, 8).toUpperCase(),
+      amount: p.amount,
+      status: 'unsuccessful',
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §12.2 row *Earnings credited (per trip)* — Driver, PUSH ONLY.
+     *
+     * Not to be confused with `ops.ledger_drift`, which is an internal alarm
+     * over the same table and goes to an ops mailbox rather than to a person.
+     */
+    event: 'earnings.credited',
+    matrixRow: 'earnings_credited',
+    channels: ['push'],
+    template: 'earnings_credited',
+    category: 'money',
+    alwaysOn: false,
+    push: { action: 'refetch', invalidate: 'driver.earnings', route: 'towpartner://earnings' },
+    dedupeKey: (p: EarningsCreditedPayload) => p.bookingId,
+    resolve: (p: EarningsCreditedPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
+    variables: (p: EarningsCreditedPayload) => ({
+      amount: p.amount,
+      bookingRef: p.bookingId.slice(0, 8).toUpperCase(),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §12.2 row *Weekly earnings summary* — Driver.
+     *
+     * The `weeklySummary` preference key shipped in Phase 13 SPECIFICALLY so
+     * this opt-out existed before the first send ever went out. It does.
+     */
+    event: 'earnings.weekly',
+    matrixRow: 'weekly_earnings',
+    channels: ['push', 'whatsapp'],
+    template: 'weekly_earnings',
+    category: 'money',
+    alwaysOn: false,
+    push: { action: 'open', route: 'towpartner://earnings', invalidate: 'driver.earnings' },
+    // One digest per driver per week, whatever the job's redelivery does.
+    dedupeKey: (p: WeeklyEarningsPayload) => `${p.driverId}:${p.weekLabel}`,
+    resolve: (p: WeeklyEarningsPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
+    variables: (p: WeeklyEarningsPayload) => ({
+      amount: p.amount,
+      jobs: p.jobs,
+      weekLabel: p.weekLabel,
+    }),
+  }),
 ];
 
 // ---------------------------------------------------------------------------
@@ -515,35 +772,6 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
 // ---------------------------------------------------------------------------
 
 export const DEFERRED_TRIGGERS: DeferredTrigger[] = [
-  {
-    matrixRow: 'job_started',
-    unregisteredUntilPhase: 18,
-    reason: 'The job-start OTP that triggers it is Phase 18.',
-  },
-  {
-    matrixRow: 'completed_invoice',
-    unregisteredUntilPhase: 19,
-    reason:
-      'No completion path and no invoice. The email template body ships now (`job_invoice_email`); Phase 19 adds the trigger and the PDF attachment.',
-  },
-  {
-    matrixRow: 'payment_status',
-    unregisteredUntilPhase: 19,
-    reason:
-      'No payment capture path. The email template body ships now (`payment_receipt_email`); Phase 19 adds the trigger.',
-  },
-  {
-    matrixRow: 'earnings_credited',
-    unregisteredUntilPhase: 19,
-    reason:
-      'Per-trip credit needs a completed, paid booking. NOT to be confused with `ops.ledger_drift`, which is an internal alarm on the same table.',
-  },
-  {
-    matrixRow: 'weekly_earnings',
-    unregisteredUntilPhase: 19,
-    reason:
-      'Needs a scheduled job over settled trips. The `weeklySummary` preference key ships now so the opt-out exists before the first send.',
-  },
   {
     matrixRow: 'sos',
     unregisteredUntilPhase: 20,

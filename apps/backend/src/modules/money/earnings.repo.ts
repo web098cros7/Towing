@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { FleetId } from '@towing/api-contracts';
 import { DB_READER, type DatabaseReader } from '../../db/db.module';
+import { settlementLateral } from './settlement-lateral';
 
 /**
  * Every earnings read. Takes `DB_READER`, never `DB` — §9.3.8's AC is "report
@@ -164,18 +165,7 @@ export class EarningsRepo {
              l.driver_share::text as driver_share,
              l.fleet_share::text as fleet_share
         from bookings b
-        join lateral (
-          select min(t.created_at) as settled_at,
-                 coalesce(sum(t.amount) filter (
-                   where t.type in ('driver_share_credit', 'fare_credit')
-                 ), 0) as driver_share,
-                 coalesce(sum(t.amount) filter (
-                   where t.type = 'fleet_share_credit'
-                 ), 0) as fleet_share
-            from wallet_transactions t
-           where t.ref_id = b.id
-             and t.type in ('driver_share_credit', 'fleet_share_credit', 'fare_credit')
-        ) l on true
+        ${settlementLateral()}
         left join drivers d on d.id = b.driver_id
        where b.fleet_id = ${fleetId}::uuid
          and l.settled_at is not null

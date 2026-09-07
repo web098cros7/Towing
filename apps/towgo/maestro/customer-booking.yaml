@@ -21,7 +21,7 @@
 # ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
 # Maestro flow in this repo has ever run. Reviewed against the screens as
 # written; that is all.
-appId: com.towing.towgo
+appId: in.mitow.customer
 ---
 - runFlow: customer-login.yaml
 
