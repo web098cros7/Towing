@@ -11,12 +11,13 @@ applications:
         build:
           commands:
             - pnpm --filter towfleet-web build
-            # Fix OOM error during pnpm deploy by allocating 6GB to Node's heap limit
-            - export NODE_OPTIONS="--max-old-space-size=6144"
-            - pnpm deploy --filter towfleet-web --prod --legacy ./temp_deploy
+            # Generate a pristine node_modules with NO circular pnpm symlinks!
+            - mkdir -p ./temp_deps && cd ./temp_deps && npm init -y
+            - npm install next@15.5.22 react@19.2.3 react-dom@19.2.3 lucide-react@0.544.0 maplibre-gl@5.24.0 papaparse@5.5.4 recharts@3.10.1 socket.io-client@4.8.3 @tanstack/react-query@5.101.2 @tanstack/react-table@8.21.3 class-variance-authority@0.7.1 clsx@2.1.1 tailwind-merge@3.3.1 zod@4.1.11
+            - cd ..
             - rm -rf ./node_modules
-            - mv ./temp_deploy/node_modules ./node_modules/
-            - rm -rf ./temp_deploy
+            - mv ./temp_deps/node_modules ./node_modules/
+            - rm -rf ./temp_deps
       artifacts:
         baseDirectory: .next
         files:
