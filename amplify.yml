@@ -7,19 +7,19 @@ applications:
             - corepack enable
             - corepack prepare pnpm@11.1.2 --activate
             - pnpm config set store-dir /root/.pnpm-store
-            # Crucial: This forces pnpm to place 'next' where Amplify expects it!
-            - echo "public-hoist-pattern[]=*next*" >> .npmrc
-            - echo "public-hoist-pattern[]=*react*" >> .npmrc
+            - echo "node-linker=hoisted" >> .npmrc
+            - echo "public-hoist-pattern[]=*" >> .npmrc
             - pnpm install
         build:
           commands:
             - pnpm --filter towfleet-web build
+            # Official AWS Amplify FAQ Fix for PNPM Workspaces:
+            - rsync -a node_modules/ apps/towfleet-web/node_modules/
       artifacts:
-        baseDirectory: .next
+        baseDirectory: apps/towfleet-web/.next
         files:
           - '**/*'
       cache:
         paths:
           - /root/.pnpm-store/**
-          - .next/cache/**/*
-    appRoot: apps/towfleet-web
+          - apps/towfleet-web/.next/cache/**/*
