@@ -4,8 +4,9 @@ applications:
       phases:
         preBuild:
           commands:
-            - yum install -y libatomic
-            - npm install -g pnpm
+            - corepack enable
+            - corepack prepare pnpm@latest --activate
+            - pnpm config set store-dir .pnpm-store
             - pnpm install
         build:
           commands:
@@ -16,5 +17,6 @@ applications:
           - '**/*'
       cache:
         paths:
-          - node_modules/**/*
+          - .pnpm-store/**
+          - apps/towfleet-web/.next/cache/**/*
     appRoot: apps/towfleet-web
