@@ -7,12 +7,13 @@ applications:
             - corepack enable
             - corepack prepare pnpm@11.1.2 --activate
             - pnpm config set store-dir /root/.pnpm-store
+            # Force PNPM to put real folders at the root instead of hidden symlinks!
+            - echo "node-linker=hoisted" > ../../.npmrc
             - pnpm install
         build:
           commands:
             - pnpm --filter towfleet-web build
-            # Only copy the 'next' dependency to satisfy Amplify's version checker!
-            # Do NOT copy the whole node_modules to avoid the 30-minute zip timeout.
+            # Now that it's a real folder, this will copy successfully in 1 second!
             - mkdir -p ./node_modules
             - cp -R ../../node_modules/next ./node_modules/
       artifacts:
