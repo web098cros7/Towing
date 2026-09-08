@@ -11,7 +11,7 @@ applications:
         build:
           commands:
             - pnpm --filter towfleet-web build
-            - rsync -a ../../node_modules/ ./node_modules/
+            - cp -a ../../node_modules/. ./node_modules/
       artifacts:
         baseDirectory: .next
         files:
