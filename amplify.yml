@@ -11,7 +11,10 @@ applications:
         build:
           commands:
             - pnpm --filter towfleet-web build
-            # REMOVED cp node_modules command because we are switching to standalone mode!
+            # Only copy the 'next' dependency to satisfy Amplify's version checker!
+            # Do NOT copy the whole node_modules to avoid the 30-minute zip timeout.
+            - mkdir -p ./node_modules
+            - cp -R ../../node_modules/next ./node_modules/
       artifacts:
         baseDirectory: .next
         files:
