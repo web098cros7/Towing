@@ -5,8 +5,11 @@ applications:
         preBuild:
           commands:
             - corepack enable
-            - corepack prepare pnpm@latest --activate
-            - pnpm config set store-dir .pnpm-store
+            - corepack prepare pnpm@11.1.2 --activate
+            - pnpm config set store-dir /root/.pnpm-store
+            # Crucial: This forces pnpm to place 'next' where Amplify expects it!
+            - echo "public-hoist-pattern[]=*next*" >> .npmrc
+            - echo "public-hoist-pattern[]=*react*" >> .npmrc
             - pnpm install
         build:
           commands:
@@ -17,6 +20,6 @@ applications:
           - '**/*'
       cache:
         paths:
-          - .pnpm-store/**
+          - /root/.pnpm-store/**
           - .next/cache/**/*
     appRoot: apps/towfleet-web

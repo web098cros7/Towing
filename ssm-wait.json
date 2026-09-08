@@ -1,7 +1,0 @@
-{
-  "commands": [
-    "sed -i 's/pnpm run db:migrate/sleep 15 \\&\\& pnpm run db:migrate/g' /home/ec2-user/docker-compose.yml",
-    "cd /home/ec2-user",
-    "docker-compose restart backend"
-  ]
-}

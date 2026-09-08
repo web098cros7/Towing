@@ -1,6 +1,0 @@
-{
-  "commands": [
-    "docker logs ec2-user-backend-1 | tail -n 30 > /tmp/out.log",
-    "cat /tmp/out.log"
-  ]
-}

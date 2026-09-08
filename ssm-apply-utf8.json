@@ -1,8 +1,0 @@
-﻿{
-    "commands":  [
-                     "echo dmVyc2lvbjogIjMuOCIKc2VydmljZXM6CiAgcG9zdGdyZXM6CiAgICBpbWFnZTogcG9zdGdpcy9wb3N0Z2lzOjE2LTMuNAogICAgcmVzdGFydDogYWx3YXlzCiAgICBlbnZpcm9ubWVudDoKICAgICAgUE9TVEdSRVNfVVNFUjogdG93ZmxlZXQKICAgICAgUE9TVEdSRVNfUEFTU1dPUkQ6IHRvd2ZsZWV0CiAgICAgIFBPU1RHUkVTX0RCOiB0b3dmbGVldAogICAgcG9ydHM6CiAgICAgIC0gIjU0MzI6NTQzMiIKICAgIHZvbHVtZXM6CiAgICAgIC0gZGJfZGF0YTovdmFyL2xpYi9wb3N0Z3Jlc3FsL2RhdGEKICByZWRpczoKICAgIGltYWdlOiByZWRpczo3CiAgICByZXN0YXJ0OiBhbHdheXMKICAgIHBvcnRzOgogICAgICAtICI2Mzc5OjYzNzkiCiAgYmFja2VuZDoKICAgIGltYWdlOiBub2RlOjIyLWFscGluZQogICAgcmVzdGFydDogYWx3YXlzCiAgICB3b3JraW5nX2RpcjogL2FwcAogICAgdm9sdW1lczoKICAgICAgLSAuL1Rvd2luZzovYXBwCiAgICBjb21tYW5kOiBzaCAtYyAibnBtIGluc3RhbGwgLWcgcG5wbSAmJiBwbnBtIGluc3RhbGwgJiYgc2xlZXAgMTAgJiYgY2QgYXBwcy9iYWNrZW5kICYmIHBucG0gcnVuIGJ1aWxkICYmIHBucG0gcnVuIGRiOm1pZ3JhdGUgJiYgbm9kZSBkaXN0L21haW4uanMiCiAgICBwb3J0czoKICAgICAgLSAiNDAwMDo0MDAwIgogICAgZW52aXJvbm1lbnQ6CiAgICAgIERBVEFCQVNFX1VSTDogcG9zdGdyZXM6Ly90b3dmbGVldDp0b3dmbGVldEBwb3N0Z3Jlczo1NDMyL3Rvd2ZsZWV0CiAgICAgIFJFRElTX1VSTDogcmVkaXM6Ly9yZWRpczo2Mzc5CiAgICAgIFBPUlQ6IDQwMDAKICAgICAgTk9ERV9PUFRJT05TOiAtLW1heC1vbGQtc3BhY2Utc2l6ZT0xNTM2CiAgICBkZXBlbmRzX29uOgogICAgICAtIHBvc3RncmVzCiAgICAgIC0gcmVkaXMKdm9sdW1lczoKICBkYl9kYXRhOgo= | base64 -d \u003e /home/ec2-user/docker-compose.yml",
-                     "cd /home/ec2-user",
-                     "docker-compose down",
-                     "docker-compose up -d"
-                 ]
-}

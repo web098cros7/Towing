@@ -1,9 +1,0 @@
-{
-  "commands": [
-    "sed -i 's/pnpm run start:dev/pnpm run build \\&\\& pnpm run db:migrate \\&\\& node dist\\/main.js/' /home/ec2-user/docker-compose.yml",
-    "sed -i '/PORT: 4000/a \\      NODE_OPTIONS: --max-old-space-size=2048' /home/ec2-user/docker-compose.yml",
-    "cd /home/ec2-user",
-    "docker-compose down",
-    "docker-compose up -d"
-  ]
-}
