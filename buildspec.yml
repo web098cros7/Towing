@@ -12,11 +12,11 @@ applications:
           commands:
             - pnpm --filter towfleet-web build
       artifacts:
-        baseDirectory: apps/towfleet-web/.next
+        baseDirectory: .next
         files:
           - '**/*'
       cache:
         paths:
           - .pnpm-store/**
-          - apps/towfleet-web/.next/cache/**/*
+          - .next/cache/**/*
     appRoot: apps/towfleet-web
