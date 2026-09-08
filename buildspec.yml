@@ -1,0 +1,20 @@
+version: 1
+applications:
+  - frontend:
+      phases:
+        preBuild:
+          commands:
+            - yum install -y libatomic
+            - npm install -g pnpm
+            - pnpm install
+        build:
+          commands:
+            - pnpm --filter towfleet-web build
+      artifacts:
+        baseDirectory: apps/towfleet-web/.next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+    appRoot: apps/towfleet-web
