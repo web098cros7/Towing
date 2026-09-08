@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
   // build step); Next must transpile them. Removing an entry here breaks
   // imports with confusing parse errors.
   transpilePackages: ['@towing/theme', '@towing/web-ui', '@towing/api-contracts'],
-  output: 'standalone',
 
   /**
    * `NEXT_PUBLIC_USE_MOCKS` is inlined at `next build`, so mocks-on and
