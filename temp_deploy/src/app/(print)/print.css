@@ -1,0 +1,33 @@
+/*
+ * Print styling for the §9.3.7 monthly statement.
+ *
+ * A4 with a 14 mm margin so the table never runs into a printer's unprintable
+ * edge. Everything that only makes sense on screen carries `data-print="hide"`.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  /* Keep a row intact across a page break — a split row of money reads as two
+     different numbers. */
+  tr,
+  thead {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}

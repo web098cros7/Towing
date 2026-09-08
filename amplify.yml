@@ -11,10 +11,12 @@ applications:
         build:
           commands:
             - pnpm --filter towfleet-web build
-            - mkdir -p ./temp_deps && cd ./temp_deps && npm init -y && npm install next@15.5.22 react react-dom && cd ..
-            - rm -rf ./node_modules/next
-            - cp -R ./temp_deps/node_modules/next ./node_modules/
-            - rm -rf ./temp_deps
+            # Fix HTTP 500: The Lambda crashed because it was missing runtime dependencies (lucide-react, etc).
+            # Generate a pruned node_modules containing ALL production dependencies, then put it where Amplify expects it.
+            - pnpm deploy --filter towfleet-web --prod --legacy ./temp_deploy
+            - rm -rf ./node_modules
+            - mv ./temp_deploy/node_modules ./node_modules/
+            - rm -rf ./temp_deploy
       artifacts:
         baseDirectory: .next
         files:

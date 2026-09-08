@@ -1,0 +1,7 @@
+@import url('https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=clash-display@600,700&display=swap');
+@import 'tailwindcss';
+@import '@towing/web-ui/styles.css';
+
+/* Tailwind ignores node_modules — point it at the shared web-ui source so
+ * classes used inside @towing/web-ui components are generated. */
+@source '../../../../packages/web-ui/src';
