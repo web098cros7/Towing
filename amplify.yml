@@ -7,15 +7,16 @@ applications:
             - corepack enable
             - corepack prepare pnpm@11.1.2 --activate
             - pnpm config set store-dir /root/.pnpm-store
-            # Force PNPM to put real folders at the root instead of hidden symlinks!
-            - echo "node-linker=hoisted" > ../../.npmrc
             - pnpm install
         build:
           commands:
             - pnpm --filter towfleet-web build
-            # Now that it's a real folder, this will copy successfully in 1 second!
+            # Foolproof method to bypass Amplify's Next.js version checker in PNPM monorepos
+            # Download a fresh physical copy of next just for Amplify to read!
+            - mkdir -p ./temp_deps && cd ./temp_deps && npm init -y && npm install next@15.5.22 react react-dom && cd ..
             - mkdir -p ./node_modules
-            - cp -R ../../node_modules/next ./node_modules/
+            - cp -R ./temp_deps/node_modules/next ./node_modules/
+            - rm -rf ./temp_deps
       artifacts:
         baseDirectory: .next
         files:
