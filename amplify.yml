@@ -11,8 +11,8 @@ applications:
         build:
           commands:
             - pnpm --filter towfleet-web build
-            # Fix HTTP 500: The Lambda crashed because it was missing runtime dependencies (lucide-react, etc).
-            # Generate a pruned node_modules containing ALL production dependencies, then put it where Amplify expects it.
+            # Fix OOM error during pnpm deploy by allocating 6GB to Node's heap limit
+            - export NODE_OPTIONS="--max-old-space-size=6144"
             - pnpm deploy --filter towfleet-web --prod --legacy ./temp_deploy
             - rm -rf ./node_modules
             - mv ./temp_deploy/node_modules ./node_modules/
