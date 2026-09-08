@@ -11,10 +11,8 @@ applications:
         build:
           commands:
             - pnpm --filter towfleet-web build
-            # Foolproof method to bypass Amplify's Next.js version checker in PNPM monorepos
-            # Download a fresh physical copy of next just for Amplify to read!
             - mkdir -p ./temp_deps && cd ./temp_deps && npm init -y && npm install next@15.5.22 react react-dom && cd ..
-            - mkdir -p ./node_modules
+            - rm -rf ./node_modules/next
             - cp -R ./temp_deps/node_modules/next ./node_modules/
             - rm -rf ./temp_deps
       artifacts:
