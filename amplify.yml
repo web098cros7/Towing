@@ -7,23 +7,15 @@ applications:
             - corepack enable
             - corepack prepare pnpm@11.1.2 --activate
             - pnpm config set store-dir /root/.pnpm-store
-            - pnpm install
+            - pnpm install --frozen-lockfile
         build:
           commands:
             - pnpm --filter towfleet-web build
-            # Generate a pristine node_modules with NO circular pnpm symlinks!
-            - mkdir -p ./temp_deps && cd ./temp_deps && npm init -y
-            - npm install next@15.5.22 react@19.2.3 react-dom@19.2.3 lucide-react@0.544.0 maplibre-gl@5.24.0 papaparse@5.5.4 recharts@3.10.1 socket.io-client@4.8.3 @tanstack/react-query@5.101.2 @tanstack/react-table@8.21.3 class-variance-authority@0.7.1 clsx@2.1.1 tailwind-merge@3.3.1 zod@4.1.11
-            - cd ..
-            - rm -rf ./node_modules
-            - mv ./temp_deps/node_modules ./node_modules/
-            - rm -rf ./temp_deps
       artifacts:
-        baseDirectory: .next
+        baseDirectory: apps/towfleet-web/.next
         files:
           - '**/*'
       cache:
         paths:
           - /root/.pnpm-store/**
-          - .next/cache/**/*
-    appRoot: apps/towfleet-web
+          - apps/towfleet-web/.next/cache/**/*
