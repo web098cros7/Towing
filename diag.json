@@ -1,0 +1,1 @@
+{"commands":["uptime","free -m","systemctl status towing-frontend --no-pager","tail -n 20 /var/log/messages"]}

@@ -1,0 +1,1 @@
+{"commands":["cd /home/ec2-user","if [ ! -d Towing ]; then git clone https://github.com/web098cros7/Towing.git; chown -R ec2-user:ec2-user Towing; fi","cd Towing","git fetch origin main","git reset --hard origin/main","sudo bash deploy.sh fresh"]}

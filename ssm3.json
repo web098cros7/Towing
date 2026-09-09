@@ -1,0 +1,5 @@
+{
+  "commands": [
+    "sudo -u ec2-user -i bash -c \"cd /home/ec2-user/Towing && sed -i 's/pnpm install/CI=true pnpm install/g' deploy.sh && sudo bash deploy.sh fresh\""
+  ]
+}
