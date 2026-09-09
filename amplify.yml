@@ -7,19 +7,20 @@ applications:
             - corepack enable
             - corepack prepare pnpm@11.1.2 --activate
             - pnpm config set store-dir /root/.pnpm-store
-            - pnpm install --frozen-lockfile
+            # Prune the monorepo to towfleet-web + its 3 workspace deps only.
+            - pnpm dlx turbo prune towfleet-web
+            # Switch into the pruned workspace and install only its deps.
+            - cd out && pnpm install --frozen-lockfile
         build:
           commands:
-            # Give the Next.js build process 6 GB of heap (the container has 8 GB).
-            # The standalone tracer walks the full dependency graph; without this
-            # the default ~2 GB Node heap exhausts during "Collecting build traces".
+            - cd out
             - export NODE_OPTIONS="--max-old-space-size=6144"
             - pnpm --filter towfleet-web build
       artifacts:
-        baseDirectory: apps/towfleet-web/.next
+        baseDirectory: out/apps/towfleet-web/.next
         files:
           - '**/*'
       cache:
         paths:
           - /root/.pnpm-store/**
-          - apps/towfleet-web/.next/cache/**/*
+          - out/apps/towfleet-web/.next/cache/**/*
