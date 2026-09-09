@@ -1,0 +1,48 @@
+# -- Stage 1: install workspace deps + build backend ---------------------------
+FROM node:22-alpine AS builder
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+WORKDIR /app
+
+# Copy workspace manifests first (layer-cache: only re-runs if lockfile changes)
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json ./
+COPY packages/api-contracts/package.json ./packages/api-contracts/
+COPY packages/config/package.json         ./packages/config/
+COPY packages/theme/package.json          ./packages/theme/
+COPY packages/ui/package.json             ./packages/ui/
+COPY packages/web-ui/package.json         ./packages/web-ui/
+COPY apps/backend/package.json            ./apps/backend/
+
+# Install only backend + its workspace deps
+RUN pnpm install --frozen-lockfile --filter @towing/backend...
+
+# Copy source
+COPY packages/ ./packages/
+COPY apps/backend/ ./apps/backend/
+
+# Install SWC CLI manually inside the container to bypass TS Type Errors and OOM limits
+RUN pnpm --filter @towing/backend add -D @swc/cli @swc/core
+
+# Build
+RUN pnpm --filter @towing/backend build
+
+# -- Stage 2: lean runtime image -----------------------------------------------
+FROM node:22-alpine AS runtime
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+WORKDIR /app
+
+# Copy the built output and only production node_modules
+COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-lock.yaml ./
+COPY --from=builder /app/packages/ ./packages/
+COPY --from=builder /app/apps/backend/package.json ./apps/backend/
+COPY --from=builder /app/apps/backend/dist/ ./apps/backend/dist/
+COPY --from=builder /app/apps/backend/drizzle/ ./apps/backend/drizzle/ 2>/dev/null || true
+
+# Install prod-only deps
+RUN pnpm install --frozen-lockfile --prod --filter @towing/backend...
+
+ENV NODE_ENV=production
+ENV PORT=4000
+EXPOSE 4000
+CMD ["node", "apps/backend/dist/main.js"]
