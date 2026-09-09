@@ -7,15 +7,11 @@ applications:
             - corepack enable
             - corepack prepare pnpm@11.1.2 --activate
             - pnpm config set store-dir /root/.pnpm-store
-            # Prune the monorepo to towfleet-web + its 3 workspace deps only.
             - pnpm dlx turbo prune towfleet-web
-            # Switch into the pruned workspace and install only its deps.
             - cd out && pnpm install --frozen-lockfile
         build:
           commands:
-            - cd out
-            - export NODE_OPTIONS="--max-old-space-size=6144"
-            - pnpm --filter towfleet-web build
+            - cd out && export NODE_OPTIONS="--max-old-space-size=6144" && pnpm --filter towfleet-web build
       artifacts:
         baseDirectory: out/apps/towfleet-web/.next
         files:
