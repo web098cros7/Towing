@@ -2,16 +2,14 @@
 applications:
   - frontend:
       phases:
-        preBuild:
+        build:
           commands:
             - corepack enable
             - corepack prepare pnpm@11.1.2 --activate
             - pnpm config set store-dir /root/.pnpm-store
             - pnpm dlx turbo prune towfleet-web
-            - cd out && pnpm install --frozen-lockfile
-        build:
-          commands:
-            - cd out && export NODE_OPTIONS="--max-old-space-size=6144" && pnpm --filter towfleet-web build
+            # We use bash -c to completely bypass the AWS RVM cd bug
+            - bash -c 'cd out && pnpm install --frozen-lockfile && export NODE_OPTIONS="--max-old-space-size=6144" && pnpm --filter towfleet-web build'
       artifacts:
         baseDirectory: out/apps/towfleet-web/.next
         files:
