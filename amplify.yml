@@ -1,4 +1,4 @@
-version: 1
+﻿version: 1
 applications:
   - frontend:
       phases:
@@ -10,6 +10,10 @@ applications:
             - pnpm install --frozen-lockfile
         build:
           commands:
+            # Give the Next.js build process 6 GB of heap (the container has 8 GB).
+            # The standalone tracer walks the full dependency graph; without this
+            # the default ~2 GB Node heap exhausts during "Collecting build traces".
+            - export NODE_OPTIONS="--max-old-space-size=6144"
             - pnpm --filter towfleet-web build
       artifacts:
         baseDirectory: apps/towfleet-web/.next
