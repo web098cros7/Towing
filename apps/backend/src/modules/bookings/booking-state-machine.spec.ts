@@ -185,6 +185,15 @@ describe('§5.1 branches', () => {
     }
     // §9.1.6's "retry / widen" prompt — the loop the §5.1 diagram draws.
     expect(BookingStateMachineService.isLegal('no_drivers_found', 'searching')).toBe(true);
+    // A8: an unmatchable search can also be closed out, not just retried.
+    expect(BookingStateMachineService.isLegal('no_drivers_found', 'cancelled')).toBe(true);
+  });
+
+  it('lets a paid booking leave for a dispute, so a full refund can complete', () => {
+    // A8: the refund path refunds the gateway and posts compensating legs
+    // first — a terminal `paid` made it throw 409 after the money moved.
+    expect(BookingStateMachineService.isLegal('paid', 'disputed')).toBe(true);
+    expect(BookingStateMachineService.isLegal('paid', 'cancelled')).toBe(false);
   });
 
   it('reaches disputed only from in_progress or completed, and can be resolved', () => {
@@ -211,8 +220,9 @@ describe('the status sets agree with each other and with the database', () => {
     // The four groups: open (a trip in flight), terminal (finished), and two
     // resting states that are neither — `completed` awaits settlement, and
     // `disputed` awaits a human. `no_drivers_found` is open-ish: §9.1.6 can
-    // retry straight back into the search.
-    const resting = ['completed', 'disputed', 'no_drivers_found'];
+    // retry straight back into the search. `paid` rests here too since A8
+    // lifted it out of the terminal set so refunds can leave for `disputed`.
+    const resting = ['completed', 'disputed', 'no_drivers_found', 'paid'];
     const accounted = new Set<string>([
       ...OPEN_BOOKING_STATUSES,
       ...TERMINAL_BOOKING_STATUSES,

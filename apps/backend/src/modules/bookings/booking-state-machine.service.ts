@@ -51,8 +51,13 @@ export const OPEN_BOOKING_STATUSES = ['searching', ...ACTIVE_JOB_STATUSES] as co
  * what preserves the fare locked at confirm — making the customer start a new
  * booking would re-quote them, potentially at a higher surge, for the
  * platform's own failure to find anyone.
+ *
+ * `paid` is deliberately NOT among them either (A8). A full refund must move a
+ * paid booking to `disputed`, but `RefundsService.refundBooking` runs the
+ * gateway refund and the compensating ledger legs BEFORE the transition — a
+ * terminal `paid` made it throw 409 after the money had already moved.
  */
-export const TERMINAL_BOOKING_STATUSES = ['paid', 'cancelled'] as const satisfies readonly JobStatus[];
+export const TERMINAL_BOOKING_STATUSES = ['cancelled'] as const satisfies readonly JobStatus[];
 
 /**
  * §5.1's transition table, transcribed.
@@ -74,6 +79,13 @@ export const TERMINAL_BOOKING_STATUSES = ['paid', 'cancelled'] as const satisfie
  * Phase 20 needs a way back out. `no_drivers_found` keeps an edge back to
  * `searching` for §9.1.6's "retry / widen" prompt, which is the loop the
  * diagram draws at the top.
+ *
+ * A8 ADDS TWO EDGES. `paid → disputed` lets a full refund land: the refund
+ * path refunds the gateway and posts compensating legs first, so the booking
+ * must be able to leave `paid` afterwards (A9 guards the reverse,
+ * `disputed → paid`, against ledger drift). `no_drivers_found → cancelled`
+ * lets an unmatchable search be closed out instead of lingering; the retry
+ * loop back to `searching` is unchanged.
  *
  * PHASE 18 ADDS THREE EDGES BACK TO `searching`, and they are the only ones this
  * table gained after Phase 15. §5.2's `unable_to_deliver` branch — customer not
@@ -109,10 +121,11 @@ export const LEGAL_TRANSITIONS: Record<JobStatus, readonly JobStatus[]> = {
   in_progress: ['completed', 'disputed', 'cancelled'],
   completed: ['paid', 'disputed'],
   disputed: ['completed', 'paid', 'cancelled'],
+  // `paid` is NOT terminal: A8's refund path lands on `disputed` from here.
+  paid: ['disputed'],
   // Terminal.
-  paid: [],
   cancelled: [],
-  no_drivers_found: ['searching'],
+  no_drivers_found: ['searching', 'cancelled'],
 };
 
 export type BookingActor = 'customer' | 'driver' | 'fleet_owner' | 'admin' | 'system';

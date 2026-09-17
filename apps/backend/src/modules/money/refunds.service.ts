@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import { ErrorCodes, paiseToRupeeString, rupeeStringToPaise } from '@towing/api-contracts';
+import { ErrorCodes, paiseToRupeeString, rupeeStringToPaise, type JobStatus } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { DB, type Database } from '../../db/db.module';
 import {
@@ -60,8 +60,14 @@ export class RefundsService {
     bookingId: string;
     reason: RefundReason;
     initiatedBy: string;
-    /** Where the booking lands afterwards. Never `paid` — see the header. */
-    to: 'cancelled' | 'disputed';
+    /**
+     * Where the booking lands afterwards. Never `paid` — see the header.
+     * `null` when the booking is already where it belongs (e.g. an admin
+     * cancelled it first and the refund only settles the money): the gateway
+     * refund, the compensating legs and `markRefunded` still run, only the
+     * status write is skipped (A8).
+     */
+    transitionTo: JobStatus | null;
     note?: string;
   }): Promise<{ refundId: string; replayed: boolean }> {
     const captured = await this.payments.capturedFor(params.bookingId, 'booking');
@@ -126,15 +132,19 @@ export class RefundsService {
     await this.reverseLedger(params.bookingId, refundId);
 
     // The booking MUST leave `paid` — see the header. A `disputed` landing is
-    // Phase 20's admin route; `cancelled` is the §3.5 path.
-    await this.db.transaction((tx) =>
-      this.machine.transition(tx, {
-        bookingId: params.bookingId,
-        to: params.to,
-        actor: 'system',
-        note: params.note ?? `Refunded (${params.reason})`,
-      }),
-    );
+    // Phase 20's admin route; `cancelled` is the §3.5 path. `null` skips the
+    // write when the caller already put the booking where it belongs.
+    if (params.transitionTo !== null) {
+      const to = params.transitionTo;
+      await this.db.transaction((tx) =>
+        this.machine.transition(tx, {
+          bookingId: params.bookingId,
+          to,
+          actor: 'system',
+          note: params.note ?? `Refunded (${params.reason})`,
+        }),
+      );
+    }
 
     await this.payments.markRefunded(captured.id);
 
