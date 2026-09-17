@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ErrorCodes, type JobStatus } from '@towing/api-contracts';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { FleetEventsService } from '../../common/events/fleet-events.service';
 import type { DatabaseExecutor } from '../../db/db.module';
@@ -80,6 +80,12 @@ export const TERMINAL_BOOKING_STATUSES = ['cancelled'] as const satisfies readon
  * `searching` for §9.1.6's "retry / widen" prompt, which is the loop the
  * diagram draws at the top.
  *
+ * The `disputed → paid` edge is CONDITIONAL (A9): `transition()` refuses it
+ * unless the booking settled first (captured payment plus settlement legs).
+ * The table alone cannot express that, so the table stays permissive and the
+ * guard enforces it — `isLegal()` answers the static question, the guard the
+ * financial one.
+ *
  * A8 ADDS TWO EDGES. `paid → disputed` lets a full refund land: the refund
  * path refunds the gateway and posts compensating legs first, so the booking
  * must be able to leave `paid` afterwards (A9 guards the reverse,
@@ -157,6 +163,30 @@ export class BookingStateMachineService {
   }
 
   /**
+   * Whether the booking settled before the dispute: a captured `booking`
+   * payment plus at least one settlement credit leg. Raw SQL on the caller's
+   * `tx`, deliberately — the machine takes no repository dependencies (the
+   * money module already depends on it; the reverse would be circular), and
+   * the check must see the same snapshot as the status write.
+   */
+  private async wasSettled(tx: DatabaseExecutor, bookingId: string): Promise<boolean> {
+    const [payment] = (await tx.execute(sql`
+      select 1 as one from payments
+       where booking_id = ${bookingId}::uuid
+         and purpose = 'booking' and status = 'captured' limit 1
+    `)) as unknown as Array<{ one: number }>;
+    if (!payment) return false;
+
+    const [leg] = (await tx.execute(sql`
+      select 1 as one from wallet_transactions
+       where ref_id = ${bookingId}::uuid
+         and type in ('driver_share_credit', 'fleet_share_credit', 'fare_credit')
+       limit 1
+    `)) as unknown as Array<{ one: number }>;
+    return Boolean(leg);
+  }
+
+  /**
    * Move a booking, inside a transaction the CALLER owns.
    *
    * `tx` rather than an injected db handle, deliberately: a transition is never
@@ -186,6 +216,23 @@ export class BookingStateMachineService {
         ErrorCodes.INVALID_BOOKING_STATE,
         `A booking cannot go from ${from} to ${to}`,
         { from, to, allowed: LEGAL_TRANSITIONS[from] },
+      );
+    }
+
+    // A9: `disputed → paid` is the one edge that can manufacture ledger drift.
+    // A booking that reached `disputed` from `in_progress` or `completed` has
+    // no settlement behind it; resolving it to `paid` makes `ledgerDrift`
+    // non-zero forever, because that invariant compares a paid booking's
+    // credit legs to its recorded payout. The edge stays for disputes opened
+    // from `paid` — proven by a captured payment AND settlement legs, read in
+    // the caller's transaction so the check cannot race the money.
+    if (from === 'disputed' && to === 'paid' && !(await this.wasSettled(tx, bookingId))) {
+      throw new ApiException(
+        409,
+        ErrorCodes.INVALID_BOOKING_STATE,
+        'Only a dispute opened from a paid booking can resolve back to paid: ' +
+          'no captured payment and settlement legs were found for this booking',
+        { from, to },
       );
     }
 
