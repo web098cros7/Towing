@@ -1,14 +1,20 @@
+'use client';
+
+import { useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
+import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
 
 /**
- * Admin landing (A6) — deliberately neutral, not role-routed.
+ * Admin landing (A6) + role routing (A7).
  *
- * Three places used to hardcode `/admin/drivers` as the landing (here,
- * the login page, `middleware.ts`), which dropped every finance admin onto
- * the KYC queue. Now everyone lands here and picks a queue; role-based
- * routing arrives with A7's identity provider.
+ * Finance goes to the payout queue; every other sub-role goes to the KYC
+ * queue — the only two pages that exist. (The dashboard is W3; "otherwise the
+ * dashboard" from the guide has nowhere to point yet, so operations and super
+ * admin start on the KYC queue alongside support.) While identity resolves,
+ * the neutral landing below holds — nobody is dropped on a queue uninvited.
  */
 const SECTIONS = [
   {
@@ -24,6 +30,14 @@ const SECTIONS = [
 ] as const;
 
 export default function AdminIndexPage() {
+  const router = useRouter();
+  const { admin, isLoading } = useAdminIdentity();
+
+  useEffect(() => {
+    if (isLoading || !admin) return;
+    router.replace(admin.subRole === 'finance' ? '/admin/finance' : '/admin/drivers');
+  }, [admin, isLoading, router]);
+
   return (
     <div>
       <PageHeader

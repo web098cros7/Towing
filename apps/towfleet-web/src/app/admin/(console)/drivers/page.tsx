@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Badge, type ColumnDef, DataTable } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
+import { AdminForbidden } from '@/components/admin/AdminForbidden';
+import { ApiError } from '@/lib/apiClient';
 import { useAdminPendingDrivers } from '@/features/admin-drivers/api/adminDrivers.queries';
 import { DriverKycDrawer } from '@/features/admin-drivers/components/DriverKycDrawer';
 import type { AdminPendingDriver } from '@/features/admin-drivers/types';
@@ -77,8 +79,21 @@ const columns: ColumnDef<AdminPendingDriver, unknown>[] = [
  * `kyc_status = 'pending'`); an `incomplete` driver never shows up here.
  */
 export default function AdminDriversPage() {
-  const { data, isLoading, isError, refetch } = useAdminPendingDrivers();
+  const { data, isLoading, isError, error, refetch } = useAdminPendingDrivers();
   const [selected, setSelected] = useState<AdminPendingDriver | null>(null);
+
+  // A7: a valid session without the queue's sub-role is refused, not broken.
+  if (error instanceof ApiError && error.status === 403) {
+    return (
+      <div>
+        <PageHeader
+          title="KYC queue"
+          description="Drivers who have submitted all documents and are awaiting review."
+        />
+        <AdminForbidden resource="the verification queue" />
+      </div>
+    );
+  }
 
   return (
     <div>

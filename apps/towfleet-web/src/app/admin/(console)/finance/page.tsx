@@ -7,6 +7,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { formatPaise } from '@/lib/money';
 import { useAdminPayouts } from '@/features/admin-finance/api/adminFinance.queries';
 import { PayoutDecisionDrawer } from '@/features/admin-finance/components/PayoutDecisionDrawer';
+import { AdminForbidden } from '@/components/admin/AdminForbidden';
+import { ApiError } from '@/lib/apiClient';
 
 const STATE_LABEL: Record<PayoutApprovalState, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> =
   {
@@ -87,11 +89,24 @@ export default function AdminFinancePage() {
   const [state, setState] = useState<PayoutApprovalState | 'all'>('pending_approval');
   const [selected, setSelected] = useState<AdminPayoutDto | null>(null);
 
-  const { data, isLoading, isError, refetch } = useAdminPayouts({
+  const { data, isLoading, isError, error, refetch } = useAdminPayouts({
     state,
     page: 1,
     limit: 50,
   });
+
+  // A7: a valid session without the queue's sub-role is refused, not broken.
+  if (error instanceof ApiError && error.status === 403) {
+    return (
+      <div>
+        <PageHeader
+          title="Payout approvals"
+          description="Driver and fleet payouts above the auto-approval threshold. Approving sends the money; the wallet is already debited either way."
+        />
+        <AdminForbidden resource="payout approvals" />
+      </div>
+    );
+  }
 
   return (
     <div>

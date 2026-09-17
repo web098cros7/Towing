@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@towing/web-ui';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
 
 /**
  * §9.4's admin shell.
@@ -23,6 +24,7 @@ const LINKS = [
 export function AdminTopbar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { admin } = useAdminIdentity();
 
   const logout = async () => {
     await fetch('/api/admin-session', { method: 'DELETE' });
@@ -57,6 +59,11 @@ export function AdminTopbar() {
       </div>
 
       <div className="flex items-center gap-2">
+        {admin ? (
+          <span className="text-sm text-text-secondary" data-testid="admin-identity">
+            {admin.name} · {admin.subRole}
+          </span>
+        ) : null}
         <ThemeToggle />
         <Button variant="ghost" size="sm" onClick={logout} aria-label="Log out">
           <LogOut className="size-4" />

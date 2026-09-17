@@ -17,7 +17,10 @@ export async function POST(request: Request) {
   if (env.useMocks) {
     const response = NextResponse.json({
       admin: {
-        id: 'mock-admin',
+        // A fixed UUID, not a bare string: the client parses this against
+        // `adminIdentitySchema`, and mocks must satisfy the contract they
+        // stand in for (A7 caught `id: 'mock-admin'` failing `z.uuid()`).
+        id: '00000000-0000-4000-8000-000000000001',
         email: 'ops@towing.local',
         name: 'Mock Admin',
         subRole: 'operations',

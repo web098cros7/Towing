@@ -80,7 +80,14 @@ export class AdminAuthController {
     return this.auth.devOtp(query.challengeId);
   }
 
+  /**
+   * Session identity for the console shell (A7). Reads, not auth: the BFF
+   * session route and the identity provider poll it, so it sits in the
+   * 300/min `reads` bucket — the handler tag overrides the class `auth`
+   * bucket (5/min), same mechanics as `refresh` below.
+   */
   @Get('me')
+  @ThrottleBucket('reads')
   async me(@Req() request: AuthedRequest) {
     const auth = request.auth;
     if (!auth) throw ApiException.unauthorized();
