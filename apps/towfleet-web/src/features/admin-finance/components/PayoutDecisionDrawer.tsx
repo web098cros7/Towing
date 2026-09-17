@@ -108,7 +108,7 @@ export function PayoutDecisionDrawer({
         </dl>
 
         {decidable ? (
-          <p className="mt-4 rounded-lg bg-surface-2 p-3 text-xs text-text-secondary">
+          <p className="mt-4 rounded-lg bg-surface1 p-3 text-xs text-text-secondary">
             The payee&apos;s wallet was already debited when they requested this. Approving sends the
             money to their bank; rejecting returns it to their wallet with a compensating entry.
           </p>

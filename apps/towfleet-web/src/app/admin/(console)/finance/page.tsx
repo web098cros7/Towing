@@ -109,7 +109,7 @@ export default function AdminFinancePage() {
             data-testid={`finance-filter-${option}`}
             className={
               state === option
-                ? 'rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white'
+                ? 'rounded-lg bg-brand-tint px-3 py-1.5 text-sm font-medium text-brand'
                 : 'rounded-lg border border-border px-3 py-1.5 text-sm text-text-secondary'
             }
           >

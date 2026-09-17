@@ -1,5 +1,5 @@
 export { cn } from './lib/cn';
-export { themeCss, fleetAccent, type RealmAccent } from './theme/css-vars';
+export { themeCss, fleetAccent, adminAccent, type RealmAccent } from './theme/css-vars';
 export { ThemeStyles } from './theme/ThemeStyles';
 export { Button, buttonVariants, type ButtonProps } from './components/Button';
 export { Card, CardHeader, CardTitle, CardContent } from './components/Card';

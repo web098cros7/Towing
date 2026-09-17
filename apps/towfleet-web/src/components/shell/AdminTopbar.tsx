@@ -52,7 +52,7 @@ export function AdminTopbar() {
                 aria-current={active ? 'page' : undefined}
                 className={
                   active
-                    ? 'rounded-lg bg-surface-2 px-3 py-1.5 text-sm font-medium text-text-primary'
+                    ? 'rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-on-brand'
                     : 'rounded-lg px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary'
                 }
               >
