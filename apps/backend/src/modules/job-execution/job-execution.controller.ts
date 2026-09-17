@@ -25,12 +25,15 @@ import { JobExecutionService } from './job-execution.service';
  * boundary.
  *
  * `KycApprovedGuard` on the whole controller, matching `DispatchController` and
- * `DriverPresenceController`. A driver suspended mid-job is refused here before
- * a transaction opens — and the job machine re-checks nothing, deliberately:
- * §3.1's gate is about who may RECEIVE work, and a driver who is halfway through
- * a tow with a customer's vehicle on their flatbed must still be able to finish
- * it and mark it complete. Suspending someone is not a reason to strand the
- * person they are currently helping.
+ * `DriverPresenceController`. A suspended driver (`kyc_status = 'suspended'`)
+ * is refused here before a transaction opens — and the job machine re-checks
+ * nothing, deliberately.
+ *
+ * A driver suspended MID-JOB is not refused: A14's `after_current_job` mode
+ * shelves the suspension and leaves `kyc_status` approved until the job ends,
+ * so this gate keeps letting them through and they finish the tow. The grace
+ * lives in the suspend path, not in this guard — weakening the guard would
+ * re-admit every suspended driver, not just the one mid-job.
  *
  * NO `Idempotency-Key` ON ANY OF THEM, for the reason `accept` states: the
  * mechanism the header provides is weaker here than the one these routes

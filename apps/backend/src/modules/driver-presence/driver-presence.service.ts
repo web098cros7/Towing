@@ -54,6 +54,17 @@ export class DriverPresenceService {
     const row = await this.repo.identity(driverId);
     if (!row) throw ApiException.notFound('Driver not found');
 
+    // A14: a shelved suspension blocks going (back) online — evicting a driver
+    // from presence while the toggle still works would just re-admit them on
+    // the next tap, with the shelf still waiting.
+    if (row.suspensionPending) {
+      throw new ApiException(
+        HttpStatus.FORBIDDEN,
+        ErrorCodes.ACCOUNT_NOT_ACTIVE,
+        'Your account is suspended pending review. Please contact support.',
+      );
+    }
+
     // Postgres first, then Redis. If the process dies between them the driver is
     // flagged online with no GEO membership, which the very next ping repairs
     // through `LocationIngestService.rehydrate`. The other order leaves a member

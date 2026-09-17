@@ -20,6 +20,7 @@ import { DispatchRepo, type DispatchBookingRow, type DriverEligibilityRow } from
 /** Why a driver in range was not offered the job. Counted, logged, and testable. */
 export type ExclusionReason =
   | 'not_approved'
+  | 'suspension_pending'
   | 'offline'
   | 'wrong_vehicle_class'
   | 'no_long_distance'
@@ -141,6 +142,13 @@ export class CandidateSelectionService {
       // have suspended them since, and the hash lives for 30 s after that.
       if (row.kycStatus !== 'approved') {
         count('not_approved');
+        continue;
+      }
+      // A14: shelved suspension — the driver finishes their live job but takes
+      // no new offers. Checked here rather than only at accept time so a wave
+      // does not burn twenty seconds offering to a driver who cannot take it.
+      if (row.suspensionPending) {
+        count('suspension_pending');
         continue;
       }
       if (!row.isOnline) {

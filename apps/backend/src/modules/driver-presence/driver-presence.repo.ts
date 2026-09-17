@@ -22,6 +22,8 @@ export interface DriverIdentityRow {
   truckId: string | null;
   vehicleClass: string | null;
   longDistance: boolean;
+  /** A14: set while an admin suspension waits for the live job to end. */
+  suspensionPending: boolean;
 }
 
 /** One buffered fix, ready for the ~30s batched flush. */
@@ -70,6 +72,7 @@ export class DriverPresenceRepo {
         truckId: drivers.assignedTruckId,
         vehicleClass: drivers.vehicleClass,
         longDistance: drivers.longDistanceEnabled,
+        suspensionPending: sql<boolean>`${drivers.pendingSuspensionAt} is not null`,
       })
       .from(drivers)
       .where(eq(drivers.id, driverId))

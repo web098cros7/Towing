@@ -56,6 +56,13 @@ export const adminKycDecisionSchema = z
     decision: z.enum(['approve', 'reject', 'request_info', 'suspend', 'reactivate']),
     /** Required for `reject`/`request_info` — a driver told only the verdict cannot act on it. */
     reason: z.string().min(3).max(500).optional(),
+    /**
+     * A14's suspension mode, only meaningful with `decision: 'suspend'`.
+     * `after_current_job` (default) shelves the suspension until the driver's
+     * live booking completes; `immediate` applies it at once and is refused
+     * while a live booking exists (the reassign/cancel disposition is W8).
+     */
+    mode: z.enum(['after_current_job', 'immediate']).optional(),
   })
   .refine((body) => !['reject', 'request_info'].includes(body.decision) || Boolean(body.reason), {
     message: 'A reason is required',
@@ -69,5 +76,7 @@ export const adminKycResultSchema = z.object({
   rejectionReason: z.string().nullable(),
   /** How many live sessions the decision revoked — 0 unless it removed authority. */
   sessionsRevoked: z.number().int().nonnegative(),
+  /** A14: true when the suspension is shelved until the live job completes. */
+  suspensionPending: z.boolean(),
 });
 export type AdminKycResult = z.infer<typeof adminKycResultSchema>;

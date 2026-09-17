@@ -19,6 +19,7 @@ import { bookings } from '../../db/schema';
 import { BookingOtpService } from '../bookings/booking-otp.service';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
+import { AdminDriversService } from '../admin-drivers/admin-drivers.service';
 import { DispatchRepo } from '../dispatch/dispatch.repo';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { LocationFlushService } from '../driver-presence/location-flush.service';
@@ -89,6 +90,10 @@ export class JobExecutionService {
     private readonly assignments: AssignmentCacheService,
     private readonly flush: LocationFlushService,
     private readonly presence: PresenceStore,
+    // A14: applies a shelved admin suspension when the driver's job ends.
+    // `AdminDriversModule` does not import this module back, so the edge is
+    // acyclic (see its header).
+    private readonly adminDrivers: AdminDriversService,
   ) {}
 
   /**
@@ -305,6 +310,10 @@ export class JobExecutionService {
     });
 
     await this.afterJobEnded(bookingId, driverId);
+    // A14: the job is done — a suspension shelved with `after_current_job`
+    // applies now. Never throws (the shelf survives for the next ending), so
+    // this cannot fail the completion it rides on.
+    await this.adminDrivers.applyPendingSuspension(driverId);
     this.customerGateway.emitBookingStatus(bookingId, 'completed');
     await this.machine.announce(result);
 
@@ -380,6 +389,9 @@ export class JobExecutionService {
       );
 
     await this.afterJobEnded(bookingId, driverId);
+    // A14: the driver is free — a shelved suspension applies before the
+    // re-dispatch below, so the resumed search never offers to them.
+    await this.adminDrivers.applyPendingSuspension(driverId);
     this.customerGateway.emitBookingStatus(bookingId, 'searching');
     await this.machine.announce(result);
 

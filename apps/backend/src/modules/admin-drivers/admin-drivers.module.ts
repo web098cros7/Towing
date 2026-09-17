@@ -20,5 +20,9 @@ import { AdminDriversService } from './admin-drivers.service';
   imports: [AuthModule, AdminAuthModule, DriverPresenceModule],
   controllers: [AdminDriversController],
   providers: [AdminDriversService],
+  // A14: job completion, unable-to-deliver and cancellation apply a shelved
+  // suspension when the driver's job ends. None of those import this module
+  // back, so the edge is acyclic (see each importer's header).
+  exports: [AdminDriversService],
 })
 export class AdminDriversModule {}

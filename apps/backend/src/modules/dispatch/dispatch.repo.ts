@@ -31,6 +31,12 @@ export interface DriverEligibilityRow {
   truckId: string | null;
   /** `null` for an independent driver — they operate no fleet truck by construction. */
   truckStatus: string | null;
+  /**
+   * A14: an admin suspension shelved until the driver's live job ends. Set
+   * means "take no new offers" even though `kycStatus` is still `approved` —
+   * the driver must finish the job they hold.
+   */
+  suspensionPending: boolean;
   /** 0–5. Still a seeded default until Phase 19 writes it (§6.2 gives it 15 %). */
   rating: number | null;
   /** 0–100, written by this phase on every offer resolution. */
@@ -150,6 +156,9 @@ export class DispatchRepo {
         rating: drivers.rating,
         acceptanceRate: drivers.acceptanceRate,
         completionRate: drivers.completionRate,
+        // A14: the deferred-suspension shelf. A plain column read — no join —
+        // so the wave's single batched query stays single.
+        suspensionPending: sql<boolean>`${drivers.pendingSuspensionAt} is not null`,
         // A correlated EXISTS rather than a join: a driver has at most one
         // active booking (migration 0014 makes that a unique index), so a join
         // would multiply nothing and an EXISTS stops at the first row.

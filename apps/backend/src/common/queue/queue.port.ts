@@ -154,6 +154,18 @@ export interface JobPayloads {
    * still-`offered` rows), so the default attempts are safe.
    */
   'dispatch.revoke': { bookingId: string; reason: 'cancelled' | 'paused' };
+
+  /**
+   * Apply a shelved driver suspension now that their job has ended (A14).
+   *
+   * A job rather than a direct call for the same reason as `dispatch.revoke`:
+   * the caller (`BookingsService.cancel`) sits inside a module cycle —
+   * `AdminDriversModule` imports `DriverPresenceModule`, which imports
+   * `BookingsModule` — and the queue is `@Global()`. The worker body is one
+   * line over `AdminDriversService.applyPendingSuspension`, which is also
+   * what the queue-off suite calls directly.
+   */
+  'admin.apply-suspension': { driverId: string };
 }
 
 export type JobName = keyof JobPayloads;

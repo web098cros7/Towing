@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type {
   AdminCapabilitiesResponse,
   AdminCapabilitiesUpdate,
@@ -8,14 +8,17 @@ import type {
   AdminKycResult,
   AdminPendingDriversResponse,
 } from '@towing/api-contracts';
-import { and, asc, eq } from 'drizzle-orm';
+import { ErrorCodes } from '@towing/api-contracts';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { DeviceRegistryService } from '../../common/notifications/device-registry.service';
 import { NotificationService } from '../../common/notifications/notification.service';
 import { keyFromFileUrl } from '../../common/storage/file-url';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { DB, type Database } from '../../db/db.module';
-import { driverDocuments, drivers } from '../../db/schema';
+import { bookings, driverDocuments, drivers } from '../../db/schema';
+import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
+import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 import type { KycStatus } from '../auth/auth.types';
 import { TokenService, type SessionContext } from '../auth/token.service';
 import { DriverPresenceService } from '../driver-presence/driver-presence.service';
@@ -45,11 +48,12 @@ const THUMBNAIL_TTL_SECONDS = 5 * 60;
  * (that module stays authentication-only).
  */
 @Injectable()
-export class AdminDriversService {
+export class AdminDriversService implements OnModuleInit {
   private readonly logger = new Logger(AdminDriversService.name);
 
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(QUEUE) private readonly queue: QueuePort,
     private readonly audit: AdminAuditService,
     private readonly tokens: TokenService,
     @Inject(STORAGE) private readonly storage: StoragePort,
@@ -57,6 +61,17 @@ export class AdminDriversService {
     private readonly deviceRegistry: DeviceRegistryService,
     private readonly presence: DriverPresenceService,
   ) {}
+
+  /**
+   * The worker over `applyPendingSuspension` — see the `admin.apply-suspension`
+   * job docs in `queue.port.ts`. One line by design, like the dispatch
+   * workers: the logic lives in the method the queue-off suite calls directly.
+   */
+  onModuleInit(): void {
+    this.queue.process('admin.apply-suspension', async ({ driverId }) => {
+      await this.applyPendingSuspension(driverId);
+    });
+  }
 
   async decide(
     adminId: string,
@@ -71,12 +86,20 @@ export class AdminDriversService {
         kycStatus: drivers.kycStatus,
         rejectionReason: drivers.rejectionReason,
         approvedBy: drivers.approvedBy,
+        pendingSuspensionReason: drivers.pendingSuspensionReason,
+        pendingSuspensionBy: drivers.pendingSuspensionBy,
+        pendingSuspensionAt: drivers.pendingSuspensionAt,
       })
       .from(drivers)
       .where(eq(drivers.id, driverId))
       .limit(1);
 
     if (!before) throw ApiException.notFound('Driver not found');
+
+    // A14: suspension is two-mode — it owns its audit and side effects.
+    if (body.decision === 'suspend') {
+      return this.suspend(adminId, driverId, body, context, before);
+    }
 
     const status = NEXT_STATUS[body.decision];
     const approving = body.decision === 'approve';
@@ -94,6 +117,11 @@ export class AdminDriversService {
         rejectionReason: ['reject', 'request_info'].includes(body.decision)
           ? (body.reason ?? null)
           : null,
+        // A14: reinstating clears a shelved suspension, or the next completed
+        // job would suspend a driver an admin just cleared.
+        ...(body.decision === 'reactivate'
+          ? { pendingSuspensionReason: null, pendingSuspensionBy: null, pendingSuspensionAt: null }
+          : {}),
         updatedAt: now,
       })
       .where(eq(drivers.id, driverId))
@@ -197,7 +225,231 @@ export class AdminDriversService {
       kycStatus: after!.kycStatus,
       rejectionReason: after!.rejectionReason,
       sessionsRevoked,
+      suspensionPending: false,
     };
+  }
+
+  /**
+   * A14's two-mode suspension. `KycApprovedGuard` is deliberately untouched —
+   * the grace lives here, not in the gate.
+   *
+   * - `after_current_job` (default): with a live booking, the suspension is
+   *   shelved on the driver row, the driver is evicted from presence and
+   *   blocked from new offers, and everything else — sessions, devices,
+   *   `kyc_status` — stays so they can finish the job. It applies when the
+   *   job ends (`applyPendingSuspension`, called from completion, unable and
+   *   cancel paths). With no live booking it suspends at once.
+   * - `immediate`: suspends at once, but is refused while a live booking
+   *   exists — the booking needs a disposition (reassign/cancel) first, and
+   *   those admin actions land in W8. Ending the trip out from under the
+   *   driver here would strand the customer.
+   */
+  private async suspend(
+    adminId: string,
+    driverId: string,
+    body: AdminKycDecision,
+    context: SessionContext,
+    before: {
+      id: string;
+      name: string | null;
+      kycStatus: KycStatus;
+      rejectionReason: string | null;
+      approvedBy: string | null;
+    },
+  ): Promise<AdminKycResult> {
+    const mode = body.mode ?? 'after_current_job';
+    const live = await this.liveBooking(driverId);
+    const now = new Date();
+
+    if (live && mode === 'immediate') {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.INVALID_BOOKING_STATE,
+        'Driver holds an active booking — reassign or cancel it first (admin dispositions land in W8), or suspend after the current job',
+        { bookingId: live.id, status: live.status },
+      );
+    }
+
+    if (live) {
+      const [after] = await this.db
+        .update(drivers)
+        .set({
+          pendingSuspensionReason: body.reason ?? null,
+          pendingSuspensionBy: adminId,
+          pendingSuspensionAt: now,
+          updatedAt: now,
+        })
+        .where(eq(drivers.id, driverId))
+        .returning({
+          id: drivers.id,
+          kycStatus: drivers.kycStatus,
+          rejectionReason: drivers.rejectionReason,
+          approvedBy: drivers.approvedBy,
+          pendingSuspensionReason: drivers.pendingSuspensionReason,
+          pendingSuspensionBy: drivers.pendingSuspensionBy,
+          pendingSuspensionAt: drivers.pendingSuspensionAt,
+        });
+
+      // Supply-side immediacy, same as a real suspend: evicted from the
+      // candidate store and blocked from new offers (eligibility reads the
+      // pending shelf). Sessions, devices and `kyc_status` stay — the driver
+      // must finish the job, and `KycApprovedGuard` keeps letting them.
+      await this.presence.evictRevoked(driverId);
+
+      await this.audit.record({
+        adminId,
+        action: 'driver.kyc.suspend',
+        subjectType: 'driver',
+        subjectId: driverId,
+        before: before as unknown as Record<string, unknown>,
+        after: (after ?? null) as unknown as Record<string, unknown> | null,
+        reason: body.reason ?? null,
+        ip: context.ip ?? null,
+        userAgent: context.userAgent ?? null,
+      });
+
+      return {
+        driverId,
+        kycStatus: after!.kycStatus,
+        rejectionReason: after!.rejectionReason,
+        sessionsRevoked: 0,
+        suspensionPending: true,
+      };
+    }
+
+    // No live booking: the pre-A14 immediate path, verbatim in effect.
+    const [after] = await this.db
+      .update(drivers)
+      .set({
+        kycStatus: 'suspended',
+        approvedBy: null,
+        approvedAt: null,
+        rejectionReason: null,
+        pendingSuspensionReason: null,
+        pendingSuspensionBy: null,
+        pendingSuspensionAt: null,
+        updatedAt: now,
+      })
+      .where(eq(drivers.id, driverId))
+      .returning({
+        id: drivers.id,
+        kycStatus: drivers.kycStatus,
+        rejectionReason: drivers.rejectionReason,
+        approvedBy: drivers.approvedBy,
+      });
+
+    const sessionsRevoked = await this.tokens.revokeSubject(driverId, 'driver', 'kyc_suspend');
+    await this.deviceRegistry.revokeAllForSubject('driver', driverId, 'kyc_suspended');
+    await this.presence.evictRevoked(driverId);
+
+    await this.audit.record({
+      adminId,
+      action: 'driver.kyc.suspend',
+      subjectType: 'driver',
+      subjectId: driverId,
+      before: before as unknown as Record<string, unknown>,
+      after: (after ?? null) as unknown as Record<string, unknown> | null,
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    return {
+      driverId,
+      kycStatus: after!.kycStatus,
+      rejectionReason: after!.rejectionReason,
+      sessionsRevoked,
+      suspensionPending: false,
+    };
+  }
+
+  /**
+   * Applies a shelved suspension once the driver's job has ended — called
+   * from job completion, unable-to-deliver and cancellation, the three paths
+   * that free a driver. No-op when nothing is shelved or the driver somehow
+   * holds another live booking (defensive: callers invoke this exactly when a
+   * job ended, but a second assignment racing the call must not suspend
+   * under it — the shelf survives for the next ending).
+   *
+   * Never throws: a suspension that fails to apply must not fail the
+   * completion/cancellation it rides on. The shelf stays, eligibility keeps
+   * blocking offers, and the next job ending retries.
+   */
+  async applyPendingSuspension(driverId: string): Promise<boolean> {
+    const [pending] = await this.db
+      .select({
+        reason: drivers.pendingSuspensionReason,
+        by: drivers.pendingSuspensionBy,
+        at: drivers.pendingSuspensionAt,
+      })
+      .from(drivers)
+      .where(eq(drivers.id, driverId))
+      .limit(1);
+
+    if (!pending?.at) return false;
+    if (!pending.by) {
+      // A shelf without an author is corrupt data, not a suspension: applying
+      // it would write an audit row no admin can own (`admin_id` is a uuid FK).
+      this.logger.warn(`deferred suspension for ${driverId} has no author — leaving shelved`);
+      return false;
+    }
+    if (await this.liveBooking(driverId)) {
+      this.logger.warn(`deferred suspension for ${driverId} skipped — driver holds another live booking`);
+      return false;
+    }
+
+    try {
+      const now = new Date();
+      await this.db
+        .update(drivers)
+        .set({
+          kycStatus: 'suspended',
+          approvedBy: null,
+          approvedAt: null,
+          rejectionReason: null,
+          pendingSuspensionReason: null,
+          pendingSuspensionBy: null,
+          pendingSuspensionAt: null,
+          updatedAt: now,
+        })
+        .where(eq(drivers.id, driverId));
+
+      await this.tokens.revokeSubject(driverId, 'driver', 'kyc_suspend_deferred');
+      await this.deviceRegistry.revokeAllForSubject('driver', driverId, 'kyc_suspended');
+      await this.presence.evictRevoked(driverId);
+
+      await this.audit.record({
+        adminId: pending.by,
+        action: 'driver.kyc.suspend',
+        subjectType: 'driver',
+        subjectId: driverId,
+        before: { pendingSuspensionReason: pending.reason, pendingSuspensionAt: pending.at },
+        after: { kycStatus: 'suspended' },
+        reason: pending.reason,
+        ip: null,
+        userAgent: null,
+      });
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `deferred suspension for ${driverId} failed to apply: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
+  }
+
+  /** The driver's live booking, if any — assigned, en route, arrived or in progress. */
+  private async liveBooking(driverId: string): Promise<{ id: string; status: string } | null> {
+    const [row] = (await this.db.execute(sql`
+      select id, status from bookings
+       where driver_id = ${driverId}::uuid
+         and status in (${sql.join(
+           ACTIVE_JOB_STATUSES.map((status) => sql`${status}::booking_status`),
+           sql`, `,
+         )})
+       limit 1
+    `)) as unknown as Array<{ id: string; status: string }>;
+    return row ?? null;
   }
 
   /**

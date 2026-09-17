@@ -46,6 +46,9 @@ const mockSource: AdminDriversDataSource = {
       kycStatus: kycStatus[decision],
       rejectionReason: null,
       sessionsRevoked: 0,
+      // Mocks decide nothing (see adminFinanceDataSource's note); the pending
+      // shelf only exists against a real backend (A14).
+      suspensionPending: false,
     };
   },
   reviewDocument: async (_driverId, documentId, decision, reason) => {

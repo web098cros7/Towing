@@ -120,6 +120,13 @@
       "when": 1787587200000,
       "tag": "0016_money_capture_and_ratings",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787673600000,
+      "tag": "0017_pending_driver_suspension",
+      "breakpoints": true
     }
   ]
 }

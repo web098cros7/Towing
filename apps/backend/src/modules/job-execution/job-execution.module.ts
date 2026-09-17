@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { RealtimeModule } from '../../realtime/realtime.module';
 import { AuthModule } from '../auth/auth.module';
+import { AdminDriversModule } from '../admin-drivers/admin-drivers.module';
 import { BookingsModule } from '../bookings/bookings.module';
 import { DispatchModule } from '../dispatch/dispatch.module';
 import { DriverPresenceModule } from '../driver-presence/driver-presence.module';
@@ -32,6 +33,9 @@ import { JobExecutionService } from './job-execution.service';
  *   goes offline before the ~30 s timer.
  * - `AuthModule`/`RealtimeModule` — the guards, and the subscriber the en-route
  *   watcher rides.
+ * - `AdminDriversModule` (11) — `applyPendingSuspension` when a job ends (A14).
+ *   Listed last although numbered first: the edge points this way
+ *   (`AdminDriversModule` imports nothing here) so it stays acyclic.
  *
  * The order those phases had to land in is the order they are listed. Nothing
  * here could have been built earlier.
@@ -44,6 +48,7 @@ import { JobExecutionService } from './job-execution.service';
     TrackingModule,
     DriverPresenceModule,
     RealtimeModule,
+    AdminDriversModule,
   ],
   controllers: [JobExecutionController],
   providers: [JobExecutionService, JobExecutionRepo, DriverStatsService, EnRouteWatcher],

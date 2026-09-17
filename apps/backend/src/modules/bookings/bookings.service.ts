@@ -590,6 +590,24 @@ export class BookingsService {
       this.logger.warn(`revoke enqueue failed for ${bookingId}: ${String(error)}`);
     }
 
+    // A14: the driver is free — a shelved suspension applies via the admin
+    // worker. Enqueued, not called: `AdminDriversModule` imports
+    // `DriverPresenceModule`, which imports THIS module — so importing the
+    // admin module back would close a cycle. Same reason `cancel` revokes
+    // offers through `dispatch.revoke` above. (Admin cancel wires the same
+    // job in W8.)
+    if (row.driverId) {
+      try {
+        await this.queue.enqueue(
+          'admin.apply-suspension',
+          { driverId: row.driverId },
+          { jobId: `apply-suspension-${bookingId}` },
+        );
+      } catch (error) {
+        this.logger.warn(`suspension-apply enqueue failed for ${bookingId}: ${String(error)}`);
+      }
+    }
+
     this.logger.log(`event=booking_cancelled booking=${bookingId} tier=${outcome.tier}`);
 
     return {

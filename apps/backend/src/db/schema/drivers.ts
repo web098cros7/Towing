@@ -109,6 +109,16 @@ export const drivers = pgTable(
       .notNull()
       .default({})
       .$type<Partial<SubjectNotificationPrefs>>(),
+    /**
+     * A14's deferred suspension shelf. Set when an admin suspends a driver who
+     * holds a live booking (`after_current_job`): dispatch eligibility and
+     * go-online read these, and the suspension applies when the job completes.
+     * All NULL means no suspension pending. Added by migration 0017; W6's
+     * directory migration must not re-add them.
+     */
+    pendingSuspensionReason: text('pending_suspension_reason'),
+    pendingSuspensionBy: uuid('pending_suspension_by').references(() => adminUsers.id),
+    pendingSuspensionAt: timestamp('pending_suspension_at', { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
