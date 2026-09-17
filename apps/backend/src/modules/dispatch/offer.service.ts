@@ -168,6 +168,33 @@ export class OfferService {
   }
 
   /**
+   * Revokes every live offer on a booking (A12) — customer cancel, admin
+   * cancel/reassign (W8), or a paused zone.
+   *
+   * The mirror of `expire`, MINUS the acceptance-rate recompute: a driver
+   * holding an offer for a job nobody could have accepted must not pay for it
+   * with a timeout. Do not "complete" this method by adding the recompute —
+   * that asymmetry is the point. Idempotent per driver (`resolveOffer` only
+   * moves still-`offered` rows), so a racing accept, expiry or second revoke
+   * simply wins or loses without corrupting either path.
+   */
+  async revokeAll(bookingId: string, reason: 'cancelled' | 'paused'): Promise<string[]> {
+    const driverIds = await this.repo.pendingOffers(bookingId);
+    const revoked: string[] = [];
+    for (const driverId of driverIds) {
+      const moved = await this.repo.resolveOffer(bookingId, driverId, 'revoked');
+      if (!moved) continue;
+      await this.presence.releaseOfferLock(driverId);
+      this.gateway.emitJobRevoked(driverId, bookingId, reason);
+      revoked.push(driverId);
+    }
+    if (revoked.length > 0) {
+      this.logger.debug(`revoked ${revoked.length} offers on ${bookingId} (${reason})`);
+    }
+    return revoked;
+  }
+
+  /**
    * The driver said yes. §3.4's atomic assignment.
    *
    * FOUR THINGS HAVE TO BE TRUE AT COMMIT and each is checked inside the

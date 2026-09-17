@@ -140,6 +140,20 @@ export interface JobPayloads {
    * already or the next wave passes over it regardless.
    */
   'dispatch.offer-timeout': { bookingId: string; driverId: string; wave: number };
+
+  /**
+   * Revoke every live offer on a booking (A12) — customer cancel today, admin
+   * cancel/reassign in W8.
+   *
+   * A job rather than a direct call because the caller (`BookingsService`)
+   * must not import `DispatchModule`: dispatch already imports bookings for
+   * the state machine, so the edge the other way would be a module cycle
+   * (see `BookingsModule`'s header). The queue is `@Global()`, and delivery
+   * is near-immediate — the driver is told within the same seconds a direct
+   * call would take. Idempotent by construction (`revokeAll` only moves
+   * still-`offered` rows), so the default attempts are safe.
+   */
+  'dispatch.revoke': { bookingId: string; reason: 'cancelled' | 'paused' };
 }
 
 export type JobName = keyof JobPayloads;

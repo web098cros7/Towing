@@ -121,6 +121,10 @@ export class DispatchService implements OnModuleInit {
     this.queue.process('dispatch.offer-timeout', async ({ bookingId, driverId }) => {
       await this.expireOffer(bookingId, driverId);
     });
+
+    this.queue.process('dispatch.revoke', async ({ bookingId, reason }) => {
+      await this.offers.revokeAll(bookingId, reason);
+    });
   }
 
   /**
@@ -178,6 +182,10 @@ export class DispatchService implements OnModuleInit {
     // is the entire point of having it.
     if (await this.isPaused(booking)) {
       this.logger.log(`booking ${bookingId} held — dispatch paused for its zone or band`);
+      // A12: drivers holding an offer for a search that just stopped must be
+      // told now — otherwise they sit out their twenty seconds and pay for it
+      // in acceptance rate. Revoke before rescheduling; both are idempotent.
+      await this.offers.revokeAll(bookingId, 'paused');
       // Re-check shortly rather than failing the booking. A pause is an
       // operator's temporary decision, and a customer whose search was killed by
       // it would have to re-book at whatever surge applies then.

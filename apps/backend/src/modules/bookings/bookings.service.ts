@@ -575,6 +575,21 @@ export class BookingsService {
     await this.machine.announce(result);
     await this.otp.forget(bookingId);
 
+    // A12: revoke live offers so a driver holding one is told immediately.
+    // Enqueued, not called: `DispatchModule` imports this module for the state
+    // machine, so importing it back would be a cycle — the queue is `@Global()`
+    // and delivers within the same seconds. (Admin cancel/reassign wire the
+    // same job in W8.)
+    try {
+      await this.queue.enqueue(
+        'dispatch.revoke',
+        { bookingId, reason: 'cancelled' },
+        { jobId: `revoke-${bookingId}` },
+      );
+    } catch (error) {
+      this.logger.warn(`revoke enqueue failed for ${bookingId}: ${String(error)}`);
+    }
+
     this.logger.log(`event=booking_cancelled booking=${bookingId} tier=${outcome.tier}`);
 
     return {
