@@ -1,7 +1,15 @@
 import type { INestApplication } from '@nestjs/common';
 import {
+  adminCommissionConfigSchema,
+  adminDispatchConfigSchema,
+  adminFinanceConfigSchema,
+  adminIdentitySchema,
+  adminPendingDriversResponseSchema,
+  adminPayoutsListResponseSchema,
+  adminPricingConfigSchema,
   alertsListResponseSchema,
   bookingListResponseSchema,
+  commissionHistoryEntrySchema,
   serviceCatalogResponseSchema,
   dashboardSummarySchema,
   driversListResponseSchema,
@@ -16,9 +24,15 @@ import {
 } from '@towing/api-contracts';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { z } from 'zod';
-import { authHeaderFor, createTestApp, customerAuthHeaderFor } from '../test/app';
+import { z } from 'zod';
 import {
+  adminAuthHeaderFor,
+  authHeaderFor,
+  createTestApp,
+  customerAuthHeaderFor,
+} from '../test/app';
+import {
+  seedAdmin,
   seedCustomer,
   seedDriver,
   seedFleet,
@@ -27,6 +41,7 @@ import {
   truncateAll,
   type TestDatabase,
 } from '../test/db';
+import { commissionConfigHistory, driverDocuments, payouts } from '../db/schema';
 import { seedBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
 import { closeTestRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
@@ -53,13 +68,15 @@ describe('response contracts', () => {
   let db: TestDatabase;
   let auth: string;
   let customerAuth: string;
+  let adminAuth: string;
   let fleetId: string;
 
   /**
    * `realm` selects which token the request carries. Absent means fleet — the
-   * only realm this table covered until Phase 14 added customer read routes.
+   * only realm this table covered until Phase 14 added customer read routes
+   * and A1 added the admin console's eight.
    */
-  const ROUTES: Array<{ path: string; schema: z.ZodType; realm?: 'fleet' | 'customer' }> = [
+  const ROUTES: Array<{ path: string; schema: z.ZodType; realm?: 'fleet' | 'customer' | 'admin' }> = [
     { path: '/v1/fleet/dashboard', schema: dashboardSummarySchema },
     { path: '/v1/fleet/trucks', schema: trucksListResponseSchema },
     { path: '/v1/fleet/drivers', schema: driversListResponseSchema },
@@ -80,6 +97,20 @@ describe('response contracts', () => {
     // Phase 15. Seeded with a real trip below — an empty list matches almost
     // any schema, which is what makes an unseeded row in this table worthless.
     { path: '/v1/bookings', schema: bookingListResponseSchema, realm: 'customer' },
+    // A1 — the admin console's eight. Super-admin satisfies every role set, so
+    // one token covers all eight rows.
+    { path: '/v1/admin/drivers/pending', schema: adminPendingDriversResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
+    { path: '/v1/admin/pricing', schema: adminPricingConfigSchema, realm: 'admin' },
+    { path: '/v1/admin/commission', schema: adminCommissionConfigSchema, realm: 'admin' },
+    {
+      path: '/v1/admin/commission/history',
+      schema: z.array(commissionHistoryEntrySchema),
+      realm: 'admin',
+    },
+    { path: '/v1/admin/dispatch-config', schema: adminDispatchConfigSchema, realm: 'admin' },
+    { path: '/v1/admin/auth/me', schema: adminIdentitySchema, realm: 'admin' },
   ];
 
   beforeAll(async () => {
@@ -107,6 +138,46 @@ describe('response contracts', () => {
     await seedWalletWithLedger(db, { ownerType: 'fleet', ownerId: fleetId }, [
       { type: 'fleet_share_credit', amount: '5000.00' },
     ]);
+
+    // A1 — one super_admin satisfies all eight admin role sets. Every admin
+    // row below is seeded non-empty on purpose: an empty response matches
+    // almost any schema, which is what makes an unseeded row worthless.
+    const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
+    adminAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+
+    // Pending KYC driver with a real document (thumbnailUrl is a signed GET).
+    const pendingDriverId = await seedDriver(db, { kycStatus: 'pending', name: 'Contract Pending' });
+    await db.insert(driverDocuments).values({
+      driverId: pendingDriverId,
+      docType: 'license',
+      fileUrl: `local://driver-documents/${pendingDriverId}/license.png`,
+      status: 'pending',
+    });
+
+    // Queued payout with a linked destination so ownerName/bank fields populate.
+    const payoutDriverId = await seedDriver(db, { name: 'Contract Payout Driver' });
+    await seedWalletWithLedger(db, { ownerType: 'driver', ownerId: payoutDriverId }, [
+      { type: 'fare_credit', amount: '50000.00' },
+    ]);
+    await seedPayoutAccount(db, payoutDriverId, { ownerType: 'driver' });
+    await db.insert(payouts).values({
+      ownerId: payoutDriverId,
+      ownerType: 'driver',
+      amount: '20000.00',
+      status: 'requested',
+      approvalState: 'pending_approval',
+      idempotencyKey: `contract-test-payout-${payoutDriverId}`,
+      provider: 'dev',
+    });
+
+    // Commission-history genesis row — oldPct is null only for seeded rows.
+    await db.insert(commissionConfigHistory).values({
+      band: 'A',
+      oldPct: null,
+      newPct: '10.00',
+      changedBy: superAdmin.id,
+      reason: 'contract coverage seed',
+    });
   });
 
   afterAll(async () => {
@@ -116,9 +187,10 @@ describe('response contracts', () => {
 
   for (const route of ROUTES) {
     it(`GET ${route.path} matches its contract`, async () => {
+      const token = route.realm === 'customer' ? customerAuth : route.realm === 'admin' ? adminAuth : auth;
       const res = await request(app.getHttpServer())
         .get(route.path)
-        .set('Authorization', route.realm === 'customer' ? customerAuth : auth)
+        .set('Authorization', token)
         .expect(200);
 
       expectMatchesContract(route.schema, res.body);
@@ -133,12 +205,13 @@ describe('response contracts', () => {
    * the routes Express actually registered and demands each one be accounted
    * for — either covered, or explicitly excluded with a reason.
    */
-  it('covers every registered fleet and customer GET route', () => {
+  it('covers every registered fleet, customer and admin GET route', () => {
     // Phase 14 widened this beyond `/v1/fleet/`. The guard was fleet-only
     // because the fleet console was the only client; `GET /v1/services` is the
     // first customer read with a published contract, and leaving the walk
     // fleet-scoped would have meant every future TowGo route was uncovered by
     // default — a ratchet that stops ratcheting.
+    // A1 widens it again to `/v1/admin` for the same reason.
     const registered = registeredGetPaths(app).filter(
       (path) => isCovered(path) && !EXCLUDED.has(path),
     );
@@ -157,7 +230,7 @@ describe('response contracts', () => {
 });
 
 /** Realms whose GET routes this table is responsible for. */
-const COVERED_PREFIXES = ['/v1/fleet', '/v1/services', '/v1/me', '/v1/bookings'];
+const COVERED_PREFIXES = ['/v1/fleet', '/v1/services', '/v1/me', '/v1/bookings', '/v1/admin'];
 
 /**
  * Segment-aware, NOT `startsWith`. A bare prefix test matched `/v1/metrics`
@@ -231,6 +304,9 @@ const EXCLUDED = new Set([
   // `@towing/api-contracts` would advertise to every client a route that must
   // never exist in production. Its own guard rails are in dev-otp.e2e.spec.ts.
   '/v1/fleet/auth/dev/otp',
+  // A1 — the admin dev-OTP echo. Same rationale as the fleet one above: a
+  // debug payload, not a DTO, 404 unless `AUTH_DEV_OTP_ECHO`.
+  '/v1/admin/auth/dev/otp',
 ]);
 
 /** Express 5 keeps the registered layers on `router.stack`. */
