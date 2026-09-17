@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { safeAdminNext } from './lib/adminNext';
 
 /**
  * Realm-prefixed session cookies (§4.1 — separate web realms). Two realms
@@ -48,7 +49,12 @@ export function middleware(request: NextRequest) {
     const isLogin = pathname === '/admin/login';
 
     if (!hasSession && !isLogin) return redirectTo(request, '/admin/login', true);
-    if (hasSession && isLogin) return redirectTo(request, '/admin/drivers');
+    // A6: everyone lands on /admin (neutral landing, not a queue). Middleware
+    // cannot read the sub-role out of the opaque session cookie, so role
+    // routing waits for A7's identity provider. Preserve a valid ?next=.
+    if (hasSession && isLogin) {
+      return redirectTo(request, safeAdminNext(request.nextUrl.searchParams.get('next')));
+    }
     return NextResponse.next();
   }
 

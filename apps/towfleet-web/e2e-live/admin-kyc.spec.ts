@@ -33,7 +33,8 @@ async function loginAsOps(page: Page) {
 
   await page.getByLabel('One-time code').fill(otp);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/admin\/drivers/);
+  // A6: neutral landing, not a queue — specs walk on explicitly.
+  await expect(page).toHaveURL(/\/admin$/);
 }
 
 // Read-only first, on purpose: the second test approves Prakash Naik out of
@@ -56,6 +57,7 @@ test('a support admin can see the queue but has no way to decide from it', async
   await page.getByLabel('One-time code').fill(otp);
   await page.getByRole('button', { name: 'Sign in' }).click();
 
+  await page.goto('/admin/drivers');
   await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
   await expect(page.getByText('Prakash Naik')).toBeVisible();
 });
@@ -63,6 +65,7 @@ test('a support admin can see the queue but has no way to decide from it', async
 test('admin can approve a real KYC submission end to end', async ({ page }) => {
   await loginAsOps(page);
 
+  await page.goto('/admin/drivers');
   await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
   const row = page.getByText('Prakash Naik');
   await expect(row).toBeVisible();

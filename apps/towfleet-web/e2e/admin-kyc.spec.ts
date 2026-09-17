@@ -37,6 +37,8 @@ test('admin login → KYC queue renders, and a submitted driver has a real drawe
   // made for the fleet console once it had two.
   await adminLogin(page);
 
+  // A6 lands on the neutral `/admin` page; walk on to the queue explicitly.
+  await page.goto('/admin/drivers');
   await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
   await expect(page.getByText('Prakash Naik')).toBeVisible();
 

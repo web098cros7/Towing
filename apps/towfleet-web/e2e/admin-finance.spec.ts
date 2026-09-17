@@ -18,7 +18,9 @@ test('the Finance queue is reachable from the topbar and lists both owner types'
   await adminLogin(page);
 
   // The topbar had NO navigation until Phase 19 — this link is the whole
-  // reason a second admin page is usable at all.
+  // reason a second admin page is usable at all. Reached from the KYC queue
+  // because A6's neutral landing carries no shell.
+  await page.goto('/admin/drivers');
   await page.getByRole('link', { name: 'Payouts' }).click();
   await expect(page).toHaveURL(/\/admin\/finance/);
 

@@ -3,9 +3,8 @@
  *
  * Same-origin admin path only: exactly `/admin` or under `/admin/`, never
  * starting `//` (protocol-relative) and never containing a backslash (some
- * browsers treat `\` as `/`). Anything else falls back to `/admin`, which
- * `app/admin/page.tsx` already redirects onward — correct today and after A6
- * with no second edit.
+ * browsers treat `\` as `/`). Anything else falls back to `/admin` — the
+ * neutral A6 landing, which is correct for every sub-role.
  */
 export function safeAdminNext(raw: string | null): string {
   if (!raw) return '/admin';

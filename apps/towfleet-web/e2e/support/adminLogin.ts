@@ -21,6 +21,9 @@ export async function adminLogin(
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  // `middleware.ts` hardcodes this landing — see `AdminTopbar`'s note.
-  await expect(page).toHaveURL(/\/admin\/drivers/);
+  // A6: the landing is the neutral `/admin` page, not a queue — specs
+  // navigate on to the queue they need. (Role-aware routing arrives in A7,
+  // which will move this assertion again.) Anchored: /admin/login must not
+  // satisfy it.
+  await expect(page).toHaveURL(/\/admin$/);
 }

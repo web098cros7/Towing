@@ -9,18 +9,11 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 /**
  * §9.4's admin shell.
  *
- * ⚠ THIS HAD NO NAVIGATION AT ALL until Phase 19, because there was exactly one
- * admin page: Phase 11's KYC queue. §9.4.10's Finance queue is the second, and
- * a console with two pages and no way to reach the other one is a console with
- * one page.
- *
- * A RELATED GOTCHA, LEFT DELIBERATELY UNCHANGED: `middleware.ts` sends an
- * authenticated admin to `/admin/drivers`, hardcoded, because middleware cannot
- * read the sub-role out of an opaque session cookie. A `finance` admin
- * therefore lands on a queue they get a 403 from — which is why that page's
- * error state has to read as "you don't have access to this queue" rather than
- * "something went wrong", and why this bar has to make Finance obviously
- * reachable from there.
+ * Two pages and a way to reach both: Phase 11's KYC queue and §9.4.10's
+ * Finance queue. A6 removed the hardcoded `/admin/drivers` landing (here,
+ * `middleware.ts`, `app/admin/page.tsx`) that used to drop every sub-role —
+ * including finance, who gets a 403 from the KYC queue — onto that one page.
+ * Everyone lands on `/admin` now; role-aware routing arrives with A7.
  */
 const LINKS = [
   { href: '/admin/drivers', label: 'KYC queue' },
