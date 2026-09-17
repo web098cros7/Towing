@@ -5,11 +5,25 @@ import { ApiError } from './apiClient';
  * Fetch through the admin BFF proxy (`/api/admin-proxy/<path>` → `/v1/admin/<path>`).
  * Same shape as `apiFetch` (fleet); the only difference is the proxy path and
  * where a truly-expired session sends the browser.
+ *
+ * Central defaults (A3): a string body without an explicit content-type is
+ * JSON, so callers must not set the header per call — and 204/empty bodies
+ * resolve `undefined` instead of throwing inside `res.json()`.
  */
 export async function adminApiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers({ Accept: 'application/json' });
+  if (init?.headers) {
+    new Headers(init.headers).forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
+  if (typeof init?.body === 'string' && !headers.has('content-type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
   const res = await fetch(`/api/admin-proxy/${path}`, {
     ...init,
-    headers: { Accept: 'application/json', ...init?.headers },
+    headers,
   });
 
   if (res.status === 401 && typeof window !== 'undefined') {
@@ -31,5 +45,8 @@ export async function adminApiFetch<T>(path: string, init?: RequestInit): Promis
     throw new ApiError(res.status, 'internal_error', `Request failed (${res.status})`);
   }
 
-  return (await res.json()) as T;
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }
