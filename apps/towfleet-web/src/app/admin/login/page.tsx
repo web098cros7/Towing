@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { adminLoginRequestSchema } from '@towing/api-contracts';
 import { Button, Card, CardContent, Field, Input } from '@towing/web-ui';
+import { safeAdminNext } from '@/lib/adminNext';
 
 type Step = 'credentials' | 'otp';
 
@@ -15,9 +16,24 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
 /**
  * Admin console login (§9.4, §15.2) — same two-step shape as the fleet
  * console's login page, pointed at `/api/admin-session/*` instead.
+ *
+ * Split for `useSearchParams()`: Next 15 requires a Suspense boundary above
+ * any component reading search params during prerendering. The `?next=`
+ * sanitiser lives in `@/lib/adminNext` — a page may only export the route
+ * itself, so the helper cannot live here.
  */
 export default function AdminLoginPage() {
+  return (
+    <Suspense>
+      <AdminLoginForm />
+    </Suspense>
+  );
+}
+
+function AdminLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = safeAdminNext(searchParams.get('next'));
   const [step, setStep] = useState<Step>('credentials');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -72,7 +88,7 @@ export default function AdminLoginPage() {
         setError(await readErrorMessage(res, 'That code was not accepted.'));
         return;
       }
-      router.replace('/admin/drivers');
+      router.replace(next);
       router.refresh();
     } finally {
       setSubmitting(false);
