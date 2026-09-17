@@ -1,4 +1,4 @@
-import type { JobOfferEvent, JobRevokedEvent } from '@towing/api-contracts';
+import type { DriverJob, JobOfferEvent, JobRevokedEvent } from '@towing/api-contracts';
 import { queryClient } from '@/providers/queryClient';
 import { offersKeys } from '../api/offers.keys';
 import type { JobOffer } from '../types';
@@ -33,4 +33,16 @@ export function applyJobRevoked(event: JobRevokedEvent): void {
     // already declined must not clear the NEXT offer out from under them.
     previous && previous.bookingId === event.bookingId ? null : (previous ?? null),
   );
+
+  // A13: a job taken away from the other side (customer cancel, admin
+  // reassign — both arrive as `cancelled`) must leave the driver's screen,
+  // not linger until something else refetches. Scoped to the held booking: a
+  // revoked offer for a searching booking the driver never held must not
+  // evict their active job.
+  if (event.reason === 'cancelled') {
+    const held = queryClient.getQueryData<DriverJob | null>(offersKeys.job());
+    if (held?.bookingId === event.bookingId) {
+      void queryClient.invalidateQueries({ queryKey: offersKeys.job() });
+    }
+  }
 }

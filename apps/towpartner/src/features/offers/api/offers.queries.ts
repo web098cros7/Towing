@@ -49,11 +49,18 @@ export function useCurrentOffer(options?: { enabled?: boolean }) {
  * in the cache: a job can also end from the other side (a customer cancels, an
  * admin reassigns) and the driver's phone learns that here.
  */
+const JOB_POLL_MS = 15_000;
+
 export function useCurrentJob() {
   return useQuery({
     queryKey: offersKeys.job(),
     queryFn: () => offersDataSource.getCurrentJob(),
     refetchOnWindowFocus: true,
+    // A13: the §19.2 fallback rung for a job taken away — a missed
+    // `job:revoked` still resolves within fifteen seconds. Only while a job
+    // is held: polling an idle handset would burn battery to learn `null`,
+    // the same reason the offer poll is gated on online state above.
+    refetchInterval: (query) => (query.state.data ? JOB_POLL_MS : false),
   });
 }
 

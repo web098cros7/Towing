@@ -108,3 +108,16 @@ appId: in.mitow.partner
 # `GET /driver/jobs/current` is scoped to ACTIVE statuses, so a completed job
 # leaves the driver available — which is what the mock reproduces.
 - assertVisible: 'Completed'
+
+# ── A13: a job taken away from the other side ────────────────────────────────
+# `job:revoked` with `cancelled` (customer cancel AND admin reassign — the
+# contract has no `reassigned` reason) clears the held job: `applyJobRevoked`
+# invalidates the current-job query when the frame's booking matches, and the
+# query polls every 15 s while a job is held as the §19.2 fallback rung.
+#
+# NOT STEPS YET, and the reason is a mock gap rather than an app gap: nothing
+# in `offersMockSource` emits frames, so no step here can receive one. When a
+# mock frame trigger exists, this section becomes: hold a job → trigger revoke
+# for its booking → assert the job screen is gone (`assertNotVisible:
+# 'Your Job'`) → assert the driver is idle. Until then the file's NEVER
+# EXECUTED note below covers this section too.
