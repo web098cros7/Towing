@@ -8,6 +8,7 @@ import {
 } from '@towing/api-contracts';
 import { ApiException } from '../common/errors/api-exception';
 import { ThrottleBucket } from '../common/throttling/throttler.config';
+import { KillSwitchService } from '../common/killswitch/killswitch.service';
 import { CurrentFleet } from '../common/tenancy/current-fleet.decorator';
 import { FleetScopeGuard } from '../common/tenancy/fleet-scope.guard';
 import { ENV, type Env } from '../config/env';
@@ -22,6 +23,7 @@ export class RealtimeController {
   constructor(
     private readonly tickets: WsTicketService,
     private readonly positions: PositionsService,
+    private readonly killSwitch: KillSwitchService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -42,7 +44,7 @@ export class RealtimeController {
     const userId = request.auth?.sub;
     if (!userId) throw ApiException.unauthorized();
 
-    if (!this.env.REALTIME_ENABLED) {
+    if (!this.env.REALTIME_ENABLED || (await this.killSwitch.isPollingForced())) {
       // §19.2: a specific code, not a generic 500, so the client can go straight
       // to REST polling instead of burning its reconnect budget.
       throw new ApiException(

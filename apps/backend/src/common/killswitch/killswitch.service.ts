@@ -79,11 +79,13 @@ export class KillSwitchService {
   /**
    * §19.2's "force REST-polling mode".
    *
-   * Read by the three ticket routes, which refuse with `realtime_unavailable` —
-   * the same code `REALTIME_ENABLED=false` produces, so every client already
-   * knows how to respond to it. Existing sockets are left connected: dropping
-   * them would produce a reconnect storm at the exact moment the gateway is the
-   * thing under strain.
+   * Read by the three ticket routes — customer (`POST /v1/bookings/:id/realtime/ticket`),
+   * fleet (`POST /v1/fleet/realtime/ticket`) and driver
+   * (`POST /v1/driver/realtime/ticket`) — which refuse with
+   * `realtime_unavailable`, the same code `REALTIME_ENABLED=false` produces, so
+   * every client already knows how to respond to it. Existing sockets are left
+   * connected: dropping them would produce a reconnect storm at the exact
+   * moment the gateway is the thing under strain.
    */
   async isPollingForced(): Promise<boolean> {
     return this.flag(KILLSWITCH_FORCE_POLLING);

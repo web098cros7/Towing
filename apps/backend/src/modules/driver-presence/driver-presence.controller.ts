@@ -12,6 +12,7 @@ import {
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { ThrottleBucket } from '../../common/throttling/throttler.config';
+import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { ZodBody } from '../../common/validation/zod.decorators';
 import { ENV, type Env } from '../../config/env';
 import { WsTicketService } from '../../realtime/ws-ticket.service';
@@ -46,6 +47,7 @@ export class DriverPresenceController {
     private readonly ingest: LocationIngestService,
     private readonly gateway: DriverGateway,
     private readonly tickets: WsTicketService,
+    private readonly killSwitch: KillSwitchService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -121,7 +123,7 @@ export class DriverPresenceController {
   @HttpCode(HttpStatus.OK)
   @ThrottleBucket('realtime')
   async issueTicket(@Req() request: AuthedRequest): Promise<WsTicketResponse> {
-    if (!this.env.REALTIME_ENABLED) {
+    if (!this.env.REALTIME_ENABLED || (await this.killSwitch.isPollingForced())) {
       // §19.2: a specific code rather than a 500, so the app goes straight to
       // REST ingress instead of retrying a socket that will never be accepted.
       throw new ApiException(
