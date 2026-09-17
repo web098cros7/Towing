@@ -6,6 +6,7 @@ import {
   type ServiceCatalogItem,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
+import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { ROUTING, type RoutingPort } from '../../common/routing/routing.port';
 import { PricingConfigRepo, type RateCard } from './pricing-config.repo';
 import {
@@ -67,6 +68,7 @@ export class PricingService {
     private readonly catalog: ServicesService,
     private readonly config: PricingConfigRepo,
     private readonly zones: ZoneResolverService,
+    private readonly killSwitch: KillSwitchService,
     @Inject(ROUTING) private readonly routing: RoutingPort,
   ) {}
 
@@ -76,6 +78,15 @@ export class PricingService {
    */
   async estimate(request: PricingEstimateRequest): Promise<PricingEstimateResponse> {
     const priced = await this.price(request);
+    // A11: estimates warn where creation refuses. Quoting a fare the customer
+    // cannot book would be a lie; refusing the quote would hide the price
+    // behind the kill switch. The warnings mirror `BookingsService.create`'s
+    // refusals exactly — keep the two in step.
+    const warnings: PricingEstimateResponse['warnings'] = [];
+    if (await this.killSwitch.isZonePaused(priced.zone.id)) warnings.push('dispatch_paused');
+    if (priced.fare.band === 'C' && (await this.killSwitch.isLongDistanceDisabled())) {
+      warnings.push('long_distance_disabled');
+    }
     return {
       serviceSlug: priced.service.slug,
       serviceType: priced.service.serviceType,
@@ -105,6 +116,7 @@ export class PricingService {
         totalPaise: priced.fare.totalPaise,
       },
       surgeActive: priced.fare.surgePaise > 0,
+      warnings,
     };
   }
 

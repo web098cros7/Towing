@@ -9,8 +9,10 @@ import {
   bookings,
   commissionConfig,
   dispatchConfig,
+  serviceZones,
   users,
 } from '../../db/schema';
+import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { createTestApp, customerAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
 import { seedCustomer, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
@@ -281,6 +283,60 @@ describe('POST /v1/bookings', () => {
 
     it('rejects an anonymous caller', async () => {
       await request(app.getHttpServer()).post('/v1/bookings').send(body()).expect(401);
+    });
+  });
+
+  describe('§19.8 kill switches (A11)', () => {
+    // ~170 km north — Band C (>100 km) without tripping the 600 km manual
+    // quote. Haversine, so no Maps key is needed.
+    const FAR_DROP = { lat: 14.5, lng: 77.6 };
+
+    const bengaluruZoneId = async (): Promise<string> => {
+      const [zone] = await db
+        .select({ id: serviceZones.id })
+        .from(serviceZones)
+        .where(eq(serviceZones.name, 'Bengaluru Metro'));
+      return zone!.id;
+    };
+
+    const bookingCount = async (): Promise<number> => {
+      const rows = await db.select({ id: bookings.id }).from(bookings);
+      return rows.length;
+    };
+
+    it('refuses creation in a paused zone with dispatch_paused', async () => {
+      await app.get(KillSwitchService).setPausedZones([await bengaluruZoneId()]);
+
+      await confirm()
+        .expect(409)
+        .expect(({ body }) => {
+          expect(body.error.code).toBe('dispatch_paused');
+        });
+      expect(await bookingCount()).toBe(0);
+    });
+
+    it('books again once the zone is unpaused', async () => {
+      const killSwitch = app.get(KillSwitchService);
+      await killSwitch.setPausedZones([await bengaluruZoneId()]);
+      await confirm().expect(409);
+
+      await killSwitch.setPausedZones([]);
+      await confirm().expect(201);
+    });
+
+    it('refuses a long-distance booking while long-distance is disabled', async () => {
+      await app.get(KillSwitchService).setLongDistanceDisabled(true);
+
+      const refused = await confirm({ drop: FAR_DROP, dropAddress: 'Far away' }).expect(409);
+      expect(refused.body.error.code).toBe('dispatch_paused');
+      expect(await bookingCount()).toBe(0);
+    });
+
+    it('still books a city tow while long-distance is disabled', async () => {
+      await app.get(KillSwitchService).setLongDistanceDisabled(true);
+
+      const { body: created } = await confirm().expect(201);
+      expect(created.band).toBe('A');
     });
   });
 });

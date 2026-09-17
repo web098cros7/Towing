@@ -129,6 +129,27 @@ export class BookingsService {
       scheduledAt: body.scheduledAt,
     });
 
+    // ── §19.8 kill switches, after the fare lock (A11) ─────────────────────
+    // The zone and band only exist once the fare is locked, and the refusal
+    // must not disturb the lock: a paused zone stops NEW bookings, never the
+    // rate card. Estimates warn instead of failing (see `estimate()`).
+    if (await this.killSwitch.isZonePaused(locked.zone.id)) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.DISPATCH_PAUSED,
+        'New bookings are paused in this zone right now. Please try again later.',
+        { zoneId: locked.zone.id },
+      );
+    }
+    if (locked.fare.band === 'C' && (await this.killSwitch.isLongDistanceDisabled())) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.DISPATCH_PAUSED,
+        'Long-distance bookings are paused right now. Please try again later.',
+        { zoneId: locked.zone.id },
+      );
+    }
+
     const minted = this.otp.mintForCreate();
 
     // §14's tax, snapshotted onto the booking like `commission_pct` and the

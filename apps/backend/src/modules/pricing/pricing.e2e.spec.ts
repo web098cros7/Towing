@@ -15,6 +15,7 @@ import {
   services,
 } from '../../db/schema';
 import { SERVICE_CATALOG } from '../../db/seed/fixtures';
+import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import {
   adminAuthHeaderFor,
   createTestApp,
@@ -279,6 +280,46 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       expect(response.body.breakdown.nightPaise).toBe(
         Math.round(response.body.breakdown.basePaise * 0.4),
       );
+    });
+
+    describe('§19.8 kill-switch warnings (A11)', () => {
+      // Same ~170 km drop as the bookings-create spec — Band C.
+      const FAR_DROP = { lat: 14.5, lng: 77.6 };
+
+      const quote = (drop: { lat: number; lng: number }) =>
+        request(app.getHttpServer())
+          .post('/v1/pricing/estimate')
+          .set('Authorization', customerAuth)
+          .send({ serviceSlug: 'car_tow', vehicleClass: 'wheel_lift', pickup: BENGALURU, drop })
+          .expect(200);
+
+      it('serves no warnings when nothing is paused', async () => {
+        const response = await quote(BENGALURU_DROP);
+        expectMatchesContract(pricingEstimateResponseSchema, response.body);
+        expect(response.body.warnings).toEqual([]);
+      });
+
+      it('warns instead of failing in a paused zone', async () => {
+        const [zone] = await db
+          .select({ id: serviceZones.id })
+          .from(serviceZones)
+          .where(eq(serviceZones.name, 'Bengaluru Metro'));
+        await app.get(KillSwitchService).setPausedZones([zone!.id]);
+
+        const response = await quote(BENGALURU_DROP);
+        expect(response.status).toBe(200);
+        expectMatchesContract(pricingEstimateResponseSchema, response.body);
+        expect(response.body.warnings).toEqual(['dispatch_paused']);
+      });
+
+      it('warns on a long-distance quote while long-distance is disabled', async () => {
+        await app.get(KillSwitchService).setLongDistanceDisabled(true);
+
+        const response = await quote(FAR_DROP);
+        expect(response.status).toBe(200);
+        expect(response.body.band).toBe('C');
+        expect(response.body.warnings).toEqual(['long_distance_disabled']);
+      });
     });
   });
 
