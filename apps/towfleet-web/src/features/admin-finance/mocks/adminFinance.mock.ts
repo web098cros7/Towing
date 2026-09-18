@@ -10,6 +10,35 @@ const HOUR = 60 * 60 * 1000;
  * drivers would let the console ship without anybody noticing that fleets now
  * appear in it too.
  */
+/**
+ * A20's overflow: 51 more queued payouts, so the pending filter holds 53 and
+ * `all` holds 55 — both past one page of 50. Deterministic valid UUIDs and
+ * names that collide with none of the canonical rows the specs assert on.
+ */
+const mockUuid = (n: number): string => {
+  const h = (x: number) => x.toString(16).padStart(4, '0');
+  return `${h(n)}${h(n * 7)}-${h(n * 13)}-4${h(n * 29).slice(1)}-8${h(n * 37).slice(1)}-${h(n * 43)}${h(n * 51)}${h(n * 57).slice(0, 4)}`;
+};
+
+const overflowPayouts: AdminPayoutDto[] = Array.from({ length: 51 }, (_, i): AdminPayoutDto => {
+  const n = i + 1;
+  return {
+    id: mockUuid(n),
+    ownerType: 'driver',
+    ownerId: mockUuid(1000 + n),
+    ownerName: `Load Test Driver ${String(n).padStart(2, '0')}`,
+    amountPaise: 500_000 + n * 10_000,
+    status: 'requested',
+    approvalState: 'pending_approval',
+    requestedAt: new Date(Date.now() - (n + 4) * HOUR).toISOString(),
+    approvedAt: null,
+    rejectionReason: null,
+    failureReason: null,
+    destinationLast4: String(1000 + n).slice(-4),
+    bankName: 'HDFC Bank',
+  };
+});
+
 export const adminPayoutsMock: AdminPayoutDto[] = [
   {
     id: '55555555-5555-4555-8555-555555555555',
@@ -72,6 +101,7 @@ export const adminPayoutsMock: AdminPayoutDto[] = [
     destinationLast4: '6543',
     bankName: 'SBI',
   },
+  ...overflowPayouts,
 ];
 
 /** The launch money policy — GST at ZERO, which is the whole premise. */

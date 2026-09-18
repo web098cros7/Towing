@@ -21,7 +21,15 @@ const mockSource: AdminFinanceDataSource = {
     const items = await resolveMock(env.mockAdminFinanceState, adminPayoutsMock, []);
     const filtered =
       query.state === 'all' ? items : items.filter((item) => item.approvalState === query.state);
-    return { items: filtered, page: query.page, limit: query.limit, total: filtered.length };
+    // A20: the mock pages like the server (LIMIT/OFFSET), so the pagination
+    // UI is exercised against a real envelope, not a full list.
+    const start = (query.page - 1) * query.limit;
+    return {
+      items: filtered.slice(start, start + query.limit),
+      page: query.page,
+      limit: query.limit,
+      total: filtered.length,
+    };
   },
   /**
    * The mock DECIDES NOTHING, and that is on purpose.

@@ -107,3 +107,29 @@ test('an unauthenticated visitor cannot reach the Finance queue', async ({ page 
   await page.goto('/admin/finance');
   await expect(page).toHaveURL(/\/admin\/login/);
 });
+
+test('A20: the queue paginates — more than 50 payouts are reachable', async ({ page }) => {
+  await adminLogin(page);
+  await page.goto('/admin/finance');
+
+  // 53 pending in the mock: the first page holds the canonical rows.
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+  await expect(page.getByText('Ramesh Kumar')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Next page' }).click();
+
+  // The tail of the queue, unreachable before pagination.
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await expect(page.getByText('Load Test Driver 51')).toBeVisible();
+  await expect(page.getByText('Ramesh Kumar')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Previous page' }).click();
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+  await expect(page.getByText('Ramesh Kumar')).toBeVisible();
+
+  // Switching filters restarts from the top.
+  await page.getByRole('button', { name: 'Next page' }).click();
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await page.getByTestId('finance-filter-all').click();
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+});

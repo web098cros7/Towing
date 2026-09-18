@@ -87,13 +87,21 @@ const columns: ColumnDef<AdminPayoutDto, unknown>[] = [
  */
 export default function AdminFinancePage() {
   const [state, setState] = useState<PayoutApprovalState | 'all'>('pending_approval');
+  // A20: server-side paging over the API's page envelope — the queue is
+  // unbounded, and page 1 / limit 50 left everything past the threshold
+  // unreachable.
+  const [page, setPage] = useState(1);
+  const limit = 50;
   const [selected, setSelected] = useState<AdminPayoutDto | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useAdminPayouts({
     state,
-    page: 1,
-    limit: 50,
+    page,
+    limit,
   });
+
+  // `total`, never `items.length`: the last page is short by definition.
+  const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / limit));
 
   // A7: a valid session without the queue's sub-role is refused, not broken.
   if (error instanceof ApiError && error.status === 403) {
@@ -120,7 +128,12 @@ export default function AdminFinancePage() {
           <button
             key={option}
             type="button"
-            onClick={() => setState(option)}
+            onClick={() => {
+              setState(option);
+              // A filter change re-queries from the top — page 2 of one
+              // filter is meaningless on another.
+              setPage(1);
+            }}
             data-testid={`finance-filter-${option}`}
             className={
               state === option
@@ -142,6 +155,7 @@ export default function AdminFinancePage() {
         onRowClick={(row) => setSelected(row)}
         emptyTitle="Nothing to approve"
         emptyDescription="Payouts above the threshold appear here. Everything below it goes straight to the bank."
+        pagination={{ page, pageCount, onPageChange: setPage }}
       />
 
       <PayoutDecisionDrawer payout={selected} onClose={() => setSelected(null)} />
