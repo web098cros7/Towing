@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ledgerInvariants } from '../../db/ledger/invariants';
 import { seedAdmin, seedCustomer, seedDriver, setupTestDatabase, truncateAll } from '../../test/db';
 import type { TestDatabase } from '../../test/db';
 import { createTestApp } from '../../test/app';
 import { seedBooking, seedWalletWithLedger } from '../../test/fixtures';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
+import { PAYMENT_GATEWAY } from './payment-gateway.port';
 import { RefundsService } from './refunds.service';
 
 /**
@@ -229,6 +230,37 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
       select count(*)::int as count from refunds where booking_id = ${bookingId}::uuid
     `)) as unknown as [{ count: number }];
     expect(row.count).toBe(0);
+    expect(await status(bookingId)).toBe('paid');
+
+    await expectNoDrift();
+  });
+
+  it('refuses an illegal landing before any money moves', async () => {
+    // M0-F12: `transitionTo: 'cancelled'` on a paid booking is not an edge,
+    // and the refund must learn that BEFORE the refund row, the gateway call
+    // and the compensating legs — not from `transition()` after they ran.
+    const bookingId = await seedPaidBooking();
+    const refundCall = vi.spyOn(app.get(PAYMENT_GATEWAY), 'refund');
+
+    await expect(
+      refunds.refundBooking({
+        bookingId,
+        reason: 'cancellation',
+        initiatedBy: adminId,
+        transitionTo: 'cancelled',
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'invalid_booking_state' });
+
+    const [moved] = (await db.execute(sql`
+      select count(*)::int as count from refunds where booking_id = ${bookingId}::uuid
+    `)) as unknown as [{ count: number }];
+    expect(moved.count).toBe(0);
+    expect(refundCall).not.toHaveBeenCalled();
+    expect(await legs(bookingId)).toEqual([{ type: 'driver_share_credit', amount: '900.00' }]);
+    const [payment] = (await db.execute(sql`
+      select status from payments where booking_id = ${bookingId}::uuid
+    `)) as unknown as [{ status: string }];
+    expect(payment.status).toBe('captured');
     expect(await status(bookingId)).toBe('paid');
 
     await expectNoDrift();

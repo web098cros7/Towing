@@ -51,23 +51,30 @@ export class RefundsService {
   /**
    * Reverses a paid booking in full.
    *
-   * Order: refund row → vendor call → compensating legs → status. The row comes
-   * first so a crash anywhere after it leaves evidence that a refund was
-   * intended, and its `ON CONFLICT DO NOTHING` makes the whole operation a
-   * replay rather than a second refund.
+   * Order: legality pre-check → refund row → vendor call → compensating legs
+   * → status. The row comes before the vendor call so a crash anywhere after
+   * it leaves evidence that a refund was intended, and its
+   * `ON CONFLICT DO NOTHING` makes the whole operation a replay rather than
+   * a second refund.
+   *
+   * M0-F12: the landing legality is checked BEFORE the refund row, not after
+   * the money moved. Learning the edge is illegal from `transition()` — after
+   * the gateway refund and the compensating legs — is the same failure class
+   * A8 fixed for one edge.
    */
   async refundBooking(params: {
     bookingId: string;
     reason: RefundReason;
     initiatedBy: string;
     /**
-     * Where the booking lands afterwards. Never `paid` — see the header.
-     * `null` when the booking is already where it belongs (e.g. an admin
-     * cancelled it first and the refund only settles the money): the gateway
-     * refund, the compensating legs and `markRefunded` still run, only the
-     * status write is skipped (A8).
+     * Where the booking lands afterwards. `cancelled` (§3.5) or `disputed`
+     * (Phase 20's admin route) — never `paid`, see the header. `null` when
+     * the booking is already where it belongs (e.g. an admin cancelled it
+     * first and the refund only settles the money): the gateway refund, the
+     * compensating legs and `markRefunded` still run, only the status write
+     * is skipped (A8).
      */
-    transitionTo: JobStatus | null;
+    transitionTo: 'cancelled' | 'disputed' | null;
     note?: string;
   }): Promise<{ refundId: string; replayed: boolean }> {
     const captured = await this.payments.capturedFor(params.bookingId, 'booking');
@@ -77,6 +84,20 @@ export class RefundsService {
         ErrorCodes.INVALID_BOOKING_STATE,
         'There is no captured payment on this booking to refund',
       );
+    }
+
+    if (params.transitionTo !== null) {
+      const [booking] = (await this.db.execute(sql`
+        select status from bookings where id = ${params.bookingId}::uuid
+      `)) as unknown as Array<{ status: JobStatus }>;
+      if (!booking || !BookingStateMachineService.isLegal(booking.status, params.transitionTo)) {
+        throw new ApiException(
+          HttpStatus.CONFLICT,
+          ErrorCodes.INVALID_BOOKING_STATE,
+          `A booking cannot go from ${booking?.status ?? 'unknown'} to ${params.transitionTo}`,
+          { from: booking?.status ?? null, to: params.transitionTo },
+        );
+      }
     }
 
     const amountPaise = rupeeStringToPaise(captured.amount);
@@ -154,8 +175,6 @@ export class RefundsService {
     if (transitioned) {
       await this.machine.announce(transitioned);
     }
-
-    await this.payments.markRefunded(captured.id);
 
     this.logger.log(
       `event=booking_refunded booking=${params.bookingId} amount_paise=${amountPaise} ` +
