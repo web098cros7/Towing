@@ -91,7 +91,7 @@ describe('two-mode driver suspension (A14)', () => {
 
   it('defers by default with a live booking: shelved, present, job intact', async () => {
     const zoneId = await seedZone(db);
-    const driverId = await seedOnlineDriver(db, { zoneId, name: 'Mid-job Driver' });
+    const driverId = await seedOnlineDriver(db, { zoneId });
     const bookingId = await liveBooking(driverId);
 
     const res = await suspend(driverId).expect(200);
@@ -118,7 +118,7 @@ describe('two-mode driver suspension (A14)', () => {
 
   it('a shelved mid-job driver still has pings accepted and published', async () => {
     const zoneId = await seedZone(db);
-    const driverId = await seedOnlineDriver(db, { zoneId, name: 'Tracked Driver' });
+    const driverId = await seedOnlineDriver(db, { zoneId });
     await liveBooking(driverId);
     await suspend(driverId).expect(200);
 
