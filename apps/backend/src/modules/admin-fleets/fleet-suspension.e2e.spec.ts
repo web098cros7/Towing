@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { adminActions, dispatchAttempts, drivers, fleets, refreshTokens } from '../../db/schema';
+import { adminActions, bookings, dispatchAttempts, drivers, fleets, refreshTokens } from '../../db/schema';
 import { createTestApp, driverAuthHeaderFor } from '../../test/app';
 import {
   seedAdmin,
@@ -13,11 +13,14 @@ import {
   truncateAll,
   type TestDatabase,
 } from '../../test/db';
+import { seedBooking } from '../../test/fixtures';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 import { TokenService } from '../auth/token.service';
 import { DispatchService } from '../dispatch/dispatch.service';
+import { OfferService } from '../dispatch/offer.service';
 import {
   PICKUP,
+  putInCandidateStore,
   seedOnlineDriver,
   seedSearchingBooking,
   seedZone,
@@ -25,11 +28,11 @@ import {
 import { FleetSuspensionService } from './fleet-suspension.service';
 
 /**
- * A15 — suspending a fleet stops its drivers earning.
+ * A15 — suspending a fleet stops its drivers earning (18 Sep rules).
  *
  * No HTTP yet (W6 wires the directory routes): the e2e drives the service
- * directly. Read-side blocks (eligibility, go-online) are asserted through
- * the real paths a suspended fleet's drivers would take.
+ * directly. Sessions and devices are NEVER touched — the go-online block is
+ * what holds idle drivers, and mid-job drivers finish with tracking intact.
  */
 describe('fleet suspension (A15)', () => {
   let app: INestApplication;
@@ -74,25 +77,51 @@ describe('fleet suspension (A15)', () => {
     return rows.length;
   };
 
-  it('suspend flips the status and revokes every driver of the fleet', async () => {
-    const fleet = await seedFleet(db, 'Doomed Fleet');
-    const driverId = await seedDriver(db, { fleetId: fleet.fleetId, name: 'Fleet Driver' });
-    await db.update(drivers).set({ isOnline: true }).where(eq(drivers.id, driverId));
-    await app.get(TokenService).issueSession({ subjectId: driverId, realm: 'driver' });
-    expect(await liveSessions(driverId)).toBeGreaterThan(0);
+  const attemptsFor = (bookingId: string) =>
+    db.select().from(dispatchAttempts).where(eq(dispatchAttempts.bookingId, bookingId));
 
-    // An independent driver must not be touched.
-    const outsider = await seedDriver(db, { name: 'Outsider' });
-    await app.get(TokenService).issueSession({ subjectId: outsider, realm: 'driver' });
+  it('suspend flips the status, revokes offers, evicts only the jobless, touches no sessions', async () => {
+    const fleet = await seedFleet(db, 'Doomed Fleet');
+    const idle = await seedDriver(db, { fleetId: fleet.fleetId, name: 'Idle Driver' });
+    await db.update(drivers).set({ isOnline: true }).where(eq(drivers.id, idle));
+    const userId = await seedCustomer(db);
+    const midJob = await seedDriver(db, { fleetId: fleet.fleetId, name: 'Mid-job Driver' });
+    const jobId = await seedBooking(db, { userId, driverId: midJob, status: 'assigned' });
+    // Online and tracked, like a driver mid-trip: suspension must leave all
+    // of this alone.
+    await db.update(drivers).set({ isOnline: true }).where(eq(drivers.id, midJob));
+    await app.get(TokenService).issueSession({ subjectId: idle, realm: 'driver' });
+    await app.get(TokenService).issueSession({ subjectId: midJob, realm: 'driver' });
+
+    // A live offer to the idle driver, revoked on suspend. A second customer:
+    // one user cannot hold two active bookings (§3.8).
+    const zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [5], offersPerWave: 2 } });
+    const searchingId = await seedSearchingBooking(db, { userId: await seedCustomer(db), zoneId });
+    const offered = await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId, metersAway: 400 });
+    await app.get(DispatchService).runWave(searchingId);
+    expect((await attemptsFor(searchingId)).map((a) => a.driverId)).toEqual([offered]);
 
     const result = await suspension.suspend(adminId, fleet.fleetId);
 
-    expect(result).toMatchObject({ fleetId: fleet.fleetId, status: 'suspended', driversRevoked: 1 });
+    expect(result).toMatchObject({ fleetId: fleet.fleetId, status: 'suspended', driverCount: 3 });
     expect(await fleetStatus(fleet.fleetId)).toBe('suspended');
-    const [row] = await db.select().from(drivers).where(eq(drivers.id, driverId));
-    expect(row!.isOnline).toBe(false);
-    expect(await liveSessions(driverId)).toBe(0);
-    expect(await liveSessions(outsider)).toBeGreaterThan(0);
+
+    // Offer revoked through the no-rate-damage path.
+    const attempts = await attemptsFor(searchingId);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]!.outcome).toBe('revoked');
+
+    // Jobless driver evicted; mid-job driver untouched — still online, still
+    // assigned, sessions live on both (nothing here logs anyone out).
+    const [idleRow] = await db.select().from(drivers).where(eq(drivers.id, idle));
+    expect(idleRow!.isOnline).toBe(false);
+    const [busyRow] = await db.select().from(drivers).where(eq(drivers.id, midJob));
+    expect(busyRow!.isOnline).toBe(true);
+    expect(await liveSessions(idle)).toBeGreaterThan(0);
+    expect(await liveSessions(midJob)).toBeGreaterThan(0);
+    const [job] = await db.select().from(bookings).where(eq(bookings.id, jobId));
+    expect(job!.status).toBe('assigned');
+    expect(job!.driverId).toBe(midJob);
 
     const [action] = await db
       .select()
@@ -101,7 +130,27 @@ describe('fleet suspension (A15)', () => {
     expect(action!).toMatchObject({ adminId, action: 'fleet.suspend', subjectType: 'fleet' });
   });
 
-  it('a suspended fleet\'s drivers get no offers but others do', async () => {
+  it('an offer issued before suspension is refused at accept', async () => {
+    const zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [5], offersPerWave: 2 } });
+    const userId = await seedCustomer(db);
+    const bookingId = await seedSearchingBooking(db, { userId, zoneId });
+    const fleet = await seedFleet(db, 'Slow Fleet');
+    const driverId = await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId, metersAway: 400 });
+    await app.get(DispatchService).runWave(bookingId);
+    expect((await attemptsFor(bookingId))[0]!.outcome).toBe('offered');
+
+    // Flip behind the service's back: the offer is still live, so only the
+    // accept-time re-check can refuse it.
+    await db.update(fleets).set({ status: 'suspended' }).where(eq(fleets.id, fleet.fleetId));
+
+    await expect(app.get(OfferService).accept(bookingId, driverId)).rejects.toMatchObject({
+      status: 403,
+    });
+    // Refused, not consumed: the attempt is still offered, not accepted.
+    expect((await attemptsFor(bookingId))[0]!.outcome).toBe('offered');
+  });
+
+  it('a suspended fleet\'s drivers get no new offers but others do', async () => {
     const zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [5], offersPerWave: 2 } });
     const userId = await seedCustomer(db);
     const bookingId = await seedSearchingBooking(db, { userId, zoneId });
@@ -112,10 +161,7 @@ describe('fleet suspension (A15)', () => {
     await suspension.suspend(adminId, fleet.fleetId);
     await app.get(DispatchService).runWave(bookingId);
 
-    const attempts = await db
-      .select()
-      .from(dispatchAttempts)
-      .where(eq(dispatchAttempts.bookingId, bookingId));
+    const attempts = await attemptsFor(bookingId);
     expect(attempts.map((a) => a.driverId)).toEqual([free]);
     expect(grounded).toBeTruthy();
   });
@@ -136,19 +182,43 @@ describe('fleet suspension (A15)', () => {
       });
   });
 
-  it('reactivate restores the fleet without re-admitting anyone', async () => {
+  it('a mid-job driver of a suspended fleet still has pings accepted', async () => {
+    const zoneId = await seedZone(db);
+    const userId = await seedCustomer(db);
+    const fleet = await seedFleet(db, 'Working Fleet');
+    const driverId = await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId, metersAway: 400 });
+    await seedBooking(db, { userId, driverId, status: 'assigned' });
+
+    await suspension.suspend(adminId, fleet.fleetId);
+
+    const at = new Date().toISOString();
+    await request(app.getHttpServer())
+      .post('/v1/driver/location')
+      .set('Authorization', await driverAuthHeaderFor(app, { driverId }))
+      .send({ pings: [{ seq: 2, lat: PICKUP.lat, lng: PICKUP.lng, at }] })
+      .expect(200);
+  });
+
+  it('reactivate restores eligibility without re-admitting anyone', async () => {
+    const zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [5], offersPerWave: 2 } });
+    const userId = await seedCustomer(db);
     const fleet = await seedFleet(db, 'Back Fleet');
-    const driverId = await seedDriver(db, { fleetId: fleet.fleetId });
-    await app.get(TokenService).issueSession({ subjectId: driverId, realm: 'driver' });
+    const driverId = await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId, metersAway: 400 });
     await suspension.suspend(adminId, fleet.fleetId);
 
     const result = await suspension.reactivate(adminId, fleet.fleetId);
 
-    expect(result).toMatchObject({ status: 'active', driversRevoked: 0 });
+    expect(result).toMatchObject({ status: 'active', driverCount: 0 });
     expect(await fleetStatus(fleet.fleetId)).toBe('active');
-    // Sessions stay revoked — drivers come back explicitly, like driver
-    // reactivate returning to `pending` rather than `approved`.
-    expect(await liveSessions(driverId)).toBe(0);
+
+    // Eligible again once the driver comes back themselves — reactivation
+    // re-admits nobody on its own.
+    await db.update(drivers).set({ isOnline: true }).where(eq(drivers.id, driverId));
+    await putInCandidateStore(driverId, zoneId, PICKUP.lng);
+    const bookingId = await seedSearchingBooking(db, { userId, zoneId });
+    await app.get(DispatchService).runWave(bookingId);
+    const attempts = await attemptsFor(bookingId);
+    expect(attempts.map((a) => a.driverId)).toEqual([driverId]);
   });
 
   it('re-suspending changes nothing and audits nothing twice', async () => {

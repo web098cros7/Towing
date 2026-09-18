@@ -295,14 +295,24 @@ export class BookingsService {
     userId: string,
     locked: Awaited<ReturnType<PricingService['lock']>>,
   ): Promise<void> {
+    const [schedRow] = await this.db
+      .select({ scheduledAt: bookings.scheduledAt })
+      .from(bookings)
+      .where(eq(bookings.id, bookingId))
+      .limit(1);
+
     // A18: creation performs no transition, so it publishes its own dedicated
     // event — the admin feed sees the search start, not just its end.
+    // `scheduledAt` rides along so dormant scheduled bookings are countable
+    // as such rather than as active searches.
     try {
       await this.opsEvents.publish({
         kind: 'booking_created',
         bookingId,
         zoneId: locked.zone.id,
         userId,
+        status: 'searching',
+        scheduledAt: schedRow?.scheduledAt ? schedRow.scheduledAt.toISOString() : null,
       });
     } catch (error) {
       this.logger.warn(`ops creation event failed for ${bookingId}: ${String(error)}`);
@@ -324,14 +334,8 @@ export class BookingsService {
       // A scheduled booking waits. `delayMs` is durable in BullMQ, so this
       // survives a task recycling — which an in-process timer would not, and
       // which is the whole reason §6 dispatch is a queue job.
-      const [row] = await this.db
-        .select({ scheduledAt: bookings.scheduledAt })
-        .from(bookings)
-        .where(eq(bookings.id, bookingId))
-        .limit(1);
-
-      const delayMs = row?.scheduledAt
-        ? Math.max(0, row.scheduledAt.getTime() - Date.now())
+      const delayMs = schedRow?.scheduledAt
+        ? Math.max(0, schedRow.scheduledAt.getTime() - Date.now())
         : undefined;
 
       await this.queue.enqueue('dispatch.search', { bookingId }, { jobId: `dispatch:${bookingId}`, delayMs });

@@ -12,7 +12,7 @@ import { ApiException } from '../../common/errors/api-exception';
 import { NotificationService } from '../../common/notifications/notification.service';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { DB, type Database } from '../../db/db.module';
-import { bookings, dispatchAttempts, drivers, serviceZones, users } from '../../db/schema';
+import { bookings, dispatchAttempts, drivers, fleets, serviceZones, users } from '../../db/schema';
 import { haversineMeters } from '../pricing/pricing.math';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
@@ -179,17 +179,34 @@ export class OfferService {
    * simply wins or loses without corrupting either path.
    */
   async revokeAll(bookingId: string, reason: 'cancelled' | 'paused'): Promise<string[]> {
-    const driverIds = await this.repo.pendingOffers(bookingId);
+    const revoked = await this.revokeDrivers(bookingId, await this.repo.pendingOffers(bookingId), reason);
+    if (revoked.length > 0) {
+      this.logger.debug(`revoked ${revoked.length} offers on ${bookingId} (${reason})`);
+    }
+    return revoked;
+  }
+
+  /**
+   * `revokeAll` scoped to a driver set (A15) — fleet suspension revokes its
+   * drivers' offers without touching other fleets' drivers on the same
+   * booking. Same per-driver idempotency and the same no-rate-damage rule;
+   * `revokeAll` is this over the full pending list.
+   */
+  async revokeDrivers(
+    bookingId: string,
+    driverIds: readonly string[],
+    reason: 'cancelled' | 'paused',
+  ): Promise<string[]> {
+    const wanted = new Set(driverIds);
+    if (wanted.size === 0) return [];
     const revoked: string[] = [];
-    for (const driverId of driverIds) {
+    for (const driverId of await this.repo.pendingOffers(bookingId)) {
+      if (!wanted.has(driverId)) continue;
       const moved = await this.repo.resolveOffer(bookingId, driverId, 'revoked');
       if (!moved) continue;
       await this.presence.releaseOfferLock(driverId);
       this.gateway.emitJobRevoked(driverId, bookingId, reason);
       revoked.push(driverId);
-    }
-    if (revoked.length > 0) {
-      this.logger.debug(`revoked ${revoked.length} offers on ${bookingId} (${reason})`);
     }
     return revoked;
   }
@@ -238,8 +255,15 @@ export class OfferService {
           isOnline: drivers.isOnline,
           fleetId: drivers.fleetId,
           truckId: drivers.assignedTruckId,
+          // A15: the fleet and the deferred shelf, re-read inside the
+          // transaction. An offer still on screen at the moment of suspension
+          // can otherwise be accepted if the eviction failed (it swallows its
+          // errors by design) or raced it. Null fleet = independent = passes.
+          fleetStatus: fleets.status,
+          suspensionPending: sql<boolean>`${drivers.pendingSuspensionAt} is not null`,
         })
         .from(drivers)
+        .leftJoin(fleets, eq(fleets.id, drivers.fleetId))
         .where(eq(drivers.id, driverId))
         .limit(1);
 
@@ -248,6 +272,13 @@ export class OfferService {
           HttpStatus.FORBIDDEN,
           ErrorCodes.DRIVER_NOT_ELIGIBLE,
           'You can no longer take this job',
+        );
+      }
+      if (eligible.fleetStatus === 'suspended' || eligible.suspensionPending) {
+        throw new ApiException(
+          HttpStatus.FORBIDDEN,
+          ErrorCodes.DRIVER_NOT_ELIGIBLE,
+          'Your account can no longer take this job',
         );
       }
 

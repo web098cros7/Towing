@@ -441,6 +441,11 @@ export class AdminDriversService implements OnModuleInit {
     }
   }
 
+  /** Whether the driver holds a live booking — the shelf and fleet paths share it. */
+  async hasLiveBooking(driverId: string): Promise<boolean> {
+    return (await this.liveBooking(driverId)) !== null;
+  }
+
   /** The driver's live booking, if any — assigned, en route, arrived or in progress. */
   private async liveBooking(driverId: string): Promise<{ id: string; status: string } | null> {
     const [row] = (await this.db.execute(sql`
