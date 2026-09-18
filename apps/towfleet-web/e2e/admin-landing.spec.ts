@@ -31,6 +31,7 @@ test('a finance admin sees only the payouts card', async ({ page }) => {
           email: 'finance@towing.local',
           name: 'Mock Finance',
           subRole: 'finance',
+          twofaEnabled: false,
         },
       },
     });

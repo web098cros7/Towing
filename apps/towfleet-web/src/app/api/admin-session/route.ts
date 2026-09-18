@@ -47,6 +47,7 @@ export async function GET() {
         email: 'ops@towing.local',
         name: 'Mock Admin',
         subRole: 'operations',
+        twofaEnabled: false,
       },
     });
   }

@@ -19,6 +19,12 @@ export type AdminLoginRequest = z.infer<typeof adminLoginRequestSchema>;
 export const adminLoginChallengeSchema = z.object({
   challengeId: z.uuid(),
   expiresAt: z.iso.datetime(),
+  /**
+   * W2: which second factor the challenge expects. `sms` is the legacy OTP to
+   * the registered mobile; `totp` means this admin enrolled an authenticator
+   * and no SMS is sent. The console branches its prompt on this.
+   */
+  method: z.enum(['sms', 'totp']),
 });
 export type AdminLoginChallenge = z.infer<typeof adminLoginChallengeSchema>;
 
@@ -30,9 +36,11 @@ export type AdminOtpVerifyRequest = z.infer<typeof adminOtpVerifyRequestSchema>;
 
 export const adminIdentitySchema = z.object({
   id: z.uuid(),
-  email: z.email(),
+  email: z.string(),
   name: z.string(),
   subRole: adminSubRoleSchema,
+  /** W2: the console gates the TOTP enrolment prompt on this (additive, A7 rule). */
+  twofaEnabled: z.boolean(),
 });
 export type AdminIdentity = z.infer<typeof adminIdentitySchema>;
 

@@ -24,6 +24,7 @@ export async function POST(request: Request) {
         email: 'ops@towing.local',
         name: 'Mock Admin',
         subRole: 'operations',
+        twofaEnabled: false,
       },
     });
     setAdminSessionCookies(response, { accessToken: 'mock-admin-session', refreshToken: 'mock-admin-refresh' });

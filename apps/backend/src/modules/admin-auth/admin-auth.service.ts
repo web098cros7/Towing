@@ -22,6 +22,15 @@ const ADMIN_REALM = 'admin';
 const LOGIN_REJECTED = 'Email or password is incorrect';
 const CHALLENGE_REJECTED = 'This login challenge is no longer valid';
 
+/**
+ * Placeholder code hash for TOTP challenges (W2). `login_challenges.otp_id`
+ * is NOT NULL, but a TOTP challenge must never carry an SMS code — there is
+ * nothing to send and nothing the SMS branch may accept. The marker makes
+ * that visible in the data (same convention as `seedAdmin`'s
+ * `scrypt$unusable`); `verify`'s TOTP branch never compares against it.
+ */
+const TOTP_NO_SMS_CODE_HASH = 'totp$no-sms-code';
+
 // Security policy, not a deployment knob — the same constants the fleet console
 // uses, and for the same reason: a per-environment lockout window would be a
 // per-environment attack surface.
@@ -94,14 +103,18 @@ export class AdminAuthService {
       .where(eq(adminUsers.id, admin.id));
 
     const expiresAt = new Date(now.getTime() + this.env.OTP_TTL_SECONDS * 1000);
-    const code = generateOtp();
+    // W2: a TOTP-enrolled admin proves the second factor with their
+    // authenticator — no SMS is minted or sent, and the challenge carries the
+    // unusable marker above instead of a real code hash.
+    const method = admin.twofaEnabled ? ('totp' as const) : ('sms' as const);
+    const code = method === 'sms' ? generateOtp() : null;
 
     const [otp] = await this.db
       .insert(otpVerifications)
       .values({
         phone: admin.mobile,
         purpose: 'admin_login',
-        codeHash: digest(code),
+        codeHash: code ? digest(code) : TOTP_NO_SMS_CODE_HASH,
         expiresAt,
       })
       .returning({ id: otpVerifications.id });
@@ -118,9 +131,11 @@ export class AdminAuthService {
       })
       .returning({ id: loginChallenges.id });
 
-    await this.otp.send(admin.mobile, code, 'admin_login');
+    if (method === 'sms') {
+      await this.otp.send(admin.mobile, code!, 'admin_login');
+    }
 
-    return { challengeId: challenge!.id, expiresAt: expiresAt.toISOString() };
+    return { challengeId: challenge!.id, expiresAt: expiresAt.toISOString(), method };
   }
 
   /** Step 2. */
@@ -235,6 +250,7 @@ export class AdminAuthService {
         name: adminUsers.name,
         subRole: adminUsers.subRole,
         status: adminUsers.status,
+        twofaEnabled: adminUsers.twofaEnabled,
       })
       .from(adminUsers)
       .where(eq(adminUsers.id, adminId))
@@ -242,7 +258,13 @@ export class AdminAuthService {
 
     if (!admin || admin.status !== 'active') return null;
 
-    return { id: admin.id, email: admin.email, name: admin.name, subRole: admin.subRole };
+    return {
+      id: admin.id,
+      email: admin.email,
+      name: admin.name,
+      subRole: admin.subRole,
+      twofaEnabled: admin.twofaEnabled,
+    };
   }
 
   private async recordFailedAttempt(adminId: string, now: Date): Promise<void> {
