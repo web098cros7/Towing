@@ -372,8 +372,16 @@ describe('admin users (/v1/admin/admins)', () => {
         .set('Authorization', `Bearer ${session.accessToken}`)
         .expect(401);
 
-      // The temp password itself logs in (forced-change completion is W2-4).
-      await login(ops.email, res.body.temporaryPassword as string);
+      // The temp password opens a challenge but mints no session until the
+      // forced change completes (proven end to end in admin-totp.e2e.spec.ts).
+      const challenge = await request(app.getHttpServer())
+        .post('/v1/admin/auth/login')
+        .send({ email: ops.email, password: res.body.temporaryPassword as string })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post('/v1/admin/auth/verify')
+        .send({ challengeId: challenge.body.challengeId, otp: '000000' })
+        .expect(403);
     });
   });
 

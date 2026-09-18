@@ -232,9 +232,6 @@ export const ErrorCodes = {
   TOTP_ALREADY_ENABLED: 'totp_already_enabled',
   /** Confirm/disable called with no enrolment in flight or active. */
   TOTP_NOT_ENABLED: 'totp_not_enabled',
-  /** Recovery code unknown, already used, or for a different admin. One message
-   * for all three — distinguishing them is an oracle against a small space. */
-  RECOVERY_CODE_INVALID: 'recovery_code_invalid',
   /**
    * The admin authenticated but `must_change_password` is set (temporary
    * password from a reset). No session is minted; complete the change with the

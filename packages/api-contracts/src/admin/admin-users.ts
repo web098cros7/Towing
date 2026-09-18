@@ -106,6 +106,11 @@ export const adminTotpConfirmSchema = z.object({
 });
 export type AdminTotpConfirm = z.infer<typeof adminTotpConfirmSchema>;
 
+export const adminTotpStatusSchema = z.object({
+  enabled: z.boolean(),
+});
+export type AdminTotpStatus = z.infer<typeof adminTotpStatusSchema>;
+
 export const adminTotpDisableSchema = z.object({
   reason: z.string().trim().min(5).max(500),
 });

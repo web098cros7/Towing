@@ -41,6 +41,7 @@
     "drizzle-orm": "^0.45.2",
     "ioredis": "^6.0.0",
     "nestjs-pino": "^4.6.1",
+    "otplib": "^13.5.0",
     "papaparse": "^5.5.4",
     "pdf-lib": "^1.17.1",
     "pino": "^10.3.1",

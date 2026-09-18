@@ -30,6 +30,9 @@ const PUBLIC_ADMIN_ROUTES: readonly string[] = [
   'POST v1/admin/auth/refresh',
   'POST v1/admin/auth/logout',
   'GET v1/admin/auth/dev/otp',
+  // W2: no session exists yet at forced-change completion — the unconsumed
+  // login challenge is the only authority. Deliberate, allowlisted verbatim.
+  'POST v1/admin/auth/password/complete',
 ];
 
 /** `IS_PUBLIC` in `jwt-auth.guard.ts` is module-local; this is its key. */

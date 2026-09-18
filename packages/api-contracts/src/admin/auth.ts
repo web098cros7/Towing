@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { otpCodeSchema, sessionTokensSchema } from '../common/auth';
+import { sessionTokensSchema } from '../common/auth';
 import { adminSubRoleSchema, kycStatusSchema } from '../common/enums';
 
 /**
@@ -30,7 +30,12 @@ export type AdminLoginChallenge = z.infer<typeof adminLoginChallengeSchema>;
 
 export const adminOtpVerifyRequestSchema = z.object({
   challengeId: z.uuid(),
-  otp: otpCodeSchema,
+  /**
+   * W2: the SMS code, the TOTP code (both 6 digits) or an 8-char recovery
+   * code. Length tells the server which check to run — the box on the login
+   * page accepts either, and recovery entry needs no second screen.
+   */
+  otp: z.string().regex(/^(\d{6}|[A-Za-z0-9_-]{8})$/),
 });
 export type AdminOtpVerifyRequest = z.infer<typeof adminOtpVerifyRequestSchema>;
 

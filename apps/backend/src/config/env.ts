@@ -56,6 +56,17 @@ const EnvSchema = z.object({
    */
   FILE_SIGNING_SECRET: z.string().min(32, 'FILE_SIGNING_SECRET must be >= 32 chars'),
 
+  /**
+   * Key encrypting `admin_users.twofa_secret_enc` at rest (W2, AES-256-GCM
+   * via SHA-256 domain separation — the stored value is never a bare TOTP
+   * secret). Dev default so `pnpm backend` works with zero setup, same
+   * standing as the other dev secrets; production refuses to boot on it.
+   */
+  ADMIN_TOTP_ENC_KEY: z
+    .string()
+    .min(32, 'ADMIN_TOTP_ENC_KEY must be >= 32 chars')
+    .default('dev-only-totp-enc-key-change-me-32-chars'),
+
   /** Test-suite escape hatch; never enable in a deployed environment. */
   THROTTLE_DISABLED: z
     .string()
@@ -723,6 +734,13 @@ export function assertProductionSafety(env: Env): void {
 
   if (env.FILE_SIGNING_SECRET.includes('dev-only')) {
     throw new Error('FILE_SIGNING_SECRET is still the development placeholder');
+  }
+
+  // A database dump must not hand out second factors. The dev key decrypts
+  // nothing an attacker cannot already read (it ships in the repo's .env
+  // sample path), so production refuses it outright.
+  if (env.ADMIN_TOTP_ENC_KEY.includes('dev-only')) {
+    throw new Error('ADMIN_TOTP_ENC_KEY is still the development placeholder');
   }
 
   // The dev payout adapter marks payouts `paid` on a timer without a bank ever
