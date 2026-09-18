@@ -66,11 +66,12 @@ export class FleetSuspensionService {
       return { fleetId, status: 'suspended', driverCount: driverIds.length };
     }
 
-    // Outstanding offers die first, through the path that spares acceptance
-    // rates — a suspended fleet's drivers must not time out of offers they
-    // can no longer take.
-    await this.revokeFleetOffers(fleetId, driverIds);
-
+    // M0-F8: the flip commits FIRST, then revokes, then evictions. Revoking
+    // while the fleet still reads `active` leaves a window where a wave can
+    // issue a fresh offer — which then times out as `expired` against the
+    // driver's acceptance rate, the damage A12 exists to prevent. Once the
+    // status is `suspended`, eligibility excludes the fleet's drivers, so a
+    // concurrent wave cannot offer to them in the first place.
     const before = { status: fleet.status };
     await this.db.transaction(async (tx) => {
       await tx.update(fleets).set({ status: 'suspended' }).where(eq(fleets.id, fleetId));
@@ -89,6 +90,11 @@ export class FleetSuspensionService {
         { tx },
       );
     });
+
+    // Outstanding offers die through the path that spares acceptance rates —
+    // a suspended fleet's drivers must not time out of offers they can no
+    // longer take.
+    await this.revokeFleetOffers(fleetId, driverIds);
 
     // Evict the jobless only. A driver mid-job keeps presence, session and
     // tracking until the job ends; nothing here logs anyone out.
