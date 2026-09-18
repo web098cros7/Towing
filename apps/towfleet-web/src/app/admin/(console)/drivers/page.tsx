@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge, type ColumnDef, DataTable } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { AdminForbidden } from '@/components/admin/AdminForbidden';
@@ -87,6 +87,13 @@ export default function AdminDriversPage() {
     () => (selectedId === null ? false : (data ?? []).some((row) => row.id === selectedId)),
     [data, selectedId],
   );
+
+  // Drop a selection whose row left the queue (decided elsewhere): the drawer
+  // already unmounts, but keeping the id would reopen it if the row ever
+  // reappears on a later refetch.
+  useEffect(() => {
+    if (selectedId !== null && !selectedExists) setSelectedId(null);
+  }, [selectedId, selectedExists]);
 
   // A7: a valid session without the queue's sub-role is refused, not broken.
   if (error instanceof ApiError && error.status === 403) {

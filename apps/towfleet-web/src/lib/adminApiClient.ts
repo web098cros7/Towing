@@ -27,7 +27,14 @@ export async function adminApiFetch<T>(path: string, init?: RequestInit): Promis
   });
 
   if (res.status === 401 && typeof window !== 'undefined') {
-    window.location.assign('/admin/login');
+    // Carry the current page as `?next=` (same as the identity provider and
+    // the middleware) — but never bounce the login page off itself.
+    const { pathname, search } = window.location;
+    if (!pathname.startsWith('/admin/login')) {
+      window.location.assign(`/admin/login?next=${encodeURIComponent(`${pathname}${search}`)}`);
+    } else {
+      window.location.assign('/admin/login');
+    }
     throw new ApiError(401, 'unauthorized', 'Session expired');
   }
 

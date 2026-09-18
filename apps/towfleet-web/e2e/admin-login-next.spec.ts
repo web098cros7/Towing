@@ -42,11 +42,24 @@ test('?next=//evil.example falls back to /admin, staying same-origin', async ({ 
 });
 
 test('a ?next= containing a backslash falls back to /admin', async ({ page }) => {
-  await page.goto('/admin/login?next=/admin%5Cfinance');
+  // `/admin/\evil.example` passes the prefix rule (so this exercises the
+  // backslash rule, not the prefix one — the old value never reached it).
+  await page.goto('/admin/login?next=/admin/%5Cevil.example');
   await mockLogin(page);
 
   await page.waitForURL((url) => !url.searchParams.has('next'));
   const url = new URL(page.url());
   expect(url.hostname).toBe('localhost');
   expect(url.pathname.startsWith('/admin')).toBe(true);
+});
+
+test('a ?next= with a dot-dot segment falls back to /admin', async ({ page }) => {
+  await page.goto('/admin/login?next=/admin/../login');
+  await mockLogin(page);
+
+  await page.waitForURL((url) => !url.searchParams.has('next'));
+  const url = new URL(page.url());
+  expect(url.hostname).toBe('localhost');
+  expect(url.pathname).toBe('/admin');
+  expect(page.url()).not.toContain('..');
 });

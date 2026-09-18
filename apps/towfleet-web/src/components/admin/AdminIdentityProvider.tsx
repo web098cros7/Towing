@@ -20,9 +20,12 @@ async function fetchAdminIdentity(): Promise<AdminIdentity | null> {
     headers: { Accept: 'application/json' },
   });
   if (res.status === 401) {
-    // Session gone — but never bounce the login page off itself.
+    // Session gone — but never bounce the login page off itself. Carry the
+    // current page as `?next=` so a re-login lands back where the admin was
+    // (the middleware does the same on its server-side bounce).
     if (typeof window !== 'undefined' && window.location.pathname !== '/admin/login') {
-      window.location.assign('/admin/login');
+      const next = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
+      window.location.assign(`/admin/login?next=${next}`);
     }
     return null;
   }
