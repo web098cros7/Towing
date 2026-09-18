@@ -148,3 +148,47 @@ test('rejecting a payout works end to end against a real backend', async ({ page
   expect(after, 'the rejected payout must still be listed under state=all').toBeTruthy();
   expect(after).toMatchObject({ approvalState: 'rejected', rejectionReason: REJECT_REASON });
 });
+
+test('the pager clamps when the queue shrinks under the current page', async ({ page }) => {
+  // M0-F13: without the clamp, sitting on page 2 when the total shrinks
+  // leaves the table on its empty state — which hides the pager — with no way
+  // back. The shrink is fabricated by intercepting the page-2 response with a
+  // smaller total (this lives here, not mocks-on, because only the real fetch
+  // path has a response to intercept).
+  const row = {
+    id: '00000000-0000-4000-8000-000000000001',
+    ownerType: 'driver',
+    ownerId: '00000000-0000-4000-8000-000000000002',
+    ownerName: 'Clamp Check Driver',
+    amountPaise: 500000,
+    status: 'requested',
+    approvalState: 'pending_approval',
+    requestedAt: new Date().toISOString(),
+    approvedAt: null,
+    rejectionReason: null,
+    failureReason: null,
+    destinationLast4: '4021',
+    bankName: 'HDFC Bank',
+  };
+  await page.route('**/api/admin-proxy/finance/payouts*', async (route) => {
+    const reqPage = new URL(route.request().url()).searchParams.get('page');
+    if (reqPage === '2') {
+      // The queue shrank while the operator sat on page 2.
+      await route.fulfill({ json: { items: [], page: 2, limit: 50, total: 5 } });
+    } else {
+      await route.fulfill({ json: { items: [row], page: 1, limit: 50, total: 55 } });
+    }
+  });
+
+  await loginAsFinance(page);
+  await page.goto('/admin/finance');
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Next page' }).click();
+
+  // Clamped back to page 1 (which refetches) instead of sticking on an empty
+  // second page whose empty state hides the pager.
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+  await expect(page.getByText('Clamp Check Driver')).toBeVisible();
+  await expect(page.getByText('Nothing to approve')).toHaveCount(0);
+});

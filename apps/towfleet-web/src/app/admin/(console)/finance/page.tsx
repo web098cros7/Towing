@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge, type ColumnDef, DataTable } from '@towing/web-ui';
 import type { AdminPayoutDto, PayoutApprovalState } from '@towing/api-contracts';
 import { PageHeader } from '@/components/PageHeader';
@@ -102,6 +102,16 @@ export default function AdminFinancePage() {
 
   // `total`, never `items.length`: the last page is short by definition.
   const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / limit));
+
+  // M0-F13: clamp when the total shrinks under the current page (e.g.
+  // approving the last rows while sitting on page 2). Without this the table
+  // renders its empty state — which hides the pager — with no way back to
+  // page 1. Guarded on `data`: a page change swaps the query key, and until
+  // the new page resolves `data` is undefined (pageCount 1) — clamping on the
+  // transient would yank every page turn back to page 1.
+  useEffect(() => {
+    if (data !== undefined && page > pageCount) setPage(pageCount);
+  }, [data, page, pageCount]);
 
   // A7: a valid session without the queue's sub-role is refused, not broken.
   if (error instanceof ApiError && error.status === 403) {
