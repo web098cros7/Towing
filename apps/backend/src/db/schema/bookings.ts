@@ -10,6 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { money, primaryId, timestamps } from './columns';
+import { adminUsers } from './admin';
 import { coupons } from './promotions';
 import {
   actorRoleEnum,
@@ -298,6 +299,12 @@ export const bookingStatusHistory = pgTable(
       .references(() => bookings.id, { onDelete: 'cascade' }),
     status: bookingStatusEnum('status').notNull(),
     actor: actorRoleEnum('actor').notNull().default('system'),
+    /**
+     * W1/W8 (migration 0020): which admin wrote this row via the manual
+     * override. Nullable — every existing row was written by the system or a
+     * non-admin actor. No cascade: history must outlive the admin.
+     */
+    actorId: uuid('actor_id').references(() => adminUsers.id),
     note: text('note'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
