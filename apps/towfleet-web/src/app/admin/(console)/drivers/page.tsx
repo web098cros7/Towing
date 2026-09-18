@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Badge, type ColumnDef, DataTable } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { AdminForbidden } from '@/components/admin/AdminForbidden';
@@ -80,7 +80,13 @@ const columns: ColumnDef<AdminPendingDriver, unknown>[] = [
  */
 export default function AdminDriversPage() {
   const { data, isLoading, isError, error, refetch } = useAdminPendingDrivers();
-  const [selected, setSelected] = useState<AdminPendingDriver | null>(null);
+  // A19: page state holds only the id — the drawer derives a LIVE row from
+  // the query, so refetches, decisions and capability toggles reach it.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedExists = useMemo(
+    () => (selectedId === null ? false : (data ?? []).some((row) => row.id === selectedId)),
+    [data, selectedId],
+  );
 
   // A7: a valid session without the queue's sub-role is refused, not broken.
   if (error instanceof ApiError && error.status === 403) {
@@ -108,12 +114,16 @@ export default function AdminDriversPage() {
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}
-        onRowClick={(row) => setSelected(row)}
+        onRowClick={(row) => setSelectedId(row.id)}
         emptyTitle="Queue is empty"
         emptyDescription="Every submitted driver has been reviewed. New submissions will appear here."
       />
 
-      <DriverKycDrawer driver={selected} onClose={() => setSelected(null)} />
+      {/* Keyed by driver: switching rows remounts and drops stale form state.
+          Unmounts when the row leaves the queue (decided elsewhere). */}
+      {selectedId !== null && selectedExists ? (
+        <DriverKycDrawer key={selectedId} driverId={selectedId} onClose={() => setSelectedId(null)} />
+      ) : null}
     </div>
   );
 }

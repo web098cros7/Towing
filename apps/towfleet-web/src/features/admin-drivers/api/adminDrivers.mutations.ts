@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminDriversKeys } from './adminDrivers.keys';
 import { adminDriversDataSource, type CapabilitiesUpdateInput } from './adminDriversDataSource';
-import type { KycDecision } from '../types';
+import type { AdminPendingDriver, KycDecision } from '../types';
 
 /** Approve / reject / request-info / suspend / reactivate — the driver-level §3.1 decision. */
 export function useDecideKyc() {
@@ -50,7 +50,21 @@ export function useUpdateDriverCapabilities() {
   return useMutation({
     mutationFn: ({ driverId, input }: { driverId: string; input: CapabilitiesUpdateInput }) =>
       adminDriversDataSource.updateCapabilities(driverId, input),
-    onSuccess: () => {
+    onSuccess: (response, { driverId, input }) => {
+      // A19: merge the toggle into the queue cache for instant feedback, then
+      // invalidate so server truth settles right after. The drawer derives its
+      // row from this cache, so it updates without a reload either way.
+      queryClient.setQueryData<AdminPendingDriver[]>(adminDriversKeys.pending(), (previous) =>
+        previous?.map((row) =>
+          row.id === driverId
+            ? {
+                ...row,
+                vehicleClass: response.vehicleClass ?? input.vehicleClass ?? row.vehicleClass,
+                longDistanceEnabled: response.longDistanceEnabled ?? input.longDistanceEnabled ?? row.longDistanceEnabled,
+              }
+            : row,
+        ),
+      );
       void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pending() });
     },
   });

@@ -32,8 +32,15 @@ export interface AdminDriversDataSource {
 
 const mockSource: AdminDriversDataSource = {
   pending: () => resolveMock(env.mockAdminDriversState, adminDriversMock, []),
-  decideKyc: async (driverId, decision) => {
+  decideKyc: async (driverId, decision, reason) => {
     await mockDelay();
+    // A19: sentinel rejection so the drawer's error UI is testable mocks-on.
+    // Route interception cannot reach mockSource (it never fetches), and this
+    // asserts the drawer's rendering — product UI code — never backend
+    // behaviour, which stays e2e-live territory per the house rule.
+    if (reason === 'mock-failure') {
+      throw new Error('Mock failure (sentinel reason rejected by the mock)');
+    }
     const kycStatus = {
       approve: 'approved',
       reject: 'rejected',

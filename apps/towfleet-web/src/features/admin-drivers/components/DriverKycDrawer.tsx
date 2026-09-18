@@ -11,8 +11,9 @@ import {
   DialogTitle,
   Switch,
 } from '@towing/web-ui';
+import { useAdminPendingDrivers } from '../api/adminDrivers.queries';
 import { useDecideKyc, useReviewDocument, useUpdateDriverCapabilities } from '../api/adminDrivers.mutations';
-import { DOC_TYPE_LABEL, type AdminPendingDriver, type DocReviewStatus } from '../types';
+import { DOC_TYPE_LABEL, type DocReviewStatus } from '../types';
 
 const DOC_STATUS_VARIANT: Record<DocReviewStatus, 'success' | 'warning' | 'error'> = {
   approved: 'success',
@@ -23,13 +24,22 @@ const DOC_STATUS_VARIANT: Record<DocReviewStatus, 'success' | 'warning' | 'error
 /** Which overall decision the driver-level reason prompt is currently open for. */
 type PendingDecision = 'reject' | 'request_info' | null;
 
+/**
+ * A19: the drawer takes an id and derives a LIVE row from the queue query —
+ * never the clicked snapshot. Toggling a capability, reviewing a document or
+ * refetching the queue updates what is on screen; a row that leaves the queue
+ * unmounts the drawer (the parent mounts conditionally on the derived row).
+ */
 export function DriverKycDrawer({
-  driver,
+  driverId,
   onClose,
 }: {
-  driver: AdminPendingDriver | null;
+  driverId: string;
   onClose: () => void;
 }) {
+  const { data } = useAdminPendingDrivers();
+  const driver = data?.find((row) => row.id === driverId) ?? null;
+
   const decideKyc = useDecideKyc();
   const reviewDocument = useReviewDocument();
   const updateCapabilities = useUpdateDriverCapabilities();
@@ -42,22 +52,38 @@ export function DriverKycDrawer({
   if (!driver) return null;
 
   const busy = decideKyc.isPending || reviewDocument.isPending || updateCapabilities.isPending;
+  // Mutation failures render inline (A19) — a refused decision must say why
+  // instead of just unsticking the button. First failure wins; a retry clears.
+  const error =
+    (decideKyc.error as Error | null) ??
+    (reviewDocument.error as Error | null) ??
+    (updateCapabilities.error as Error | null) ??
+    null;
+
+  const close = () => {
+    setPendingDecision(null);
+    setReason('');
+    setDocReasonFor(null);
+    setDocReason('');
+    decideKyc.reset();
+    reviewDocument.reset();
+    updateCapabilities.reset();
+    onClose();
+  };
 
   const submitDecision = (decision: 'approve' | 'reject' | 'request_info', withReason?: string) => {
     decideKyc.mutate(
       { driverId: driver.id, decision, reason: withReason },
       {
         onSuccess: () => {
-          setPendingDecision(null);
-          setReason('');
-          onClose();
+          close();
         },
       },
     );
   };
 
   return (
-    <Dialog open={driver !== null} onClose={onClose} labelledBy="kyc-drawer-title" className="w-[min(40rem,calc(100vw-2rem))]">
+    <Dialog open onClose={close} labelledBy="kyc-drawer-title" className="w-[min(40rem,calc(100vw-2rem))]">
       <DialogHeader>
         <DialogTitle id="kyc-drawer-title">{driver.name ?? 'Unnamed driver'}</DialogTitle>
         <p className="text-sm text-text-secondary">{driver.mobile}</p>
@@ -81,6 +107,12 @@ export function DriverKycDrawer({
             }
           />
         </div>
+
+        {error ? (
+          <p data-testid="kyc-error" className="mt-3 text-sm text-error">
+            {error.message}
+          </p>
+        ) : null}
 
         <div className="flex flex-col gap-3">
           {driver.documents.map((doc) => (
@@ -190,7 +222,7 @@ export function DriverKycDrawer({
           </>
         ) : (
           <>
-            <Button variant="ghost" onClick={onClose} disabled={busy}>
+            <Button variant="ghost" onClick={close} disabled={busy}>
               Close
             </Button>
             <Button
