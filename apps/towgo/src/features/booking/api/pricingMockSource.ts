@@ -87,6 +87,8 @@ export const pricingMockSource: PricingDataSource = {
         totalPaise: preSurge + surgePaise,
       },
       surgeActive: surgePaise > 0,
+      // A11: kill-switch warnings ride the contract response; the mock never pauses.
+      warnings: [],
     };
   },
 };
