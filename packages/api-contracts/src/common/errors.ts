@@ -79,6 +79,14 @@ export const ErrorCodes = {
    */
   INVALID_BOOKING_STATE: 'invalid_booking_state',
   /**
+   * A `disputed → paid` resolution was refused because the booking never
+   * settled (no captured payment plus settlement legs, M0-F11). Distinct from
+   * `INVALID_BOOKING_STATE` so W8's UI can tell "illegal edge" apart from
+   * "not settled yet" — the remedy is settling first, not picking another
+   * exit.
+   */
+  DISPUTE_NOT_SETTLED: 'dispute_not_settled',
+  /**
    * §3.5's chargeable cancellation tiers. The fee is computed and returned in
    * `details`, but taking it needs the ledger, which is Phase 19.
    */

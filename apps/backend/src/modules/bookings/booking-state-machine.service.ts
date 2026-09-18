@@ -245,7 +245,7 @@ export class BookingStateMachineService {
     if (from === 'disputed' && to === 'paid' && !(await this.wasSettled(tx, bookingId))) {
       throw new ApiException(
         409,
-        ErrorCodes.INVALID_BOOKING_STATE,
+        ErrorCodes.DISPUTE_NOT_SETTLED,
         'Only a dispute opened from a paid booking can resolve back to paid: ' +
           'no captured payment and settlement legs were found for this booking',
         { from, to },

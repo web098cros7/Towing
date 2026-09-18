@@ -101,7 +101,12 @@ describe('dispute resolution invariants e2e (A9)', () => {
     });
     await move(bookingId, 'disputed');
 
-    await expect(move(bookingId, 'paid')).rejects.toMatchObject({ status: 409 });
+    // M0-F11: its own code, so W8's UI can tell "not settled yet" apart from
+    // an illegal edge.
+    await expect(move(bookingId, 'paid')).rejects.toMatchObject({
+      status: 409,
+      code: 'dispute_not_settled',
+    });
     expect(await status(bookingId)).toBe('disputed');
 
     await expectNoDrift();
@@ -118,7 +123,10 @@ describe('dispute resolution invariants e2e (A9)', () => {
     });
     await move(bookingId, 'disputed');
 
-    await expect(move(bookingId, 'paid')).rejects.toMatchObject({ status: 409 });
+    await expect(move(bookingId, 'paid')).rejects.toMatchObject({
+      status: 409,
+      code: 'dispute_not_settled',
+    });
     expect(await status(bookingId)).toBe('disputed');
 
     await expectNoDrift();
