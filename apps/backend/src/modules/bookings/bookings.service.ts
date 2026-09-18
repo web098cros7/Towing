@@ -14,6 +14,7 @@ import {
 } from '@towing/api-contracts';
 import { eq } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
+import { OpsEventsService } from '../../common/events/ops-events.service';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { NotificationService } from '../../common/notifications/notification.service';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
@@ -64,6 +65,7 @@ export class BookingsService {
     private readonly notifications: NotificationService,
     private readonly tickets: WsTicketService,
     private readonly killSwitch: KillSwitchService,
+    private readonly opsEvents: OpsEventsService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -293,6 +295,19 @@ export class BookingsService {
     userId: string,
     locked: Awaited<ReturnType<PricingService['lock']>>,
   ): Promise<void> {
+    // A18: creation performs no transition, so it publishes its own dedicated
+    // event — the admin feed sees the search start, not just its end.
+    try {
+      await this.opsEvents.publish({
+        kind: 'booking_created',
+        bookingId,
+        zoneId: locked.zone.id,
+        userId,
+      });
+    } catch (error) {
+      this.logger.warn(`ops creation event failed for ${bookingId}: ${String(error)}`);
+    }
+
     try {
       await this.notifications.emit('booking.confirmed', {
         bookingId,

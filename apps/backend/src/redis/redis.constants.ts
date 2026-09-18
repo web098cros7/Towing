@@ -46,6 +46,15 @@ export const DRIVER_LOCATION_CHANNEL = 'location:driver';
 export const METRICS_CHANNEL = 'ops:metrics';
 
 /**
+ * Platform-wide operational events (A18) — every booking status change,
+ * regardless of fleet. The admin live map, dashboard and badge counts
+ * subscribe here (W1); fleet-scoped clients keep reading `fleet:events`.
+ * Low frequency (one message per transition), so no batching like the ping
+ * channels — each message is independently meaningful.
+ */
+export const OPS_EVENTS_CHANNEL = 'ops:events';
+
+/**
  * Per-truck hot position hash. Written by the ping path with a 30s TTL
  * (`TRUCK_HASH_TTL_MS` in @towing/api-contracts) and read by the positions
  * snapshot; the dispatch matcher of §6.1 reads the same key.

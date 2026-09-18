@@ -134,16 +134,25 @@ export class RefundsService {
     // The booking MUST leave `paid` — see the header. A `disputed` landing is
     // Phase 20's admin route; `cancelled` is the §3.5 path. `null` skips the
     // write when the caller already put the booking where it belongs.
-    if (params.transitionTo !== null) {
-      const to = params.transitionTo;
-      await this.db.transaction((tx) =>
-        this.machine.transition(tx, {
-          bookingId: params.bookingId,
-          to,
-          actor: 'system',
-          note: params.note ?? `Refunded (${params.reason})`,
-        }),
-      );
+    const to = params.transitionTo;
+    const transitioned =
+      to !== null
+        ? await this.db.transaction((tx) =>
+            this.machine.transition(tx, {
+              bookingId: params.bookingId,
+              to,
+              actor: 'system',
+              note: params.note ?? `Refunded (${params.reason})`,
+            }),
+          )
+        : null;
+
+    await this.payments.markRefunded(captured.id);
+
+    // A18: the refund moves status (when it moves it), so it announces like
+    // every other transition — after everything above committed.
+    if (transitioned) {
+      await this.machine.announce(transitioned);
     }
 
     await this.payments.markRefunded(captured.id);

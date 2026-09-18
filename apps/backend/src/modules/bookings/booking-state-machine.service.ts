@@ -3,6 +3,7 @@ import { ErrorCodes, type JobStatus } from '@towing/api-contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { FleetEventsService } from '../../common/events/fleet-events.service';
+import { OpsEventsService } from '../../common/events/ops-events.service';
 import type { DatabaseExecutor } from '../../db/db.module';
 import { bookingStatusHistory, bookings } from '../../db/schema';
 
@@ -150,13 +151,20 @@ export interface TransitionResult {
   from: JobStatus;
   to: JobStatus;
   fleetId: string | null;
+  /** A18: the ops feed needs the full routing, not just the tenant. */
+  zoneId: string | null;
+  driverId: string | null;
+  userId: string;
 }
 
 @Injectable()
 export class BookingStateMachineService {
   private readonly logger = new Logger(BookingStateMachineService.name);
 
-  constructor(private readonly fleetEvents: FleetEventsService) {}
+  constructor(
+    private readonly fleetEvents: FleetEventsService,
+    private readonly opsEvents: OpsEventsService,
+  ) {}
 
   static isLegal(from: JobStatus, to: JobStatus): boolean {
     return LEGAL_TRANSITIONS[from].includes(to);
@@ -200,9 +208,17 @@ export class BookingStateMachineService {
 
     // FOR UPDATE, not a bare read: two dispatch workers racing to accept the
     // same booking must serialise here, or both read `searching` and both
-    // believe they won.
+    // believe they won. A18 widens the read with the ops feed's routing —
+    // columns, not joins, on an already-locked row.
     const [current] = await tx
-      .select({ id: bookings.id, status: bookings.status, fleetId: bookings.fleetId })
+      .select({
+        id: bookings.id,
+        status: bookings.status,
+        fleetId: bookings.fleetId,
+        zoneId: bookings.zoneId,
+        driverId: bookings.driverId,
+        userId: bookings.userId,
+      })
       .from(bookings)
       .where(eq(bookings.id, bookingId))
       .for('update');
@@ -256,20 +272,44 @@ export class BookingStateMachineService {
       note: params.note ?? null,
     });
 
-    return { id: bookingId, from, to, fleetId: current.fleetId };
+    return {
+      id: bookingId,
+      from,
+      to,
+      fleetId: current.fleetId,
+      zoneId: current.zoneId,
+      driverId: current.driverId,
+      userId: current.userId,
+    };
   }
 
   /**
-   * Tell the fleet console a booking moved. Call AFTER the caller's transaction
+   * Tell the consoles a booking moved. Call AFTER the caller's transaction
    * commits — a socket message about a change that then rolls back is worse
    * than no message.
    *
-   * A `searching` booking has no `fleet_id` (nothing is assigned until Phase
-   * 17), so in Phase 15 this is correct-by-construction dead code. It is wired
-   * now because the alternative is Phase 17 remembering to add it to a
-   * transition service it did not write.
+   * TWO FEEDS, and the order is the point. The platform-wide `ops:events`
+   * publish goes FIRST, before the fleet-only early return (A18): an admin
+   * subscriber sees every status change regardless of fleet, including
+   * `searching` bookings that have no `fleet_id` yet (nothing is assigned
+   * until Phase 17). The fleet feed keeps its existing shape and tenants.
    */
   async announce(result: TransitionResult): Promise<void> {
+    try {
+      await this.opsEvents.publish({
+        kind: 'booking_status',
+        bookingId: result.id,
+        from: result.from,
+        to: result.to,
+        zoneId: result.zoneId,
+        driverId: result.driverId,
+        userId: result.userId,
+        fleetId: result.fleetId,
+      });
+    } catch (error) {
+      this.logger.warn(`ops event publish failed for ${result.id}: ${String(error)}`);
+    }
+
     if (!result.fleetId) return;
     try {
       await this.fleetEvents.emit(result.fleetId, {

@@ -340,6 +340,9 @@ export class OfferService {
       from: 'searching',
       to: 'assigned',
       fleetId,
+      zoneId: booking.zoneId,
+      driverId,
+      userId: booking.userId,
     });
 
     // §11.5's route and first ETA (Phase 18) — the ONE Directions call this

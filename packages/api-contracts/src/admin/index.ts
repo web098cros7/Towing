@@ -4,3 +4,4 @@ export * from './dispatch';
 export * from './drivers';
 export * from './pricing';
 export * from './finance';
+export * from './realtime';
