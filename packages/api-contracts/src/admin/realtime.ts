@@ -28,6 +28,16 @@ export const opsBookingCreatedEventSchema = z.object({
   bookingId: z.uuid(),
   zoneId: z.uuid(),
   userId: z.uuid(),
+  /**
+   * Lets a consumer that only counts states treat creation as entering
+   * `searching` without a special case for a transition that never ran.
+   */
+  status: z.literal('searching'),
+  /**
+   * Set for scheduled bookings, which sit in `searching` while dormant — the
+   * W3 dashboard must not count them as an active search.
+   */
+  scheduledAt: z.iso.datetime().nullable(),
   at: z.iso.datetime(),
 });
 export type OpsBookingCreatedEvent = z.infer<typeof opsBookingCreatedEventSchema>;

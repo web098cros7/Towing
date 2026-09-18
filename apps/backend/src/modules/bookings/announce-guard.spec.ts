@@ -71,22 +71,26 @@ describe('every booking status change is announced (A18)', () => {
   });
 
   it('every direct bookings/history writer publishes to the ops feed', () => {
-    const WRITE_PATTERNS = [
-      /\.insert\(\s*bookings/,
-      /insert\s+into\s+bookings/i,
+    // Bookings rows enter the world with no transition, so their files must
+    // publish `booking_created`; history rows are written beside a transition
+    // (or in tests), so theirs must announce. One rule per write kind keeps a
+    // `booking_created` omission from hiding behind an unrelated `announce(`.
+    const BOOKING_WRITE_PATTERNS = [/\.insert\(\s*bookings/, /insert\s+into\s+bookings/i];
+    const HISTORY_WRITE_PATTERNS = [
       /\.insert\(\s*bookingStatusHistory/,
       /insert\s+into\s+booking_status_history/i,
     ];
-    const PUBLISH_PATTERNS = [/announce\(/, /opsEvents\.publish/, /OpsEventsService/];
 
     const offenders = sourceFiles()
       .filter((file) => !ALLOWED_WRITERS.includes(rel(file)))
       .filter((file) => {
         const source = readFileSync(file, 'utf8');
-        return (
-          WRITE_PATTERNS.some((pattern) => pattern.test(source)) &&
-          !PUBLISH_PATTERNS.some((pattern) => pattern.test(source))
-        );
+        const writesBookings = BOOKING_WRITE_PATTERNS.some((pattern) => pattern.test(source));
+        const writesHistory = HISTORY_WRITE_PATTERNS.some((pattern) => pattern.test(source));
+        if (!writesBookings && !writesHistory) return false;
+        if (writesBookings && !/booking_created/.test(source)) return true;
+        if (writesHistory && !/announce\(/.test(source)) return true;
+        return false;
       })
       .map(rel);
 

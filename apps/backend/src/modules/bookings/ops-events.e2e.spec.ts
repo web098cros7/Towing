@@ -100,6 +100,8 @@ describe('ops:events platform feed (A18)', () => {
     expect(opsBookingCreatedEventSchema.parse(created[0])).toMatchObject({
       bookingId: result.body.id,
       userId,
+      status: 'searching',
+      scheduledAt: null,
     });
     expect(typeof created[0]!.zoneId).toBe('string');
   });
