@@ -53,4 +53,23 @@ describe('admin auth throttle buckets (A7)', () => {
       expect(res.body).toMatchObject({ subRole: 'operations' });
     }
   });
+
+  it('refuses the 6th admin login in the window with 429 (the throttle is on)', async () => {
+    // M0-F14: control for the test above. If throttling were simply off, the
+    // reads test would pass 10/10 for the wrong reason — this one fails unless
+    // the `auth` bucket (5/min, keyed by account) actually bites.
+    const probe = await seedAdmin(db, { subRole: 'operations', password: 'Password123!' });
+
+    for (let i = 0; i < 5; i += 1) {
+      await request(app.getHttpServer())
+        .post('/v1/admin/auth/login')
+        .send({ email: probe.email, password: 'Password123!' })
+        .expect(200);
+    }
+    const limited = await request(app.getHttpServer())
+      .post('/v1/admin/auth/login')
+      .send({ email: probe.email, password: 'Password123!' })
+      .expect(429);
+    expect(limited.body).toMatchObject({ error: { code: 'rate_limited' } });
+  });
 });
