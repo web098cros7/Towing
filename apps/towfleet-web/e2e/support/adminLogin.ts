@@ -21,9 +21,10 @@ export async function adminLogin(
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  // A7: `/admin` routes by sub-role (mock login is `operations` → the KYC
-  // queue; A6's neutral landing only flashes while identity resolves). Specs
-  // navigate on to the queue they need. Anchored past `/admin`: staying on
-  // `/admin/login` after a failed sign-in must not satisfy this.
-  await expect(page).toHaveURL(/\/admin\//);
+  // A7 + M0-F7: `/admin` is neutral — no sub-role is redirected anywhere
+  // (mock login is `operations`, so both queue cards show). Specs navigate on
+  // to the queue they need. Wait for the post-login URL that is NOT the login
+  // page: a bare `/\/admin/` also matches `/admin/login`, which fires the
+  // next `goto` before verify's `Set-Cookie` lands (M0-F3's live race).
+  await expect(page).toHaveURL(/\/admin$/);
 }

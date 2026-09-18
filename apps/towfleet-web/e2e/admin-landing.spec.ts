@@ -4,22 +4,24 @@ import { adminLogin } from './support/adminLogin';
 /**
  * A6/A7 — the `/admin` landing (mocks-on).
  *
- * A6 made it neutral; A7 routes it by sub-role once identity resolves (mock
- * login is `operations`, so it lands on the KYC queue). The finance leg is
- * covered with an intercepted identity below — the mock session cannot mint
- * one.
+ * Neutral (M0-F7): no sub-role is redirected to a queue. Cards for queues the
+ * role would get a 403 on stay hidden — operations sees both, finance sees
+ * only payouts (intercepted identity below; the mock session cannot mint
+ * one). The unauthenticated redirect to `/admin/login` is unchanged.
  */
 
-test('an operations admin landing on /admin is routed to the KYC queue', async ({ page }) => {
-  await adminLogin(page);
-
-  await expect(page).toHaveURL(/\/admin\/drivers/);
-  await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
-});
-
-test('a finance admin landing on /admin is routed to finance, not the KYC queue', async ({
+test('an operations admin stays on the neutral landing and sees both queues', async ({
   page,
 }) => {
+  await adminLogin(page);
+
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole('heading', { name: 'Operations' })).toBeVisible();
+  await expect(page.getByText('Verification queue')).toBeVisible();
+  await expect(page.getByText('Payout approvals')).toBeVisible();
+});
+
+test('a finance admin sees only the payouts card', async ({ page }) => {
   await page.route('/api/admin-session', async (route) => {
     await route.fulfill({
       json: {
@@ -41,9 +43,11 @@ test('a finance admin landing on /admin is routed to finance, not the KYC queue'
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  await expect(page).toHaveURL(/\/admin\/finance/);
-  await expect(page.getByRole('heading', { name: 'Payout approvals' })).toBeVisible();
-  await expect(page.getByText('Ramesh Kumar')).toBeVisible();
+  // The mock verify response lands first; the landing filters once identity
+  // resolves — no redirect, just the finance card.
+  await page.waitForURL((url) => !url.pathname.startsWith('/admin/login'));
+  await expect(page.getByText('Payout approvals')).toBeVisible();
+  await expect(page.getByText('Verification queue')).toHaveCount(0);
 });
 
 test('an unauthenticated visitor hitting /admin is redirected to /admin/login', async ({
