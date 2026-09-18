@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { adminLiveLogin } from './support/adminLiveLogin';
 
 /**
  * M0-F1: the identity route survives access-token expiry.
@@ -15,37 +16,8 @@ import { expect, test, type Page } from '@playwright/test';
  * live specs.)
  */
 
-const BACKEND_URL = process.env.LIVE_BACKEND_URL ?? 'http://localhost:4000';
-
-async function loginAsOps(page: Page) {
-  await page.goto('/admin/login');
-  await page.getByLabel('Email').fill('ops@towing.local');
-  await page.getByLabel('Password').fill('Password123!');
-  // Register both waiters BEFORE the clicks that trigger them.
-  const loginResponse = page.waitForResponse((res) =>
-    res.url().includes('/api/admin-session/login'),
-  );
-  const verifyResponse = page.waitForResponse((res) =>
-    res.url().includes('/api/admin-session/verify'),
-  );
-  await page.getByRole('button', { name: 'Continue' }).click();
-
-  const challengeIdMatch = await loginResponse;
-  const { challengeId } = (await challengeIdMatch.json()) as { challengeId: string };
-
-  const otpRes = await page.request.get(
-    `${BACKEND_URL}/v1/admin/auth/dev/otp?challengeId=${challengeId}`,
-  );
-  const { otp } = (await otpRes.json()) as { otp: string };
-
-  await page.getByLabel('One-time code').fill(otp);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await verifyResponse;
-  await page.waitForURL((url) => !url.pathname.startsWith('/admin/login'));
-}
-
 test('reloading past access expiry keeps the admin signed in', async ({ page, context }) => {
-  await loginAsOps(page);
+  await adminLiveLogin(page, 'ops@towing.local');
   await page.goto('/admin/drivers');
   await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
 

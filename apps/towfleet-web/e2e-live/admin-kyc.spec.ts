@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { adminLiveLogin } from './support/adminLiveLogin';
 
 /**
  * Phase 11's own acceptance bar, mocks-off: admin login → queue → drawer →
@@ -12,50 +13,16 @@ import { expect, test, type Page } from '@playwright/test';
 const BACKEND_URL = process.env.LIVE_BACKEND_URL ?? 'http://localhost:4000';
 
 async function loginAsOps(page: Page) {
-  await page.goto('/admin/login');
-  await page.getByLabel('Email').fill('ops@towing.local');
-  await page.getByLabel('Password').fill('Password123!');
-  await page.getByRole('button', { name: 'Continue' }).click();
-
-  // The dev-OTP-echo route is the same mechanism the mocks-off fleet run
-  // would use — it exists specifically so a browser test never has to scrape
-  // a log. Called directly against the backend since the web app has no proxy
-  // for it (nothing shipped should ever route this in production).
-  const challengeIdMatch = await page.waitForResponse((res) =>
-    res.url().includes('/api/admin-session/login'),
-  );
-  const { challengeId } = (await challengeIdMatch.json()) as { challengeId: string };
-
-  const otpRes = await page.request.get(
-    `${BACKEND_URL}/v1/admin/auth/dev/otp?challengeId=${challengeId}`,
-  );
-  const { otp } = (await otpRes.json()) as { otp: string };
-
-  await page.getByLabel('One-time code').fill(otp);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  // A6: neutral landing, not a queue — specs walk on explicitly.
-  await expect(page).toHaveURL(/\/admin$/);
+  await adminLiveLogin(page, 'ops@towing.local');
 }
 
 // Read-only first, on purpose: the second test approves Prakash Naik out of
 // the queue, and `pnpm db:reset` only seeds one pending driver. Running the
 // mutating test first would leave this one with an empty queue to assert on.
 test('a support admin can see the queue but has no way to decide from it', async ({ page }) => {
-  await page.goto('/admin/login');
-  await page.getByLabel('Email').fill('support@towing.local');
-  await page.getByLabel('Password').fill('Password123!');
-  await page.getByRole('button', { name: 'Continue' }).click();
-
-  const challengeIdMatch = await page.waitForResponse((res) =>
-    res.url().includes('/api/admin-session/login'),
-  );
-  const { challengeId } = (await challengeIdMatch.json()) as { challengeId: string };
-  const otpRes = await page.request.get(
-    `${BACKEND_URL}/v1/admin/auth/dev/otp?challengeId=${challengeId}`,
-  );
-  const { otp } = (await otpRes.json()) as { otp: string };
-  await page.getByLabel('One-time code').fill(otp);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  // M0-F3: the helper returns only once the session cookies are set, so the
+  // walk-on `goto` below can no longer race the login.
+  await adminLiveLogin(page, 'support@towing.local');
 
   await page.goto('/admin/drivers');
   await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
