@@ -29,6 +29,30 @@ test('a support admin can see the queue but has no way to decide from it', async
   await expect(page.getByText('Prakash Naik')).toBeVisible();
 });
 
+test('toggling a capability persists against the real backend', async ({ page }) => {
+  // M0-F15: the mocks-on toggle assertion was timing-dependent (the mock
+  // refetch flips the switch back after `mockDelay`), so the toggle is proven
+  // here instead — a real mutation against a real row. Toggles twice to leave
+  // the seeded state untouched for the approval test below.
+  await loginAsOps(page);
+
+  await page.goto('/admin/drivers');
+  await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
+  await page.getByText('Prakash Naik').click();
+  await expect(page.getByRole('heading', { name: 'Prakash Naik' })).toBeVisible();
+
+  const toggle = page.getByRole('dialog').getByRole('switch');
+  const before = await toggle.getAttribute('aria-checked');
+  expect(before === 'true' || before === 'false').toBe(true);
+
+  await toggle.click();
+  const flipped = before === 'true' ? 'false' : 'true';
+  await expect(toggle).toHaveAttribute('aria-checked', flipped);
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', before!);
+});
+
 test('admin can approve a real KYC submission end to end', async ({ page }) => {
   await loginAsOps(page);
 
