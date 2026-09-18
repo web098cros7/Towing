@@ -24,6 +24,7 @@ import { ENV, type Env } from './config/env';
 import { DbModule } from './db/db.module';
 import { LedgerModule } from './db/ledger/ledger.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
+import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { AdminConfigModule } from './modules/admin-config/admin-config.module';
 import { AdminDriversModule } from './modules/admin-drivers/admin-drivers.module';
 import { AdminFleetsModule } from './modules/admin-fleets/admin-fleets.module';
@@ -84,6 +85,7 @@ import { RedisModule } from './redis/redis.module';
     AuthModule,
     AuthPublicModule,
     AdminAuthModule,
+    AdminUsersModule,
     AdminDriversModule,
     AdminFleetsModule,
     AdminFinanceModule,

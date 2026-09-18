@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import {
+  adminAdminsListResponseSchema,
   adminCommissionConfigSchema,
   adminDispatchConfigSchema,
   adminFinanceConfigSchema,
@@ -98,7 +99,8 @@ describe('response contracts', () => {
     // any schema, which is what makes an unseeded row in this table worthless.
     { path: '/v1/bookings', schema: bookingListResponseSchema, realm: 'customer' },
     // A1 — the admin console's eight. Super-admin satisfies every role set, so
-    // one token covers all eight rows.
+    // one token covers all eight rows. W2 adds the admins list (ninth); the
+    // seeded super_admin keeps the response non-empty.
     { path: '/v1/admin/drivers/pending', schema: adminPendingDriversResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
@@ -111,6 +113,7 @@ describe('response contracts', () => {
     },
     { path: '/v1/admin/dispatch-config', schema: adminDispatchConfigSchema, realm: 'admin' },
     { path: '/v1/admin/auth/me', schema: adminIdentitySchema, realm: 'admin' },
+    { path: '/v1/admin/admins', schema: adminAdminsListResponseSchema, realm: 'admin' },
   ];
 
   beforeAll(async () => {
@@ -307,6 +310,10 @@ const EXCLUDED = new Set([
   // A1 — the admin dev-OTP echo. Same rationale as the fleet one above: a
   // debug payload, not a DTO, 404 unless `AUTH_DEV_OTP_ECHO`.
   '/v1/admin/auth/dev/otp',
+  // W2 — parameterised admin detail. Same discipline as the customer `:id`
+  // rows above: asserted with `expectMatchesContract` against
+  // `adminAdminDetailSchema` in `admin-users.e2e.spec.ts`, which owns a real id.
+  '/v1/admin/admins/:id',
 ]);
 
 /** Express 5 keeps the registered layers on `router.stack`. */

@@ -164,3 +164,14 @@ export const wsTicketKey = (ticket: string): string => `ws:ticket:${ticket}`;
  * staleTime and its on-reconnect REST resync already cover.
  */
 export const metricsLockKey = (fleetId: string): string => `ops:metrics:lock:${fleetId}`;
+
+/**
+ * Admin session revocation fan-out (W2 → W1-3 contract).
+ *
+ * `AdminUsersService` publishes `{ adminId, reason, at }` here whenever a
+ * sub-role change, deactivation or password reset kills an admin's sessions.
+ * W1-3's `admin.gateway` consumes it and drops `admin:user:{adminId}` sockets
+ * on every node. HTTP enforcement does NOT wait for a consumer: the A17 guard
+ * 401s the revoked admin's next request regardless.
+ */
+export const ADMIN_REVOKE_CHANNEL = 'admin:revoke';
