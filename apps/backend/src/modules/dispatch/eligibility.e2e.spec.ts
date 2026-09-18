@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, fleetTrucks } from '../../db/schema';
+import { drivers, fleets, fleetTrucks } from '../../db/schema';
 import { createTestApp } from '../../test/app';
 import {
   seedCustomer,
@@ -104,6 +104,17 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
     it('excludes a driver who has gone offline', async () => {
       await seedOnlineDriver(db, { zoneId, isOnline: false });
       expect((await selectFor(bookingId)).excluded.offline).toBe(1);
+    });
+
+    it('excludes a suspended fleet\'s drivers, whatever they look like', async () => {
+      // A15: the fleet counterpart of `not_approved`. Approved, online, right
+      // class — excluded on the fleet row alone.
+      const fleet = await seedFleet(db, 'Suspended Fleet');
+      await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId });
+      await db.update(fleets).set({ status: 'suspended' }).where(eq(fleets.id, fleet.fleetId));
+
+      expect((await selectFor(bookingId)).candidates).toEqual([]);
+      expect((await selectFor(bookingId)).excluded.fleet_suspended).toBe(1);
     });
 
     it('excludes a driver whose vehicle class cannot take the job', async () => {

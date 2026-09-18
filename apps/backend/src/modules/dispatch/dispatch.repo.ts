@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
-import { bookings, dispatchAttempts, drivers, fleetTrucks, services, users } from '../../db/schema';
+import { bookings, dispatchAttempts, drivers, fleets, fleetTrucks, services, users } from '../../db/schema';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 
 /**
@@ -37,6 +37,12 @@ export interface DriverEligibilityRow {
    * the driver must finish the job they hold.
    */
   suspensionPending: boolean;
+  /**
+   * A15: the owning fleet's status, null for independent drivers. A suspended
+   * fleet's drivers take no offers — the fleet counterpart of `not_approved`
+   * for the driver themself.
+   */
+  fleetStatus: string | null;
   /** 0–5. Still a seeded default until Phase 19 writes it (§6.2 gives it 15 %). */
   rating: number | null;
   /** 0–100, written by this phase on every offer resolution. */
@@ -159,6 +165,9 @@ export class DispatchRepo {
         // A14: the deferred-suspension shelf. A plain column read — no join —
         // so the wave's single batched query stays single.
         suspensionPending: sql<boolean>`${drivers.pendingSuspensionAt} is not null`,
+        // A15: one more LEFT join on the wave's batched query. Nullable by
+        // construction — independents have no fleet row, and must pass.
+        fleetStatus: fleets.status,
         // A correlated EXISTS rather than a join: a driver has at most one
         // active booking (migration 0014 makes that a unique index), so a join
         // would multiply nothing and an EXISTS stops at the first row.
@@ -170,6 +179,7 @@ export class DispatchRepo {
       })
       .from(drivers)
       .leftJoin(fleetTrucks, eq(fleetTrucks.id, drivers.assignedTruckId))
+      .leftJoin(fleets, eq(fleets.id, drivers.fleetId))
       .where(inArray(drivers.id, driverIds));
 
     return new Map(

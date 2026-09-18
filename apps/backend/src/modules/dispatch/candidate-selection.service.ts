@@ -21,6 +21,7 @@ import { DispatchRepo, type DispatchBookingRow, type DriverEligibilityRow } from
 export type ExclusionReason =
   | 'not_approved'
   | 'suspension_pending'
+  | 'fleet_suspended'
   | 'offline'
   | 'wrong_vehicle_class'
   | 'no_long_distance'
@@ -149,6 +150,13 @@ export class CandidateSelectionService {
       // does not burn twenty seconds offering to a driver who cannot take it.
       if (row.suspensionPending) {
         count('suspension_pending');
+        continue;
+      }
+      // A15: the fleet counterpart of `not_approved`. A suspended fleet's
+      // drivers are not offered jobs however available they look — counted
+      // separately so the inspector can tell whose suspension bit.
+      if (row.fleetStatus === 'suspended') {
+        count('fleet_suspended');
         continue;
       }
       if (!row.isOnline) {

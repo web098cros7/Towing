@@ -26,6 +26,7 @@ import { LedgerModule } from './db/ledger/ledger.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AdminConfigModule } from './modules/admin-config/admin-config.module';
 import { AdminDriversModule } from './modules/admin-drivers/admin-drivers.module';
+import { AdminFleetsModule } from './modules/admin-fleets/admin-fleets.module';
 import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
@@ -84,6 +85,7 @@ import { RedisModule } from './redis/redis.module';
     AuthPublicModule,
     AdminAuthModule,
     AdminDriversModule,
+    AdminFleetsModule,
     AdminFinanceModule,
     RatingsModule,
     CouponsModule,

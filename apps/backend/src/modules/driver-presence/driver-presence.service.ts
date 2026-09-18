@@ -65,6 +65,16 @@ export class DriverPresenceService {
       );
     }
 
+    // A15: same for a suspended fleet — its drivers cannot go online however
+    // approved they are themselves. Independents (null fleet) pass.
+    if (row.fleetStatus === 'suspended') {
+      throw new ApiException(
+        HttpStatus.FORBIDDEN,
+        ErrorCodes.ACCOUNT_NOT_ACTIVE,
+        'Your fleet is suspended. Please contact your fleet owner or support.',
+      );
+    }
+
     // Postgres first, then Redis. If the process dies between them the driver is
     // flagged online with no GEO membership, which the very next ping repairs
     // through `LocationIngestService.rehydrate`. The other order leaves a member
