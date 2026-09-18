@@ -148,6 +148,13 @@
       "when": 1789743184565,
       "tag": "0020_admin_identity_audit_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789743184566,
+      "tag": "0021_admin_totp_login",
+      "breakpoints": true
     }
   ]
 }

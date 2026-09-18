@@ -54,6 +54,14 @@ export const adminUsers = pgTable(
     twofaEnabled: boolean('twofa_enabled').notNull().default(false),
     twofaSecretEnc: text('twofa_secret_enc'),
     twofaConfirmedAt: timestamp('twofa_confirmed_at', { withTimezone: true }),
+    /**
+     * W2 (migration 0021): last accepted TOTP time-step. Refuses a code
+     * replayed on a fresh challenge inside its window. Nullable — no admin
+     * has completed TOTP before W2.
+     */
+    twofaLastCounter: integer('twofa_last_counter'),
+    /** W2 (migration 0021): set by password reset; `verify` mints no session while set. */
+    mustChangePassword: boolean('must_change_password').notNull().default(false),
     // Plain uuids, not `.references(() => adminUsers.id)`: a self-FK inside
     // the table's own initializer is circular for TS inference (TS7022), and
     // the FKs exist in migration 0020 regardless — the schema never emits DDL
