@@ -13,8 +13,9 @@ import { AdminIdentityProvider } from '@/components/admin/AdminIdentityProvider'
  *
  * Also mounts the data + identity providers once for the whole realm (A7),
  * so the login page, the landing and the console share one query client and
- * one identity. The login page fires no identity query, so mounting here
- * does not bounce unauthenticated visitors.
+ * one identity. The identity query itself is disabled on `/admin/login`
+ * (see `AdminIdentityProvider`) — without that gate the login page would
+ * cache a `null` identity and poison the post-login navigation.
  */
 export default function AdminRealmLayout({ children }: { children: React.ReactNode }) {
   return (

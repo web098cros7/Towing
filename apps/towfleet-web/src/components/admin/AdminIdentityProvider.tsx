@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { adminIdentitySchema, type AdminIdentity } from '@towing/api-contracts';
 
@@ -41,12 +42,18 @@ async function fetchAdminIdentity(): Promise<AdminIdentity | null> {
  * permission model; until then screens branch on `admin.subRole`.
  */
 export function AdminIdentityProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const query = useQuery({
     queryKey: ['admin-identity'],
     queryFn: fetchAdminIdentity,
     staleTime: 60_000,
     retry: 1,
     refetchOnWindowFocus: false,
+    // M0-F2: no identity query on the login page. It mounts under the realm
+    // layout, and without this it caches `null` for 60 s — then a client-side
+    // post-login navigation never receives the identity (ops stuck on
+    // `/admin` because the role effect never fires).
+    enabled: pathname !== '/admin/login',
   });
 
   return (

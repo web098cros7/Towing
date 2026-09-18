@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { adminLoginRequestSchema } from '@towing/api-contracts';
 import { Button, Card, CardContent, Field, Input } from '@towing/web-ui';
 import { safeAdminNext } from '@/lib/adminNext';
@@ -33,6 +34,7 @@ export default function AdminLoginPage() {
 function AdminLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const next = safeAdminNext(searchParams.get('next'));
   const [step, setStep] = useState<Step>('credentials');
   const [email, setEmail] = useState('');
@@ -88,6 +90,10 @@ function AdminLoginForm() {
         setError(await readErrorMessage(res, 'That code was not accepted.'));
         return;
       }
+      // M0-F2: drop any cached identity (the login page fires no identity
+      // query, so a stale `null` — or the PREVIOUS admin's identity — would
+      // otherwise survive this client-side navigation).
+      await queryClient.removeQueries({ queryKey: ['admin-identity'] });
       router.replace(next);
       router.refresh();
     } finally {

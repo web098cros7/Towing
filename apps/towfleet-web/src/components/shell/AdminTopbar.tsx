@@ -3,6 +3,7 @@
 import { LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@towing/web-ui';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
@@ -24,10 +25,15 @@ const LINKS = [
 export function AdminTopbar() {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const { admin } = useAdminIdentity();
 
   const logout = async () => {
     await fetch('/api/admin-session', { method: 'DELETE' });
+    // M0-F2: clear the whole query cache — identity AND queue rows. Without
+    // this the next admin in the same tab sees the previous admin's identity
+    // and cached rows (driver PII, bank data).
+    queryClient.clear();
     router.replace('/admin/login');
     router.refresh();
   };
