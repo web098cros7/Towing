@@ -51,6 +51,20 @@ export function useCurrentOffer(options?: { enabled?: boolean }) {
  */
 const JOB_POLL_MS = 15_000;
 
+/**
+ * The statuses in which a held job is still alive. `useCompleteJob`
+ * deliberately caches the COMPLETED job so the net-pay screen can render —
+ * and because that data is non-null, an unguarded "poll while held" check
+ * would keep polling, get `null` back from the ACTIVE-scoped endpoint, and
+ * flip the completion screen to "No active job" fifteen seconds later.
+ */
+const ACTIVE_JOB_STATUSES: ReadonlySet<string> = new Set([
+  'assigned',
+  'en_route',
+  'arrived',
+  'in_progress',
+]);
+
 export function useCurrentJob() {
   return useQuery({
     queryKey: offersKeys.job(),
@@ -60,7 +74,12 @@ export function useCurrentJob() {
     // `job:revoked` still resolves within fifteen seconds. Only while a job
     // is held: polling an idle handset would burn battery to learn `null`,
     // the same reason the offer poll is gated on online state above.
-    refetchInterval: (query) => (query.state.data ? JOB_POLL_MS : false),
+    // M0-F5: "held" means an ACTIVE status, not merely non-null data — the
+    // completion screen's cached `completed` job must not poll.
+    refetchInterval: (query) => {
+      const job = query.state.data;
+      return job && ACTIVE_JOB_STATUSES.has(job.status) ? JOB_POLL_MS : false;
+    },
   });
 }
 
