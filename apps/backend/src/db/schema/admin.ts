@@ -36,6 +36,13 @@ export const adminUsers = pgTable(
     failedAttempts: integer('failed_attempts').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true }),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    /**
+     * A17's authorization generation. Bumped on every sub-role or status
+     * mutation (W2 owns the writers); `JwtAuthGuard` 401s any access token
+     * older than the row, so a demotion lands within seconds instead of at
+     * the 900-second expiry. Added by migration 0018.
+     */
+    authzVersion: integer('authz_version').notNull().default(1),
     ...timestamps,
   },
   (t) => [index('idx_admin_users_status').on(t.status)],

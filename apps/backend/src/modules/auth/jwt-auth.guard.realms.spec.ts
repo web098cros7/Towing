@@ -29,6 +29,16 @@ describe('JwtAuthGuard realms and roles', () => {
   let jwt: JwtService;
   let guard: JwtAuthGuard;
 
+  // A17's re-check reads through this stub — no database in a unit spec.
+  // Versions deliberately lag the tokens below unless a test says otherwise.
+  const authzRows: Record<string, { status: string; subRole: string; authzVersion: number }> = {
+    a1: { status: 'active', subRole: 'support', authzVersion: 1 },
+    a2: { status: 'active', subRole: 'operations', authzVersion: 1 },
+  };
+  const authz = {
+    read: async (adminId: string) => authzRows[adminId] ?? null,
+  };
+
   beforeAll(() => {
     env = loadEnv();
     jwt = new JwtService({
@@ -42,7 +52,7 @@ describe('JwtAuthGuard realms and roles', () => {
       null as unknown as RefreshGraceService,
       null as unknown as RealmPolicyRegistry,
     );
-    guard = new JwtAuthGuard(new Reflector(), tokens);
+    guard = new JwtAuthGuard(new Reflector(), tokens, authz as never);
   });
 
   function contextFor(
@@ -111,11 +121,33 @@ describe('JwtAuthGuard realms and roles', () => {
 
   it('enforces admin sub-roles server-side (§4.2)', async () => {
     const support = await bearer({ sub: 'a1', role: 'admin', sub_role: 'support' });
-    const ops = await bearer({ sub: 'a2', role: 'admin', sub_role: 'operations' });
+    const ops = await bearer({ sub: 'a2', role: 'admin', sub_role: 'operations', authz_version: 1 });
     const metadata = { realms: ['admin'], roles: ['super_admin', 'operations'] };
 
     expect(await statusFor(support, metadata)).toBe(403);
     expect(await statusFor(ops, metadata)).toBe(200);
+  });
+
+  it('401s an admin token older than its row (A17), without burning anything', async () => {
+    // The row advanced past the token (a demotion bumped the version). 401,
+    // not 403: the BFF refreshes once and retries with a correctly-scoped
+    // token instead of logging the admin out.
+    authzRows.a2!.authzVersion = 2;
+    try {
+      const stale = await bearer({ sub: 'a2', role: 'admin', sub_role: 'operations', authz_version: 1 });
+      expect(
+        await statusFor(stale, { realms: ['admin'], roles: ['super_admin', 'operations'] }),
+      ).toBe(401);
+    } finally {
+      authzRows.a2!.authzVersion = 1;
+    }
+  });
+
+  it('401s a versionless pre-A17 admin token so one refresh heals it', async () => {
+    const legacy = await bearer({ sub: 'a2', role: 'admin', sub_role: 'operations' });
+    expect(
+      await statusFor(legacy, { realms: ['admin'], roles: ['super_admin', 'operations'] }),
+    ).toBe(401);
   });
 
   it('refuses a non-admin token on a role-gated route', async () => {

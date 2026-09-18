@@ -60,6 +60,14 @@ export interface AdminAccessClaims {
   role: 'admin';
   /** §4.2 RBAC. Enforced server-side by `@Roles()`, never by the console. */
   sub_role: AdminSubRole;
+  /**
+   * A17's authorization generation, mirrored from `admin_users.authz_version`
+   * at mint time. `JwtAuthGuard` 401s any token older than the row — which is
+   * what pulls a demotion forward from the 900-second expiry to ~5 seconds.
+   * Absent on pre-A17 tokens, which the guard treats as stale (one refresh
+   * mints a versioned token and the retry succeeds).
+   */
+  authz_version: number;
 }
 
 export type AccessClaims =

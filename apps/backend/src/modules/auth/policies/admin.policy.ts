@@ -22,7 +22,12 @@ export class AdminRealmPolicy implements RealmPolicy {
 
   async resolve(subjectId: string): Promise<ResolvedSubject | null> {
     const [admin] = await this.db
-      .select({ id: adminUsers.id, subRole: adminUsers.subRole, status: adminUsers.status })
+      .select({
+        id: adminUsers.id,
+        subRole: adminUsers.subRole,
+        status: adminUsers.status,
+        authzVersion: adminUsers.authzVersion,
+      })
       .from(adminUsers)
       .where(eq(adminUsers.id, subjectId))
       .limit(1);
@@ -30,7 +35,7 @@ export class AdminRealmPolicy implements RealmPolicy {
     if (!admin || admin.status !== 'active') return null;
 
     return {
-      claims: { sub: admin.id, role: 'admin', sub_role: admin.subRole },
+      claims: { sub: admin.id, role: 'admin', sub_role: admin.subRole, authz_version: admin.authzVersion },
       fleetId: null,
     };
   }

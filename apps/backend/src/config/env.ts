@@ -32,6 +32,15 @@ const EnvSchema = z.object({
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900), // 15m
   JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30), // 30d
 
+  /**
+   * A17: how long `JwtAuthGuard` trusts its per-process copy of an admin's
+   * `{status, sub_role, authz_version}` before re-reading the row. ~5 s bounds
+   * how long a demotion takes to bite, without a database read on every admin
+   * request. 0 disables the cache (every request re-reads) — the e2e for this
+   * sets a small value rather than sleeping.
+   */
+  ADMIN_AUTHZ_TTL_MS: z.coerce.number().int().min(0).default(5000),
+
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
 

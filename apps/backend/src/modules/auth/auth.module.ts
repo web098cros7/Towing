@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { FleetScopeGuard } from '../../common/tenancy/fleet-scope.guard';
 import { ENV, type Env } from '../../config/env';
+import { AdminAuthzService } from './admin-authz.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { DevOtpAdapter } from './dev-otp.adapter';
@@ -41,6 +42,7 @@ import { TokenService } from './token.service';
     AuthService,
     TokenService,
     RefreshGraceService,
+    AdminAuthzService,
     JwtAuthGuard,
     KycApprovedGuard,
     FleetScopeGuard,
@@ -68,6 +70,7 @@ import { TokenService } from './token.service';
   exports: [
     AuthService,
     TokenService,
+    AdminAuthzService,
     JwtAuthGuard,
     KycApprovedGuard,
     FleetScopeGuard,
