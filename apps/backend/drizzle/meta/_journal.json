@@ -134,6 +134,13 @@
       "when": 1787760000000,
       "tag": "0018_admin_authz_version",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789732473349,
+      "tag": "0019_admin_authz_trigger",
+      "breakpoints": true
     }
   ]
 }

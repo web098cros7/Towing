@@ -76,12 +76,19 @@ describe('admin demotion takes effect immediately (A17)', () => {
       .set('Authorization', `Bearer ${session.accessToken}`)
       .expect(200);
 
-    // Demote out of band (W2 owns the writer; the version bump is what W2
-    // must do on every authz mutation — the guard compares it, not the role).
+    // Demote out of band, WITHOUT touching authz_version (M0-F10): migration
+    // 0019's trigger owns the bump, so no writer can forget it — W2 included.
     await db
       .update(adminUsers)
-      .set({ subRole: 'support', authzVersion: 2 })
+      .set({ subRole: 'support' })
       .where(eq(adminUsers.id, adminId));
+
+    // The trigger bumped the version behind the writer's back.
+    const [row] = await db
+      .select({ authzVersion: adminUsers.authzVersion })
+      .from(adminUsers)
+      .where(eq(adminUsers.id, adminId));
+    expect(row!.authzVersion).toBe(2);
 
     // The old token is stale now: 401, and the family is NOT burned.
     await request(app.getHttpServer())
@@ -110,9 +117,10 @@ describe('admin demotion takes effect immediately (A17)', () => {
   it('a deactivated admin 401s, and refresh refuses as well', async () => {
     const session = await login(email);
 
+    // Likewise without a manual bump: the trigger fires on `status` too.
     await db
       .update(adminUsers)
-      .set({ status: 'suspended', authzVersion: 2 })
+      .set({ status: 'suspended' })
       .where(eq(adminUsers.id, adminId));
 
     await request(app.getHttpServer())
