@@ -15,7 +15,7 @@ import { DeviceRegistryService } from '../../common/notifications/device-registr
 import { NotificationService } from '../../common/notifications/notification.service';
 import { keyFromFileUrl } from '../../common/storage/file-url';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
-import { DB, type Database } from '../../db/db.module';
+import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
 import { bookings, driverDocuments, drivers } from '../../db/schema';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
@@ -234,15 +234,24 @@ export class AdminDriversService implements OnModuleInit {
    * the grace lives here, not in the gate.
    *
    * - `after_current_job` (default): with a live booking, the suspension is
-   *   shelved on the driver row, the driver is evicted from presence and
-   *   blocked from new offers, and everything else — sessions, devices,
-   *   `kyc_status` — stays so they can finish the job. It applies when the
-   *   job ends (`applyPendingSuspension`, called from completion, unable and
-   *   cancel paths). With no live booking it suspends at once.
+   *   shelved on the driver row and the driver is blocked from new offers,
+   *   while sessions, devices, `kyc_status` AND presence stay so they can
+   *   finish the job (18 Sep correction: evicting here froze the customer's
+   *   live tracking). It applies when the job ends (`applyPendingSuspension`,
+   *   called from completion, unable and cancel paths). With no live booking
+   *   it suspends at once.
    * - `immediate`: suspends at once, but is refused while a live booking
    *   exists — the booking needs a disposition (reassign/cancel) first, and
    *   those admin actions land in W8. Ending the trip out from under the
    *   driver here would strand the customer.
+   *
+   * M0-F9: the live-booking check and the row change run in ONE transaction
+   * under `SELECT … FOR UPDATE` on the driver row, with the audit row in the
+   * same transaction. An accept landing between a lock-free check and write
+   * would let `immediate` suspend (and log out) a driver who now holds a job;
+   * a completion landing there would leave a shelf no later job end applies.
+   * `OfferService.accept` takes the driver lock before the booking lock, so
+   * the two serialize instead of racing.
    */
   private async suspend(
     adminId: string,
@@ -258,25 +267,95 @@ export class AdminDriversService implements OnModuleInit {
     },
   ): Promise<AdminKycResult> {
     const mode = body.mode ?? 'after_current_job';
-    const live = await this.liveBooking(driverId);
-    const now = new Date();
 
-    if (live && mode === 'immediate') {
-      throw new ApiException(
-        HttpStatus.CONFLICT,
-        ErrorCodes.INVALID_BOOKING_STATE,
-        'Driver holds an active booking — reassign or cancel it first (admin dispositions land in W8), or suspend after the current job',
-        { bookingId: live.id, status: live.status },
-      );
-    }
+    const shelved: AdminKycResult | Pick<AdminKycResult, 'driverId' | 'kycStatus' | 'rejectionReason'> =
+      await this.db.transaction(async (tx) => {
+      // The lock both suspension branches and `applyPendingSuspension` take
+      // before reading. `OfferService.accept` locks this same row before the
+      // booking row, so driver-then-booking order holds everywhere.
+      await tx
+        .select({ id: drivers.id })
+        .from(drivers)
+        .where(eq(drivers.id, driverId))
+        .for('update');
+      const live = await this.liveBooking(driverId, tx);
+      const now = new Date();
 
-    if (live) {
-      const [after] = await this.db
+      if (live && mode === 'immediate') {
+        throw new ApiException(
+          HttpStatus.CONFLICT,
+          ErrorCodes.INVALID_BOOKING_STATE,
+          'Driver holds an active booking — reassign or cancel it first (admin dispositions land in W8), or suspend after the current job',
+          { bookingId: live.id, status: live.status },
+        );
+      }
+
+      if (live) {
+        const [after] = await tx
+          .update(drivers)
+          .set({
+            pendingSuspensionReason: body.reason ?? null,
+            pendingSuspensionBy: adminId,
+            pendingSuspensionAt: now,
+            updatedAt: now,
+          })
+          .where(eq(drivers.id, driverId))
+          .returning({
+            id: drivers.id,
+            kycStatus: drivers.kycStatus,
+            rejectionReason: drivers.rejectionReason,
+            approvedBy: drivers.approvedBy,
+            pendingSuspensionReason: drivers.pendingSuspensionReason,
+            pendingSuspensionBy: drivers.pendingSuspensionBy,
+            pendingSuspensionAt: drivers.pendingSuspensionAt,
+          });
+
+        // 18 Sep correction: NO evict here. `evictRevoked` deletes the driver
+        // hash and flips `is_online` off, so every later ping comes back unknown
+        // → rehydrate refuses → the customer's live tracking freezes for the
+        // rest of the job, the trip replay loses its tail, and EnRouteWatcher
+        // goes blind. Eviction buys nothing either: eligibility already excludes
+        // a driver with an active booking, and the shelf keeps them out if the
+        // booking goes back to searching. Sessions, devices, `kyc_status` and
+        // presence all stay — the driver must finish the job. Eviction happens
+        // in `applyPendingSuspension`, when the suspension actually applies.
+        await this.audit.record(
+          {
+            adminId,
+            action: 'driver.kyc.suspend',
+            subjectType: 'driver',
+            subjectId: driverId,
+            before: before as unknown as Record<string, unknown>,
+            after: (after ?? null) as unknown as Record<string, unknown> | null,
+            reason: body.reason ?? null,
+            ip: context.ip ?? null,
+            userAgent: context.userAgent ?? null,
+          },
+          { tx },
+        );
+
+        return {
+          driverId,
+          kycStatus: after!.kycStatus,
+          rejectionReason: after!.rejectionReason,
+          sessionsRevoked: 0,
+          suspensionPending: true,
+        };
+      }
+
+      // No live booking: the pre-A14 immediate path, verbatim in effect. The
+      // row change and its audit row commit together; the side effects below
+      // run after commit.
+      const [after] = await tx
         .update(drivers)
         .set({
-          pendingSuspensionReason: body.reason ?? null,
-          pendingSuspensionBy: adminId,
-          pendingSuspensionAt: now,
+          kycStatus: 'suspended',
+          approvedBy: null,
+          approvedAt: null,
+          rejectionReason: null,
+          pendingSuspensionReason: null,
+          pendingSuspensionBy: null,
+          pendingSuspensionAt: null,
           updatedAt: now,
         })
         .where(eq(drivers.id, driverId))
@@ -285,82 +364,43 @@ export class AdminDriversService implements OnModuleInit {
           kycStatus: drivers.kycStatus,
           rejectionReason: drivers.rejectionReason,
           approvedBy: drivers.approvedBy,
-          pendingSuspensionReason: drivers.pendingSuspensionReason,
-          pendingSuspensionBy: drivers.pendingSuspensionBy,
-          pendingSuspensionAt: drivers.pendingSuspensionAt,
         });
 
-      // 18 Sep correction: NO evict here. `evictRevoked` deletes the driver
-      // hash and flips `is_online` off, so every later ping comes back unknown
-      // → rehydrate refuses → the customer's live tracking freezes for the
-      // rest of the job, the trip replay loses its tail, and EnRouteWatcher
-      // goes blind. Eviction buys nothing either: eligibility already excludes
-      // a driver with an active booking, and the shelf keeps them out if the
-      // booking goes back to searching. Sessions, devices, `kyc_status` and
-      // presence all stay — the driver must finish the job. Eviction happens
-      // in `applyPendingSuspension`, when the suspension actually applies.
-      await this.audit.record({
-        adminId,
-        action: 'driver.kyc.suspend',
-        subjectType: 'driver',
-        subjectId: driverId,
-        before: before as unknown as Record<string, unknown>,
-        after: (after ?? null) as unknown as Record<string, unknown> | null,
-        reason: body.reason ?? null,
-        ip: context.ip ?? null,
-        userAgent: context.userAgent ?? null,
-      });
+      await this.audit.record(
+        {
+          adminId,
+          action: 'driver.kyc.suspend',
+          subjectType: 'driver',
+          subjectId: driverId,
+          before: before as unknown as Record<string, unknown>,
+          after: (after ?? null) as unknown as Record<string, unknown> | null,
+          reason: body.reason ?? null,
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+        },
+        { tx },
+      );
 
       return {
         driverId,
         kycStatus: after!.kycStatus,
         rejectionReason: after!.rejectionReason,
-        sessionsRevoked: 0,
-        suspensionPending: true,
       };
-    }
+    });
 
-    // No live booking: the pre-A14 immediate path, verbatim in effect.
-    const [after] = await this.db
-      .update(drivers)
-      .set({
-        kycStatus: 'suspended',
-        approvedBy: null,
-        approvedAt: null,
-        rejectionReason: null,
-        pendingSuspensionReason: null,
-        pendingSuspensionBy: null,
-        pendingSuspensionAt: null,
-        updatedAt: now,
-      })
-      .where(eq(drivers.id, driverId))
-      .returning({
-        id: drivers.id,
-        kycStatus: drivers.kycStatus,
-        rejectionReason: drivers.rejectionReason,
-        approvedBy: drivers.approvedBy,
-      });
+    if ('suspensionPending' in shelved) return shelved;
 
+    // Post-commit side effects only: a driver with no live booking is safe to
+    // log out and evict. These stay outside the transaction — a push-registry
+    // failure must not roll back the suspension.
     const sessionsRevoked = await this.tokens.revokeSubject(driverId, 'driver', 'kyc_suspend');
     await this.deviceRegistry.revokeAllForSubject('driver', driverId, 'kyc_suspended');
     await this.presence.evictRevoked(driverId);
 
-    await this.audit.record({
-      adminId,
-      action: 'driver.kyc.suspend',
-      subjectType: 'driver',
-      subjectId: driverId,
-      before: before as unknown as Record<string, unknown>,
-      after: (after ?? null) as unknown as Record<string, unknown> | null,
-      reason: body.reason ?? null,
-      ip: context.ip ?? null,
-      userAgent: context.userAgent ?? null,
-    });
-
     return {
       driverId,
-      kycStatus: after!.kycStatus,
-      rejectionReason: after!.rejectionReason,
+      kycStatus: shelved.kycStatus,
+      rejectionReason: shelved.rejectionReason,
       sessionsRevoked,
       suspensionPending: false,
     };
@@ -379,59 +419,80 @@ export class AdminDriversService implements OnModuleInit {
    * blocking offers, and the next job ending retries.
    */
   async applyPendingSuspension(driverId: string): Promise<boolean> {
-    const [pending] = await this.db
-      .select({
-        reason: drivers.pendingSuspensionReason,
-        by: drivers.pendingSuspensionBy,
-        at: drivers.pendingSuspensionAt,
-      })
-      .from(drivers)
-      .where(eq(drivers.id, driverId))
-      .limit(1);
-
-    if (!pending?.at) return false;
-    if (!pending.by) {
-      // A shelf without an author is corrupt data, not a suspension: applying
-      // it would write an audit row no admin can own (`admin_id` is a uuid FK).
-      this.logger.warn(`deferred suspension for ${driverId} has no author — leaving shelved`);
-      return false;
-    }
-    if (await this.liveBooking(driverId)) {
-      this.logger.warn(`deferred suspension for ${driverId} skipped — driver holds another live booking`);
-      return false;
-    }
-
+    // M0-F9: the whole check-and-apply runs in one transaction under the
+    // driver-row lock, like `suspend` above. A completion landing between a
+    // lock-free shelf read and the apply would otherwise suspend under a NEW
+    // live booking — or, the (b) race, find nothing shelved yet and leave a
+    // shelf that no later job end ever applies.
     try {
-      const now = new Date();
-      await this.db
-        .update(drivers)
-        .set({
-          kycStatus: 'suspended',
-          approvedBy: null,
-          approvedAt: null,
-          rejectionReason: null,
-          pendingSuspensionReason: null,
-          pendingSuspensionBy: null,
-          pendingSuspensionAt: null,
-          updatedAt: now,
-        })
-        .where(eq(drivers.id, driverId));
+      const shouldApply = await this.db.transaction(async (tx) => {
+        await tx
+          .select({ id: drivers.id })
+          .from(drivers)
+          .where(eq(drivers.id, driverId))
+          .for('update');
+
+        const [pending] = await tx
+          .select({
+            reason: drivers.pendingSuspensionReason,
+            by: drivers.pendingSuspensionBy,
+            at: drivers.pendingSuspensionAt,
+          })
+          .from(drivers)
+          .where(eq(drivers.id, driverId))
+          .limit(1);
+
+        if (!pending?.at) return null;
+        if (!pending.by) {
+          // A shelf without an author is corrupt data, not a suspension: applying
+          // it would write an audit row no admin can own (`admin_id` is a uuid FK).
+          this.logger.warn(`deferred suspension for ${driverId} has no author — leaving shelved`);
+          return null;
+        }
+        if (await this.liveBooking(driverId, tx)) {
+          this.logger.warn(
+            `deferred suspension for ${driverId} skipped — driver holds another live booking`,
+          );
+          return null;
+        }
+
+        const now = new Date();
+        await tx
+          .update(drivers)
+          .set({
+            kycStatus: 'suspended',
+            approvedBy: null,
+            approvedAt: null,
+            rejectionReason: null,
+            pendingSuspensionReason: null,
+            pendingSuspensionBy: null,
+            pendingSuspensionAt: null,
+            updatedAt: now,
+          })
+          .where(eq(drivers.id, driverId));
+
+        await this.audit.record(
+          {
+            adminId: pending.by,
+            action: 'driver.kyc.suspend',
+            subjectType: 'driver',
+            subjectId: driverId,
+            before: { pendingSuspensionReason: pending.reason, pendingSuspensionAt: pending.at },
+            after: { kycStatus: 'suspended' },
+            reason: pending.reason,
+            ip: null,
+            userAgent: null,
+          },
+          { tx },
+        );
+        return { by: pending.by, reason: pending.reason };
+      });
+
+      if (!shouldApply) return false;
 
       await this.tokens.revokeSubject(driverId, 'driver', 'kyc_suspend_deferred');
       await this.deviceRegistry.revokeAllForSubject('driver', driverId, 'kyc_suspended');
       await this.presence.evictRevoked(driverId);
-
-      await this.audit.record({
-        adminId: pending.by,
-        action: 'driver.kyc.suspend',
-        subjectType: 'driver',
-        subjectId: driverId,
-        before: { pendingSuspensionReason: pending.reason, pendingSuspensionAt: pending.at },
-        after: { kycStatus: 'suspended' },
-        reason: pending.reason,
-        ip: null,
-        userAgent: null,
-      });
       return true;
     } catch (error) {
       this.logger.warn(
@@ -446,9 +507,12 @@ export class AdminDriversService implements OnModuleInit {
     return (await this.liveBooking(driverId)) !== null;
   }
 
-  /** The driver's live booking, if any — assigned, en route, arrived or in progress. */
-  private async liveBooking(driverId: string): Promise<{ id: string; status: string } | null> {
-    const [row] = (await this.db.execute(sql`
+  /** The driver's live booking, if any — assigned, en route, arrived or in progress. Takes an executor so the suspension paths can check under their driver-row lock (M0-F9). */
+  private async liveBooking(
+    driverId: string,
+    db: DatabaseExecutor = this.db,
+  ): Promise<{ id: string; status: string } | null> {
+    const [row] = (await db.execute(sql`
       select id, status from bookings
        where driver_id = ${driverId}::uuid
          and status in (${sql.join(

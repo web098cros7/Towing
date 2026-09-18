@@ -263,6 +263,12 @@ export class OfferService {
       if (!claimed) throw this.gone();
 
       // (3) §3.1's database layer.
+      // M0-F9: locked — this is the driver-half of the driver-then-booking
+      // order `AdminDriversService.suspend` and `applyPendingSuspension` take.
+      // `OF drivers`, not a bare `FOR UPDATE`: the fleet side of this outer
+      // join is nullable and Postgres refuses to lock it. Without the lock a
+      // suspension landing between this re-read and the transition below
+      // suspends (and logs out) a driver who now holds a job.
       const [eligible] = await tx
         .select({
           kycStatus: drivers.kycStatus,
@@ -279,6 +285,7 @@ export class OfferService {
         .from(drivers)
         .leftJoin(fleets, eq(fleets.id, drivers.fleetId))
         .where(eq(drivers.id, driverId))
+        .for('update', { of: drivers })
         .limit(1);
 
       if (!eligible || eligible.kycStatus !== 'approved' || !eligible.isOnline) {
