@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
+import { DRIVER_LOCATION_CHANNEL } from '../../redis/redis.constants';
 import { adminActions, bookings, dispatchAttempts, drivers } from '../../db/schema';
 import {
   adminAuthHeaderFor,
@@ -19,7 +20,7 @@ import {
   type TestDatabase,
 } from '../../test/db';
 import { seedBooking } from '../../test/fixtures';
-import { closeTestRedis, flushTestRedis } from '../../test/redis';
+import { closeTestRedis, flushTestRedis, testRedis } from '../../test/redis';
 import { JobExecutionService } from '../job-execution/job-execution.service';
 import { DispatchService } from '../dispatch/dispatch.service';
 import { AdminDriversService } from './admin-drivers.service';
@@ -34,11 +35,12 @@ import {
  * A14 — two-mode suspension never strands a booking.
  *
  * `after_current_job` (the default) shelves the suspension on the driver row
- * while they hold a live booking: evicted from presence, blocked from new
- * offers, sessions and status untouched so the job completes — and the
- * suspension applies when it does. `immediate` suspends at once and is
- * refused while a live booking exists (the reassign/cancel disposition is
- * W8). `KycApprovedGuard` is untouched throughout.
+ * while they hold a live booking: blocked from new offers, sessions, presence
+ * and status untouched so the job completes with tracking intact — and the
+ * suspension applies when it does (18 Sep correction: no eviction on shelve).
+ * `immediate` suspends at once and is refused while a live booking exists
+ * (the reassign/cancel disposition is W8). `KycApprovedGuard` is untouched
+ * throughout.
  */
 describe('two-mode driver suspension (A14)', () => {
   let app: INestApplication;
@@ -87,9 +89,9 @@ describe('two-mode driver suspension (A14)', () => {
   const liveBooking = (driverId: string) =>
     seedBooking(db, { userId, driverId, status: 'assigned' });
 
-  it('defers by default with a live booking: shelved, evicted, job intact', async () => {
-    const driverId = await seedDriver(db, { name: 'Mid-job Driver' });
-    await db.update(drivers).set({ isOnline: true }).where(eq(drivers.id, driverId));
+  it('defers by default with a live booking: shelved, present, job intact', async () => {
+    const zoneId = await seedZone(db);
+    const driverId = await seedOnlineDriver(db, { zoneId, name: 'Mid-job Driver' });
     const bookingId = await liveBooking(driverId);
 
     const res = await suspend(driverId).expect(200);
@@ -101,8 +103,10 @@ describe('two-mode driver suspension (A14)', () => {
     expect(row.pendingSuspensionReason).toBeNull();
     expect(row.pendingSuspensionBy).not.toBeNull();
     expect(row.pendingSuspensionAt).not.toBeNull();
-    // Evicted from presence all the same.
-    expect((await driverRow(driverId)).isOnline).toBe(false);
+    // 18 Sep correction: NOT evicted. Presence, sessions and online state all
+    // stay so the job finishes with tracking intact; the shelf alone blocks
+    // new work.
+    expect((await driverRow(driverId)).isOnline).toBe(true);
     // And the booking is untouched — nobody stranded.
     expect(await bookingStatus(bookingId)).toBe('assigned');
     const [booking] = await db.select().from(bookings).where(eq(bookings.id, bookingId));
@@ -110,6 +114,57 @@ describe('two-mode driver suspension (A14)', () => {
 
     const [action] = await db.select().from(adminActions).where(eq(adminActions.subjectId, driverId));
     expect(action!.action).toBe('driver.kyc.suspend');
+  });
+
+  it('a shelved mid-job driver still has pings accepted and published', async () => {
+    const zoneId = await seedZone(db);
+    const driverId = await seedOnlineDriver(db, { zoneId, name: 'Tracked Driver' });
+    await liveBooking(driverId);
+    await suspend(driverId).expect(200);
+
+    const sub = testRedis().duplicate();
+    const seen: unknown[] = [];
+    await sub.subscribe(DRIVER_LOCATION_CHANNEL);
+    sub.on('message', (_channel: string, raw: string) => {
+      try {
+        seen.push(JSON.parse(raw));
+      } catch {
+        seen.push(raw);
+      }
+    });
+
+    try {
+      const at = new Date().toISOString();
+      await request(app.getHttpServer())
+        .post('/v1/driver/location')
+        .set('Authorization', await driverAuthHeaderFor(app, { driverId }))
+        .send({ pings: [{ seq: 2, lat: PICKUP.lat, lng: PICKUP.lng, at }] })
+        .expect(200);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(seen.length).toBeGreaterThan(0);
+    } finally {
+      await sub.unsubscribe(DRIVER_LOCATION_CHANNEL);
+      sub.disconnect();
+    }
+  });
+
+  it('the shelf survives a restart: reboot, complete, suspension applies', async () => {
+    const driverId = await seedDriver(db, { name: 'Restart Driver' });
+    const bookingId = await seedBooking(db, { userId, driverId, status: 'in_progress' });
+    await suspend(driverId).expect(200);
+    expect((await driverRow(driverId)).pendingSuspensionAt).not.toBeNull();
+
+    // Full process reboot between the decision and the completion — the shelf
+    // lives in Postgres, not in memory, so the new process still applies it.
+    await app.close();
+    app = await createTestApp();
+
+    await app.get(JobExecutionService).complete(bookingId, driverId);
+
+    expect(await bookingStatus(bookingId)).toBe('completed');
+    const row = await driverRow(driverId);
+    expect(row.kycStatus).toBe('suspended');
+    expect(row.pendingSuspensionAt).toBeNull();
   });
 
   it('applies the shelved suspension when the job completes', async () => {

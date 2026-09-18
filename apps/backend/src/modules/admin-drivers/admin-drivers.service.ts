@@ -290,12 +290,15 @@ export class AdminDriversService implements OnModuleInit {
           pendingSuspensionAt: drivers.pendingSuspensionAt,
         });
 
-      // Supply-side immediacy, same as a real suspend: evicted from the
-      // candidate store and blocked from new offers (eligibility reads the
-      // pending shelf). Sessions, devices and `kyc_status` stay — the driver
-      // must finish the job, and `KycApprovedGuard` keeps letting them.
-      await this.presence.evictRevoked(driverId);
-
+      // 18 Sep correction: NO evict here. `evictRevoked` deletes the driver
+      // hash and flips `is_online` off, so every later ping comes back unknown
+      // → rehydrate refuses → the customer's live tracking freezes for the
+      // rest of the job, the trip replay loses its tail, and EnRouteWatcher
+      // goes blind. Eviction buys nothing either: eligibility already excludes
+      // a driver with an active booking, and the shelf keeps them out if the
+      // booking goes back to searching. Sessions, devices, `kyc_status` and
+      // presence all stay — the driver must finish the job. Eviction happens
+      // in `applyPendingSuspension`, when the suspension actually applies.
       await this.audit.record({
         adminId,
         action: 'driver.kyc.suspend',
