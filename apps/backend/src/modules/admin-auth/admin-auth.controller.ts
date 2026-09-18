@@ -16,7 +16,7 @@ import {
   type RefreshRequest,
 } from '../auth/auth.types';
 import { JwtAuthGuard, Public } from '../auth/jwt-auth.guard';
-import { Realms } from '../auth/realm.decorator';
+import { Realms, Roles } from '../auth/realm.decorator';
 import { sessionContextFrom } from '../auth/token.service';
 import { AdminAuthService } from './admin-auth.service';
 
@@ -88,6 +88,11 @@ export class AdminAuthController {
    */
   @Get('me')
   @ThrottleBucket('reads')
+  // Every authenticated admin may read their own identity — spelled out as
+  // all four sub-roles rather than left undecorated, so the route-walk spec
+  // (every /v1/admin/* route carries a role or permission decorator) holds
+  // without an exemption. Behaviour is identical: the guard passes any admin.
+  @Roles('super_admin', 'operations', 'support', 'finance')
   async me(@Req() request: AuthedRequest) {
     const auth = request.auth;
     if (!auth) throw ApiException.unauthorized();

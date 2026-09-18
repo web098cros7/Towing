@@ -1,5 +1,6 @@
 import { type CanActivate, type ExecutionContext, Injectable, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { adminCan, type AdminPermission } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import {
   FLEET_REALM,
@@ -8,7 +9,7 @@ import {
   type AuthedRequest,
   type RealmName,
 } from './auth.types';
-import { REALMS_KEY, ROLES_KEY } from './realm.decorator';
+import { PERMISSIONS_KEY, REALMS_KEY, ROLES_KEY } from './realm.decorator';
 import { AdminAuthzService } from './admin-authz.service';
 import { TokenService } from './token.service';
 
@@ -75,6 +76,23 @@ export class JwtAuthGuard implements CanActivate {
     ]);
     if (roles?.length) {
       if (claims.role !== 'admin' || !roles.includes(claims.sub_role)) {
+        throw ApiException.forbidden('Your admin role does not permit this action');
+      }
+    }
+
+    // W1: fine-grained permissions, checked AFTER the role check against the
+    // same ROLE_PERMISSIONS table the console reads — one map, two consumers.
+    // A non-admin token fails outright (permissions are admin permissions, so
+    // no other realm can satisfy one), and every listed permission must hold.
+    const permissions = this.reflector.getAllAndOverride<AdminPermission[]>(PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (permissions?.length) {
+      if (
+        claims.role !== 'admin' ||
+        !permissions.every((permission) => adminCan(claims.sub_role, permission))
+      ) {
         throw ApiException.forbidden('Your admin role does not permit this action');
       }
     }

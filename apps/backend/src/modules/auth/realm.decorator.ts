@@ -1,8 +1,10 @@
 import { SetMetadata } from '@nestjs/common';
+import type { AdminPermission } from '@towing/api-contracts';
 import type { AdminSubRole, RealmName } from './auth.types';
 
 export const REALMS_KEY = 'auth:realms';
 export const ROLES_KEY = 'auth:roles';
+export const PERMISSIONS_KEY = 'auth:permissions';
 
 /**
  * Which auth realms a controller or handler accepts (§15.2).
@@ -31,3 +33,15 @@ export const Realms = (...realms: RealmName[]): MethodDecorator & ClassDecorator
  */
 export const Roles = (...subRoles: AdminSubRole[]): MethodDecorator & ClassDecorator =>
   SetMetadata(ROLES_KEY, subRoles);
+
+/**
+ * Fine-grained admin permissions (W1, guide §3.1).
+ *
+ * Enforced in `JwtAuthGuard` immediately after the role check, against the
+ * SAME `ROLE_PERMISSIONS` table the console reads through `useAdminIdentity`
+ * + `<Can>` — one map, two consumers. New admin routes use this;
+ * **existing routes stay on `@Roles`** — no rewrite, and the route-walk spec
+ * accepts either decorator.
+ */
+export const Permissions = (...permissions: AdminPermission[]): MethodDecorator & ClassDecorator =>
+  SetMetadata(PERMISSIONS_KEY, permissions);
