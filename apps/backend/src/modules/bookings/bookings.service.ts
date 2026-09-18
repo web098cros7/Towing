@@ -598,11 +598,12 @@ export class BookingsService {
     // Enqueued, not called: `DispatchModule` imports this module for the state
     // machine, so importing it back would be a cycle — the queue is `@Global()`
     // and delivers within the same seconds. (Admin cancel/reassign wire the
-    // same job in W8.)
+    // same job in W8.) M0-F6: carry the holder too — `revokeAll` only reaches
+    // `offered` attempts, and the assigned driver keeps an `accepted` one.
     try {
       await this.queue.enqueue(
         'dispatch.revoke',
-        { bookingId, reason: 'cancelled' },
+        { bookingId, reason: 'cancelled', holderDriverId: row.driverId ?? undefined },
         { jobId: `revoke-${bookingId}` },
       );
     } catch (error) {

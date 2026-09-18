@@ -147,6 +147,45 @@ describe('offer revocation (A12)', () => {
     expect(row!.status).toBe('cancelled');
   });
 
+  it('customer cancel of an assigned booking carries the holder in the revoke job', async () => {
+    const { bookingId, driverId } = await holdOffer();
+    await offers.accept(bookingId, driverId);
+    const enqueue = vi.spyOn(app.get<QueuePort>(QUEUE), 'enqueue');
+
+    await request(app.getHttpServer())
+      .post(`/v1/bookings/${bookingId}/cancel`)
+      .set('Authorization', auth)
+      .send({ reason: 'changed my mind' })
+      .expect(200);
+
+    // M0-F6: the holder keeps an `accepted` attempt `revokeAll` never moves,
+    // so the cancel names them for the worker's second step.
+    expect(enqueue).toHaveBeenCalledWith(
+      'dispatch.revoke',
+      { bookingId, reason: 'cancelled', holderDriverId: driverId },
+      expect.objectContaining({ jobId: `revoke-${bookingId}` }),
+    );
+  });
+
+  it('revokeBooking tells the holder although no offered attempt moves', async () => {
+    const { bookingId, driverId } = await holdOffer();
+    await offers.accept(bookingId, driverId);
+    const emit = vi.spyOn(app.get(DriverGateway), 'emitJobRevoked').mockImplementation(() => {});
+    // Accept recomputes the rate from resolved attempts (1/1 → 100): the
+    // revoke must leave exactly that alone.
+    const rateBefore = await acceptanceRateOf(driverId);
+
+    await dispatch.revokeBooking(bookingId, 'cancelled', driverId);
+
+    expect(emit).toHaveBeenCalledWith(driverId, bookingId, 'cancelled');
+    // The `accepted` attempt is untouched — the booking is cancelled, so there
+    // is nothing to resolve — and the rate is spared, like every revoke.
+    const attempts = await attemptsFor(bookingId);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]!.outcome).toBe('accepted');
+    expect(await acceptanceRateOf(driverId)).toBe(rateBefore);
+  });
+
   it('a paused wave revokes held offers with reason paused', async () => {
     const bookingId = await seedSearchingBooking(db, { userId, zoneId });
     const driverId = await seedOnlineDriver(db, { zoneId, metersAway: 800, acceptanceRate: '80.00' });

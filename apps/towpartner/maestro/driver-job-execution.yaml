@@ -110,8 +110,8 @@ appId: in.mitow.partner
 - assertVisible: 'Completed'
 
 # ── A13: a job taken away from the other side ────────────────────────────────
-# `job:revoked` with `cancelled` (customer cancel AND admin reassign — the
-# contract has no `reassigned` reason) clears the held job: `applyJobRevoked`
+# `job:revoked` with `cancelled` — a customer cancel emits it to the holder
+# (M0-F6; admin reassign wires the same job in W8) — clears the held job: `applyJobRevoked`
 # invalidates the current-job query when the frame's booking matches, and the
 # query polls every 15 s while a job is held as the §19.2 fallback rung.
 #

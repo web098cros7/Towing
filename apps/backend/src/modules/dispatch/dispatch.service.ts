@@ -122,9 +122,27 @@ export class DispatchService implements OnModuleInit {
       await this.expireOffer(bookingId, driverId);
     });
 
-    this.queue.process('dispatch.revoke', async ({ bookingId, reason }) => {
-      await this.offers.revokeAll(bookingId, reason);
+    this.queue.process('dispatch.revoke', async ({ bookingId, reason, holderDriverId }) => {
+      await this.revokeBooking(bookingId, reason, holderDriverId);
     });
+  }
+
+  /**
+   * The `dispatch.revoke` worker body, extracted so tests can drive it
+   * directly (the suite runs queue-off).
+   *
+   * Revokes every live offer, then — M0-F6 — tells the holder, if the
+   * canceller named one. A cancelled booking's holder keeps an `accepted`
+   * attempt `revokeAll` will never move, so without the second step their
+   * screen sits on a dead job until the 15 s poll notices.
+   */
+  async revokeBooking(
+    bookingId: string,
+    reason: 'cancelled' | 'paused',
+    holderDriverId?: string,
+  ): Promise<void> {
+    await this.offers.revokeAll(bookingId, reason);
+    if (holderDriverId) this.offers.notifyHolderRevoked(holderDriverId, bookingId);
   }
 
   /**

@@ -34,11 +34,12 @@ export function applyJobRevoked(event: JobRevokedEvent): void {
     previous && previous.bookingId === event.bookingId ? null : (previous ?? null),
   );
 
-  // A13: a job taken away from the other side (customer cancel, admin
-  // reassign — both arrive as `cancelled`) must leave the driver's screen,
-  // not linger until something else refetches. Scoped to the held booking: a
-  // revoked offer for a searching booking the driver never held must not
-  // evict their active job.
+  // A13: a job taken away from the other side — a customer cancel emits
+  // `job:revoked` with `cancelled` to the holder (M0-F6; admin reassign will
+  // wire the same job in W8) — must leave the driver's screen, not linger
+  // until something else refetches. Scoped to the held booking: a revoked
+  // offer for a searching booking the driver never held must not evict their
+  // active job.
   if (event.reason === 'cancelled') {
     const held = queryClient.getQueryData<DriverJob | null>(offersKeys.job());
     if (held?.bookingId === event.bookingId) {

@@ -212,6 +212,20 @@ export class OfferService {
   }
 
   /**
+   * Tell the driver HOLDING a cancelled booking (M0-F6).
+   *
+   * `revokeAll` only moves still-`offered` attempts, so the holder — whose
+   * attempt is `accepted` — is never reached by it. No attempt row is touched
+   * here (there is nothing to resolve: the booking is cancelled) and no rate
+   * is recomputed; this is purely the frame the A13 handler waits for. Lives
+   * here rather than in `DispatchService` because this service owns the
+   * `DriverGateway` — dispatch must not gain a second import for it.
+   */
+  notifyHolderRevoked(driverId: string, bookingId: string): void {
+    this.gateway.emitJobRevoked(driverId, bookingId, 'cancelled');
+  }
+
+  /**
    * The driver said yes. §3.4's atomic assignment.
    *
    * FOUR THINGS HAVE TO BE TRUE AT COMMIT and each is checked inside the

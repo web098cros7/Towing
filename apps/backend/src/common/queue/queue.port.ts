@@ -152,8 +152,14 @@ export interface JobPayloads {
    * is near-immediate — the driver is told within the same seconds a direct
    * call would take. Idempotent by construction (`revokeAll` only moves
    * still-`offered` rows), so the default attempts are safe.
+   *
+   * M0-F6: `revokeAll` only reaches drivers with an `offered` attempt, but a
+   * cancelled booking may already have a HOLDER (an `accepted` attempt). The
+   * canceller carries that driver here so the worker can emit `job:revoked`
+   * to them too — otherwise the A13 handler never fires on a real cancel and
+   * the driver's screen sits on a dead job until the 15 s poll notices.
    */
-  'dispatch.revoke': { bookingId: string; reason: 'cancelled' | 'paused' };
+  'dispatch.revoke': { bookingId: string; reason: 'cancelled' | 'paused'; holderDriverId?: string };
 
   /**
    * Apply a shelved driver suspension now that their job has ended (A14).
