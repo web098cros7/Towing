@@ -9,6 +9,19 @@ export interface ResolvedSubject {
 }
 
 /**
+ * Per-realm session limits (§3.6, G15). Both windows are enforced in
+ * `TokenService.rotate` — the idle window as a predicate on the conditional
+ * claim, the absolute window when the claim fails — and each revokes the whole
+ * family, so an expired session cannot be resurrected by racing a refresh.
+ */
+export interface RealmSessionLimits {
+  /** A token unused for this long is dead. Measured from the previous rotation. */
+  readonly idleMs: number;
+  /** No family outlives this from its first mint, however active. */
+  readonly absoluteMs: number;
+}
+
+/**
  * Everything that differs between the four auth realms, in one seam.
  *
  * The load-bearing method is `resolve`, and the reason it exists is staleness:
@@ -30,6 +43,13 @@ export interface RealmPolicy {
    * corruption is precisely the bug this phase fixes.
    */
   readonly requiresFleet: boolean;
+  /**
+   * Session windows for this realm, or absent for "no limits" — today's
+   * behaviour for fleet, driver and customer, whose sessions still live on
+   * the refresh TTL alone. Only the admin realm (G15) sets this. Optional so
+   * every existing policy and test double compiles unchanged.
+   */
+  readonly sessionLimits?: RealmSessionLimits | null;
 
   resolve(subjectId: string, tokenFleetId: string | null): Promise<ResolvedSubject | null>;
 }
@@ -55,5 +75,14 @@ export class RealmPolicyRegistry {
 
   has(realm: string): realm is Realm {
     return this.byRealm.has(realm as Realm);
+  }
+
+  /**
+   * Session windows for a realm, `null` when it declares none. The realm always
+   * comes from a row this service wrote, so an unknown realm is a programming
+   * error and throws through `for()` rather than being silently unlimited.
+   */
+  limitsFor(realm: Realm): RealmSessionLimits | null {
+    return this.for(realm).sessionLimits ?? null;
   }
 }

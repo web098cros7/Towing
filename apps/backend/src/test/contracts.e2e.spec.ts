@@ -8,6 +8,7 @@ import {
   adminPendingDriversResponseSchema,
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
+  adminSessionsResponseSchema,
   alertsListResponseSchema,
   bookingListResponseSchema,
   commissionHistoryEntrySchema,
@@ -47,6 +48,7 @@ import { seedBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
 import { closeTestRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
 import { seedPricingFixtures } from '../modules/pricing/pricing.e2e.spec';
+import { TokenService } from '../modules/auth/token.service';
 
 /**
  * Every fleet read endpoint, asserted against the schema its client parses.
@@ -98,9 +100,8 @@ describe('response contracts', () => {
     // Phase 15. Seeded with a real trip below — an empty list matches almost
     // any schema, which is what makes an unseeded row in this table worthless.
     { path: '/v1/bookings', schema: bookingListResponseSchema, realm: 'customer' },
-    // A1 — the admin console's eight. Super-admin satisfies every role set, so
-    // one token covers all eight rows. W2 adds the admins list (ninth); the
-    // seeded super_admin keeps the response non-empty.
+    // A1 — the admin console's eight, plus W2's admins list and W1's session
+    // list. Super-admin satisfies every role set, so one token covers them all.
     { path: '/v1/admin/drivers/pending', schema: adminPendingDriversResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
@@ -114,6 +115,10 @@ describe('response contracts', () => {
     { path: '/v1/admin/dispatch-config', schema: adminDispatchConfigSchema, realm: 'admin' },
     { path: '/v1/admin/auth/me', schema: adminIdentitySchema, realm: 'admin' },
     { path: '/v1/admin/admins', schema: adminAdminsListResponseSchema, realm: 'admin' },
+    // W1 §3.6. The session list renders refresh-token FAMILIES, so it needs a
+    // real issued session — an empty list is exactly the vacuous row this
+    // file's doctrine warns about. The fixture above mints one.
+    { path: '/v1/admin/auth/sessions', schema: adminSessionsResponseSchema, realm: 'admin' },
   ];
 
   beforeAll(async () => {
@@ -147,6 +152,9 @@ describe('response contracts', () => {
     // almost any schema, which is what makes an unseeded row worthless.
     const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
     adminAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+    // W1 §3.6 — `adminAuthHeaderFor` only signs a token; the sessions list
+    // reads `refresh_tokens`, so issue one real family for this admin.
+    await app.get(TokenService).issueSession({ subjectId: superAdmin.id, realm: 'admin' });
 
     // Pending KYC driver with a real document (thumbnailUrl is a signed GET).
     const pendingDriverId = await seedDriver(db, { kycStatus: 'pending', name: 'Contract Pending' });

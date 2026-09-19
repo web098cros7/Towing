@@ -1,4 +1,5 @@
-import { Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { z } from 'zod';
 import {
   adminCompletePasswordChangeSchema,
   adminLoginRequestSchema,
@@ -13,7 +14,7 @@ import {
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { SkipThrottling, ThrottleBucket } from '../../common/throttling/throttler.config';
-import { ZodBody, ZodQuery } from '../../common/validation/zod.decorators';
+import { ZodBody, ZodParam, ZodQuery } from '../../common/validation/zod.decorators';
 import {
   devOtpQuerySchema,
   refreshRequestSchema,
@@ -25,6 +26,9 @@ import { JwtAuthGuard, Public } from '../auth/jwt-auth.guard';
 import { Realms, Roles } from '../auth/realm.decorator';
 import { sessionContextFrom } from '../auth/token.service';
 import { AdminAuthService } from './admin-auth.service';
+
+/** `DELETE /v1/admin/auth/sessions/:id` — a UUID family id, validated before the lookup. */
+const adminSessionIdParamSchema = z.uuid();
 
 /**
  * Admin console auth (§9.4, §16.5).
@@ -106,6 +110,38 @@ export class AdminAuthController {
     if (!identity) throw ApiException.forbidden('This admin account is not active');
 
     return identity;
+  }
+
+  /**
+   * W1 §3.6 — the caller's own live sessions, with a revoke route beside it.
+   *
+   * Self-service like the 2FA routes: every route acts on the CALLER's account,
+   * there is no `:adminId`, so one admin can never enumerate or kill another's
+   * sessions. Spelled as all four sub-roles (like `me`) rather than left
+   * undecorated, per the route-walk rule.
+   */
+  @Get('sessions')
+  @Roles('super_admin', 'operations', 'support', 'finance')
+  @ThrottleBucket('reads')
+  sessions(@Req() request: AuthedRequest) {
+    return this.auth.listSessions(adminId(request));
+  }
+
+  /**
+   * Revokes one of the caller's sessions. `204` even when the row is already
+   * dead would hide typos, so a miss is a 404 (see the service for why another
+   * admin's id is the same 404). `refresh` bucket: this is a session write,
+   * not a money one, and the `auth` bucket is 5/min shared with login.
+   */
+  @Delete('sessions/:id')
+  @Roles('super_admin', 'operations', 'support', 'finance')
+  @ThrottleBucket('refresh')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async revokeSession(
+    @ZodParam(adminSessionIdParamSchema, 'id') id: string,
+    @Req() request: AuthedRequest,
+  ): Promise<void> {
+    await this.auth.revokeSession(adminId(request), id, sessionContextFrom(request));
   }
 
   /**

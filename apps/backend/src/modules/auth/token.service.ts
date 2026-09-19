@@ -1,13 +1,13 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, notInArray, or, type SQL } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { ENV, type Env } from '../../config/env';
 import { DB, type Database } from '../../db/db.module';
 import { refreshTokens } from '../../db/schema';
 import { isActorRole, type AccessClaims, type AuthedRequest, type Realm } from './auth.types';
-import { RealmPolicyRegistry } from './realm.policy';
+import { RealmPolicyRegistry, type RealmSessionLimits } from './realm.policy';
 import { RefreshGraceService } from './refresh-grace.service';
 
 /** Bytes of entropy in a refresh token. 48 → 64 base64url chars. */
@@ -115,6 +115,15 @@ export class TokenService {
     // claim, probing the wrong endpoint would stamp `rotated_at` on a token the
     // prober does not own, and the victim's next legitimate refresh would trip
     // reuse detection and burn their family.
+    //
+    // W1 §3.6: realms that declare session windows (today only admin) also get
+    // their idle and absolute checks IN THE PREDICATE. They cannot move after
+    // the claim: `set` stamps `updatedAt` (and the returned row carries the new
+    // value), so a post-hoc idle check would compare against the write it just
+    // made and never fire. A rejected token instead falls through to
+    // `explainFailedClaim`, which revokes the family and names the window.
+    const sessionWindowPredicate = this.sessionWindowPredicate(realms, now);
+
     const [claimed] = await this.db
       .update(refreshTokens)
       .set({ rotatedAt: now, updatedAt: now })
@@ -125,6 +134,7 @@ export class TokenService {
           isNull(refreshTokens.rotatedAt),
           isNull(refreshTokens.revokedAt),
           gt(refreshTokens.expiresAt, now),
+          sessionWindowPredicate,
         ),
       )
       .returning();
@@ -296,6 +306,39 @@ export class TokenService {
   }
 
   /**
+   * The WHERE-clause half of the per-realm session policy (§3.6, G15).
+   *
+   * For every allowed realm that declares limits, a token must satisfy BOTH
+   * windows to rotate: it must have been used within `idleMs` (measured from
+   * the pre-rotation `updatedAt`) and minted within `absoluteMs` (measured from
+   * `createdAt`). Realms without limits — fleet, customer, driver — match
+   * unconditionally, so their behaviour is byte-identical to before W1.
+   *
+   * Returns `undefined` when no allowed realm is limited, which drizzle's
+   * `and()` drops, leaving the claim exactly as it was.
+   */
+  private sessionWindowPredicate(realms: readonly Realm[], now: Date): SQL | undefined {
+    const limited = realms
+      .map((realm) => ({ realm, limits: this.policies.limitsFor(realm) }))
+      .filter(
+        (entry): entry is { realm: Realm; limits: RealmSessionLimits } => entry.limits !== null,
+      );
+
+    if (limited.length === 0) return undefined;
+
+    return or(
+      notInArray(refreshTokens.realm, limited.map((entry) => entry.realm)),
+      ...limited.map(({ realm, limits }) =>
+        and(
+          eq(refreshTokens.realm, realm),
+          gt(refreshTokens.updatedAt, new Date(now.getTime() - limits.idleMs)),
+          gt(refreshTokens.createdAt, new Date(now.getTime() - limits.absoluteMs)),
+        ),
+      ),
+    );
+  }
+
+  /**
    * Works out why the conditional claim matched nothing. Returns the exception
    * to throw (rather than throwing) so the caller keeps a `throw` on its own
    * control-flow path and TypeScript can see the function never falls through.
@@ -325,6 +368,29 @@ export class TokenService {
     if (row.rotatedAt || row.revokedAt) {
       await this.revokeFamily(row.familyId, row.revokedAt ? 'family_revoked' : 'refresh_token_reuse');
       return ApiException.unauthorized('Refresh token was already used; this session has been revoked');
+    }
+
+    // W1 §3.6: not rotated, not revoked, not expired by TTL — so if the realm
+    // declares windows, one of them is why the claim missed. Revoking here is
+    // what makes the rejection final: without it the same row could be raced
+    // forever, and a deactivated-then-reactivated admin would resurrect it.
+    if (this.policies.has(row.realm)) {
+      const limits = this.policies.limitsFor(row.realm);
+      if (limits) {
+        const nowMs = Date.now();
+        if (nowMs - row.updatedAt.getTime() > limits.idleMs) {
+          await this.revokeFamily(row.familyId, 'idle_timeout');
+          return ApiException.unauthorized(
+            `Session expired after ${Math.round(limits.idleMs / 60_000)} minutes of inactivity`,
+          );
+        }
+        if (nowMs - row.createdAt.getTime() > limits.absoluteMs) {
+          await this.revokeFamily(row.familyId, 'absolute_timeout');
+          return ApiException.unauthorized(
+            `Session reached its ${Math.round(limits.absoluteMs / 3_600_000)}-hour limit`,
+          );
+        }
+      }
     }
 
     return ApiException.unauthorized('Refresh token has expired');

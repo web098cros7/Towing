@@ -55,6 +55,30 @@ export const adminSessionSchema = sessionTokensSchema.extend({
 export type AdminSession = z.infer<typeof adminSessionSchema>;
 
 /**
+ * W1 §3.6 — one row of `GET /v1/admin/auth/sessions`.
+ *
+ * `id` is the refresh-token FAMILY id, because that is the unit a revoke kills
+ * and the unit logout already revokes. Deliberately named `adminActiveSession`
+ * rather than reusing `adminSession`, which is the login response above — the
+ * two shapes are different and a shared name would invite a mix-up.
+ */
+export const adminActiveSessionSchema = z.object({
+  id: z.uuid(),
+  /** Last writer wins, same as the audit trail: rotation copies the context forward. */
+  ip: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  lastUsedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+export type AdminActiveSession = z.infer<typeof adminActiveSessionSchema>;
+
+export const adminSessionsResponseSchema = z.object({
+  sessions: z.array(adminActiveSessionSchema),
+});
+export type AdminSessionsResponse = z.infer<typeof adminSessionsResponseSchema>;
+
+/**
  * POST /v1/admin/drivers/:id/kyc — the §3.1 approval gate.
  *
  * Phase 10 shipped `approve | reject | suspend | reactivate` as the ONLY admin

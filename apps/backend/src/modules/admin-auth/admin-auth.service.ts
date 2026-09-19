@@ -8,21 +8,29 @@ import type {
   AdminOtpVerifyRequest,
   AdminRecoveryCodesResponse,
   AdminSession,
+  AdminSessionsResponse,
   AdminTotpConfirm,
   AdminTotpDisable,
   AdminTotpEnrollResponse,
   AdminTotpStatus,
 } from '@towing/api-contracts';
 import { ErrorCodes } from '@towing/api-contracts';
-import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
 import { ApiException } from '../../common/errors/api-exception';
 import { ENV, type Env } from '../../config/env';
 import { DB, type Database } from '../../db/db.module';
-import { adminRecoveryCodes, adminUsers, loginChallenges, otpVerifications } from '../../db/schema';
+import {
+  adminRecoveryCodes,
+  adminUsers,
+  loginChallenges,
+  otpVerifications,
+  refreshTokens,
+} from '../../db/schema';
 import { ADMIN_REVOKE_CHANNEL, REDIS } from '../../redis/redis.constants';
 import { OTP_PORT, type OtpPort } from '../auth/otp.port';
 import { hashPassword, verifyDecoyPassword, verifyPassword } from '../auth/password';
+import { ADMIN_SESSION_LIMITS } from '../auth/policies/admin.policy';
 import { TokenService, type SessionContext } from '../auth/token.service';
 import { AdminAuditService } from './admin-audit.service';
 import { TotpService, hashRecoveryCode } from './totp.service';
@@ -644,6 +652,107 @@ export class AdminAuthService {
 
   async logout(refreshToken: string): Promise<void> {
     await this.tokens.logout(refreshToken, ADMIN_REALM);
+  }
+
+  /**
+   * W1 §3.6 — the caller's live sessions, most recently used first.
+   *
+   * One session = one refresh-token FAMILY: a rotation inserts a new row and
+   * stamps `rotated_at` on the parent, so "the family's one active row" is
+   * exactly the set of sessions that can still be refreshed. The window
+   * predicates use `ADMIN_SESSION_LIMITS`, the same numbers `TokenService.rotate`
+   * enforces: a row rendered here is one that would rotate, and a row `rotate`
+   * would refuse never appears.
+   */
+  async listSessions(adminId: string): Promise<AdminSessionsResponse> {
+    const now = new Date();
+
+    const rows = await this.db
+      .select({
+        id: refreshTokens.familyId,
+        ip: refreshTokens.ip,
+        userAgent: refreshTokens.userAgent,
+        createdAt: refreshTokens.createdAt,
+        lastUsedAt: refreshTokens.updatedAt,
+        expiresAt: refreshTokens.expiresAt,
+      })
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.subjectId, adminId),
+          eq(refreshTokens.realm, ADMIN_REALM),
+          isNull(refreshTokens.rotatedAt),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, now),
+          gt(refreshTokens.updatedAt, new Date(now.getTime() - ADMIN_SESSION_LIMITS.idleMs)),
+          gt(refreshTokens.createdAt, new Date(now.getTime() - ADMIN_SESSION_LIMITS.absoluteMs)),
+        ),
+      )
+      .orderBy(desc(refreshTokens.updatedAt));
+
+    return {
+      sessions: rows.map((row) => ({
+        id: row.id,
+        ip: row.ip,
+        userAgent: row.userAgent,
+        createdAt: row.createdAt.toISOString(),
+        lastUsedAt: row.lastUsedAt.toISOString(),
+        expiresAt: row.expiresAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Revokes one of the CALLER's own sessions — self-service, like the 2FA
+   * routes: there is no `:adminId` segment, so one admin can never revoke
+   * another's session through this route.
+   *
+   * An unknown id, another admin's family, and a family already dead are ONE
+   * indistinguishable 404: a distinguishable "403 not yours" would let any
+   * admin probe whether another admin's session ids exist. The audit row is
+   * the exception — it records only the caller's own action, so it may name
+   * the session.
+   *
+   * Revoking the CALLER'S CURRENT session is allowed on purpose: it is the
+   * server-side half of "sign out everywhere", and locking the caller out of
+   * the one act of self-protection would be the wrong trade.
+   */
+  async revokeSession(adminId: string, sessionId: string, context: SessionContext): Promise<void> {
+    const [row] = await this.db
+      .select({
+        familyId: refreshTokens.familyId,
+        ip: refreshTokens.ip,
+        userAgent: refreshTokens.userAgent,
+        createdAt: refreshTokens.createdAt,
+      })
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.familyId, sessionId),
+          eq(refreshTokens.subjectId, adminId),
+          eq(refreshTokens.realm, ADMIN_REALM),
+          isNull(refreshTokens.revokedAt),
+        ),
+      )
+      .limit(1);
+
+    if (!row) throw ApiException.notFound('Session not found');
+
+    await this.tokens.revokeFamily(row.familyId, 'admin_session_revoked');
+    await this.audit.record({
+      adminId,
+      action: 'admin.session_revoke',
+      subjectType: 'admin',
+      subjectId: adminId,
+      before: {
+        sessionId: row.familyId,
+        ip: row.ip,
+        userAgent: row.userAgent,
+        createdAt: row.createdAt.toISOString(),
+      },
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
   }
 
   /** Development only — mirrors the fleet console's echo, same three guards. */
