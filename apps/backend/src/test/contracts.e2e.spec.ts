@@ -6,6 +6,7 @@ import {
   adminDispatchConfigSchema,
   adminFinanceConfigSchema,
   adminIdentitySchema,
+  adminNotesResponseSchema,
   adminPendingDriversResponseSchema,
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
@@ -44,7 +45,7 @@ import {
   truncateAll,
   type TestDatabase,
 } from '../test/db';
-import { adminActions, commissionConfigHistory, driverDocuments, payouts } from '../db/schema';
+import { adminActions, adminNotes, commissionConfigHistory, driverDocuments, payouts } from '../db/schema';
 import { seedBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
 import { closeTestRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
@@ -66,6 +67,9 @@ import { TokenService } from '../modules/auth/token.service';
  */
 /** `/fleet/reports` requires an explicit IST date range; any valid one will do. */
 const RANGE = 'from=2026-01-01&to=2026-12-31';
+
+/** W21's notes row is subject-scoped; the seed below writes this exact subject. */
+const NOTES_SUBJECT_ID = '44444444-4444-4444-8444-444444444444';
 
 describe('response contracts', () => {
   let app: INestApplication;
@@ -122,6 +126,13 @@ describe('response contracts', () => {
     { path: '/v1/admin/auth/sessions', schema: adminSessionsResponseSchema, realm: 'admin' },
     // W1 §3.5. Seeded with one audit row below for the same reason.
     { path: '/v1/admin/audit', schema: adminAuditListResponseSchema, realm: 'admin' },
+    // W21 — subject-scoped by necessity; the subject id is seeded below and is
+    // deliberately NOT a real driver: `admin_notes.subject_id` is FK-free.
+    {
+      path: `/v1/admin/notes?subjectType=driver&subjectId=${NOTES_SUBJECT_ID}`,
+      schema: adminNotesResponseSchema,
+      realm: 'admin',
+    },
   ];
 
   beforeAll(async () => {
@@ -202,6 +213,14 @@ describe('response contracts', () => {
       before: { bandAPct: '12.00' },
       after: { bandAPct: '12.50' },
       reason: 'contract coverage seed',
+    });
+
+    // W21 — one note on the subject the notes row above queries.
+    await db.insert(adminNotes).values({
+      subjectType: 'driver',
+      subjectId: NOTES_SUBJECT_ID,
+      adminId: superAdmin.id,
+      body: 'contract coverage note',
     });
   });
 

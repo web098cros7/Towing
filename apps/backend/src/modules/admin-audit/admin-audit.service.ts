@@ -1,16 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  adminCan,
   type AdminAuditDetail,
   type AdminAuditListResponse,
   type AdminAuditQuery,
-  type AdminPermission,
   type AdminSubRole,
 } from '@towing/api-contracts';
 import { and, desc, eq, gte, like, lt, lte, or, type SQL } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { DB, type Database } from '../../db/db.module';
 import { adminActions } from '../../db/schema';
+import { canReadSubject } from './subject-access';
 
 const DEFAULT_LIMIT = 50;
 
@@ -19,33 +18,6 @@ export interface AuditViewer {
   id: string;
   subRole: AdminSubRole;
 }
-
-/**
- * Which subject-scoped audit reads a subject type unlocks (§3.5: "subject-scoped
- * reads follow whoever may read the subject").
- *
- * Each mapping reuses the SAME permission the subject's own screens are gated
- * on — `user.read` is the directory read for drivers/users/fleets, `kyc.read`
- * is deliberately NOT used for `driver` because finance holds `user.read` and
- * not `kyc.read`, and finance does need suspension history on a driver.
- *
- * A subject type NOT in this map has no cross-admin readers: only its actors
- * see its rows. That is the fail-closed default, and it is what makes this map
- * a gate rather than a comment.
- */
-const SUBJECT_READ_PERMISSION: Record<string, AdminPermission> = {
-  admin: 'admin.manage',
-  booking: 'booking.read',
-  dispute: 'dispute.handle',
-  payout: 'finance.read',
-  refund: 'finance.read',
-  driver: 'user.read',
-  user: 'user.read',
-  fleet: 'user.read',
-  sos_alert: 'sos.handle',
-  support_ticket: 'ticket.handle',
-  deletion_request: 'privacy.handle',
-};
 
 /**
  * The audit viewer (§3.5, §20.4) — read side of `admin_actions`.
@@ -57,6 +29,7 @@ const SUBJECT_READ_PERMISSION: Record<string, AdminPermission> = {
  * `audit.read` (it means "may reach the route") and this service is where the
  * limitation lives — a non-super-admin sees their OWN rows plus rows on
  * subjects they may read, and nothing else. A super admin sees everything.
+ * The subject mapping itself lives in `subject-access.ts`, shared with notes.
  */
 @Injectable()
 export class AdminAuditService {
@@ -163,7 +136,7 @@ export class AdminAuditService {
 
     // A subject-scoped page (BOTH halves present — one alone is just a filter)
     // also carries rows on that subject when the viewer may read its type.
-    if (query.subjectType && query.subjectId && this.subjectReadable(viewer, query.subjectType)) {
+    if (query.subjectType && query.subjectId && canReadSubject(viewer.subRole, query.subjectType)) {
       return or(
         own,
         and(
@@ -179,12 +152,7 @@ export class AdminAuditService {
   private mayRead(viewer: AuditViewer, adminId: string, subjectType: string): boolean {
     if (viewer.subRole === 'super_admin') return true;
     if (adminId === viewer.id) return true;
-    return this.subjectReadable(viewer, subjectType);
-  }
-
-  private subjectReadable(viewer: AuditViewer, subjectType: string): boolean {
-    const permission = SUBJECT_READ_PERMISSION[subjectType];
-    return permission !== undefined && adminCan(viewer.subRole, permission);
+    return canReadSubject(viewer.subRole, subjectType);
   }
 }
 
