@@ -27,10 +27,12 @@ test('the sidebar shows an operator exactly the sections their permissions allow
   // privacy queue are the two a hidden item matters most for.
   await expect(page.getByTestId('admin-nav-admins')).toHaveCount(0);
   await expect(page.getByTestId('admin-nav-privacy')).toHaveCount(0);
-  // Finance and Commission need `finance.read` / `commission.edit`; operations
-  // has only `finance.summary` / `commission.propose`.
+  // Finance needs `finance.read`; operations has only `finance.summary`.
   await expect(page.getByTestId('admin-nav-finance')).toHaveCount(0);
-  await expect(page.getByTestId('admin-nav-commission')).toHaveCount(0);
+  // Commission IS visible to operations since W11 — they hold
+  // `commission.propose`, and the screen is where a proposal is made. What they
+  // cannot do there is save a band, and the page says so.
+  await expect(page.getByTestId('admin-nav-commission')).toBeVisible();
 });
 
 test('the sidebar marks the current section, and the topbar carries identity', async ({ page }) => {

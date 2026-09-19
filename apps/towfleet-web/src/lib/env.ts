@@ -42,6 +42,8 @@ export const env = {
   mockAdminDisputesState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_DISPUTES_STATE ?? '') as MockState,
   /** W10's rate-card editor (M4). */
   mockAdminPricingState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PRICING_STATE ?? '') as MockState,
+  /** W11's commission editor (M4). */
+  mockAdminCommissionState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_COMMISSION_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
