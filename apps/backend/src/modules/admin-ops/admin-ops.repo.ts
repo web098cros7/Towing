@@ -255,6 +255,14 @@ export class AdminOpsRepo {
     return rows[0]?.n ?? 0;
   }
 
+  /** W6: open suspension requests — the Users badge's source since 0024. */
+  async suspensionRequests(): Promise<number> {
+    const rows = (await this.db.execute(sql`
+      select count(*)::int as n from suspension_requests where status = 'open'
+    `)) as unknown as Array<{ n: number }>;
+    return rows[0]?.n ?? 0;
+  }
+
   /**
    * Backfill rows from history, newest first. `is_first` marks each booking's
    * opening row — creation writes that row directly with `searching` (A18), so
@@ -560,7 +568,7 @@ export class AdminOpsRepo {
     const rows = (await this.db.execute(sql`
       select b.id as booking_id, b.zone_id,
              b.service_type::text as service_type, b.vehicle_class::text as vehicle_class,
-             b.search_wave, (b.commission_band = 'C') as long_distance,
+             b.search_wave, coalesce(b.commission_band = 'C', false) as long_distance,
              b.dispatch_deadline_at, b.created_at,
              coalesce(a.contacted, 0) as contacted,
              z.dispatch_config as zone_dispatch_config

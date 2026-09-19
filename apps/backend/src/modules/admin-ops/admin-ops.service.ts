@@ -160,9 +160,10 @@ export class AdminOpsService {
   }
 
   async computeBadges(): Promise<AdminOpsBadgesResponse> {
-    const [approvals, deletions] = await Promise.all([
+    const [approvals, deletions, suspensionRequests] = await Promise.all([
       this.repo.approvalCounts(),
       this.repo.deletionRequests(),
+      this.repo.suspensionRequests(),
     ]);
 
     const badges: AdminOpsBadges = {
@@ -170,12 +171,13 @@ export class AdminOpsService {
       pendingPayouts: approvals.pendingPayouts,
       // Structurally zero until the owning workstreams create their tables —
       // the keys exist now so the wire shape never changes: `sos_alerts` (W14),
-      // `disputes` (W8), tickets (W15), `suspension_requests` (W6). Zero is the
-      // truthful count today: the feature does not exist, so nothing is open.
+      // `disputes` (W8), tickets (W15). Zero is the truthful count today: the
+      // feature does not exist, so nothing is open. `suspensionRequests` left
+      // this group with W6's migration 0024 and is real from here on.
       openSos: 0,
       openDisputes: 0,
       openTickets: 0,
-      suspensionRequests: 0,
+      suspensionRequests,
       deletionRequests: deletions,
     };
 

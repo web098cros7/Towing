@@ -3,6 +3,7 @@ import {
   adminAdminsListResponseSchema,
   adminAuditListResponseSchema,
   adminCommissionConfigSchema,
+  adminDirectoryUsersResponseSchema,
   adminDispatchConfigSchema,
   adminDispatchInspectorListResponseSchema,
   adminFinanceConfigSchema,
@@ -16,6 +17,7 @@ import {
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
   adminSessionsResponseSchema,
+  adminSuspensionRequestsResponseSchema,
   alertsListResponseSchema,
   bookingListResponseSchema,
   commissionHistoryEntrySchema,
@@ -59,8 +61,9 @@ import {
   drivers,
   payouts,
   serviceZones,
+  suspensionRequests,
 } from '../db/schema';
-import { seedBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
+import { seedBooking, seedCustomerBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
 import { closeTestRedis, testRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
 import { seedPricingFixtures } from '../modules/pricing/pricing.e2e.spec';
@@ -163,6 +166,14 @@ describe('response contracts', () => {
     {
       path: '/v1/admin/ops/dispatch',
       schema: adminDispatchInspectorListResponseSchema,
+      realm: 'admin',
+    },
+    // W6 — the directory list and the suspension-request inbox. Users exist in
+    // every fixture set; the request row is seeded below.
+    { path: '/v1/admin/users', schema: adminDirectoryUsersResponseSchema, realm: 'admin' },
+    {
+      path: '/v1/admin/suspension-requests',
+      schema: adminSuspensionRequestsResponseSchema,
       realm: 'admin',
     },
   ];
@@ -286,8 +297,18 @@ describe('response contracts', () => {
     ]);
 
     // W5 — one live search for the inspector list row above (the list would be
-    // an empty array without it, which matches almost any schema).
-    await seedBooking(db, { userId: contractCustomer, status: 'searching' });
+    // an empty array without it, which matches almost any schema). Its own
+    // customer: `contractCustomer` already owns the assigned ops booking above,
+    // and `uq_bookings_one_active_per_user` allows only one active booking.
+    await seedCustomerBooking(db, { status: 'searching' });
+
+    // W6 — one open suspension request so the inbox row above is non-empty.
+    await db.insert(suspensionRequests).values({
+      subjectType: 'driver',
+      subjectId: pendingDriverId,
+      requestedBy: superAdmin.id,
+      reason: 'contract coverage seed',
+    });
   });
 
   afterAll(async () => {
@@ -428,6 +449,11 @@ const EXCLUDED = new Set([
   // `adminDispatchInspectorResponseSchema` in `admin-ops-dispatch.e2e.spec.ts`,
   // which owns a real dispatched booking and drives the wave engine directly.
   '/v1/admin/ops/dispatch/:bookingId',
+  // W6 — parameterised directory detail, asserted with `expectMatchesContract`
+  // against `adminDirectoryUserDetailSchema` and the bookings envelope in
+  // `admin-directory-users.e2e.spec.ts`, which owns a real user.
+  '/v1/admin/users/:id',
+  '/v1/admin/users/:id/bookings',
 ]);
 
 /** Express 5 keeps the registered layers on `router.stack`. */
