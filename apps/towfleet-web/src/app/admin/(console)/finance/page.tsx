@@ -1,174 +1,57 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Badge, type ColumnDef, DataTable } from '@towing/web-ui';
-import type { AdminPayoutDto, PayoutApprovalState } from '@towing/api-contracts';
+import { useState } from 'react';
+import { Tabs } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
-import { formatPaise } from '@/lib/money';
-import { useAdminPayouts } from '@/features/admin-finance/api/adminFinance.queries';
-import { PayoutDecisionDrawer } from '@/features/admin-finance/components/PayoutDecisionDrawer';
-import { AdminForbidden } from '@/components/admin/AdminForbidden';
-import { ApiError } from '@/lib/apiClient';
+import { PayoutApprovalsTab } from '@/features/admin-finance/components/PayoutApprovalsTab';
+import { TransactionsTab } from '@/features/admin-finance/components/TransactionsTab';
+import { LedgerTab } from '@/features/admin-finance/components/LedgerTab';
+import { RefundsTab } from '@/features/admin-finance/components/RefundsTab';
+import { FinanceConfigTab } from '@/features/admin-finance/components/FinanceConfigTab';
 
-const STATE_LABEL: Record<PayoutApprovalState, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> =
-  {
-    pending_approval: { label: 'Awaiting approval', variant: 'warning' },
-    approved: { label: 'Approved', variant: 'success' },
-    auto_approved: { label: 'Auto-approved', variant: 'neutral' },
-    rejected: { label: 'Rejected', variant: 'error' },
-  };
-
-const columns: ColumnDef<AdminPayoutDto, unknown>[] = [
-  {
-    accessorKey: 'ownerName',
-    header: 'Payee',
-    cell: ({ row }) => (
-      <div>
-        <div className="font-semibold">{row.original.ownerName ?? 'Unnamed'}</div>
-        <div className="text-xs text-text-secondary capitalize">{row.original.ownerType}</div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'amountPaise',
-    header: 'Amount',
-    cell: ({ row }) => (
-      <span className="font-semibold tabular-nums">{formatPaise(row.original.amountPaise)}</span>
-    ),
-  },
-  {
-    accessorKey: 'destinationLast4',
-    header: 'Destination',
-    cell: ({ row }) =>
-      row.original.destinationLast4 ? (
-        <div>
-          <div>{row.original.bankName ?? 'Bank account'}</div>
-          {/*
-            Redacted, because that is all the platform HAS: the full number goes
-            to Razorpay Route at onboarding and only the last four digits plus a
-            fingerprint are persisted. A reviewer can still sanity-check where
-            the money is going.
-          */}
-          <div className="text-xs tabular-nums text-text-secondary">
-            •••• {row.original.destinationLast4}
-          </div>
-        </div>
-      ) : (
-        <span className="text-text-tertiary">Not linked</span>
-      ),
-  },
-  {
-    accessorKey: 'approvalState',
-    header: 'Status',
-    cell: ({ row }) => {
-      const meta = STATE_LABEL[row.original.approvalState];
-      return <Badge variant={meta.variant}>{meta.label}</Badge>;
-    },
-  },
-  {
-    accessorKey: 'requestedAt',
-    header: 'Requested',
-    cell: ({ row }) =>
-      new Date(row.original.requestedAt).toLocaleString('en-IN', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      }),
-  },
-];
+type FinanceTab = 'payouts' | 'transactions' | 'ledger' | 'refunds' | 'config';
 
 /**
- * §9.4.10's Finance approval queue — the SECOND admin surface, after Phase 11's
- * KYC queue, and the `finance` sub-role's first consumer with any authority.
+ * `/admin/finance` — W9's finance console.
  *
- * BOTH OWNER TYPES APPEAR HERE. Fleet payouts bypassed approval entirely from
- * Track A Phase 7 until Phase 19; bringing them under one §14.4 threshold
- * rather than leaving a second, unreviewed path is the point of the rule, and
- * it is a behaviour change for existing fleets rather than a new feature.
+ * PAYOUTS IS THE DEFAULT because it is what somebody opening this page came to
+ * do: a queue with a decision waiting. The other tabs answer the questions that
+ * follow a decision — what moved, what it left behind, what has been given
+ * back, and which knobs decide it.
+ *
+ * The SLA card and the invariants panel ride UNDER the payouts table rather
+ * than in a separate health tab: nobody opens a health tab until something is
+ * already wrong, and those two are the numbers that should catch it first.
  */
 export default function AdminFinancePage() {
-  const [state, setState] = useState<PayoutApprovalState | 'all'>('pending_approval');
-  // A20: server-side paging over the API's page envelope — the queue is
-  // unbounded, and page 1 / limit 50 left everything past the threshold
-  // unreachable.
-  const [page, setPage] = useState(1);
-  const limit = 50;
-  const [selected, setSelected] = useState<AdminPayoutDto | null>(null);
-
-  const { data, isLoading, isError, error, refetch } = useAdminPayouts({
-    state,
-    page,
-    limit,
-  });
-
-  // `total`, never `items.length`: the last page is short by definition.
-  const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / limit));
-
-  // M0-F13: clamp when the total shrinks under the current page (e.g.
-  // approving the last rows while sitting on page 2). Without this the table
-  // renders its empty state — which hides the pager — with no way back to
-  // page 1. Guarded on `data`: a page change swaps the query key, and until
-  // the new page resolves `data` is undefined (pageCount 1) — clamping on the
-  // transient would yank every page turn back to page 1.
-  useEffect(() => {
-    if (data !== undefined && page > pageCount) setPage(pageCount);
-  }, [data, page, pageCount]);
-
-  // A7: a valid session without the queue's sub-role is refused, not broken.
-  if (error instanceof ApiError && error.status === 403) {
-    return (
-      <div>
-        <PageHeader
-          title="Payout approvals"
-          description="Driver and fleet payouts above the auto-approval threshold. Approving sends the money; the wallet is already debited either way."
-        />
-        <AdminForbidden resource="payout approvals" />
-      </div>
-    );
-  }
+  const [tab, setTab] = useState<FinanceTab>('payouts');
 
   return (
     <div>
       <PageHeader
-        title="Payout approvals"
-        description="Driver and fleet payouts above the auto-approval threshold. Approving sends the money; the wallet is already debited either way."
+        title="Finance"
+        description="Approvals, money movement and the ledger's own health."
       />
 
-      <div className="mb-4 flex gap-2">
-        {(['pending_approval', 'all'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => {
-              setState(option);
-              // A filter change re-queries from the top — page 2 of one
-              // filter is meaningless on another.
-              setPage(1);
-            }}
-            data-testid={`finance-filter-${option}`}
-            className={
-              state === option
-                ? 'rounded-lg bg-brand-tint px-3 py-1.5 text-sm font-medium text-brand'
-                : 'rounded-lg border border-border px-3 py-1.5 text-sm text-text-secondary'
-            }
-          >
-            {option === 'pending_approval' ? 'Awaiting approval' : 'All payouts'}
-          </button>
-        ))}
-      </div>
-
-      <DataTable
-        columns={columns}
-        data={data?.items ?? []}
-        isLoading={isLoading}
-        isError={isError}
-        onRetry={() => void refetch()}
-        onRowClick={(row) => setSelected(row)}
-        emptyTitle="Nothing to approve"
-        emptyDescription="Payouts above the threshold appear here. Everything below it goes straight to the bank."
-        pagination={{ page, pageCount, onPageChange: setPage }}
+      <Tabs
+        items={[
+          { value: 'payouts', label: 'Payouts' },
+          { value: 'transactions', label: 'Transactions' },
+          { value: 'ledger', label: 'Wallet ledger' },
+          { value: 'refunds', label: 'Refunds' },
+          { value: 'config', label: 'Policy' },
+        ]}
+        value={tab}
+        onChange={setTab}
+        aria-label="Finance sections"
+        className="mb-5"
       />
 
-      <PayoutDecisionDrawer payout={selected} onClose={() => setSelected(null)} />
+      {tab === 'payouts' ? <PayoutApprovalsTab /> : null}
+      {tab === 'transactions' ? <TransactionsTab /> : null}
+      {tab === 'ledger' ? <LedgerTab /> : null}
+      {tab === 'refunds' ? <RefundsTab /> : null}
+      {tab === 'config' ? <FinanceConfigTab /> : null}
     </div>
   );
 }

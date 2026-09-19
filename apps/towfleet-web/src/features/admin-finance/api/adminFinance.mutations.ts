@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { AdminFinanceConfigDto } from '@towing/api-contracts';
+import type { AdminFinanceConfigDto, AdminRefundIssue } from '@towing/api-contracts';
 import { adminFinanceKeys } from './adminFinance.keys';
 import { adminFinanceDataSource } from './adminFinanceDataSource';
 
@@ -51,6 +51,30 @@ export function useUpdateFinanceConfig() {
     retry: false,
     onSuccess: (config) => {
       queryClient.setQueryData(adminFinanceKeys.config(), config);
+      void queryClient.invalidateQueries({ queryKey: adminFinanceKeys.all });
+    },
+  });
+}
+
+/**
+ * W9's refund, and the ONLY money write in the console — which is why it is
+ * the one that takes an `Idempotency-Key`, generated per drawer OPEN (the
+ * component's job, not the hook's: a retry of the same intent must reuse the
+ * key, a new refund must not).
+ *
+ * `retry: false` for the sharpest version of the usual reason: a timed-out
+ * refund may already have gone through the gateway, and the key would replay
+ * it safely — but the operator re-reading a refreshed list is the better
+ * human answer, and the key means the retry they choose is also safe.
+ */
+export function useIssueRefund() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { body: AdminRefundIssue; idempotencyKey: string }) =>
+      adminFinanceDataSource.issueRefund(input.body, input.idempotencyKey),
+    retry: false,
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: adminFinanceKeys.all });
     },
   });
