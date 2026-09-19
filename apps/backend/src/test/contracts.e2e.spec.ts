@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import {
   adminAdminsListResponseSchema,
+  adminAuditListResponseSchema,
   adminCommissionConfigSchema,
   adminDispatchConfigSchema,
   adminFinanceConfigSchema,
@@ -43,7 +44,7 @@ import {
   truncateAll,
   type TestDatabase,
 } from '../test/db';
-import { commissionConfigHistory, driverDocuments, payouts } from '../db/schema';
+import { adminActions, commissionConfigHistory, driverDocuments, payouts } from '../db/schema';
 import { seedBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
 import { closeTestRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
@@ -119,6 +120,8 @@ describe('response contracts', () => {
     // real issued session — an empty list is exactly the vacuous row this
     // file's doctrine warns about. The fixture above mints one.
     { path: '/v1/admin/auth/sessions', schema: adminSessionsResponseSchema, realm: 'admin' },
+    // W1 §3.5. Seeded with one audit row below for the same reason.
+    { path: '/v1/admin/audit', schema: adminAuditListResponseSchema, realm: 'admin' },
   ];
 
   beforeAll(async () => {
@@ -187,6 +190,17 @@ describe('response contracts', () => {
       oldPct: null,
       newPct: '10.00',
       changedBy: superAdmin.id,
+      reason: 'contract coverage seed',
+    });
+
+    // W1 §3.5 — one audit row so the feed row above is non-empty (and the
+    // super admin's own-row filter would not hide it either way).
+    await db.insert(adminActions).values({
+      adminId: superAdmin.id,
+      action: 'pricing.edit',
+      subjectType: 'pricing',
+      before: { bandAPct: '12.00' },
+      after: { bandAPct: '12.50' },
       reason: 'contract coverage seed',
     });
   });
@@ -322,6 +336,9 @@ const EXCLUDED = new Set([
   // rows above: asserted with `expectMatchesContract` against
   // `adminAdminDetailSchema` in `admin-users.e2e.spec.ts`, which owns a real id.
   '/v1/admin/admins/:id',
+  // W1 §3.5 — audit detail, asserted with `expectMatchesContract` against
+  // `adminAuditDetailSchema` in `admin-audit.e2e.spec.ts`, which owns a real id.
+  '/v1/admin/audit/:id',
 ]);
 
 /** Express 5 keeps the registered layers on `router.stack`. */
