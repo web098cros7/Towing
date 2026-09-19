@@ -106,6 +106,7 @@ export const adminOpsLiveMock: AdminOpsLiveResponse = {
       speedKph: 31,
       at: secondsAgo(8),
       fromFallback: false,
+      dispatchable: true,
     },
     {
       driverId: '00000000-0000-4000-8000-0000000000d3',
@@ -117,6 +118,8 @@ export const adminOpsLiveMock: AdminOpsLiveResponse = {
       speedKph: 24,
       at: secondsAgo(12),
       fromFallback: false,
+      // W6: a suspended-fleet driver — drawn, but no offer would reach them.
+      dispatchable: false,
     },
     {
       driverId: '00000000-0000-4000-8000-0000000000d4',
@@ -128,6 +131,7 @@ export const adminOpsLiveMock: AdminOpsLiveResponse = {
       speedKph: null,
       at: null,
       fromFallback: true,
+      dispatchable: true,
     },
   ],
   bookings: [
