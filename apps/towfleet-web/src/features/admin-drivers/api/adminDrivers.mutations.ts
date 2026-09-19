@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminDriversKeys } from './adminDrivers.keys';
 import { adminDriversDataSource, type CapabilitiesUpdateInput } from './adminDriversDataSource';
-import type { AdminPendingDriver, KycDecision } from '../types';
+import type { AdminPendingDriversPage, KycBulkDecision, KycDecision } from '../types';
 
 /** Approve / reject / request-info / suspend / reactivate — the driver-level §3.1 decision. */
 export function useDecideKyc() {
@@ -11,19 +11,46 @@ export function useDecideKyc() {
       driverId,
       decision,
       reason,
+      mode,
     }: {
       driverId: string;
       decision: KycDecision;
       reason?: string;
-    }) => adminDriversDataSource.decideKyc(driverId, decision, reason),
+      /** A14, `suspend` only: shelf until the live job ends (default) or apply now. */
+      mode?: 'after_current_job' | 'immediate';
+    }) => adminDriversDataSource.decideKyc(driverId, decision, reason, mode),
     onSuccess: () => {
-      // Every decision changes whether the driver still belongs in the queue.
-      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pending() });
+      // Every decision changes whether the driver still belongs in the queue —
+      // and the queue is paged now, so the whole family is invalidated.
+      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pendingRoot() });
     },
   });
 }
 
-/** Per-document approve/reject — new in Phase 11. */
+/**
+ * W7's bulk approve/reject. Deliberately NOT optimistic and never
+ * all-or-nothing: the response carries one result per driver, and the caller
+ * renders every failure beside the driver it belongs to.
+ */
+export function useBulkDecideKyc() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      decision,
+      driverIds,
+      reason,
+    }: {
+      decision: KycBulkDecision;
+      driverIds: string[];
+      reason?: string;
+    }) => adminDriversDataSource.bulkDecide(decision, driverIds, reason),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pendingRoot() });
+    },
+  });
+}
+
+/** Per-document approve/reject — Phase 11; W7 added the history it writes to. */
 export function useReviewDocument() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -38,8 +65,10 @@ export function useReviewDocument() {
       decision: 'approve' | 'reject';
       reason?: string;
     }) => adminDriversDataSource.reviewDocument(driverId, documentId, decision, reason),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pending() });
+    onSuccess: (_result, { driverId }) => {
+      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pendingRoot() });
+      // The review completes a version row — the history panel is now stale.
+      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.versions(driverId) });
     },
   });
 }
@@ -51,21 +80,32 @@ export function useUpdateDriverCapabilities() {
     mutationFn: ({ driverId, input }: { driverId: string; input: CapabilitiesUpdateInput }) =>
       adminDriversDataSource.updateCapabilities(driverId, input),
     onSuccess: (response, { driverId, input }) => {
-      // A19: merge the toggle into the queue cache for instant feedback, then
+      // A19: merge the toggle into the cached page for instant feedback, then
       // invalidate so server truth settles right after. The drawer derives its
       // row from this cache, so it updates without a reload either way.
-      queryClient.setQueryData<AdminPendingDriver[]>(adminDriversKeys.pending(), (previous) =>
-        previous?.map((row) =>
-          row.id === driverId
+      queryClient.setQueriesData<AdminPendingDriversPage>(
+        { queryKey: adminDriversKeys.pendingRoot() },
+        (previous) =>
+          previous
             ? {
-                ...row,
-                vehicleClass: response.vehicleClass ?? input.vehicleClass ?? row.vehicleClass,
-                longDistanceEnabled: response.longDistanceEnabled ?? input.longDistanceEnabled ?? row.longDistanceEnabled,
+                ...previous,
+                items: previous.items.map((row) =>
+                  row.id === driverId
+                    ? {
+                        ...row,
+                        vehicleClass:
+                          response.vehicleClass ?? input.vehicleClass ?? row.vehicleClass,
+                        longDistanceEnabled:
+                          response.longDistanceEnabled ??
+                          input.longDistanceEnabled ??
+                          row.longDistanceEnabled,
+                      }
+                    : row,
+                ),
               }
-            : row,
-        ),
+            : previous,
       );
-      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pending() });
+      void queryClient.invalidateQueries({ queryKey: adminDriversKeys.pendingRoot() });
     },
   });
 }

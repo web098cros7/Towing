@@ -77,6 +77,25 @@ export const adminAuditMock: AdminAuditDetail[] = [
     before: { bandAPct: '12.00' },
     after: { bandAPct: '12.50' },
   },
+  {
+    id: 'c0000006-0006-4000-8000-000000000006',
+    adminId: '77777777-7777-4777-8777-777777777777',
+    action: 'driver.kyc.request_info',
+    subjectType: 'driver',
+    /**
+     * W7: the KYC drawer renders this driver's history from the subject-scoped
+     * feed, so the first queue fixture needs a row that resolves to it — hence
+     * a mock id rather than a uuid. Without it the panel can only ever be
+     * asserted in its empty state.
+     */
+    subjectId: 'admin-mock-driver-1',
+    reason: 'RC is legible but the insurance expiry is cut off',
+    ip: '49.207.14.3',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    createdAt: new Date(Date.now() - 90 * 60_000).toISOString(),
+    before: { kycStatus: 'pending' },
+    after: { kycStatus: 'incomplete' },
+  },
 ];
 
 /** The list projection — what the feed returns (no before/after). */
