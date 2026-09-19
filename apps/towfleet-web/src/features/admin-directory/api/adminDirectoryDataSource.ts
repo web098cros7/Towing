@@ -47,7 +47,8 @@ import {
   adminDirectoryUsersMock,
   adminDirectoryZonesMock,
   adminDriverDecisionMock,
-  adminDriverZonesResultMock,
+  mockDriverZoneRefs,
+  mockDriverZoneStore,
   adminDriversDirectoryMock,
   adminFleetSuspensionMock,
   adminFleetsDirectoryMock,
@@ -185,7 +186,8 @@ const mockSource: AdminDirectoryDataSource = {
     ),
   driver: async (driverId) => {
     await mockDelay();
-    return adminDirectoryDriverDetailMock[driverId] ?? adminDirectoryDriverDetailMock[MOCK_DRIVER_ONLINE]!;
+    const base = adminDirectoryDriverDetailMock[driverId] ?? adminDirectoryDriverDetailMock[MOCK_DRIVER_ONLINE]!;
+    return { ...base, id: driverId, zoneRestrictions: mockDriverZoneRefs(driverId) };
   },
   driverBookings: () => resolveMock(env.mockAdminDirectoryState, adminDirectoryDriverBookingsMock, { ...adminDirectoryDriverBookingsMock, items: [], total: 0 }),
   suspendDriver: async (driverId) => {
@@ -198,7 +200,8 @@ const mockSource: AdminDirectoryDataSource = {
   },
   updateDriverZones: async (driverId, zoneIds) => {
     await mockDelay();
-    return adminDriverZonesResultMock(driverId, zoneIds);
+    mockDriverZoneStore.set(driverId, [...zoneIds]);
+    return { driverId, zoneRestrictions: mockDriverZoneRefs(driverId) };
   },
 
   fleets: (query) =>
@@ -243,7 +246,35 @@ const mockSource: AdminDirectoryDataSource = {
   },
   fleetDrivers: async () => {
     await mockDelay();
-    return { items: [], page: 1, limit: 25, total: 0 };
+    return {
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000011',
+          name: 'Kiran Shetty',
+          phone: '+919845000011',
+          kycStatus: 'approved' as const,
+          isOnline: true,
+          assignedTruckPlate: 'KA01XY9999',
+          rating: 4.6,
+          tripsTotal: 341,
+          monthNetPaise: 246_500,
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000013',
+          name: 'Deepak Verma',
+          phone: '+919845000013',
+          kycStatus: 'suspended' as const,
+          isOnline: false,
+          assignedTruckPlate: null,
+          rating: 3.2,
+          tripsTotal: 12,
+          monthNetPaise: 0,
+        },
+      ],
+      page: 1,
+      limit: 25,
+      total: 2,
+    };
   },
   fleetEarnings: async () => {
     await mockDelay();

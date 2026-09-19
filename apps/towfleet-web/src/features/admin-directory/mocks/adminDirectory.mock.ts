@@ -272,6 +272,25 @@ export const adminDirectoryZonesMock: AdminDirectoryZone[] = [
   { id: MOCK_ZONE_SOUTH, name: 'South Zone', isActive: true },
 ];
 
+/**
+ * Mutable zone-restriction state, seeded from the fixtures. The real server's
+ * save REFETCHES to the new set; a fixture that stayed static would make the
+ * page's "Saved" state unreachable (the dirty check compares against the
+ * refetched detail). One process-wide map is honest enough for mocks-on runs.
+ */
+export const mockDriverZoneStore = new Map<string, string[]>([
+  [MOCK_DRIVER_RESTRICTED, [MOCK_ZONE_AIRPORT]],
+  [MOCK_DRIVER_ONLINE, []],
+  [MOCK_DRIVER_SUSPENDED, []],
+]);
+
+/** Zone refs for a driver, store-backed — the shape the detail route returns. */
+export const mockDriverZoneRefs = (driverId: string): Array<{ zoneId: string; name: string }> =>
+  (mockDriverZoneStore.get(driverId) ?? []).map((zoneId) => ({
+    zoneId,
+    name: adminDirectoryZonesMock.find((zone) => zone.id === zoneId)?.name ?? 'Unknown zone',
+  }));
+
 export const adminImpersonationMock: AdminImpersonationResponse = {
   session: {
     id: MOCK_IMPERSONATION_SESSION,
@@ -392,13 +411,6 @@ export const adminDriverDecisionMock = (driverId: string): AdminDriverDecisionRe
   rejectionReason: null,
   sessionsRevoked: 1,
   suspensionPending: false,
-});
-
-export const adminDriverZonesResultMock = (driverId: string, zoneIds: string[]): AdminDriverZonesResponse => ({
-  driverId,
-  zoneRestrictions: adminDirectoryZonesMock
-    .filter((zone) => zoneIds.includes(zone.id))
-    .map((zone) => ({ zoneId: zone.id, name: zone.name })),
 });
 
 export const adminFleetSuspensionMock = (fleetId: string): AdminFleetSuspensionResponse => ({

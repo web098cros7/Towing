@@ -256,7 +256,7 @@ export function AdminUsersDirectory() {
       ) : (
         <>
           {requestError ? (
-            <p role="alert" className="text-sm text-error">
+            <p role="alert" data-testid="admin-request-error" className="text-sm text-error">
               {requestError}
             </p>
           ) : null}
