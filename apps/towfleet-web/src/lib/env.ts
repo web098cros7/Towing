@@ -27,6 +27,8 @@ export const env = {
   mockAdminFinanceState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_FINANCE_STATE ?? '') as MockState,
   /** W2's admin directory (M1). */
   mockAdminAdminsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_ADMINS_STATE ?? '') as MockState,
+  /** W1's audit viewer (M1). */
+  mockAdminAuditState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_AUDIT_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
