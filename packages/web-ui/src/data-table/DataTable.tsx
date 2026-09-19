@@ -27,6 +27,21 @@ export type DataTablePagination = {
   onPageChange: (page: number) => void;
 };
 
+/**
+ * Row selection (W1 §3.3; built for W7's bulk KYC decisions).
+ *
+ * IDS, NOT ROW OBJECTS: the caller keeps the selection across refetches —
+ * which is the whole point of a bulk action — and an id set survives a refetch
+ * that returns new object identities.
+ */
+export type DataTableSelection<TData> = {
+  selectedIds: ReadonlySet<string>;
+  getRowId: (row: TData) => string;
+  onToggle: (id: string) => void;
+  /** Header checkbox; receives every id on the current page, or `[]` to clear. */
+  onToggleAll?: (ids: string[]) => void;
+};
+
 export type DataTableProps<TData> = {
   columns: ColumnDef<TData, unknown>[];
   data: TData[];
@@ -39,6 +54,8 @@ export type DataTableProps<TData> = {
   /** Server-side pagination — the table never paginates client-side. */
   pagination?: DataTablePagination;
   onRowClick?: (row: TData) => void;
+  /** Renders a checkbox column; see `DataTableSelection` for why ids. */
+  selection?: DataTableSelection<TData>;
   className?: string;
 };
 
@@ -58,11 +75,50 @@ export function DataTable<TData>({
   emptyAction,
   pagination,
   onRowClick,
+  selection,
   className,
 }: DataTableProps<TData>) {
+  const selectionColumn: ColumnDef<TData, unknown> | null = selection
+    ? {
+        id: '__selection',
+        header: () => {
+          const pageIds = data.map(selection.getRowId);
+          const allSelected =
+            pageIds.length > 0 && pageIds.every((id) => selection.selectedIds.has(id));
+          return (
+            <input
+              type="checkbox"
+              aria-label="Select all rows on this page"
+              data-testid="select-all-rows"
+              className="size-4 accent-brand"
+              checked={allSelected}
+              disabled={!selection.onToggleAll}
+              onChange={(event) => selection.onToggleAll?.(event.target.checked ? pageIds : [])}
+            />
+          );
+        },
+        cell: ({ row }) => {
+          const id = selection.getRowId(row.original);
+          return (
+            <input
+              type="checkbox"
+              aria-label="Select row"
+              data-testid={`select-row-${id}`}
+              className="size-4 accent-brand"
+              checked={selection.selectedIds.has(id)}
+              onChange={() => selection.onToggle(id)}
+              // Without this a row-click screen would fire its drawer on a
+              // selection click.
+              onClick={(event) => event.stopPropagation()}
+            />
+          );
+        },
+      }
+    : null;
+
   const table = useReactTable({
     data,
-    columns,
+    columns: selectionColumn ? [selectionColumn, ...columns] : columns,
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
     manualSorting: true,

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, Info, OctagonAlert } from 'lucide-react';
-import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, ErrorState, Skeleton } from '@towing/web-ui';
+import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, ErrorState, KpiCard, Skeleton } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { useDashboardSummary } from '@/features/dashboard/api/dashboard.queries';
 import { DashboardMiniMap } from '@/features/realtime/components/DashboardMiniMap';
@@ -14,20 +14,6 @@ const severityIcon: Record<FleetAlert['severity'], React.ReactNode> = {
   warning: <AlertTriangle className="size-4 text-warning" />,
   info: <Info className="size-4 text-info" />,
 };
-
-function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <Card>
-      <CardHeader className="pb-0">
-        <CardTitle>{label}</CardTitle>
-      </CardHeader>
-      <CardContent className="pt-2">
-        <div className="text-3xl font-bold tabular-nums">{value}</div>
-        {hint ? <p className="mt-1 text-xs text-text-tertiary">{hint}</p> : null}
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function DashboardPage() {
   const { data, isLoading, isError, refetch } = useDashboardSummary();
