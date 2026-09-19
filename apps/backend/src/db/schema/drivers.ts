@@ -119,6 +119,15 @@ export const drivers = pgTable(
     pendingSuspensionReason: text('pending_suspension_reason'),
     pendingSuspensionBy: uuid('pending_suspension_by').references(() => adminUsers.id),
     pendingSuspensionAt: timestamp('pending_suspension_at', { withTimezone: true }),
+    /**
+     * W6: who suspended this driver and why. The operational state itself stays
+     * `kyc_status = 'suspended'` (the gate `KycApprovedGuard` and eligibility
+     * already honour); the A14 shelf above stays the deferred-decision state.
+     * These columns are the audit the directory detail renders.
+     */
+    suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+    suspendedBy: uuid('suspended_by').references(() => adminUsers.id),
+    suspensionReason: text('suspension_reason'),
     ...timestamps,
   },
   (t) => [

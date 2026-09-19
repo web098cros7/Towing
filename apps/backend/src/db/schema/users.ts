@@ -1,5 +1,6 @@
 import type { SubjectNotificationPrefs, VehicleCategory } from '@towing/api-contracts';
-import { boolean, doublePrecision, index, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { boolean, doublePrecision, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { adminUsers } from './admin';
 import { primaryId, timestamps } from './columns';
 import { accountStatusEnum } from './enums';
 
@@ -15,6 +16,15 @@ export const users = pgTable(
     defaultLat: doublePrecision('default_lat'),
     defaultLng: doublePrecision('default_lng'),
     status: accountStatusEnum('status').notNull().default('active'),
+    /**
+     * W6 suspension metadata. `status` is the gate every reader already honours
+     * (`account_not_active` on booking creation, the customer policy at refresh);
+     * these three columns record WHO decided and WHY, for the same reason
+     * `admin_actions` exists — the status alone loses the story.
+     */
+    suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+    suspendedBy: uuid('suspended_by').references(() => adminUsers.id),
+    suspensionReason: text('suspension_reason'),
     /**
      * §12.3 per-user channel opt-outs (Phase 13). Only the categories a person
      * may legally switch off have a key — transactional and safety rows are

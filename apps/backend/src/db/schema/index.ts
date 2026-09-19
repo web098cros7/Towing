@@ -9,6 +9,7 @@ export * from './drivers';
 export * from './trucks';
 export * from './service-zones';
 export * from './bookings';
+export * from './directory';
 export * from './money';
 export * from './payout-accounts';
 export * from './earnings';

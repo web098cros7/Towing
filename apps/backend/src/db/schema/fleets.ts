@@ -1,5 +1,6 @@
 import { index, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import type { NotificationPrefs } from '@towing/api-contracts';
+import { adminUsers } from './admin';
 import { primaryId, timestamps } from './columns';
 import { fleetOnboardingStepEnum, fleetStatusEnum } from './enums';
 import { users } from './users';
@@ -41,6 +42,10 @@ export const fleets = pgTable(
      * from the data it summarises.
      */
     profileCompletedAt: timestamp('profile_completed_at', { withTimezone: true }),
+    /** W6 suspension metadata — same trio as users and drivers (migration 0024). */
+    suspendedAt: timestamp('suspended_at', { withTimezone: true }),
+    suspendedBy: uuid('suspended_by').references(() => adminUsers.id),
+    suspensionReason: text('suspension_reason'),
     ...timestamps,
   },
   (t) => [index('idx_fleets_owner').on(t.ownerId), index('idx_fleets_status').on(t.status)],

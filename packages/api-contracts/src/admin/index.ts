@@ -2,6 +2,7 @@
 export * from './auth';
 export * from './admin-users';
 export * from './audit';
+export * from './directory';
 export * from './notes';
 export * from './dispatch';
 export * from './drivers';

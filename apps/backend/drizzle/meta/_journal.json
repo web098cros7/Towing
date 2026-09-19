@@ -169,6 +169,13 @@
       "when": 1789746600000,
       "tag": "0023_dispatch_inspector",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789746600001,
+      "tag": "0024_admin_directory_search",
+      "breakpoints": true
     }
   ]
 }
