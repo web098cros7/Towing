@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@towing/web-ui';
 import type { AdminPayoutDto } from '@towing/api-contracts';
+import { NotesPanel } from '@/features/admin-notes/components/NotesPanel';
 import { formatPaise } from '@/lib/money';
 import { useApprovePayout, useRejectPayout } from '../api/adminFinance.mutations';
 
@@ -132,6 +133,13 @@ export function PayoutDecisionDrawer({
         ) : null}
 
         {error ? <p className="mt-3 text-sm text-error">{error.message}</p> : null}
+
+        {/* W21: the same panel every detail screen carries. Payout notes are
+            `finance.read`-gated server-side, so this drawer's audience is
+            exactly who may see them. */}
+        <div className="mt-5 border-t border-border pt-4">
+          <NotesPanel subjectType="payout" subjectId={payout.id} />
+        </div>
       </DialogBody>
 
       <DialogFooter>

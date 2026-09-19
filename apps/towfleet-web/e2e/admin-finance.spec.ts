@@ -68,6 +68,12 @@ test('a pending payout opens a decision drawer showing both status axes', async 
 
   // The sentence that stops an operator reasoning wrongly about a rejection.
   await expect(page.getByText(/wallet was already debited/i)).toBeVisible();
+
+  // W21: the notes panel drops into every detail screen. The driver-fixtured
+  // notes must NOT appear for a payout subject — the empty state also proves
+  // the panel scopes by subject, not just by screen.
+  await expect(page.getByRole('heading', { name: 'Internal notes' })).toBeVisible();
+  await expect(page.getByTestId('notes-empty')).toBeVisible();
 });
 
 test('rejection requires a reason before the confirm button enables', async ({ page }) => {
