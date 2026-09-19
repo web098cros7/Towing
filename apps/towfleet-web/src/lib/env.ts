@@ -46,6 +46,8 @@ export const env = {
   mockAdminCommissionState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_COMMISSION_STATE ?? '') as MockState,
   /** W12's dispatch + app config screen (M4). */
   mockAdminDispatchState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_DISPATCH_STATE ?? '') as MockState,
+  /** W13's service-zone editor (M4). */
+  mockAdminZonesState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_ZONES_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
