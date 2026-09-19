@@ -35,6 +35,17 @@ export const SUBJECT_READ_PERMISSION: Record<string, AdminPermission> = {
   sos_alert: 'sos.handle',
   support_ticket: 'ticket.handle',
   deletion_request: 'privacy.handle',
+  /**
+   * W10/W11/W12 config changes. These rows are written by the config writers
+   * themselves with the whole before/after, and the subject map is what lets an
+   * admin who holds the matching permission see a colleague's change on that
+   * subject. `app_config` rides `dispatch.config` because the SEV banner and
+   * the kill switches are the same operational lever.
+   */
+  pricing_config: 'pricing.edit',
+  commission_config: 'commission.edit',
+  dispatch_config: 'dispatch.config',
+  app_config: 'dispatch.config',
 };
 
 export function canReadSubject(subRole: AdminSubRole, subjectType: string): boolean {

@@ -51,6 +51,15 @@ export class DispatchConfigRepo {
         stalePingSeconds: row.stalePingSeconds,
         oneActiveBookingPerCustomer: row.oneActiveBookingPerCustomer,
         blockOnUnpaidBalance: row.blockOnUnpaidBalance,
+        // ── W12 ──
+        redispatchPriority: row.redispatchPriority as 'front' | 'normal',
+        pingOnJobMs: row.pingOnJobMs,
+        pingIdleMs: row.pingIdleMs,
+        // Raw JSONB out of a cache: validated by the CONSUMER
+        // (`resolveDispatchConfig`'s per-service layer takes a `ServiceType`
+        // key), so a hand-edited value degrades to "no override", never to a
+        // crash on the dispatch path.
+        perServiceMaxOffers: (row.perServiceMaxOffers ?? null) as BookingGuardConfig['perServiceMaxOffers'],
       };
     });
   }

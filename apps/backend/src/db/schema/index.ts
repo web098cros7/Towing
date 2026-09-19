@@ -24,5 +24,6 @@ export * from './devices';
 export * from './privacy';
 export * from './notifications';
 export * from './pricing';
+export * from './app-config';
 export * from './promotions';
 export * from './ratings';

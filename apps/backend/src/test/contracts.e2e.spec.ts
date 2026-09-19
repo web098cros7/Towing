@@ -31,6 +31,7 @@ import {
   adminTransactionsResponseSchema,
   adminSessionsResponseSchema,
   adminSuspensionRequestsResponseSchema,
+  appConfigSchema,
   alertsListResponseSchema,
   bookingListResponseSchema,
   commissionHistoryEntrySchema,
@@ -205,6 +206,11 @@ describe('response contracts', () => {
         schema: adminCommissionImpactSchema,
         realm: 'admin',
       },
+      // W12 — the app config, from both doors. The public one is `@Public()` by
+      // design (a build that must force-upgrade cannot first authenticate); the
+      // token here is simply ignored, which is itself worth pinning.
+      { path: '/v1/app-config', schema: appConfigSchema, realm: 'customer' },
+      { path: '/v1/admin/app-config', schema: appConfigSchema, realm: 'admin' },
       {
         path: '/v1/admin/commission/history',
         schema: z.array(commissionHistoryEntrySchema),

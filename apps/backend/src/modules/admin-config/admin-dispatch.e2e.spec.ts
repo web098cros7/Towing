@@ -16,7 +16,8 @@ import {
 } from '../../test/db';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 import { DispatchConfigRepo } from '../bookings/dispatch-config.repo';
-import { seedDispatchConfig, seedZone } from '../dispatch/dispatch-fixtures';
+import { DriverPresenceService } from '../driver-presence/driver-presence.service';
+import { seedDispatchConfig, seedOnlineDriver, seedZone } from '../dispatch/dispatch-fixtures';
 
 /**
  * §16.5's `GET/PUT /v1/admin/dispatch-config`.
@@ -302,5 +303,110 @@ describe('admin dispatch config (§16.5)', () => {
       .expect(200);
 
     expect((await app.get(DispatchConfigRepo).load()).stalePingSeconds).toBe(90);
+  });
+
+  describe('W12 knobs: re-dispatch priority, ping cadence, per-service offers', () => {
+    it('serves the documented defaults for a database that has never been tuned', async () => {
+      await seedDispatchConfig(db);
+      const config = await getConfig(auth);
+
+      expect(config.global).toMatchObject({
+        redispatchPriority: 'front',
+        pingOnJobMs: 3_000,
+        pingIdleMs: 10_000,
+        perServiceMaxOffers: null,
+      });
+    });
+
+    it('edits all four, and audits the change', async () => {
+      await seedDispatchConfig(db);
+
+      const response = await request(app.getHttpServer())
+        .put('/v1/admin/dispatch-config')
+        .set('Authorization', auth)
+        .send({
+          redispatchPriority: 'normal',
+          pingOnJobMs: 5_000,
+          pingIdleMs: 12_000,
+          perServiceMaxOffers: { fuel: 1, breakdown: 2 },
+          reason: 'Network incident tuning',
+        })
+        .expect(200);
+
+      expect(response.body.global).toMatchObject({
+        redispatchPriority: 'normal',
+        pingOnJobMs: 5_000,
+        pingIdleMs: 12_000,
+        perServiceMaxOffers: { fuel: 1, breakdown: 2 },
+      });
+
+      const audits = await db
+        .select()
+        .from(adminActions)
+        .where(eq(adminActions.action, 'dispatch_config.update'));
+      expect(audits.length).toBeGreaterThan(0);
+      expect(audits[audits.length - 1]!.reason).toBe('Network incident tuning');
+    });
+
+    it('CLEARS the platform per-service offers with null — different from omitting them', async () => {
+      await seedDispatchConfig(db, { perServiceMaxOffers: { fuel: 1 } });
+
+      // Omitting the key leaves it alone…
+      await request(app.getHttpServer())
+        .put('/v1/admin/dispatch-config')
+        .set('Authorization', auth)
+        .send({ pingIdleMs: 11_000 })
+        .expect(200);
+
+      let config = await getConfig(auth);
+      expect(config.global.perServiceMaxOffers).toEqual({ fuel: 1 });
+
+      // …and an explicit null clears it.
+      await request(app.getHttpServer())
+        .put('/v1/admin/dispatch-config')
+        .set('Authorization', auth)
+        .send({ perServiceMaxOffers: null })
+        .expect(200);
+
+      config = await getConfig(auth);
+      expect(config.global.perServiceMaxOffers).toBeNull();
+    });
+
+    it('refuses an out-of-range cadence and an unknown priority at the schema', async () => {
+      await seedDispatchConfig(db);
+
+      for (const body of [
+        { pingOnJobMs: 500 },
+        { pingIdleMs: 400_000 },
+        { redispatchPriority: 'sometimes' },
+        { perServiceMaxOffers: { fuel: 99 } },
+      ]) {
+        await request(app.getHttpServer())
+          .put('/v1/admin/dispatch-config')
+          .set('Authorization', auth)
+          .send(body)
+          .expect(422);
+      }
+    });
+
+    it('carries a cadence change straight through to the driver config (§11.3)', async () => {
+      // The knob was a frozen constant in contracts; W12 made it a column. The
+      // proof is that the pushed config reads it — with no restart, the same
+      // route the handset gets its cadence from.
+      await seedDispatchConfig(db, { pingIdleMs: 10_000, pingOnJobMs: 3_000 });
+      const zoneId = await seedZone(db);
+      const driverId = await seedOnlineDriver(db, { zoneId, metersAway: 500 });
+
+      const presence = app.get(DriverPresenceService);
+      expect((await presence.configFor(driverId)).pingIntervalMs).toBe(10_000);
+
+      await request(app.getHttpServer())
+        .put('/v1/admin/dispatch-config')
+        .set('Authorization', auth)
+        .send({ pingIdleMs: 7_000 })
+        .expect(200);
+
+      expect((await presence.configFor(driverId)).pingIntervalMs).toBe(7_000);
+    });
   });
 });

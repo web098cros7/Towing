@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -359,5 +360,16 @@ export const dispatchConfig = pgTable('dispatch_config', {
    * 'user' and nothing has ever created one.
    */
   blockOnUnpaidBalance: boolean('block_on_unpaid_balance').notNull().default(true),
+  // ── W12 ──
+  /** §6.7's "re-dispatch priority": `front` (jump the queue) or `normal`. */
+  redispatchPriority: text('redispatch_priority').notNull().default('front'),
+  /** §11.3's cadence on an active job, pushed to handsets as `config:update`. */
+  pingOnJobMs: integer('ping_on_job_ms').notNull().default(3_000),
+  pingIdleMs: integer('ping_idle_ms').notNull().default(10_000),
+  /**
+   * Platform-level per-service `offersPerWave` (W12). The resolution order is
+   * documented on `resolveDispatchConfig`: a zone override still wins.
+   */
+  perServiceMaxOffers: jsonb('per_service_max_offers'),
   ...timestamps,
 });

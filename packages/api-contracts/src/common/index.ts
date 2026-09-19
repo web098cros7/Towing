@@ -1,4 +1,5 @@
 export * from './account-privacy';
+export * from './app-config';
 export * from './auth';
 export * from './dispatch-config';
 export * from './enums';

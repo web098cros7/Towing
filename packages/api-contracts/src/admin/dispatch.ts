@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { dispatchConfigOverrideSchema, scorerWeightsSchema } from '../common/dispatch-config';
+import {
+  dispatchConfigOverrideSchema,
+  perServiceMaxOffersSchema,
+  redispatchPrioritySchema,
+  scorerWeightsSchema,
+} from '../common/dispatch-config';
 
 /**
  * `GET/PUT /v1/admin/dispatch-config` (§16.5) — Phase 17.
@@ -32,6 +37,14 @@ export const adminGlobalDispatchSchema = z.object({
   oneActiveBookingPerCustomer: z.boolean(),
   /** §3.8's "admin-configurable" unpaid-balance block. */
   blockOnUnpaidBalance: z.boolean(),
+  // ── W12 ──
+  /** §6.7's re-dispatch priority: jump the queue, or wait for the cadence. */
+  redispatchPriority: redispatchPrioritySchema,
+  /** §11.3's cadence on an active job — pushed to handsets as `config:update`. */
+  pingOnJobMs: z.number().int().min(1_000).max(300_000),
+  pingIdleMs: z.number().int().min(1_000).max(300_000),
+  /** The platform-level per-service wave size; `null` means none is set. */
+  perServiceMaxOffers: perServiceMaxOffersSchema,
 });
 export type AdminGlobalDispatch = z.infer<typeof adminGlobalDispatchSchema>;
 
@@ -89,6 +102,12 @@ export const adminDispatchConfigUpdateSchema = z
     stalePingSeconds: z.number().int().min(5).max(300).optional(),
     oneActiveBookingPerCustomer: z.boolean().optional(),
     blockOnUnpaidBalance: z.boolean().optional(),
+    // ── W12 ──
+    redispatchPriority: redispatchPrioritySchema.optional(),
+    pingOnJobMs: z.number().int().min(1_000).max(300_000).optional(),
+    pingIdleMs: z.number().int().min(1_000).max(300_000).optional(),
+    /** `null` CLEARS the platform per-service offers back to the code defaults. */
+    perServiceMaxOffers: perServiceMaxOffersSchema.optional(),
     /**
      * Per-zone overrides. `null` CLEARS a zone back to the code defaults, which
      * is different from omitting the zone (leave it alone) — an admin must be

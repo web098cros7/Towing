@@ -118,9 +118,26 @@ export const DISPATCH_CONFIG_DEFAULTS: DispatchConfig = {
  * ladder is worse than one that runs on the documented default, and the write
  * path validates with `dispatchConfigOverrideSchema` so bad JSON can only get in
  * by hand.
+ *
+ * RESOLUTION ORDER, W12: code defaults → the PLATFORM's per-service
+ * `offersPerWave` → the zone's own overrides → the zone's per-service overrides.
+ * That order is the promise: a zone that overrides nothing keeps tracking every
+ * future change to the platform default, and a zone that overrides one key still
+ * tracks the others.
  */
-export function resolveDispatchConfig(raw: unknown, service?: ServiceType): DispatchConfig {
-  if (raw === null || raw === undefined) return { ...DISPATCH_CONFIG_DEFAULTS };
+export function resolveDispatchConfig(
+  raw: unknown,
+  service?: ServiceType,
+  globalPerServiceOffers?: PerServiceMaxOffers,
+): DispatchConfig {
+  if (raw === null || raw === undefined) {
+    return {
+      ...DISPATCH_CONFIG_DEFAULTS,
+      offersPerWave:
+        perServiceOffer(globalPerServiceOffers, service) ??
+        DISPATCH_CONFIG_DEFAULTS.offersPerWave,
+    };
+  }
 
   const parsed = dispatchConfigOverrideSchema.safeParse(raw);
   if (!parsed.success) return { ...DISPATCH_CONFIG_DEFAULTS };
@@ -137,13 +154,36 @@ export function resolveDispatchConfig(raw: unknown, service?: ServiceType): Disp
       zone.offerTimeoutSeconds ??
       DISPATCH_CONFIG_DEFAULTS.offerTimeoutSeconds,
     offersPerWave:
-      perService?.offersPerWave ?? zone.offersPerWave ?? DISPATCH_CONFIG_DEFAULTS.offersPerWave,
+      perService?.offersPerWave ??
+      zone.offersPerWave ??
+      perServiceOffer(globalPerServiceOffers, service) ??
+      DISPATCH_CONFIG_DEFAULTS.offersPerWave,
     maxSearchSeconds:
       perService?.maxSearchSeconds ??
       zone.maxSearchSeconds ??
       DISPATCH_CONFIG_DEFAULTS.maxSearchSeconds,
   };
 }
+
+function perServiceOffer(
+  offers: PerServiceMaxOffers | undefined,
+  service: ServiceType | undefined,
+): number | undefined {
+  if (!offers || !service) return undefined;
+  return offers[service];
+}
+
+/**
+ * §6.7's "re-dispatch priority" — W12.
+ *
+ * `front` is the behaviour §6.5 describes and the engine has shipped: a
+ * re-dispatch re-enters the matcher immediately (the customer has already spent
+ * one full search through no fault of their own). `normal` makes it wait for the
+ * next ordinary cadence instead — the knob exists so a platform drowning in
+ * cancel-and-redispatch loops can slow them down without a deploy.
+ */
+export const redispatchPrioritySchema = z.enum(['front', 'normal']);
+export type RedispatchPriority = z.infer<typeof redispatchPrioritySchema>;
 
 /**
  * §6.2's weighted scorer + §6.1's liveness threshold — the GLOBAL half of §6.7,
@@ -168,6 +208,20 @@ export const scorerWeightsSchema = z
   );
 export type ScorerWeights = z.infer<typeof scorerWeightsSchema>;
 
+/**
+ * Per-service `offersPerWave` at the PLATFORM level — the global layer W12 added.
+ *
+ * The zone column has carried a per-service override since Phase 14; what was
+ * missing was a default for zones nobody has tuned, so a city zone with no
+ * override still offered a fuel delivery the same number of drivers as a
+ * long-haul flatbed. `partialRecord`, not `record`: a full record would require
+ * every service to be present, which is the zod-4 trap documented above.
+ */
+export const perServiceMaxOffersSchema = z
+  .partialRecord(serviceTypeSchema, z.number().int().min(1).max(10))
+  .nullable();
+export type PerServiceMaxOffers = z.infer<typeof perServiceMaxOffersSchema>;
+
 /** The full global row. §6.7's "stale-ping threshold" and "one-active-booking toggle". */
 export const globalDispatchConfigSchema = z.object({
   weights: scorerWeightsSchema,
@@ -178,6 +232,14 @@ export const globalDispatchConfigSchema = z.object({
   stalePingSeconds: z.number().int().min(5).max(300),
   /** §3.8 / §6.7. Enforced by Phase 15's booking-creation guard. */
   oneActiveBookingPerCustomer: z.boolean(),
+  /** W12 — §6.7's missing knob. See `redispatchPrioritySchema`. */
+  redispatchPriority: redispatchPrioritySchema,
+  /** §11.3's cadence on an active job, milliseconds. Pushed over `config:update`. */
+  pingOnJobMs: z.number().int().min(1_000).max(300_000),
+  /** §11.3's cadence while online and idle. */
+  pingIdleMs: z.number().int().min(1_000).max(300_000),
+  /** W12 — the platform-level per-service wave size. `null` means "none set". */
+  perServiceMaxOffers: perServiceMaxOffersSchema,
 });
 export type GlobalDispatchConfig = z.infer<typeof globalDispatchConfigSchema>;
 
@@ -185,4 +247,13 @@ export const GLOBAL_DISPATCH_CONFIG_DEFAULTS: GlobalDispatchConfig = {
   weights: { proximity: 60, rating: 15, acceptance: 15, completion: 10 },
   stalePingSeconds: 15,
   oneActiveBookingPerCustomer: true,
+  // §6.5's shipped behaviour: a re-dispatch goes to the front.
+  redispatchPriority: 'front',
+  // `PING_CADENCE` from `realtime/presence.ts` — the values every handset has
+  // been told since Phase 16. Duplicated as literals rather than imported, so
+  // this file stays free of the realtime module (the two are read by different
+  // sides of the build and a cycle here would be silent).
+  pingOnJobMs: 3_000,
+  pingIdleMs: 10_000,
+  perServiceMaxOffers: null,
 };

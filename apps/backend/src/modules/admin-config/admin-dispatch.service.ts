@@ -69,6 +69,11 @@ export class AdminDispatchService {
             stalePingSeconds: globalRow.stalePingSeconds,
             oneActiveBookingPerCustomer: globalRow.oneActiveBookingPerCustomer,
             blockOnUnpaidBalance: globalRow.blockOnUnpaidBalance,
+            // ── W12 ──
+            redispatchPriority: globalRow.redispatchPriority as 'front' | 'normal',
+            pingOnJobMs: globalRow.pingOnJobMs,
+            pingIdleMs: globalRow.pingIdleMs,
+            perServiceMaxOffers: (globalRow.perServiceMaxOffers ?? null) as AdminDispatchConfig['global']['perServiceMaxOffers'],
           }
         : // A fresh or half-seeded database reports the documented defaults
           // rather than 500ing. `DispatchConfigRepo` takes the same view, so the
@@ -117,7 +122,11 @@ export class AdminDispatchService {
       body.weights ||
       body.stalePingSeconds !== undefined ||
       body.oneActiveBookingPerCustomer !== undefined ||
-      body.blockOnUnpaidBalance !== undefined
+      body.blockOnUnpaidBalance !== undefined ||
+      body.redispatchPriority !== undefined ||
+      body.pingOnJobMs !== undefined ||
+      body.pingIdleMs !== undefined ||
+      body.perServiceMaxOffers !== undefined
     ) {
       await this.updateGlobal(body);
     }
@@ -186,6 +195,16 @@ export class AdminDispatchService {
         : {}),
       ...(body.blockOnUnpaidBalance !== undefined
         ? { blockOnUnpaidBalance: body.blockOnUnpaidBalance }
+        : {}),
+      // ── W12. `null` is a VALUE here ("no platform per-service offers"), not an
+      // omission, which is why it is checked against `undefined` explicitly.
+      ...(body.redispatchPriority !== undefined
+        ? { redispatchPriority: body.redispatchPriority }
+        : {}),
+      ...(body.pingOnJobMs !== undefined ? { pingOnJobMs: body.pingOnJobMs } : {}),
+      ...(body.pingIdleMs !== undefined ? { pingIdleMs: body.pingIdleMs } : {}),
+      ...(body.perServiceMaxOffers !== undefined
+        ? { perServiceMaxOffers: body.perServiceMaxOffers }
         : {}),
       updatedAt: new Date(),
     };

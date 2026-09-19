@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  appConfig,
   chargeConfig,
   commissionConfig,
   commissionGuardrail,
@@ -423,6 +424,9 @@ export async function seedPricingFixtures(db: TestDatabase): Promise<void> {
 
   await db.insert(chargeConfig).values({});
   await db.insert(dispatchConfig).values({});
+  // W12 — the public `GET /v1/app-config` reader falls back to code defaults
+  // without this, which would make an app-config spec pass for the wrong reason.
+  await db.insert(appConfig).values({});
   await db.insert(commissionConfig).values([
     { band: 'A', pct: '10.00' },
     { band: 'B', pct: '8.00' },

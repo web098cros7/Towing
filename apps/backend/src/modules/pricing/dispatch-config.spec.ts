@@ -79,6 +79,33 @@ describe('resolveDispatchConfig — overrides actually apply', () => {
       DISPATCH_CONFIG_DEFAULTS.radiusLadderKm,
     );
   });
+
+  describe('the PLATFORM per-service layer (W12)', () => {
+    it('applies to a zone that overrides nothing', () => {
+      const resolved = resolveDispatchConfig(null, 'fuel', { fuel: 1 });
+      expect(resolved.offersPerWave).toBe(1);
+      // Only `offersPerWave` has a platform per-service layer; everything else
+      // still comes from the code defaults.
+      expect(resolved.offerTimeoutSeconds).toBe(DISPATCH_CONFIG_DEFAULTS.offerTimeoutSeconds);
+    });
+
+    it('is overridden by the zone, which is the point of the order', () => {
+      const zone = resolveDispatchConfig({ offersPerWave: 5 }, 'fuel', { fuel: 1 });
+      expect(zone.offersPerWave).toBe(5);
+
+      const perService = resolveDispatchConfig(
+        { perService: { fuel: { offersPerWave: 3 } } },
+        'fuel',
+        { fuel: 1 },
+      );
+      expect(perService.offersPerWave).toBe(3);
+    });
+
+    it('does nothing for a service it does not name', () => {
+      const resolved = resolveDispatchConfig(null, 'tow', { fuel: 1 });
+      expect(resolved.offersPerWave).toBe(DISPATCH_CONFIG_DEFAULTS.offersPerWave);
+    });
+  });
 });
 
 describe('dispatchConfigOverrideSchema — what an admin may write', () => {

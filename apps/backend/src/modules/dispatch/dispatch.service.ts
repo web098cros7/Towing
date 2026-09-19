@@ -11,6 +11,7 @@ import { DB, type Database } from '../../db/db.module';
 import { serviceZones } from '../../db/schema';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
+import { DispatchConfigRepo } from '../bookings/dispatch-config.repo';
 import { PresenceStore } from '../driver-presence/presence-store';
 import { CandidateSelectionService, type SelectionResult } from './candidate-selection.service';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
@@ -106,6 +107,9 @@ export class DispatchService implements OnModuleInit {
     private readonly machine: BookingStateMachineService,
     private readonly customerGateway: CustomerGateway,
     private readonly notifications: NotificationService,
+    /** The GLOBAL half of §6.7 — W12 reads it for the per-service wave size and
+     *  the re-dispatch priority. Already injected by the scorer in this module. */
+    private readonly globalConfig: DispatchConfigRepo,
   ) {}
 
   /**
@@ -337,9 +341,13 @@ export class DispatchService implements OnModuleInit {
     );
 
     this.logger.log(`re-dispatching ${bookingId} from wave ${booking.searchWave ?? 1} (${reason})`);
-    // Delay 0 — a re-dispatch goes to the front. The customer has already
-    // waited through one full search.
-    await this.reschedule(bookingId, 0, `redispatch-${reason}`);
+    // §6.7's re-dispatch priority (W12). `front` — the default and §6.5's
+    // shipped behaviour — is delay 0: the customer has already waited through
+    // one full search. `normal` schedules the re-dispatch like any other wave,
+    // which is what a platform drowning in cancel-and-redispatch loops wants.
+    const { redispatchPriority } = await this.globalConfig.load();
+    const delayMs = redispatchPriority === 'normal' ? config.offerTimeoutSeconds * 1_000 : 0;
+    await this.reschedule(bookingId, delayMs, `redispatch-${reason}`);
   }
 
   /**
@@ -476,17 +484,27 @@ export class DispatchService implements OnModuleInit {
 
   /** §6.7's per-zone config, through the one sanctioned reader of the JSONB. */
   private async configFor(booking: DispatchBookingRow): Promise<DispatchConfig> {
-    const [zone] = booking.zoneId
-      ? await this.db
-          .select({ dispatchConfig: serviceZones.dispatchConfig })
-          .from(serviceZones)
-          .where(eq(serviceZones.id, booking.zoneId))
-          .limit(1)
-      : [];
+    const [zone, global] = await Promise.all([
+      booking.zoneId
+        ? this.db
+            .select({ dispatchConfig: serviceZones.dispatchConfig })
+            .from(serviceZones)
+            .where(eq(serviceZones.id, booking.zoneId))
+            .limit(1)
+            .then((rows) => rows[0])
+        : Promise.resolve(undefined),
+      this.globalConfig.load(),
+    ]);
 
     // A NULL `dispatch_config` — an un-tuned zone, or a booking with no zone at
     // all — resolves to Phase 14's typed defaults rather than to constants here.
-    return resolveDispatchConfig(zone?.dispatchConfig ?? null, booking.serviceType as ServiceType);
+    // W12 adds the PLATFORM's per-service wave size as the layer between those
+    // defaults and the zone's own overrides (`resolveDispatchConfig`'s order).
+    return resolveDispatchConfig(
+      zone?.dispatchConfig ?? null,
+      booking.serviceType as ServiceType,
+      global.perServiceMaxOffers,
+    );
   }
 
   private async isPaused(booking: DispatchBookingRow): Promise<boolean> {

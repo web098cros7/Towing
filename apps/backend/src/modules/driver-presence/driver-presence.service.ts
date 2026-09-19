@@ -156,7 +156,13 @@ export class DriverPresenceService {
     return {
       // §20.4: nothing is captured at all while offline. `null` says that;
       // a large interval would merely say "rarely", which is a different promise.
-      pingIntervalMs: online ? PING_CADENCE.idleMs : PING_CADENCE.offlineMs,
+      //
+      // W12: the cadence is an ADMIN KNOB (`dispatch_config.ping_*`), not the
+      // frozen `PING_CADENCE` constant — the constant survives as the column
+      // default, which is what keeps a database that never touched the knob
+      // behaving exactly as it did. §11.3 wanted this server-configurable from
+      // the start; pushing a constant over `config:update` was only half of it.
+      pingIntervalMs: online ? config.pingIdleMs : PING_CADENCE.offlineMs,
       staleAfterMs: config.stalePingSeconds * 1000,
       lowAccuracyMeters: LOW_ACCURACY_METERS,
       at: new Date().toISOString(),
@@ -175,10 +181,14 @@ export class DriverPresenceService {
       isOnline: params.isOnline,
       zoneId: params.zoneId,
       zoneName: params.zoneName,
+      // W12: same admin knob as `configFor`, read from the same row — the socket
+      // frame and the REST response must never be able to disagree about the
+      // cadence (a driver whose socket says 3 s and whose REST call said 10 s
+      // runs whichever arrived last).
       pingIntervalMs: params.isOnline
         ? params.onJob
-          ? PING_CADENCE.onJobMs
-          : PING_CADENCE.idleMs
+          ? config.pingOnJobMs
+          : config.pingIdleMs
         : PING_CADENCE.offlineMs,
       // Read from `dispatch_config`, never a local constant: §6.7 makes this an
       // admin knob, and a handset ageing its own marker at a different threshold

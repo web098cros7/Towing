@@ -14,6 +14,7 @@ import type { LatLng } from '../geography';
 import type * as schema from '../schema';
 import {
   adminUsers,
+  appConfig,
   bookingStatusHistory,
   bookings,
   chargeConfig,
@@ -516,6 +517,9 @@ export async function runSeed(
     // §7.4 and §6.2 — one row each, column defaults carry the launch values.
     await tx.insert(chargeConfig).values({});
     await tx.insert(dispatchConfig).values({});
+    // W12 — the public app-config row (nothing blocked, no banner). Migration
+    // 0027 inserts it too; the seed repeats it because `db:reset` truncates.
+    await tx.insert(appConfig).values({});
 
     // W11 — the §3.3 window. Migration 0026 inserts it too; the seed repeats it
     // because `db:reset` truncates every table and a missing row would fall back

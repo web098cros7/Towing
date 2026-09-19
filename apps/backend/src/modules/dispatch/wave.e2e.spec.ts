@@ -1,8 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
-import { bookings, dispatchAttempts } from '../../db/schema';
+import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
+import { bookings, dispatchAttempts, dispatchConfig } from '../../db/schema';
 import { createTestApp } from '../../test/app';
 import {
   seedCustomer,
@@ -19,7 +20,7 @@ import { PresenceStore } from '../driver-presence/presence-store';
 import { DispatchRepo } from './dispatch.repo';
 import { DispatchService } from './dispatch.service';
 import { OfferService } from './offer.service';
-import { seedOnlineDriver, seedSearchingBooking, seedZone } from './dispatch-fixtures';
+import { seedDispatchConfig, seedOnlineDriver, seedSearchingBooking, seedZone } from './dispatch-fixtures';
 
 /**
  * §6.4's progressive-radius wave loop.
@@ -392,6 +393,38 @@ describe('dispatch waves (§6.4)', () => {
 
       // One attempt total — the exclusion set held across the re-dispatch.
       expect(await attemptsFor(bookingId)).toHaveLength(1);
+    });
+
+    it('W12: `redispatchPriority` decides whether it jumps the queue or waits a cadence', async () => {
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 1, offerTimeoutSeconds: 20 },
+      });
+      const bookingId = await seedSearchingBooking(db, { userId, zoneId });
+      const queue = app.get<QueuePort>(QUEUE);
+      const spy = vi.spyOn(queue, 'enqueue');
+
+      // The default — §6.5 as shipped: delay 0, because the customer has already
+      // spent one full search through no fault of their own.
+      await dispatch.redispatch(bookingId, 'driver_cancelled');
+      expect(spy).toHaveBeenCalledWith(
+        'dispatch.search',
+        { bookingId },
+        expect.objectContaining({ delayMs: 0 }),
+      );
+
+      await seedDispatchConfig(db, { redispatchPriority: 'normal' });
+      await app.get(DispatchConfigRepo).invalidate();
+      spy.mockClear();
+
+      // `normal` schedules it like any other wave: one offer countdown away.
+      await dispatch.redispatch(bookingId, 'driver_cancelled');
+      expect(spy).toHaveBeenCalledWith(
+        'dispatch.search',
+        { bookingId },
+        expect.objectContaining({ delayMs: 20_000 }),
+      );
+
+      spy.mockRestore();
     });
   });
 

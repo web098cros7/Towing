@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  adminAppConfigUpdateSchema,
   adminCommissionGuardrailUpdateSchema,
   adminCommissionImpactQuerySchema,
   adminCommissionProposalCreateSchema,
@@ -20,6 +21,8 @@ import {
   adminPricingRuleCreateSchema,
   adminPricingRuleDeactivateSchema,
   adminPricingUpdateSchema,
+  type AdminAppConfigUpdate,
+  type AppConfig,
   type AdminCommissionGuardrailUpdate,
   type AdminCommissionImpactQuery,
   type AdminCommissionProposal,
@@ -44,6 +47,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions, Realms, Roles } from '../auth/realm.decorator';
 import type { AuthedRequest } from '../auth/auth.types';
 import { sessionContextFrom } from '../auth/token.service';
+import { AdminAppConfigService } from './admin-app-config.service';
 import { AdminConfigService } from './admin-config.service';
 import { AdminDispatchService } from './admin-dispatch.service';
 
@@ -72,6 +76,7 @@ export class AdminConfigController {
   constructor(
     private readonly config: AdminConfigService,
     private readonly dispatch: AdminDispatchService,
+    private readonly appConfig: AdminAppConfigService,
   ) {}
 
   @Get('pricing')
@@ -254,6 +259,31 @@ export class AdminConfigController {
       sessionContextFrom(request),
     );
     return { declined: true };
+  }
+
+  /**
+   * W12 — §19.8's version gate and §19.9's SEV banner.
+   *
+   * `dispatch.config`, not a new permission: the SEV banner is the same
+   * operational lever as a kill switch (both are pulled by whoever is watching
+   * the map during an incident), and §19.9 puts a 15-minute update cadence on
+   * whoever that is.
+   */
+  @Get('app-config')
+  @Permissions('dispatch.config')
+  getAppConfig(): Promise<AppConfig> {
+    return this.appConfig.get();
+  }
+
+  @Put('app-config')
+  @Permissions('dispatch.config')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  updateAppConfig(
+    @ZodBody(adminAppConfigUpdateSchema) body: AdminAppConfigUpdate,
+    @Req() request: AuthedRequest,
+  ): Promise<AppConfig> {
+    return this.appConfig.update(adminId(request), body, sessionContextFrom(request));
   }
 }
 
