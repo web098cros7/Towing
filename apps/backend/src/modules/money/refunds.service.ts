@@ -91,7 +91,14 @@ export class RefundsService {
    */
   async refundBooking(params: {
     bookingId: string;
-    reason: RefundReason;
+    /**
+     * Free text since W9: the §3.5 cancellation path and the disputes still
+     * pass their fixed reason codes, but a Finance-issued refund carries the
+     * operator's own words — the reason lands on the row, the gateway call and
+     * the audit note. With a `keySource` it never reaches a key; the legacy
+     * v1 key path below is the only place a fixed code is still required.
+     */
+    reason: string;
     initiatedBy: string;
     /**
      * Where the booking lands afterwards. `cancelled` (§3.5) or `disputed`
@@ -108,7 +115,9 @@ export class RefundsService {
   }): Promise<{ refundId: string; replayed: boolean }> {
     const key = params.keySource
       ? keyFromSource(params.bookingId, 'full', params.keySource)
-      : refundRowKey(params.bookingId, params.reason);
+      : // The v1 grammar is booking+reason, so it is only reachable by the
+        // §3.5 path, whose reason IS one of the three RefundReason codes.
+        refundRowKey(params.bookingId, params.reason as RefundReason);
 
     // THE IDEMPOTENCY CHECK COMES FIRST — before the captured-payment guard.
     // After a completed refund the payment is `refunded` and `capturedFor` no

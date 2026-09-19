@@ -141,6 +141,18 @@ export interface OpsLedgerDriftPayload extends Record<string, unknown> {
 }
 
 /** W8 — §12.2's *Dispute update* row, both events, customer AND driver. */
+/**
+ * W9 — the capture-after-cancel conflict (§14.2's money edge, decision (2)).
+ * The gateway captured a payment on a booking that was already cancelled: the
+ * money is real, recorded, and refundable — and nobody else will notice.
+ */
+export interface SettlementConflictPayload extends Record<string, unknown> {
+  paymentId: string;
+  bookingId: string;
+  amountPaise: number;
+  opsEmail: string;
+}
+
 export interface DisputeUpdatePayload extends Record<string, unknown> {
   disputeId: string;
   bookingId: string;
@@ -709,6 +721,42 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     dedupeKey: (p: PaymentReminderPayload) => p.reminderKey,
     resolve: (p: PaymentReminderPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
     variables: (p: PaymentReminderPayload) => ({
+      amount: (p.amountPaise / 100).toFixed(2),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * W9's capture-after-cancel alarm — an OPERATIONAL event like
+     * `ops.ledger_drift`, not a §12.2 product row: its recipient is the ops
+     * mailbox, and it writes no inbox row (the synthetic `fleet` recipient
+     * with the all-zero id is the same trick the ledger alarm uses).
+     *
+     * DEDUPED PER PAYMENT, and that is the load-bearing part: the conflict is
+     * detected on every webhook redelivery and every sweep pass that sees the
+     * capture, and one stale checkout must not page the same human twelve
+     * times. The email names the booking and the amount; the action it asks
+     * for is the finance refund (`POST /finance/refunds`, money-only path).
+     */
+    event: 'finance.settlement_conflict',
+    matrixRow: '',
+    channels: ['email'],
+    template: 'finance_settlement_conflict',
+    category: 'transactional',
+    alwaysOn: true,
+    dedupeKey: (p: SettlementConflictPayload) => p.paymentId,
+    resolve: async (p: SettlementConflictPayload) => [
+      {
+        subjectType: 'fleet' as const,
+        subjectId: '00000000-0000-0000-0000-000000000000',
+        mobile: null,
+        email: p.opsEmail,
+        pushTokens: [],
+        prefs: {},
+      },
+    ],
+    variables: (p: SettlementConflictPayload) => ({
+      reference: `TW-${p.bookingId.slice(0, 8).toUpperCase()}`,
       amount: (p.amountPaise / 100).toFixed(2),
     }),
   }),

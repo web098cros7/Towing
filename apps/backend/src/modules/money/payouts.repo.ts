@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { PayoutApprovalState, PayoutStatus } from '@towing/api-contracts';
 import { DB, type Database } from '../../db/db.module';
 
@@ -232,23 +232,51 @@ export class PayoutsRepo {
     limit: number;
     state: PayoutApprovalState | 'all';
     ownerType?: 'driver' | 'fleet';
+    /** W9: payee-name search and the requested-at IST window. */
+    q?: string;
+    from?: string;
+    to?: string;
   }): Promise<{ items: PayoutRow[]; total: number }> {
-    const stateFilter =
-      query.state === 'all' ? sql`` : sql`and approval_state = ${query.state}`;
-    const ownerFilter = query.ownerType
-      ? sql`and owner_type = ${query.ownerType}::wallet_owner_type`
-      : sql``;
+    // W9's name filter runs against the JOINED payee — an operator searches a
+    // NAME, and `owner_id::text ilike` would only ever match a pasted uuid.
+    const filters: SQL[] = [];
+    if (query.state !== 'all') filters.push(sql`p.approval_state = ${query.state}`);
+    if (query.ownerType) {
+      filters.push(sql`p.owner_type = ${query.ownerType}::wallet_owner_type`);
+    }
+    if (query.q) {
+      const like = `%${query.q.replace(/[%_\\]/g, (match) => `\\${match}`)}%`;
+      filters.push(sql`coalesce(f.business_name, d.name) ilike ${like}`);
+    }
+    // Inclusive IST day bounds on `requested_at`, the column the queue is
+    // ordered by — the same boundary arithmetic the bookings list uses.
+    if (query.from) {
+      filters.push(sql`p.requested_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`);
+    }
+    if (query.to) {
+      filters.push(
+        sql`p.requested_at < ((${query.to}::date + 1)::timestamp at time zone 'Asia/Kolkata')`,
+      );
+    }
+    const where = filters.length > 0 ? sql.join(filters, sql` and `) : sql`true`;
+
+    // The payee joins serve BOTH the filter and the projection, so they live in
+    // one CTE-shaped clause the item query and the count share verbatim.
+    const queueSql = sql`
+      from payouts p
+      left join fleets f on p.owner_type = 'fleet' and f.id = p.owner_id
+      left join drivers d on p.owner_type = 'driver' and d.id = p.owner_id
+      where ${where}
+    `;
 
     const items = (await this.db.execute(sql`
-      select * from payouts
-       where true ${stateFilter} ${ownerFilter}
-       order by requested_at asc, id asc
+      select p.* ${queueSql}
+       order by p.requested_at asc, p.id asc
        limit ${query.limit} offset ${(query.page - 1) * query.limit}
     `)) as unknown as Array<Record<string, unknown>>;
 
     const [count] = (await this.db.execute(sql`
-      select count(*)::int as total from payouts
-       where true ${stateFilter} ${ownerFilter}
+      select count(*)::int as total ${queueSql}
     `)) as unknown as [{ total: number }];
 
     return { items: items.map(toRow), total: count.total };

@@ -264,6 +264,21 @@ export class PaymentsService {
 
     if (inputs.status === 'paid') return;
 
+    if (inputs.status === 'cancelled') {
+      // CAPTURE-AFTER-CANCEL (W9 decision (2)). A stale checkout sheet, a late
+      // UPI debit, a webhook that finally landed — the gateway took the money
+      // on a booking that was cancelled before it ever reached `completed`.
+      //
+      // THE MONEY IS REAL, SO THROWING IS THE WRONG ANSWER. Throwing would
+      // leave the capture invisible to every ledger read and re-alert the
+      // sweep forever. Instead: record it, raise the ops alarm exactly once
+      // per payment, and leave the refund to Finance — the money-only path
+      // (`POST /finance/refunds` on a non-`paid` booking), because the
+      // booking is already where the customer wanted it and must not move.
+      await this.recordSettlementConflict(bookingId, inputs, handle);
+      return;
+    }
+
     if (inputs.status !== 'completed') {
       // The webhook-arrives-early case, and a genuinely odd one. Throwing is
       // right: `WebhooksController` records it on `webhook_events.error` and
@@ -345,6 +360,40 @@ export class PaymentsService {
     await this.afterSettlement(bookingId, paymentId, inputs, totalPaise, settlement.driverSharePaise);
 
     await this.machine.announce(result);
+  }
+
+  /**
+   * The capture-after-cancel record: mark the payment captured, alert ops
+   * ONCE per payment, and stop. No settlement legs — nobody is owed a share
+   * of a cancelled trip — and no status transition, because the refund path
+   * leaves the booking where it is.
+   */
+  private async recordSettlementConflict(
+    bookingId: string,
+    inputs: SettlementInputsRow,
+    handle: PaymentHandle,
+  ): Promise<void> {
+    const paymentId = await this.ensureCapturedRow(bookingId, handle);
+    const amountPaise = rupeeStringToPaise(inputs.totalRupees);
+
+    this.logger.error(
+      `event=settlement_conflict booking=${bookingId} amount_paise=${amountPaise} ` +
+        `payment=${paymentId ?? 'unknown'} — captured after cancellation; refund from Finance`,
+    );
+
+    try {
+      // Deduped per payment by the registry: webhook redeliveries and sweep
+      // passes all land here, and exactly one alarm per stale checkout is the
+      // point of the trigger's `dedupeKey`.
+      await this.notifications.emit('finance.settlement_conflict', {
+        paymentId: paymentId ?? handle.gatewayRef ?? bookingId,
+        bookingId,
+        amountPaise,
+        opsEmail: this.env.LEDGER_OPS_EMAIL,
+      });
+    } catch (error) {
+      this.logger.warn(`settlement-conflict alert failed for ${bookingId}: ${String(error)}`);
+    }
   }
 
   /** Everything that hangs off a settled payment, none of it load-bearing. */

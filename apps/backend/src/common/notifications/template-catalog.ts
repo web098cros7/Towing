@@ -279,6 +279,22 @@ export const TEMPLATES = {
     }),
   },
 
+  /**
+   * W9 — the capture-after-cancel alarm. The money is real and already
+   * recorded; this email exists so Finance refunds it rather than leaving a
+   * customer who paid for a cancelled booking.
+   */
+  finance_settlement_conflict: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference', 'amount'],
+    render: (v) => ({
+      title: 'Capture on a cancelled booking',
+      body: `Booking ${v.reference ?? '?'} was cancelled, but the gateway captured ₹${v.amount ?? '?'} anyway. The payment is recorded — issue a refund from Finance → Refunds.`,
+      subject: `[ops] Captured after cancel — ${v.reference ?? 'unknown booking'}`,
+    }),
+  },
+
   // --- Shipped, not yet wired (Phase 19 registers triggers against these) ----
 
   /** §12.2 "Completed + invoice". The PDF attachment lands with Phase 19's invoice. */

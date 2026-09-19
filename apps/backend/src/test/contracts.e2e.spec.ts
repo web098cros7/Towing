@@ -13,14 +13,19 @@ import {
   adminFinanceConfigSchema,
   adminFleetsResponseSchema,
   adminIdentitySchema,
+  adminInvariantsResponseSchema,
+  adminLedgerResponseSchema,
   adminNotesResponseSchema,
   adminOpsActivityResponseSchema,
   adminOpsBadgesResponseSchema,
   adminOpsDashboardResponseSchema,
   adminOpsLiveResponseSchema,
   adminPendingDriversResponseSchema,
+  adminPayoutSlaResponseSchema,
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
+  adminRefundsResponseSchema,
+  adminTransactionsResponseSchema,
   adminSessionsResponseSchema,
   adminSuspensionRequestsResponseSchema,
   alertsListResponseSchema,
@@ -65,7 +70,9 @@ import {
   disputes,
   driverDocuments,
   drivers,
+  payments,
   payouts,
+  refunds,
   serviceZones,
   suspensionRequests,
 } from '../db/schema';
@@ -138,6 +145,26 @@ describe('response contracts', () => {
     { path: '/v1/admin/directory/zones', schema: adminDirectoryZonesResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
+    // W9 — the console's reads. The refunds collection has a processed partial
+    // refund seeded below; the ledger feed has a real wallet leg; the
+    // invariants panel's zeros are asserted, not assumed.
+    {
+      path: '/v1/admin/finance/transactions',
+      schema: adminTransactionsResponseSchema,
+      realm: 'admin',
+    },
+    { path: '/v1/admin/finance/ledger', schema: adminLedgerResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/finance/refunds', schema: adminRefundsResponseSchema, realm: 'admin' },
+    {
+      path: '/v1/admin/finance/invariants',
+      schema: adminInvariantsResponseSchema,
+      realm: 'admin',
+    },
+    {
+      path: '/v1/admin/finance/payouts/sla',
+      schema: adminPayoutSlaResponseSchema,
+      realm: 'admin',
+    },
     { path: '/v1/admin/pricing', schema: adminPricingConfigSchema, realm: 'admin' },
     { path: '/v1/admin/commission', schema: adminCommissionConfigSchema, realm: 'admin' },
     {
@@ -340,6 +367,45 @@ describe('response contracts', () => {
       status: 'open',
       openedFromStatus: 'paid',
     });
+
+    // W9 — the console reads need real rows, or their contract entries are the
+    // vacuous kind this file warns about. A captured payment on the paid
+    // booking the dispute names, a processed PARTIAL refund against it (which
+    // also keeps payments.refunded_amount honest), and one wallet leg so the
+    // ledger feed has a row to page through.
+    const [contractPayment] = await db
+      .insert(payments)
+      .values({
+        bookingId: contractPaidBookingId,
+        amount: '2400.00',
+        taxAmount: '0.00',
+        purpose: 'booking',
+        method: 'upi',
+        status: 'captured',
+        idempotencyKey: 'contract:payment:1',
+        provider: 'contract',
+        capturedAt: new Date(),
+        refundedAmount: '500.00',
+      })
+      .returning({ id: payments.id });
+
+    await db.insert(refunds).values({
+      bookingId: contractPaidBookingId,
+      paymentId: contractPayment!.id,
+      amount: '500.00',
+      reason: 'contract coverage partial refund',
+      status: 'processed',
+      idempotencyKey: 'contract:refund:1',
+      initiatedBy: 'system',
+      kind: 'partial',
+      liability: 'driver',
+      gatewayRef: 'rf_test_contract',
+      processedAt: new Date(),
+    });
+
+    await seedWalletWithLedger(db, { ownerId: pendingDriverId, ownerType: 'driver' }, [
+      { type: 'adjustment', amount: '250.00', refId: contractPaidBookingId },
+    ]);
   });
 
   afterAll(async () => {
@@ -510,6 +576,10 @@ const EXCLUDED = new Set([
   // expectMatchesContract against adminDisputeDetailSchema in
   // admin-disputes.e2e.spec.ts, which opens a real dispute.
   '/v1/admin/disputes/:id',
+  // W9 — the reconciliation download is a byte stream like the fleet exports;
+  // its header order and signed refund rows are asserted in
+  // admin-finance-console.e2e.spec.ts.
+  '/v1/admin/finance/reconciliation.csv',
   // W6 — the fleets directory's parameterised routes: detail asserted against
   // `adminFleetDetailSchema`, the sub-reads against the FLEET console's own
   // schemas, all in `admin-fleets-directory.e2e.spec.ts`.
