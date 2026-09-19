@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { scorerWeightsSchema } from '../common/dispatch-config';
 import { unsignedPaiseSchema } from '../common/money';
 import { jobStatusSchema } from '../fleet/jobs';
 import { latLngSchema } from '../fleet/trucks';
@@ -162,3 +163,174 @@ export const adminOpsLiveResponseSchema = z.object({
   degraded: z.boolean(),
 });
 export type AdminOpsLiveResponse = z.infer<typeof adminOpsLiveResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Dispatch inspector (W5, §9.4.6)
+// ---------------------------------------------------------------------------
+
+/**
+ * The legal `dispatch_attempts.outcome` values — mirrors
+ * `ck_dispatch_attempts_outcome` (widened by migration 0023 with `reassigned`,
+ * ahead of W8's writer).
+ *
+ * THE SOURCE OF TRUTH IS HERE, not in the backend repo that reads it: the
+ * migration spec pins this list to the CHECK's literals, so a value cannot
+ * exist on one side only. `unable` and `reassigned` sit outside the
+ * acceptance-rate denominator (`accepted + rejected + expired`) on purpose —
+ * neither is a driver's refusal.
+ */
+export const dispatchAttemptOutcomes = [
+  'offered',
+  'accepted',
+  'rejected',
+  'expired',
+  'revoked',
+  'unable',
+  'reassigned',
+] as const;
+export const dispatchAttemptOutcomeSchema = z.enum(dispatchAttemptOutcomes);
+export type DispatchAttemptOutcome = z.infer<typeof dispatchAttemptOutcomeSchema>;
+
+/** One scored candidate in a wave log — the per-term breakdown behind `score`. */
+export const adminDispatchWaveCandidateSchema = z.object({
+  driverId: z.uuid(),
+  /** Straight-line metres at selection time — the proximity term's input. */
+  distanceM: z.number().nonnegative(),
+  /** Normalised 0–1 terms; `score` is their weighted sum (asserted in the spec). */
+  proximity: z.number().min(0).max(1),
+  rating: z.number().min(0).max(1),
+  acceptance: z.number().min(0).max(1),
+  completion: z.number().min(0).max(1),
+  score: z.number().min(0).max(100),
+  /** False for a candidate that was ranked but never actually reached. */
+  offered: z.boolean(),
+});
+export type AdminDispatchWaveCandidate = z.infer<typeof adminDispatchWaveCandidateSchema>;
+
+/** One exclusion reason's tally: the count is exact, the id list is capped. */
+export const adminDispatchExclusionSchema = z.object({
+  count: z.number().int().nonnegative(),
+  driverIds: z.array(z.uuid()),
+});
+export type AdminDispatchExclusion = z.infer<typeof adminDispatchExclusionSchema>;
+
+/**
+ * The resolved per-zone dispatch config a wave ran with — mirrors the backend's
+ * `DispatchConfig` after `resolveDispatchConfig()` (code defaults → zone
+ * overrides → per-service overrides). Stored per wave, because resolving it
+ * NOW and labelling it "what wave 3 used" would be a lie the first time an
+ * admin edits a ladder.
+ */
+export const adminDispatchConfigViewSchema = z.object({
+  radiusLadderKm: z.array(z.number()),
+  bandCRadiusLadderKm: z.array(z.number()),
+  offerTimeoutSeconds: z.number(),
+  offersPerWave: z.number(),
+  maxSearchSeconds: z.number(),
+});
+export type AdminDispatchConfigView = z.infer<typeof adminDispatchConfigViewSchema>;
+
+/** One wave, exactly as `dispatch_wave_logs` stores it. */
+export const adminDispatchWaveLogSchema = z.object({
+  id: z.uuid(),
+  wave: z.number().int().positive(),
+  radiusKm: z.number(),
+  considered: z.number().int().nonnegative(),
+  eligible: z.number().int().nonnegative(),
+  offered: z.number().int().nonnegative(),
+  degraded: z.boolean(),
+  /** The §6.2 weights in force when THIS wave ran (`dispatch_config`). */
+  weights: scorerWeightsSchema,
+  config: adminDispatchConfigViewSchema,
+  excluded: z.record(z.string(), adminDispatchExclusionSchema),
+  candidates: z.array(adminDispatchWaveCandidateSchema),
+  ranAt: z.iso.datetime(),
+  durationMs: z.number().int().nonnegative(),
+});
+export type AdminDispatchWaveLog = z.infer<typeof adminDispatchWaveLogSchema>;
+
+/** One `dispatch_attempts` row, joined to the driver it names. */
+export const adminDispatchAttemptSchema = z.object({
+  driverId: z.uuid().nullable(),
+  driverName: z.string().nullable(),
+  driverMobile: z.string().nullable(),
+  wave: z.number().int(),
+  radiusKm: z.number(),
+  outcome: dispatchAttemptOutcomeSchema,
+  offeredAt: z.iso.datetime(),
+  respondedAt: z.iso.datetime().nullable(),
+});
+export type AdminDispatchAttempt = z.infer<typeof adminDispatchAttemptSchema>;
+
+/** The booking under inspection — the inspector page's header. */
+export const adminDispatchInspectorBookingSchema = z.object({
+  bookingId: z.uuid(),
+  status: jobStatusSchema,
+  serviceType: z.string(),
+  vehicleClass: z.string(),
+  zoneId: z.uuid().nullable(),
+  userId: z.uuid(),
+  customerName: z.string().nullable(),
+  customerMobile: z.string().nullable(),
+  pickup: latLngSchema,
+  pickupAddress: z.string().nullable(),
+  drop: latLngSchema.nullable(),
+  longDistance: z.boolean(),
+  searchWave: z.number().int().nullable(),
+  deadlineAt: z.iso.datetime().nullable(),
+  scheduledAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type AdminDispatchInspectorBooking = z.infer<typeof adminDispatchInspectorBookingSchema>;
+
+/**
+ * `GET /v1/admin/ops/dispatch/:bookingId` — "why did this driver win".
+ *
+ * `waves` is empty for a booking dispatched before W5's writer shipped — an
+ * honest "no waves recorded", not a fabricated reconstruction. The top-level
+ * `config`/`weights` are what they resolve to NOW, beside the per-wave copies
+ * that say what each wave actually used.
+ */
+export const adminDispatchInspectorResponseSchema = z.object({
+  booking: adminDispatchInspectorBookingSchema,
+  waves: z.array(adminDispatchWaveLogSchema),
+  attempts: z.array(adminDispatchAttemptSchema),
+  config: adminDispatchConfigViewSchema,
+  weights: scorerWeightsSchema,
+  /** The stored search position; `null` for a booking whose search never ran. */
+  liveWave: z.number().int().nullable(),
+  deadlineAt: z.iso.datetime().nullable(),
+});
+export type AdminDispatchInspectorResponse = z.infer<typeof adminDispatchInspectorResponseSchema>;
+
+/** The only parameter the guide names; literal so a widening is deliberate. */
+export const adminDispatchInspectorListQuerySchema = z.object({
+  status: z.literal('searching').default('searching'),
+});
+export type AdminDispatchInspectorListQuery = z.infer<typeof adminDispatchInspectorListQuerySchema>;
+
+/** One live search on the inspector list — enough to pick the interesting one. */
+export const adminDispatchLiveSearchSchema = z.object({
+  bookingId: z.uuid(),
+  zoneId: z.uuid().nullable(),
+  serviceType: z.string(),
+  vehicleClass: z.string(),
+  /** Stored wave position; null for a booking whose search has never run. */
+  wave: z.number().int().nullable(),
+  /** The radius that wave runs at, resolved against the zone's ladder now. */
+  radiusKm: z.number().nullable(),
+  /** Distinct drivers ever offered this booking. */
+  contacted: z.number().int().nonnegative(),
+  longDistance: z.boolean(),
+  deadlineAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type AdminDispatchLiveSearch = z.infer<typeof adminDispatchLiveSearchSchema>;
+
+export const adminDispatchInspectorListResponseSchema = z.object({
+  items: z.array(adminDispatchLiveSearchSchema),
+  at: z.iso.datetime(),
+});
+export type AdminDispatchInspectorListResponse = z.infer<
+  typeof adminDispatchInspectorListResponseSchema
+>;

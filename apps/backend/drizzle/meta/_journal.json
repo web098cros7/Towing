@@ -162,6 +162,13 @@
       "when": 1789743184567,
       "tag": "0022_admin_authz_trigger_password",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789746600000,
+      "tag": "0023_dispatch_inspector",
+      "breakpoints": true
     }
   ]
 }

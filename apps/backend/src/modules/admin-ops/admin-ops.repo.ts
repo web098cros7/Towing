@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { AdminDispatchAttempt, AdminDispatchWaveLog, ScorerWeights } from '@towing/api-contracts';
 import { sql, type SQL } from 'drizzle-orm';
 import { DB_READER, type DatabaseReader } from '../../db/db.module';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
@@ -64,6 +65,45 @@ export interface LiveBookingRow {
   dropLat: number | null;
   dropLng: number | null;
   createdAt: string;
+}
+
+/** W5: the booking header the inspector renders, plus the zone's raw JSONB config. */
+export interface InspectorBookingRow {
+  bookingId: string;
+  status: string;
+  serviceType: string;
+  vehicleClass: string;
+  zoneId: string | null;
+  userId: string;
+  customerName: string | null;
+  customerMobile: string | null;
+  pickupLat: number;
+  pickupLng: number;
+  pickupAddress: string | null;
+  dropLat: number | null;
+  dropLng: number | null;
+  longDistance: boolean;
+  searchWave: number | null;
+  deadlineAt: string | null;
+  scheduledAt: string | null;
+  createdAt: string;
+  /** Resolved by the service via `resolveDispatchConfig` — the repo stays a pipe. */
+  zoneDispatchConfig: unknown;
+}
+
+/** W5: one live search, before the service resolves its ladder radius. */
+export interface LiveSearchRow {
+  bookingId: string;
+  zoneId: string | null;
+  serviceType: string;
+  vehicleClass: string;
+  wave: number | null;
+  longDistance: boolean;
+  deadlineAt: string | null;
+  createdAt: string;
+  /** Distinct drivers ever offered this booking. */
+  contacted: number;
+  zoneDispatchConfig: unknown;
 }
 
 @Injectable()
@@ -366,6 +406,227 @@ export class AdminOpsRepo {
       dropLng: row.drop_lng,
       createdAt: toIso(row.created_at),
     }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // W5 — dispatch inspector (§9.4.6)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The booking under inspection, with the zone's RAW `dispatch_config` so the
+   * service can resolve the current ladder without a second read per row.
+   */
+  async inspectorBooking(bookingId: string): Promise<InspectorBookingRow | undefined> {
+    const rows = (await this.db.execute(sql`
+      select b.id as booking_id, b.status::text as status,
+             b.service_type::text as service_type, b.vehicle_class::text as vehicle_class,
+             b.zone_id, b.user_id,
+             u.name as customer_name, u.mobile as customer_mobile,
+             b.pickup_lat, b.pickup_lng, b.pickup_address, b.drop_lat, b.drop_lng,
+             (b.commission_band = 'C') as long_distance,
+             b.search_wave, b.dispatch_deadline_at, b.scheduled_at, b.created_at,
+             z.dispatch_config as zone_dispatch_config
+      from bookings b
+      left join users u on u.id = b.user_id
+      left join service_zones z on z.id = b.zone_id
+      where b.id = ${bookingId}::uuid
+    `)) as unknown as Array<{
+      booking_id: string;
+      status: string;
+      service_type: string;
+      vehicle_class: string;
+      zone_id: string | null;
+      user_id: string;
+      customer_name: string | null;
+      customer_mobile: string | null;
+      pickup_lat: number;
+      pickup_lng: number;
+      pickup_address: string | null;
+      drop_lat: number | null;
+      drop_lng: number | null;
+      long_distance: boolean;
+      search_wave: number | null;
+      dispatch_deadline_at: Date | string | null;
+      scheduled_at: Date | string | null;
+      created_at: Date | string;
+      zone_dispatch_config: unknown;
+    }>;
+
+    const row = rows[0];
+    if (!row) return undefined;
+    return {
+      bookingId: row.booking_id,
+      status: row.status,
+      serviceType: row.service_type,
+      vehicleClass: row.vehicle_class,
+      zoneId: row.zone_id,
+      userId: row.user_id,
+      customerName: row.customer_name,
+      customerMobile: row.customer_mobile,
+      pickupLat: row.pickup_lat,
+      pickupLng: row.pickup_lng,
+      pickupAddress: row.pickup_address,
+      dropLat: row.drop_lat,
+      dropLng: row.drop_lng,
+      longDistance: row.long_distance,
+      searchWave: row.search_wave,
+      deadlineAt: row.dispatch_deadline_at === null ? null : toIso(row.dispatch_deadline_at),
+      scheduledAt: row.scheduled_at === null ? null : toIso(row.scheduled_at),
+      createdAt: toIso(row.created_at),
+      zoneDispatchConfig: row.zone_dispatch_config,
+    };
+  }
+
+  /** The wave log, oldest wave first — the inspector's timeline, in order. */
+  async waveLogsFor(bookingId: string): Promise<AdminDispatchWaveLog[]> {
+    const rows = (await this.db.execute(sql`
+      select id, wave, radius_km, considered, eligible, offered, degraded,
+             weights, config, excluded, candidates, ran_at, duration_ms
+      from dispatch_wave_logs
+      where booking_id = ${bookingId}::uuid
+      order by wave asc, ran_at asc
+    `)) as unknown as Array<{
+      id: string;
+      wave: number;
+      radius_km: string;
+      considered: number;
+      eligible: number;
+      offered: number;
+      degraded: boolean;
+      weights: unknown;
+      config: unknown;
+      excluded: unknown;
+      candidates: unknown;
+      ran_at: Date | string;
+      duration_ms: number;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      wave: row.wave,
+      radiusKm: Number(row.radius_km),
+      considered: row.considered,
+      eligible: row.eligible,
+      offered: row.offered,
+      degraded: row.degraded,
+      weights: row.weights as AdminDispatchWaveLog['weights'],
+      config: row.config as AdminDispatchWaveLog['config'],
+      excluded: row.excluded as AdminDispatchWaveLog['excluded'],
+      candidates: row.candidates as AdminDispatchWaveLog['candidates'],
+      ranAt: toIso(row.ran_at),
+      durationMs: row.duration_ms,
+    }));
+  }
+
+  /** Every attempt on the booking, joined to the driver it names (§9.4.6). */
+  async attemptsFor(bookingId: string): Promise<AdminDispatchAttempt[]> {
+    const rows = (await this.db.execute(sql`
+      select da.driver_id, d.name as driver_name, d.mobile as driver_mobile,
+             da.wave, da.radius_km, da.outcome, da.offered_at, da.responded_at
+      from dispatch_attempts da
+      left join drivers d on d.id = da.driver_id
+      where da.booking_id = ${bookingId}::uuid
+      order by da.offered_at asc, da.wave asc
+    `)) as unknown as Array<{
+      driver_id: string | null;
+      driver_name: string | null;
+      driver_mobile: string | null;
+      wave: number;
+      radius_km: string;
+      outcome: string;
+      offered_at: Date | string;
+      responded_at: Date | string | null;
+    }>;
+
+    return rows.map((row) => ({
+      driverId: row.driver_id,
+      driverName: row.driver_name,
+      driverMobile: row.driver_mobile,
+      wave: row.wave,
+      radiusKm: Number(row.radius_km),
+      outcome: row.outcome as AdminDispatchAttempt['outcome'],
+      offeredAt: toIso(row.offered_at),
+      respondedAt: row.responded_at === null ? null : toIso(row.responded_at),
+    }));
+  }
+
+  /**
+   * The live-searches list: `searching` and not dormant (`scheduled_at` in the
+   * future — a scheduled booking sits in `searching` and is not a live search;
+   * same rule as `activeAndSearching`). Oldest first: the longest-waiting
+   * customer is the one an operator is looking for.
+   */
+  async liveSearches(): Promise<LiveSearchRow[]> {
+    const rows = (await this.db.execute(sql`
+      select b.id as booking_id, b.zone_id,
+             b.service_type::text as service_type, b.vehicle_class::text as vehicle_class,
+             b.search_wave, (b.commission_band = 'C') as long_distance,
+             b.dispatch_deadline_at, b.created_at,
+             coalesce(a.contacted, 0) as contacted,
+             z.dispatch_config as zone_dispatch_config
+      from bookings b
+      left join lateral (
+        select count(distinct da.driver_id)::int as contacted
+        from dispatch_attempts da
+        where da.booking_id = b.id
+      ) a on true
+      left join service_zones z on z.id = b.zone_id
+      where b.status = 'searching'
+        and (b.scheduled_at is null or b.scheduled_at <= now())
+      order by b.created_at asc
+      limit 200
+    `)) as unknown as Array<{
+      booking_id: string;
+      zone_id: string | null;
+      service_type: string;
+      vehicle_class: string;
+      search_wave: number | null;
+      long_distance: boolean;
+      dispatch_deadline_at: Date | string | null;
+      created_at: Date | string;
+      contacted: number;
+      zone_dispatch_config: unknown;
+    }>;
+
+    return rows.map((row) => ({
+      bookingId: row.booking_id,
+      zoneId: row.zone_id,
+      serviceType: row.service_type,
+      vehicleClass: row.vehicle_class,
+      wave: row.search_wave,
+      longDistance: row.long_distance,
+      deadlineAt: row.dispatch_deadline_at === null ? null : toIso(row.dispatch_deadline_at),
+      createdAt: toIso(row.created_at),
+      contacted: row.contacted,
+      zoneDispatchConfig: row.zone_dispatch_config,
+    }));
+  }
+
+  /**
+   * The §6.2 weights singleton. `undefined` when the row is missing (a fresh
+   * or half-seeded database) — the caller falls back to the code defaults, the
+   * same way `DispatchConfigRepo` does, rather than inventing a number here.
+   */
+  async globalWeights(): Promise<ScorerWeights | undefined> {
+    const rows = (await this.db.execute(sql`
+      select weight_proximity, weight_rating, weight_acceptance, weight_completion
+      from dispatch_config
+      limit 1
+    `)) as unknown as Array<{
+      weight_proximity: string;
+      weight_rating: string;
+      weight_acceptance: string;
+      weight_completion: string;
+    }>;
+
+    const row = rows[0];
+    if (!row) return undefined;
+    return {
+      proximity: Number(row.weight_proximity),
+      rating: Number(row.weight_rating),
+      acceptance: Number(row.weight_acceptance),
+      completion: Number(row.weight_completion),
+    };
   }
 }
 

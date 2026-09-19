@@ -12,7 +12,7 @@ import { serviceZones } from '../../db/schema';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
 import { PresenceStore } from '../driver-presence/presence-store';
-import { CandidateSelectionService } from './candidate-selection.service';
+import { CandidateSelectionService, type SelectionResult } from './candidate-selection.service';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
 import { OfferService } from './offer.service';
@@ -237,17 +237,36 @@ export class DispatchService implements OnModuleInit {
     // budget.
     const radiusKm = ladder[Math.min(wave, ladder.length) - 1] ?? ladder[ladder.length - 1]!;
 
+    // W5: the wave log measures the whole decision — selection plus offers.
+    const waveStartedAt = Date.now();
     const selected = await this.selection.select(booking, radiusKm, config.offersPerWave);
     await this.repo.setWaveState(bookingId, wave, booking.dispatchDeadlineAt ? null : deadlineAt);
 
     let offered = 0;
+    const offeredDriverIds: string[] = [];
     for (const candidate of selected.candidates) {
       // `offer` returns false when another search won the driver between
       // selection and the lock — ordinary in a busy zone, not an error.
       if (await this.offers.offer(booking, candidate, wave, radiusKm, config.offerTimeoutSeconds)) {
         offered += 1;
+        offeredDriverIds.push(candidate.driverId);
       }
     }
+
+    // W5: ONE row per wave, AFTER the offers, never inside the loop — the log
+    // is an observer and must not slow a wave down. `writeWaveLog` swallows its
+    // own failures for the same reason.
+    await this.writeWaveLog({
+      booking,
+      wave,
+      radiusKm,
+      config,
+      selected,
+      offered,
+      offeredDriverIds,
+      durationMs: Date.now() - waveStartedAt,
+      ladderLength: ladder.length,
+    });
 
     await this.announceProgress(booking, wave, radiusKm, deadlineAt);
 
@@ -262,10 +281,14 @@ export class DispatchService implements OnModuleInit {
     const nextDelayMs = offered === 0 ? EMPTY_WAVE_DELAY_MS : config.offerTimeoutSeconds * 1_000;
     await this.reschedule(bookingId, nextDelayMs, `wave-${wave}`);
 
+    // The wave log carries the ids now, so the line stays a compact tally.
+    const excludedCounts = Object.fromEntries(
+      Object.entries(selected.excluded).map(([reason, detail]) => [reason, detail.count]),
+    );
     this.logger.log(
-      `booking ${bookingId} wave ${wave} @ ${radiusKm}km: ${selected.considered} in range, ${offered} offered` +
+      `booking ${bookingId} wave ${wave} @ ${radiusKm}km: ${selected.considered} in range, ${selected.eligible} eligible, ${offered} offered` +
         (selected.degraded ? ' (postgis fallback)' : '') +
-        (Object.keys(selected.excluded).length > 0 ? ` — excluded ${JSON.stringify(selected.excluded)}` : ''),
+        (Object.keys(excludedCounts).length > 0 ? ` — excluded ${JSON.stringify(excludedCounts)}` : ''),
     );
 
     return {
@@ -412,6 +435,75 @@ export class DispatchService implements OnModuleInit {
   }
 
   /**
+   * W5: writes the wave's decision record (§9.4.6).
+   *
+   * SKIPPED FOR EMPTY WAVES PAST THE LAST RUNG. A quiet booking re-checks its
+   * widest radius every two seconds until the deadline; one row per check would
+   * bury every wave that could have matched somebody. Waves at or before the
+   * last rung still log their emptiness — "wave 3 found nobody in 8 km" is an
+   * answer the inspector exists to give.
+   *
+   * FAILURES ARE SWALLOWED, deliberately: the offers are already out and the
+   * search is already rescheduled by the time this runs, so a failed insert can
+   * only lose an audit row — throwing here would fail a wave that worked.
+   */
+  private async writeWaveLog(params: {
+    booking: DispatchBookingRow;
+    wave: number;
+    radiusKm: number;
+    config: DispatchConfig;
+    selected: SelectionResult;
+    offered: number;
+    offeredDriverIds: string[];
+    durationMs: number;
+    ladderLength: number;
+  }): Promise<void> {
+    const {
+      booking,
+      wave,
+      radiusKm,
+      config,
+      selected,
+      offered,
+      offeredDriverIds,
+      durationMs,
+      ladderLength,
+    } = params;
+
+    if (offered === 0 && wave > ladderLength) return;
+
+    const offeredSet = new Set(offeredDriverIds);
+    try {
+      await this.repo.recordWaveLog({
+        bookingId: booking.id,
+        wave,
+        radiusKm,
+        considered: selected.considered,
+        eligible: selected.eligible,
+        offered,
+        degraded: selected.degraded,
+        weights: selected.weights,
+        config,
+        excluded: selected.excluded,
+        candidates: selected.ranked.map((candidate) => ({
+          driverId: candidate.driverId,
+          distanceM: Math.round(candidate.distanceMeters),
+          proximity: round4(candidate.terms.proximity),
+          rating: round4(candidate.terms.rating),
+          acceptance: round4(candidate.terms.acceptance),
+          completion: round4(candidate.terms.completion),
+          score: round2(candidate.score),
+          offered: offeredSet.has(candidate.driverId),
+        })),
+        durationMs,
+      });
+    } catch (error) {
+      // An inspector with a gap beats a search that stopped — see the docblock.
+      this.logger.warn(`wave log write failed for ${booking.id} wave ${wave}: ${String(error)}`);
+    }
+  }
+
+  /**
    * Schedules the next wave.
    *
    * The `jobId` includes a discriminator so BullMQ does not deduplicate the next
@@ -427,4 +519,14 @@ export class DispatchService implements OnModuleInit {
       { jobId: `dispatch-${bookingId}-${discriminator}`, delayMs, attempts: 2 },
     );
   }
+}
+
+/** 4 dp is finer than any term needs to be and keeps the stored JSON compact. */
+function round4(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
+
+/** The score as the ranking used it, to two decimals. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }

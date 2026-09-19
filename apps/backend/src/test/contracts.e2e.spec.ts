@@ -4,6 +4,7 @@ import {
   adminAuditListResponseSchema,
   adminCommissionConfigSchema,
   adminDispatchConfigSchema,
+  adminDispatchInspectorListResponseSchema,
   adminFinanceConfigSchema,
   adminIdentitySchema,
   adminNotesResponseSchema,
@@ -155,6 +156,15 @@ describe('response contracts', () => {
     { path: '/v1/admin/ops/activity', schema: adminOpsActivityResponseSchema, realm: 'admin' },
     { path: '/v1/admin/ops/badges', schema: adminOpsBadgesResponseSchema, realm: 'admin' },
     { path: '/v1/admin/ops/live', schema: adminOpsLiveResponseSchema, realm: 'admin' },
+    // W5 — the inspector list. Seeded with a live search below; the
+    // parameterised detail cannot sit in this static table and is excluded
+    // (see EXCLUDED) with its contract asserted in
+    // `admin-ops-dispatch.e2e.spec.ts`.
+    {
+      path: '/v1/admin/ops/dispatch',
+      schema: adminDispatchInspectorListResponseSchema,
+      realm: 'admin',
+    },
   ];
 
   beforeAll(async () => {
@@ -274,6 +284,10 @@ describe('response contracts', () => {
       { bookingId: opsBookingId, status: 'searching' },
       { bookingId: opsBookingId, status: 'assigned' },
     ]);
+
+    // W5 — one live search for the inspector list row above (the list would be
+    // an empty array without it, which matches almost any schema).
+    await seedBooking(db, { userId: contractCustomer, status: 'searching' });
   });
 
   afterAll(async () => {
@@ -410,6 +424,10 @@ const EXCLUDED = new Set([
   // W1 §3.5 — audit detail, asserted with `expectMatchesContract` against
   // `adminAuditDetailSchema` in `admin-audit.e2e.spec.ts`, which owns a real id.
   '/v1/admin/audit/:id',
+  // W5 — the inspector detail. Asserted with `expectMatchesContract` against
+  // `adminDispatchInspectorResponseSchema` in `admin-ops-dispatch.e2e.spec.ts`,
+  // which owns a real dispatched booking and drives the wave engine directly.
+  '/v1/admin/ops/dispatch/:bookingId',
 ]);
 
 /** Express 5 keeps the registered layers on `router.stack`. */

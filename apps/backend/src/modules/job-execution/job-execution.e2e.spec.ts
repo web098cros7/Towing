@@ -59,7 +59,15 @@ async function assign(bookingId: string, driverId: string): Promise<void> {
   const booking = await repo.booking(bookingId);
   await offers.offer(
     booking!,
-    { driverId, distanceMeters: 500, score: 50, fleetId: null, truckId: null },
+    {
+      driverId,
+      distanceMeters: 500,
+      score: 50,
+      // W5 fixture: offers are driven directly, so the terms are placeholders.
+      terms: { proximity: 0.5, rating: 0.5, acceptance: 0.5, completion: 0.5 },
+      fleetId: null,
+      truckId: null,
+    },
     1,
     2,
     20,

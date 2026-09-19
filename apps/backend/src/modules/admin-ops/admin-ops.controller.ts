@@ -1,9 +1,14 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ZodQuery } from '../../common/validation/zod.decorators';
+import {
+  adminDispatchInspectorListQuerySchema,
+  adminOpsLiveQuerySchema,
+  type AdminDispatchInspectorListQuery,
+  type AdminOpsLiveQuery,
+} from '@towing/api-contracts';
+import { z } from 'zod';
+import { ZodParam, ZodQuery } from '../../common/validation/zod.decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions, Realms } from '../auth/realm.decorator';
-import type { AdminOpsLiveQuery } from '@towing/api-contracts';
-import { adminOpsLiveQuerySchema } from '@towing/api-contracts';
 import { AdminOpsService } from './admin-ops.service';
 
 /**
@@ -15,6 +20,11 @@ import { AdminOpsService } from './admin-ops.service';
  * Read-only, so no `@ThrottleBucket` tag: the class default `reads` bucket is
  * the correct one, and the three GETs ride the same 10 s cache the broadcaster
  * fills.
+ *
+ * W5's inspector routes state `ops.dispatch.inspect` at the HANDLER, where the
+ * guard's `getAllAndOverride` lets it win over the class default — the
+ * permission the guide assigns them, held by the same three roles today but
+ * independently revisable.
  */
 @Controller('admin/ops')
 @UseGuards(JwtAuthGuard)
@@ -46,5 +56,25 @@ export class AdminOpsController {
   @Get('live')
   live(@ZodQuery(adminOpsLiveQuerySchema) query: AdminOpsLiveQuery) {
     return this.ops.live(query);
+  }
+
+  /**
+   * W5: the live searches. Declared BEFORE `dispatch/:bookingId` — Express
+   * matches in registration order, and the static path must not be read as an
+   * id (the params are UUID-validated, so a swap here would 422, not 404).
+   */
+  @Get('dispatch')
+  @Permissions('ops.dispatch.inspect')
+  dispatchLive(
+    @ZodQuery(adminDispatchInspectorListQuerySchema) query: AdminDispatchInspectorListQuery,
+  ) {
+    return this.ops.dispatchLiveSearches(query);
+  }
+
+  /** W5: one booking's full wave history — the inspector page (§9.4.6). */
+  @Get('dispatch/:bookingId')
+  @Permissions('ops.dispatch.inspect')
+  dispatchInspector(@ZodParam(z.uuid(), 'bookingId') bookingId: string) {
+    return this.ops.dispatchInspector(bookingId);
   }
 }

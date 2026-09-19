@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { dispatchAttemptOutcomes, type DispatchAttemptOutcome } from '@towing/api-contracts';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
-import { bookings, dispatchAttempts, drivers, fleets, fleetTrucks, services, users } from '../../db/schema';
+import { bookings, dispatchAttempts, dispatchWaveLogs, drivers, fleets, fleetTrucks, services, users } from '../../db/schema';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 
 /**
@@ -16,9 +17,15 @@ import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 
 /**
  * The legal `outcome` values, constrained by `ck_dispatch_attempts_outcome`
- * (0014, widened by 0015 with `unable` — see `recordUnable`).
+ * (0014, widened by 0015 with `unable` and by W5's 0023 with `reassigned`).
+ *
+ * SOURCED FROM THE CONTRACT (`dispatchAttemptOutcomes`): the inspector validates
+ * rows against that list and `migration-0023.spec.ts` pins it to the CHECK's
+ * literals — one list, cross-checked in both directions, instead of a third
+ * transcription that drifts.
  */
-export type AttemptOutcome = 'offered' | 'accepted' | 'rejected' | 'expired' | 'revoked' | 'unable';
+export const ATTEMPT_OUTCOMES = dispatchAttemptOutcomes;
+export type AttemptOutcome = DispatchAttemptOutcome;
 
 /** Everything the §3.2 filter and the §6.2 scorer need that the hot hash cannot hold. */
 export interface DriverEligibilityRow {
@@ -81,6 +88,29 @@ export interface DispatchBookingRow {
   customerName: string | null;
   customerMobile: string | null;
   longDistance: boolean;
+}
+
+/**
+ * W5: the payload of one `dispatch_wave_logs` row.
+ *
+ * The JSONB fields are typed `unknown` on purpose — the log is written by the
+ * wave runner and read by the inspector, both of which have the concrete types;
+ * the repo is just the pipe, and pretending to validate a shape it does not
+ * produce is how two definitions start drifting.
+ */
+export interface WaveLogEntry {
+  bookingId: string;
+  wave: number;
+  radiusKm: number;
+  considered: number;
+  eligible: number;
+  offered: number;
+  degraded: boolean;
+  weights: unknown;
+  config: unknown;
+  excluded: unknown;
+  candidates: unknown;
+  durationMs: number;
 }
 
 @Injectable()
@@ -411,6 +441,32 @@ export class DispatchRepo {
         updatedAt: new Date(),
       })
       .where(eq(bookings.id, bookingId));
+  }
+
+  /**
+   * W5: one wave, recorded for the inspector (§9.4.6).
+   *
+   * Called by the wave runner AFTER offers go out, wrapped in its own
+   * try/catch — a row that fails to write leaves a gap in the inspector, never
+   * a search that stopped. The JSONB payloads come from the selection result
+   * (`ranked`, `excluded`, `weights`) plus the resolved config, so the row and
+   * the offers it describes are the same computation.
+   */
+  async recordWaveLog(entry: WaveLogEntry): Promise<void> {
+    await this.db.insert(dispatchWaveLogs).values({
+      bookingId: entry.bookingId,
+      wave: entry.wave,
+      radiusKm: entry.radiusKm.toFixed(2),
+      considered: entry.considered,
+      eligible: entry.eligible,
+      offered: entry.offered,
+      degraded: entry.degraded,
+      weights: entry.weights,
+      config: entry.config,
+      excluded: entry.excluded,
+      candidates: entry.candidates,
+      durationMs: entry.durationMs,
+    });
   }
 }
 

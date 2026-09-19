@@ -458,6 +458,9 @@ export class OfferService {
             )
           : 0,
         score: 0,
+        // W5: reconstructed from the DB row, not scored — zeros, and only used
+        // to rebuild the offer frame for the offering driver.
+        terms: { proximity: 0, rating: 0, acceptance: 0, completion: 0 },
         fleetId: null,
         truckId: null,
       },

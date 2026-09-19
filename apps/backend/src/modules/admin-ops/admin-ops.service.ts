@@ -1,8 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  GLOBAL_DISPATCH_CONFIG_DEFAULTS,
   adminActivityItemSchema,
+  resolveDispatchConfig,
   rupeeStringToPaise,
   type AdminActivityItem,
+  type AdminDispatchInspectorListQuery,
+  type AdminDispatchInspectorListResponse,
+  type AdminDispatchInspectorResponse,
   type AdminOpsActivityResponse,
   type AdminOpsBadges,
   type AdminOpsBadgesResponse,
@@ -10,10 +15,14 @@ import {
   type AdminOpsKpis,
   type AdminOpsLiveQuery,
   type AdminOpsLiveResponse,
+  type DispatchConfig,
   type JobStatus,
+  type ScorerWeights,
+  type ServiceType,
 } from '@towing/api-contracts';
 import type { Redis } from 'ioredis';
 import { CacheService } from '../../common/cache/cache.service';
+import { ApiException } from '../../common/errors/api-exception';
 import { istDayStart } from '../../common/time/ist';
 import {
   REDIS,
@@ -24,7 +33,7 @@ import {
   driverHashKey,
 } from '../../redis/redis.constants';
 import { PositionsRepo } from '../../realtime/positions.repo';
-import { AdminOpsRepo } from './admin-ops.repo';
+import { AdminOpsRepo, type LiveSearchRow } from './admin-ops.repo';
 
 /** The guide's "~10 s cache", short enough that even without a push the tile lags one poll. */
 const CACHE_TTL_SECONDS = 10;
@@ -332,6 +341,121 @@ export class AdminOpsService {
       at: new Date().toISOString(),
       degraded,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Dispatch inspector (§9.4.6, W5)
+  // -------------------------------------------------------------------------
+
+  /**
+   * "Why did this driver win" — the booking, every recorded wave with its
+   * per-term breakdown, every attempt, and the config as it resolves NOW beside
+   * the per-wave copies of what each wave actually used.
+   *
+   * `waves` is empty for bookings dispatched before the writer shipped, and the
+   * page says so rather than papering over it: reconstructing waves from
+   * attempts would show a plausible history the engine never computed.
+   */
+  async dispatchInspector(bookingId: string): Promise<AdminDispatchInspectorResponse> {
+    const booking = await this.repo.inspectorBooking(bookingId);
+    if (!booking) {
+      throw ApiException.notFound(`booking ${bookingId} not found`);
+    }
+
+    const [waves, attempts, weights] = await Promise.all([
+      this.repo.waveLogsFor(bookingId),
+      this.repo.attemptsFor(bookingId),
+      this.globalWeights(),
+    ]);
+
+    return {
+      booking: {
+        bookingId: booking.bookingId,
+        status: booking.status as JobStatus,
+        serviceType: booking.serviceType,
+        vehicleClass: booking.vehicleClass,
+        zoneId: booking.zoneId,
+        userId: booking.userId,
+        customerName: booking.customerName,
+        customerMobile: booking.customerMobile,
+        pickup: { lat: booking.pickupLat, lng: booking.pickupLng },
+        pickupAddress: booking.pickupAddress,
+        drop:
+          booking.dropLat === null || booking.dropLng === null
+            ? null
+            : { lat: booking.dropLat, lng: booking.dropLng },
+        longDistance: booking.longDistance,
+        searchWave: booking.searchWave,
+        deadlineAt: booking.deadlineAt,
+        scheduledAt: booking.scheduledAt,
+        createdAt: booking.createdAt,
+      },
+      waves,
+      attempts,
+      config: resolveDispatchConfig(
+        booking.zoneDispatchConfig,
+        booking.serviceType as ServiceType,
+      ),
+      weights,
+      liveWave: booking.searchWave,
+      deadlineAt: booking.deadlineAt,
+    };
+  }
+
+  /**
+   * The live-searches list. The radius shown is the stored wave's rung of the
+   * ladder as it resolves NOW (`searchWave` + `service_zones.dispatch_config`),
+   * which is also the rung the next wave would use — the config is re-read on
+   * every wave, so "now" is the honest frame.
+   */
+  async dispatchLiveSearches(
+    _query: AdminDispatchInspectorListQuery,
+  ): Promise<AdminDispatchInspectorListResponse> {
+    const rows = await this.repo.liveSearches();
+
+    // Resolve once per zone+service — 200 rows of one zone must not re-parse
+    // the same JSONB 200 times.
+    const configs = new Map<string, DispatchConfig>();
+    const configFor = (row: LiveSearchRow): DispatchConfig => {
+      const key = `${row.zoneId ?? 'no-zone'}:${row.serviceType}`;
+      const cached = configs.get(key);
+      if (cached) return cached;
+      const resolved = resolveDispatchConfig(row.zoneDispatchConfig, row.serviceType as ServiceType);
+      configs.set(key, resolved);
+      return resolved;
+    };
+
+    return {
+      items: rows.map((row) => {
+        const radiusKm = ((): number | null => {
+          if (row.wave === null || row.wave < 1) return null;
+          const config = configFor(row);
+          const ladder = row.longDistance ? config.bandCRadiusLadderKm : config.radiusLadderKm;
+          if (ladder.length === 0) return null;
+          return ladder[Math.min(row.wave, ladder.length) - 1] ?? ladder[ladder.length - 1]!;
+        })();
+
+        return {
+          bookingId: row.bookingId,
+          zoneId: row.zoneId,
+          serviceType: row.serviceType,
+          vehicleClass: row.vehicleClass,
+          wave: row.wave,
+          radiusKm,
+          contacted: row.contacted,
+          longDistance: row.longDistance,
+          deadlineAt: row.deadlineAt,
+          createdAt: row.createdAt,
+        };
+      }),
+      at: new Date().toISOString(),
+    };
+  }
+
+  /** The weights in force — the singleton, or the code defaults it falls back to. */
+  private async globalWeights(): Promise<ScorerWeights> {
+    const weights = await this.repo.globalWeights();
+    return weights ?? GLOBAL_DISPATCH_CONFIG_DEFAULTS.weights;
   }
 
   /**
