@@ -7,6 +7,7 @@ import {
   type AdminLocationUpdateEvent,
   type AdminOpsBadgesEvent,
   type AdminOpsMetricsEvent,
+  type OpsSubscribe,
 } from '@towing/api-contracts';
 import {
   createRealtimeConnection,
@@ -54,3 +55,13 @@ export const adminRealtimeConnection = createRealtimeConnection<AdminRealtimeHan
     });
   },
 });
+
+/**
+ * Outbound `ops:subscribe` (W4) — the zone filter is a room join so the server
+ * stops pushing every zone's positions to a filtered operator. Fire-and-forget
+ * by design: the caller re-sends its current filter on every (re)connect, so a
+ * send that happens while the socket is down is replaced, never queued.
+ */
+export function adminOpsSubscribe(filters: OpsSubscribe): boolean {
+  return adminRealtimeConnection.send('ops:subscribe', filters);
+}

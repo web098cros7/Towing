@@ -2,7 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { AdminOpsBadgesResponse } from '@towing/api-contracts';
+import type { AdminOpsBadgesResponse, AdminOpsLiveResponse } from '@towing/api-contracts';
 import { adminOpsKeys } from '@/features/admin-ops/api/adminOps.keys';
 import { dashboardFromMetrics } from '@/features/admin-ops/lib/dashboardFromMetrics';
 import type { RealtimeMode } from '@/features/realtime/types';
@@ -82,12 +82,65 @@ function AdminRealtimeLiveProvider({ children }: { children: React.ReactNode }) 
         void client.invalidateQueries({ queryKey: adminOpsKeys.all });
       },
 
-      onBookingStatus: () => {
+      onBookingStatus: (event) => {
         setLastEventAt(Date.now());
+        // Patch every cached live snapshot (the key is filter-parameterised):
+        // the frame carries status + zone + driver, so a booking that left the
+        // active set disappears from the layer without waiting for a refetch,
+        // and one that changed driver re-links its leg immediately. Unknown
+        // bookings are dropped — identity comes from REST, exactly like the
+        // fleet map's trucks.
+        client.setQueriesData<AdminOpsLiveResponse>(
+          { queryKey: [...adminOpsKeys.all, 'live'] },
+          (previous) => {
+            if (!previous) return previous;
+            let changed = false;
+            const bookings = previous.bookings.map((booking) => {
+              if (booking.bookingId !== event.bookingId) return booking;
+              changed = true;
+              return {
+                ...booking,
+                status: event.status,
+                zoneId: event.zoneId,
+                driverId: event.driverId,
+              };
+            });
+            return changed ? { ...previous, bookings } : previous;
+          },
+        );
         scheduleActivityRefresh();
       },
 
-      onLocationUpdate: () => setLastEventAt(Date.now()),
+      onLocationUpdate: (event) => {
+        setLastEventAt(Date.now());
+        // Merge positions into every cached live snapshot by driver id: a
+        // frame for a driver the snapshot does not list is not ours to render
+        // — the resync that lands will include them properly.
+        client.setQueriesData<AdminOpsLiveResponse>(
+          { queryKey: [...adminOpsKeys.all, 'live'] },
+          (previous) => {
+            if (!previous) return previous;
+            const byDriver = new Map(
+              previous.drivers.map((driver) => [driver.driverId, driver]),
+            );
+            for (const incoming of event.positions) {
+              const existing = byDriver.get(incoming.driverId);
+              if (!existing) continue;
+              byDriver.set(incoming.driverId, {
+                ...existing,
+                lat: incoming.lat,
+                lng: incoming.lng,
+                headingDeg: incoming.headingDeg,
+                speedKph: incoming.speedKph,
+                at: incoming.at,
+                zoneId: incoming.zoneId ?? existing.zoneId,
+                fromFallback: false,
+              });
+            }
+            return { ...previous, drivers: [...byDriver.values()] };
+          },
+        );
+      },
 
       onOpsMetrics: (event) => {
         setLastEventAt(Date.now());

@@ -79,6 +79,18 @@ export class RealtimeConnection<H extends ConnectionHandlers> {
     };
   }
 
+  /**
+   * Best-effort outbound emit (W4's `ops:subscribe`). Returns false when no
+   * live socket is attached — the caller treats "not sent" as "will be re-sent
+   * on the next connect", which is how the admin map re-applies its zone
+   * filter after a reconnect, rather than queueing frames for a closed socket.
+   */
+  send(event: string, payload: unknown): boolean {
+    if (!this.socket || !this.socket.connected) return false;
+    this.socket.emit(event, payload);
+    return true;
+  }
+
   private setMode(mode: RealtimeMode): void {
     this.mode = mode;
     this.handlers?.onMode(mode);

@@ -20,6 +20,10 @@ import type {
 const minutesAgo = (minutes: number): string =>
   new Date(Date.now() - minutes * 60_000).toISOString();
 
+/** Driver pings are fresh on purpose: 15 s is the live→stale threshold. */
+const secondsAgo = (seconds: number): string =>
+  new Date(Date.now() - seconds * 1_000).toISOString();
+
 export const adminOpsKpisMock: AdminOpsKpis = {
   activeRides: 3,
   searching: 2,
@@ -98,7 +102,7 @@ export const adminOpsLiveMock: AdminOpsLiveResponse = {
       lng: 77.5946,
       headingDeg: 92,
       speedKph: 31,
-      at: minutesAgo(1),
+      at: secondsAgo(8),
       fromFallback: false,
     },
     {
@@ -109,7 +113,7 @@ export const adminOpsLiveMock: AdminOpsLiveResponse = {
       lng: 77.6412,
       headingDeg: 210,
       speedKph: 24,
-      at: minutesAgo(2),
+      at: secondsAgo(12),
       fromFallback: false,
     },
     {
