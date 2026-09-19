@@ -9,9 +9,10 @@ import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { adminActions, commissionConfig, commissionConfigHistory, pricingRules } from '../../db/schema';
+import { adminActions, commissionConfig, commissionConfigHistory, commissionProposals, pricingRules } from '../../db/schema';
 import { adminAuthHeaderFor, createTestApp, customerAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
+import { seedBooking } from '../../test/fixtures';
 import {
   seedAdmin,
   seedCustomer,
@@ -93,8 +94,8 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
         .expect(403);
     });
 
-    it('keeps commission at finance and super_admin, and refuses operations and support', async () => {
-      for (const subRole of ['finance', 'super_admin'] as const) {
+    it('lets operations READ commission (to propose) but keeps support out', async () => {
+      for (const subRole of ['finance', 'super_admin', 'operations'] as const) {
         const admin = await seedAdmin(db, { subRole });
         await request(app.getHttpServer())
           .get('/v1/admin/commission')
@@ -102,13 +103,14 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
           .expect(200);
       }
 
-      for (const subRole of ['operations', 'support'] as const) {
-        const admin = await seedAdmin(db, { subRole });
-        await request(app.getHttpServer())
-          .get('/v1/admin/commission')
-          .set('Authorization', await adminAuthHeaderFor(app, { adminId: admin.id, subRole }))
-          .expect(403);
-      }
+      // W11: Operations proposes (`commission.propose`), and a proposal has to be
+      // made against the rates that are live — so the READ opened to them while
+      // the WRITE stayed with finance and super admin. Support holds neither.
+      const support = await seedAdmin(db, { subRole: 'support' });
+      await request(app.getHttpServer())
+        .get('/v1/admin/commission')
+        .set('Authorization', await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }))
+        .expect(403);
     });
 
     it('refuses a customer token and an anonymous caller', async () => {
@@ -570,6 +572,261 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       expect(response.body[0].after).toBeTruthy();
       expect(response.body[1].before).toBeTruthy();
       expect(response.body[1].reason).toBe('Winter adjustments');
+    });
+  });
+
+  describe('PUT /v1/admin/commission/guardrail (W11 / decision G2)', () => {
+    it('lets a SUPER ADMIN move the window, and the service enforces the new one', async () => {
+      const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
+      const superAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+
+      const response = await request(app.getHttpServer())
+        .put('/v1/admin/commission/guardrail')
+        .set('Authorization', superAuth)
+        .send({ floorPct: 5, capPct: 12, reason: 'Owner raised the ceiling' })
+        .expect(200);
+
+      expect(response.body.floorPct).toBe(5);
+      expect(response.body.capPct).toBe(12);
+
+      // THE POINT OF G2: a rate that 5–10 refused is now a legitimate edit…
+      await request(app.getHttpServer())
+        .put('/v1/admin/commission')
+        .set('Authorization', financeAuth)
+        .send({ bands: [{ band: 'A', pct: 11 }], reason: 'Now allowed' })
+        .expect(200);
+
+      // …and the audit says who moved the window.
+      const guardrailAudits = await db
+        .select()
+        .from(adminActions)
+        .where(eq(adminActions.action, 'commission.guardrail.update'));
+      expect(guardrailAudits).toHaveLength(1);
+      expect(guardrailAudits[0]!.adminId).toBe(superAdmin.id);
+
+      // And the widened window REFUSES what it still should: 13 is out.
+      await request(app.getHttpServer())
+        .put('/v1/admin/commission')
+        .set('Authorization', financeAuth)
+        .send({ bands: [{ band: 'A', pct: 13 }] })
+        .expect(422);
+    });
+
+    it('is SUPER ADMIN ONLY — finance and operations are refused', async () => {
+      for (const subRole of ['finance', 'operations'] as const) {
+        const admin = await seedAdmin(db, { subRole });
+        await request(app.getHttpServer())
+          .put('/v1/admin/commission/guardrail')
+          .set('Authorization', await adminAuthHeaderFor(app, { adminId: admin.id, subRole }))
+          .send({ floorPct: 6, capPct: 12 })
+          .expect(403);
+      }
+    });
+
+    it('refuses a window that would leave a live band outside it, and audits the refusal', async () => {
+      const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
+      const superAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+
+      // Band A charges 10 %; a cap of 9 would make the live rate illegal.
+      const response = await request(app.getHttpServer())
+        .put('/v1/admin/commission/guardrail')
+        .set('Authorization', superAuth)
+        .send({ floorPct: 6, capPct: 9, reason: 'Tightening' })
+        .expect(422);
+      expect(JSON.stringify(response.body)).toMatch(/A/);
+
+      const rejected = await db
+        .select()
+        .from(adminActions)
+        .where(eq(adminActions.action, 'commission.guardrail.rejected'));
+      expect(rejected).toHaveLength(1);
+
+      // Nothing moved.
+      const config = await request(app.getHttpServer())
+        .get('/v1/admin/commission')
+        .set('Authorization', financeAuth);
+      expect(config.body.floorPct).toBe(5);
+      expect(config.body.capPct).toBe(10);
+    });
+
+    it('refuses the ABSURD at the schema, before the service is reached', async () => {
+      const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
+      const superAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+
+      for (const body of [
+        { floorPct: 0, capPct: 10 }, // floor must be > 0
+        { floorPct: 5, capPct: 31 }, // the G2 outer bound
+        { floorPct: 10, capPct: 5 }, // inverted
+      ]) {
+        await request(app.getHttpServer())
+          .put('/v1/admin/commission/guardrail')
+          .set('Authorization', superAuth)
+          .send(body)
+          .expect(422);
+      }
+    });
+    it('still refuses the ABSURD in the DATABASE itself, and accepts what the window allows', async () => {
+      // The relaxation is real: 12 %, which the old 5–10 CHECK refused, is now a
+      // legitimate stored value…
+      await db.update(commissionConfig).set({ pct: '12.00' }).where(eq(commissionConfig.band, 'A'));
+      const [row] = await db.select().from(commissionConfig).where(eq(commissionConfig.band, 'A'));
+      expect(Number(row!.pct)).toBe(12);
+
+      // …and the outer bound G2 names still stops the absurd, with or without
+      // the service in the path.
+      await expect(
+        db.update(commissionConfig).set({ pct: '31.00' }).where(eq(commissionConfig.band, 'A')),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('GET /v1/admin/commission/impact (W11)', () => {
+    it('recomputes commission over the ACTUAL paid bookings in the window', async () => {
+      const customer = await seedCustomer(db);
+      await seedBooking(db, {
+        userId: customer,
+        total: '10000.00',
+        commissionBand: 'A',
+        commissionPct: '10.00',
+        commissionAmount: '1000.00',
+      });
+      const second = await seedCustomer(db);
+      await seedBooking(db, {
+        userId: second,
+        total: '4000.00',
+        commissionBand: 'A',
+        commissionPct: '10.00',
+        commissionAmount: '400.00',
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/v1/admin/commission/impact?bands=A:9,B:8,C:5&days=7')
+        .set('Authorization', financeAuth)
+        .expect(200);
+
+      const bandA = response.body.bands.find((band: { band: string }) => band.band === 'A');
+      expect(bandA.bookings).toBe(2);
+      expect(bandA.currentPct).toBe(10);
+      expect(bandA.proposedPct).toBe(9);
+      expect(bandA.currentPaise).toBe(140_000);
+      // 9 % of 10,000 + 9 % of 4,000 — paisa-exact, from each booking's own base.
+      expect(bandA.proposedPaise).toBe(126_000);
+      expect(bandA.deltaPaise).toBe(-14_000);
+      expect(response.body.totalDeltaPaise).toBe(-14_000);
+    });
+
+    it('lets OPERATIONS run the preview — they are the ones who propose', async () => {
+      const ops = await seedAdmin(db, { subRole: 'operations' });
+      await request(app.getHttpServer())
+        .get('/v1/admin/commission/impact?bands=A:9,B:8,C:5&days=7')
+        .set('Authorization', await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }))
+        .expect(200);
+    });
+
+    it('rejects a malformed band set rather than previewing something else', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/admin/commission/impact?bands=A:nine&days=7')
+        .set('Authorization', financeAuth)
+        .expect(422);
+    });
+  });
+
+  describe('commission proposals (W11 / §4.2)', () => {
+    it('lets OPERATIONS propose, and refuses a second open proposal for the same band', async () => {
+      const ops = await seedAdmin(db, { subRole: 'operations' });
+      const opsAuth = await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' });
+
+      const created = await request(app.getHttpServer())
+        .post('/v1/admin/commission/proposals')
+        .set('Authorization', opsAuth)
+        .send({ band: 'A', pct: 9, reason: 'Retention for high-volume drivers' })
+        .expect(200);
+
+      expect(created.body.status).toBe('open');
+      expect(created.body.proposedBy).toBe(ops.id);
+
+      // One open proposal per band is a database fact (0026's partial unique).
+      await request(app.getHttpServer())
+        .post('/v1/admin/commission/proposals')
+        .set('Authorization', opsAuth)
+        .send({ band: 'A', pct: 8.5, reason: 'Second thoughts' })
+        .expect(409);
+
+      const listed = await request(app.getHttpServer())
+        .get('/v1/admin/commission/proposals')
+        .set('Authorization', opsAuth)
+        .expect(200);
+      expect(listed.body).toHaveLength(1);
+
+      // …and the proposal did NOT move the rate.
+      const [row] = await db.select().from(commissionConfig).where(eq(commissionConfig.band, 'A'));
+      expect(Number(row!.pct)).toBe(10);
+    });
+
+    it('lets finance APPLY a proposal through the ordinary write path', async () => {
+      const ops = await seedAdmin(db, { subRole: 'operations' });
+      const proposal = await request(app.getHttpServer())
+        .post('/v1/admin/commission/proposals')
+        .set('Authorization', await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }))
+        .send({ band: 'B', pct: 7, reason: 'Driver supply is strong' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/commission/proposals/${proposal.body.id}/apply`)
+        .set('Authorization', financeAuth)
+        .send({})
+        .expect(200);
+
+      const [row] = await db.select().from(commissionConfig).where(eq(commissionConfig.band, 'B'));
+      expect(Number(row!.pct)).toBe(7);
+      expect(row!.updatedBy).toBe(financeId);
+
+      // The same audit + history trail a hand-typed edit leaves.
+      const history = await db
+        .select()
+        .from(commissionConfigHistory)
+        .where(eq(commissionConfigHistory.band, 'B'));
+      expect(Number(history[history.length - 1]!.newPct)).toBe(7);
+
+      const [decided] = await db
+        .select()
+        .from(commissionProposals)
+        .where(eq(commissionProposals.id, proposal.body.id));
+      expect(decided!.status).toBe('applied');
+      expect(decided!.decidedBy).toBe(financeId);
+      expect(decided!.adminActionId).toBeTruthy();
+    });
+
+    it('refuses operations the APPLY, and refuses a proposal that is already decided', async () => {
+      const ops = await seedAdmin(db, { subRole: 'operations' });
+      const opsAuth = await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' });
+      const proposal = await request(app.getHttpServer())
+        .post('/v1/admin/commission/proposals')
+        .set('Authorization', opsAuth)
+        .send({ band: 'C', pct: 6, reason: 'C band is under-priced' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/commission/proposals/${proposal.body.id}/apply`)
+        .set('Authorization', opsAuth)
+        .send({})
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/commission/proposals/${proposal.body.id}/decline`)
+        .set('Authorization', financeAuth)
+        .send({ reason: 'Not this quarter' })
+        .expect(200);
+
+      // A decided proposal is not a queue item any more.
+      await request(app.getHttpServer())
+        .post(`/v1/admin/commission/proposals/${proposal.body.id}/apply`)
+        .set('Authorization', financeAuth)
+        .send({})
+        .expect(409);
+
+      const [row] = await db.select().from(commissionConfig).where(eq(commissionConfig.band, 'C'));
+      expect(Number(row!.pct)).toBe(5);
     });
   });
 

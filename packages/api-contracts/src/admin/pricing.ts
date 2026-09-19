@@ -1,11 +1,7 @@
 import { z } from 'zod';
 import { serviceTypeSchema } from '../common/enums';
 import { unsignedPaiseSchema } from '../common/money';
-import {
-  COMMISSION_PCT_CAP,
-  COMMISSION_PCT_FLOOR,
-  commissionPctSchema,
-} from '../common/pricing';
+import { commissionPctSchema } from '../common/pricing';
 import { vehicleClassSchema } from '../fleet/trucks';
 
 /**
@@ -211,10 +207,117 @@ export type AdminCommissionBand = z.infer<typeof adminCommissionBandSchema>;
 /** `GET /v1/admin/commission`. The guardrail is served alongside so a form can render it. */
 export const adminCommissionConfigSchema = z.object({
   bands: z.array(adminCommissionBandSchema),
-  floorPct: z.literal(COMMISSION_PCT_FLOOR),
-  capPct: z.literal(COMMISSION_PCT_CAP),
+  /**
+   * W11 / decision G2 — the CURRENT window, read from `commission_guardrail`.
+   *
+   * NUMBERS, NOT LITERALS: since 0026 the window is a row a super admin can
+   * move, and the two DB CHECKs hold only the absolute outer bound (0 < pct ≤
+   * 30). A literal here would be a second, silently-stale copy of the policy.
+   */
+  floorPct: z.number(),
+  capPct: z.number(),
+  /** When the window itself last moved, so the form can say how old it is. */
+  guardrailUpdatedAt: z.iso.datetime().nullable(),
 });
 export type AdminCommissionConfig = z.infer<typeof adminCommissionConfigSchema>;
+
+/**
+ * `PUT /v1/admin/commission/guardrail` — `commission.guardrail`, Super Admin
+ * only (decision G2).
+ *
+ * The OUTER bound is mirrored here (`0 < pct ≤ 30`) so an absurd value is a
+ * field-level 422 rather than a CHECK violation; the *live* window is enforced
+ * in the service, which also refuses a change that would leave a live band
+ * outside the new one — a window that excludes a rate the platform is charging
+ * right now is a contradiction, not a policy.
+ */
+export const adminCommissionGuardrailUpdateSchema = z
+  .object({
+    floorPct: z.number().gt(0).max(30).multipleOf(0.01),
+    capPct: z.number().gt(0).max(30).multipleOf(0.01),
+    reason: z.string().min(3).max(500).optional(),
+  })
+  .refine((body) => body.floorPct < body.capPct, {
+    message: 'the floor must sit below the cap',
+    path: ['floorPct'],
+  });
+export type AdminCommissionGuardrailUpdate = z.infer<typeof adminCommissionGuardrailUpdateSchema>;
+
+/** One `commission_proposals` row — §4.2's Operations ⚠️. */
+export const adminCommissionProposalSchema = z.object({
+  id: z.uuid(),
+  band: z.enum(['A', 'B', 'C']),
+  pct: z.number(),
+  proposedBy: z.uuid(),
+  reason: z.string(),
+  status: z.enum(['open', 'applied', 'declined']),
+  decidedBy: z.uuid().nullable(),
+  decidedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type AdminCommissionProposal = z.infer<typeof adminCommissionProposalSchema>;
+
+/** `POST /v1/admin/commission/proposals` — Operations may propose, never set. */
+export const adminCommissionProposalCreateSchema = z.object({
+  band: z.enum(['A', 'B', 'C']),
+  pct: z.number().gt(0).max(30).multipleOf(0.01),
+  reason: z.string().min(3).max(500),
+});
+export type AdminCommissionProposalCreate = z.infer<typeof adminCommissionProposalCreateSchema>;
+
+/** `POST /v1/admin/commission/proposals/:id/apply|decline`. */
+export const adminCommissionProposalDecisionSchema = z.object({
+  reason: z.string().min(3).max(500).optional(),
+});
+export type AdminCommissionProposalDecision = z.infer<
+  typeof adminCommissionProposalDecisionSchema
+>;
+
+/**
+ * §9.4.9's impact preview: "at last week's volume, Band A 10 %→9 % ≈ −₹X
+ * revenue".
+ *
+ * READ-ONLY ARITHMETIC over ACTUAL paid bookings in the window, using the same
+ * `commissionPaiseAtPct` the live settlement path uses — so the number shown is
+ * the number the platform would have earned, not a projection from averages.
+ */
+export const adminCommissionImpactBandSchema = z.object({
+  band: z.enum(['A', 'B', 'C']),
+  /** What the band charges today. */
+  currentPct: z.number(),
+  /** What the operator typed into the preview. */
+  proposedPct: z.number(),
+  bookings: z.number().int(),
+  currentPaise: unsignedPaiseSchema,
+  proposedPaise: unsignedPaiseSchema,
+  /** `proposed − current`, signed: a cut is negative. */
+  deltaPaise: z.number().int(),
+});
+export type AdminCommissionImpactBand = z.infer<typeof adminCommissionImpactBandSchema>;
+
+export const adminCommissionImpactSchema = z.object({
+  days: z.number().int(),
+  bands: z.array(adminCommissionImpactBandSchema),
+  totalCurrentPaise: unsignedPaiseSchema,
+  totalProposedPaise: unsignedPaiseSchema,
+  totalDeltaPaise: z.number().int(),
+});
+export type AdminCommissionImpact = z.infer<typeof adminCommissionImpactSchema>;
+
+/**
+ * `GET /v1/admin/commission/impact?bands=A:9,B:8,C:5&days=7`.
+ *
+ * The bands param is compact because it is a preview of ONE edit: three pairs,
+ * not a form. Parsing is strict — a typo'd band set must 422 rather than
+ * silently preview something else.
+ */
+export const adminCommissionImpactQuerySchema = z.object({
+  bands: z
+    .string()
+    .regex(/^[ABC]:\d{1,2}(\.\d{1,2})?(,[ABC]:\d{1,2}(\.\d{1,2})?)*$/, 'expected A:9,B:8,C:5'),
+  days: z.coerce.number().int().min(1).max(90).default(7),
+});
+export type AdminCommissionImpactQuery = z.infer<typeof adminCommissionImpactQuerySchema>;
 
 /**
  * `PUT /v1/admin/commission`.
@@ -249,6 +352,14 @@ export const adminCommissionUpdateSchema = z.object({
   reason: z.string().min(3).max(500).optional(),
 });
 export type AdminCommissionUpdate = z.infer<typeof adminCommissionUpdateSchema>;
+
+/**
+ * `commissionPctSchema` is re-exported for callers that want the §3.3 LAUNCH
+ * window without the audit semantics — the W11 form validating a field as the
+ * operator types, for instance. The runtime window is `commission_guardrail`'s
+ * row (decision G2); this is the seed's and the tests' oracle.
+ */
+export { commissionPctSchema };
 
 /** A `commission_config_history` row — `GET /v1/admin/commission/history`. */
 export const commissionHistoryEntrySchema = z.object({

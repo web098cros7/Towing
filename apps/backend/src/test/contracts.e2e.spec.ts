@@ -4,6 +4,8 @@ import {
   adminAuditListResponseSchema,
   adminBookingsResponseSchema,
   adminCommissionConfigSchema,
+  adminCommissionImpactSchema,
+  adminCommissionProposalSchema,
   adminDirectoryUsersResponseSchema,
   adminDirectoryZonesResponseSchema,
   adminDisputesResponseSchema,
@@ -68,6 +70,8 @@ import {
   adminNotes,
   bookingStatusHistory,
   commissionConfigHistory,
+  commissionGuardrail,
+  commissionProposals,
   disputes,
   driverDocuments,
   drivers,
@@ -77,7 +81,12 @@ import {
   serviceZones,
   suspensionRequests,
 } from '../db/schema';
-import { seedBooking, seedCustomerBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
+import {
+  seedBooking,
+  seedCustomerBooking,
+  seedTruck,
+  seedWalletWithLedger,
+} from '../test/fixtures';
 import { closeTestRedis, testRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
 import { seedPricingFixtures } from '../modules/pricing/pricing.e2e.spec';
@@ -184,6 +193,18 @@ describe('response contracts', () => {
         realm: 'admin',
       },
       { path: '/v1/admin/commission', schema: adminCommissionConfigSchema, realm: 'admin' },
+      // W11 — proposals (seeded below, so not an empty-array row) and the impact
+      // preview, whose band rows always exist even with no bookings in window.
+      {
+        path: '/v1/admin/commission/proposals',
+        schema: z.array(adminCommissionProposalSchema),
+        realm: 'admin',
+      },
+      {
+        path: '/v1/admin/commission/impact?bands=A:9,B:8,C:5&days=7',
+        schema: adminCommissionImpactSchema,
+        realm: 'admin',
+      },
       {
         path: '/v1/admin/commission/history',
         schema: z.array(commissionHistoryEntrySchema),
@@ -276,7 +297,10 @@ describe('response contracts', () => {
     await app.get(TokenService).issueSession({ subjectId: superAdmin.id, realm: 'admin' });
 
     // Pending KYC driver with a real document (thumbnailUrl is a signed GET).
-    const pendingDriverId = await seedDriver(db, { kycStatus: 'pending', name: 'Contract Pending' });
+    const pendingDriverId = await seedDriver(db, {
+      kycStatus: 'pending',
+      name: 'Contract Pending',
+    });
     await db.insert(driverDocuments).values({
       driverId: pendingDriverId,
       docType: 'license',
@@ -306,6 +330,16 @@ describe('response contracts', () => {
       oldPct: null,
       newPct: '10.00',
       changedBy: superAdmin.id,
+      reason: 'contract coverage seed',
+    });
+
+    // W11 — one open proposal so the proposals row above is non-empty. (The
+    // guardrail row comes from `seedPricingFixtures` above, which mirrors the
+    // migration's own seed.)
+    await db.insert(commissionProposals).values({
+      band: 'B',
+      pct: '7.50',
+      proposedBy: superAdmin.id,
       reason: 'contract coverage seed',
     });
 
@@ -444,7 +478,8 @@ describe('response contracts', () => {
 
   for (const route of ROUTES) {
     it(`GET ${route.path} matches its contract`, async () => {
-      const token = route.realm === 'customer' ? customerAuth : route.realm === 'admin' ? adminAuth : auth;
+      const token =
+        route.realm === 'customer' ? customerAuth : route.realm === 'admin' ? adminAuth : auth;
       const res = await request(app.getHttpServer())
         .get(route.path)
         .set('Authorization', token)

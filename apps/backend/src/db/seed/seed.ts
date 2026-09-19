@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { NOTIFICATION_PREF_DEFAULTS } from '@towing/api-contracts';
+import { NOTIFICATION_PREF_DEFAULTS, COMMISSION_PCT_CAP, COMMISSION_PCT_FLOOR } from '@towing/api-contracts';
 import { loadEnv } from '../../config/env';
 import { runComplianceSweep } from '../../modules/compliance/compliance-sweep';
 import { rebuildEarnings } from '../../modules/money/earnings-projector';
@@ -19,6 +19,7 @@ import {
   chargeConfig,
   commissionConfig,
   commissionConfigHistory,
+  commissionGuardrail,
   complianceDocuments,
   dispatchConfig,
   driverDocuments,
@@ -515,6 +516,15 @@ export async function runSeed(
     // §7.4 and §6.2 — one row each, column defaults carry the launch values.
     await tx.insert(chargeConfig).values({});
     await tx.insert(dispatchConfig).values({});
+
+    // W11 — the §3.3 window. Migration 0026 inserts it too; the seed repeats it
+    // because `db:reset` truncates every table and a missing row would fall back
+    // to code constants, quietly making a seeded database behave like an
+    // unseeded one.
+    await tx.insert(commissionGuardrail).values({
+      floorPct: COMMISSION_PCT_FLOOR.toFixed(2),
+      capPct: COMMISSION_PCT_CAP.toFixed(2),
+    });
 
     // §3.3 bands, plus a genesis history row per band. The history table is
     // append-only and `old_pct` is nullable precisely for these three: they had

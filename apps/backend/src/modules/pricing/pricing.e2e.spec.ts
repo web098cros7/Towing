@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   chargeConfig,
   commissionConfig,
+  commissionGuardrail,
   dispatchConfig,
   pricingRules,
   serviceZones,
@@ -427,4 +428,9 @@ export async function seedPricingFixtures(db: TestDatabase): Promise<void> {
     { band: 'B', pct: '8.00' },
     { band: 'C', pct: '5.00' },
   ]);
+  // W11 — the §3.3 window (decision G2). Migration 0026 inserts it and the real
+  // seed repeats it; this fixture is what the specs truncate-and-seed against,
+  // and a missing row would silently fall back to the code constants, making a
+  // guardrail test pass for the wrong reason.
+  await db.insert(commissionGuardrail).values({ floorPct: '5.00', capPct: '10.00' });
 }

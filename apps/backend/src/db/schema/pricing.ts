@@ -258,6 +258,67 @@ export const commissionConfigHistory = pgTable(
 );
 
 /**
+ * W11 / decision G2 — the CURRENT §3.3 window, a singleton row.
+ *
+ * WHY THIS IS NOT ANOTHER CHECK CONSTRAINT. A CHECK cannot read another table,
+ * so "5–10, but a super admin may move it" cannot be expressed as one: the
+ * constraint would have to be rewritten (a migration, a deploy) every time the
+ * window moved. So the two enforced CHECKs were relaxed to the ABSOLUTE bound
+ * decision G2 names (`0 < pct <= 30`) and the window became this row, enforced
+ * by `AdminConfigService` on every write and served to the form by
+ * `GET /v1/admin/commission`.
+ *
+ * Seeded 5.00–10.00 by migration 0026, which is exactly the window the two
+ * CHECKs enforced before it.
+ */
+export const commissionGuardrail = pgTable('commission_guardrail', {
+  id: primaryId(),
+  /** Always `true`; UNIQUE + CHECK make this table hold exactly one row. */
+  singleton: boolean('singleton').notNull().default(true).unique(),
+  floorPct: numeric('floor_pct', { precision: 5, scale: 2 }).notNull(),
+  capPct: numeric('cap_pct', { precision: 5, scale: 2 }).notNull(),
+  updatedBy: uuid('updated_by').references(() => adminUsers.id),
+  ...timestamps,
+});
+
+/**
+ * §4.2's Operations ⚠️ — "may propose a commission change", W11.
+ *
+ * OPERATIONS CANNOT APPLY ONE, and that is the whole design: `apply` runs the
+ * proposal's band and percentage through `updateCommission`, so a proposal that
+ * is somehow outside the live guardrail is refused exactly like a hand-typed
+ * one. A proposal is a request with a paper trail, never a bypass.
+ *
+ * One OPEN row per band (partial unique in 0026): two open proposals for Band A
+ * would leave "apply" ambiguous about which decision is being executed.
+ */
+export const commissionProposals = pgTable(
+  'commission_proposals',
+  {
+    id: primaryId(),
+    band: commissionBandEnum('band').notNull(),
+    pct: numeric('pct', { precision: 5, scale: 2 }).notNull(),
+    proposedBy: uuid('proposed_by')
+      .notNull()
+      .references(() => adminUsers.id),
+    reason: text('reason').notNull(),
+    /** `open` · `applied` · `declined` — CHECKed in 0026 and pinned by its spec. */
+    status: text('status').notNull().default('open'),
+    decidedBy: uuid('decided_by').references(() => adminUsers.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    /** The `admin_actions` row of the APPLYING edit, when one happened. */
+    adminActionId: uuid('admin_action_id'),
+    ...timestamps,
+  },
+  (t) => [
+    index('idx_commission_proposals_status_created').on(
+      t.status,
+      t.createdAt.desc().nullsLast(),
+    ),
+  ],
+);
+
+/**
  * §6.2 scorer weights + §6.1 liveness threshold — the GLOBAL half of §6.7, a
  * singleton row.
  *

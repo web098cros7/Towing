@@ -11,11 +11,20 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  adminCommissionGuardrailUpdateSchema,
+  adminCommissionImpactQuerySchema,
+  adminCommissionProposalCreateSchema,
+  adminCommissionProposalDecisionSchema,
   adminCommissionUpdateSchema,
   adminDispatchConfigUpdateSchema,
   adminPricingRuleCreateSchema,
   adminPricingRuleDeactivateSchema,
   adminPricingUpdateSchema,
+  type AdminCommissionGuardrailUpdate,
+  type AdminCommissionImpactQuery,
+  type AdminCommissionProposal,
+  type AdminCommissionProposalCreate,
+  type AdminCommissionProposalDecision,
   type AdminDispatchConfig,
   type AdminDispatchConfigUpdate,
   type AdminCommissionConfig,
@@ -30,9 +39,9 @@ import {
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { ThrottleBucket } from '../../common/throttling/throttler.config';
-import { ZodBody } from '../../common/validation/zod.decorators';
+import { ZodBody, ZodQuery } from '../../common/validation/zod.decorators';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Realms, Roles } from '../auth/realm.decorator';
+import { Permissions, Realms, Roles } from '../auth/realm.decorator';
 import type { AuthedRequest } from '../auth/auth.types';
 import { sessionContextFrom } from '../auth/token.service';
 import { AdminConfigService } from './admin-config.service';
@@ -120,7 +129,7 @@ export class AdminConfigController {
   }
 
   @Get('commission')
-  @Roles('super_admin', 'finance')
+  @Roles('super_admin', 'finance', 'operations')
   getCommission(): Promise<AdminCommissionConfig> {
     return this.config.getCommission();
   }
@@ -163,11 +172,88 @@ export class AdminConfigController {
     return this.dispatch.update(adminId(request), body, sessionContextFrom(request));
   }
 
-  /** §3.3 "versioned + audited" — the version half, readable. */
+  /** §3.3 "versioned + audited" — the version half, readable. Operations reads
+   *  it too: a proposal has to be made against the rates that are live. */
   @Get('commission/history')
-  @Roles('super_admin', 'finance')
+  @Roles('super_admin', 'finance', 'operations')
   commissionHistory(): Promise<CommissionHistoryEntry[]> {
     return this.config.commissionHistory();
+  }
+
+  /**
+   * W11 — the §3.3 window itself. `commission.guardrail` is super-admin-only in
+   * the shared permission map (decision G2), and this is its first real user.
+   */
+  @Put('commission/guardrail')
+  @Permissions('commission.guardrail')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  updateGuardrail(
+    @ZodBody(adminCommissionGuardrailUpdateSchema) body: AdminCommissionGuardrailUpdate,
+    @Req() request: AuthedRequest,
+  ): Promise<AdminCommissionConfig> {
+    return this.config.updateGuardrail(adminId(request), body, sessionContextFrom(request));
+  }
+
+  /** §9.4.9's impact preview — read-only arithmetic over actual paid bookings. */
+  @Get('commission/impact')
+  @Roles('super_admin', 'finance', 'operations')
+  commissionImpact(@ZodQuery(adminCommissionImpactQuerySchema) query: AdminCommissionImpactQuery) {
+    return this.config.commissionImpact(query);
+  }
+
+  /** §4.2's Operations ⚠️ — propose, do not set. */
+  @Post('commission/proposals')
+  @Permissions('commission.propose')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  createCommissionProposal(
+    @ZodBody(adminCommissionProposalCreateSchema) body: AdminCommissionProposalCreate,
+    @Req() request: AuthedRequest,
+  ): Promise<AdminCommissionProposal> {
+    return this.config.createCommissionProposal(adminId(request), body, sessionContextFrom(request));
+  }
+
+  @Get('commission/proposals')
+  @Permissions('commission.propose')
+  listCommissionProposals(): Promise<AdminCommissionProposal[]> {
+    return this.config.listCommissionProposals();
+  }
+
+  /** Apply runs the ORDINARY write path, so the guardrail still decides. */
+  @Post('commission/proposals/:id/apply')
+  @Permissions('commission.edit')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  applyCommissionProposal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @ZodBody(adminCommissionProposalDecisionSchema) body: AdminCommissionProposalDecision,
+    @Req() request: AuthedRequest,
+  ): Promise<AdminCommissionConfig> {
+    return this.config.applyCommissionProposal(
+      adminId(request),
+      id,
+      body,
+      sessionContextFrom(request),
+    );
+  }
+
+  @Post('commission/proposals/:id/decline')
+  @Permissions('commission.edit')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  async declineCommissionProposal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @ZodBody(adminCommissionProposalDecisionSchema) body: AdminCommissionProposalDecision,
+    @Req() request: AuthedRequest,
+  ): Promise<{ declined: true }> {
+    await this.config.declineCommissionProposal(
+      adminId(request),
+      id,
+      body,
+      sessionContextFrom(request),
+    );
+    return { declined: true };
   }
 }
 
