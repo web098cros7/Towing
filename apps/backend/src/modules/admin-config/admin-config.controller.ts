@@ -1,13 +1,30 @@
-import { Controller, Get, HttpCode, HttpStatus, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   adminCommissionUpdateSchema,
   adminDispatchConfigUpdateSchema,
+  adminPricingRuleCreateSchema,
+  adminPricingRuleDeactivateSchema,
   adminPricingUpdateSchema,
   type AdminDispatchConfig,
   type AdminDispatchConfigUpdate,
   type AdminCommissionConfig,
   type AdminCommissionUpdate,
   type AdminPricingConfig,
+  type AdminPricingHistoryEntry,
+  type AdminPricingRule,
+  type AdminPricingRuleCreate,
+  type AdminPricingRuleDeactivate,
   type AdminPricingUpdate,
   type CommissionHistoryEntry,
 } from '@towing/api-contracts';
@@ -24,13 +41,18 @@ import { AdminDispatchService } from './admin-dispatch.service';
 /**
  * §16.5 pricing and commission configuration.
  *
- * `super_admin | finance` ONLY — this is the first real user of the `finance`
- * sub-role, which until now appeared in nothing but negative RBAC tests.
- * `operations` and `support` are deliberately excluded: approving a driver's
- * documents and re-rating every future booking on the platform are not the same
- * authority, and §4.2's matrix separates them.
+ * PRICING IS `super_admin | finance | operations` (W10, decision G1): §4.2
+ * gives Operations the pricing and surge levers and the console's nav has
+ * always offered them (`pricing.edit`/`surge.edit` in the shared permission
+ * map), so the route and the screen now agree instead of the screen offering a
+ * 403. Finance keeps its access — removing it would break an existing
+ * role-matrix contract for no gain.
  *
- * `@ThrottleBucket('money')` on both writes, matching the precedent set by the
+ * COMMISSION STAYS `super_admin | finance` on the write path. Operations
+ * reaches commission through `commission.propose` (W11) instead: proposing a
+ * rate is not setting one. `commission.guardrail` is super admin only.
+ *
+ * `@ThrottleBucket('money')` on every write, matching the precedent set by the
  * KYC decision route — an audited admin write that changes economics belongs in
  * the 20/min bucket, not the 300/min read one.
  */
@@ -44,13 +66,13 @@ export class AdminConfigController {
   ) {}
 
   @Get('pricing')
-  @Roles('super_admin', 'finance')
+  @Roles('super_admin', 'finance', 'operations')
   getPricing(): Promise<AdminPricingConfig> {
     return this.config.getPricing();
   }
 
   @Put('pricing')
-  @Roles('super_admin', 'finance')
+  @Roles('super_admin', 'finance', 'operations')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
   updatePricing(
@@ -58,6 +80,43 @@ export class AdminConfigController {
     @Req() request: AuthedRequest,
   ): Promise<AdminPricingConfig> {
     return this.config.updatePricing(adminId(request), body, sessionContextFrom(request));
+  }
+
+  /** §9.4.8's "saved (versioned)" — W10. */
+  @Get('pricing/history')
+  @Roles('super_admin', 'finance', 'operations')
+  pricingHistory(): Promise<AdminPricingHistoryEntry[]> {
+    return this.config.pricingHistory();
+  }
+
+  /** W10 — the matrices were unextendable without this. */
+  @Post('pricing/rules')
+  @Roles('super_admin', 'finance', 'operations')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  createPricingRule(
+    @ZodBody(adminPricingRuleCreateSchema) body: AdminPricingRuleCreate,
+    @Req() request: AuthedRequest,
+  ): Promise<AdminPricingRule> {
+    return this.config.createPricingRule(adminId(request), body, sessionContextFrom(request));
+  }
+
+  /** Retirement, not deletion — a deactivated rule stops pricing new bookings. */
+  @Post('pricing/rules/:id/deactivate')
+  @Roles('super_admin', 'finance', 'operations')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  deactivatePricingRule(
+    @Param('id', ParseUUIDPipe) id: string,
+    @ZodBody(adminPricingRuleDeactivateSchema) body: AdminPricingRuleDeactivate,
+    @Req() request: AuthedRequest,
+  ): Promise<AdminPricingRule> {
+    return this.config.deactivatePricingRule(
+      adminId(request),
+      id,
+      body,
+      sessionContextFrom(request),
+    );
   }
 
   @Get('commission')

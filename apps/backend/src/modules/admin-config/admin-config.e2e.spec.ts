@@ -2,11 +2,14 @@ import type { INestApplication } from '@nestjs/common';
 import {
   adminCommissionConfigSchema,
   adminPricingConfigSchema,
+  adminPricingHistoryEntrySchema,
+  adminPricingRuleSchema,
 } from '@towing/api-contracts';
 import { desc, eq } from 'drizzle-orm';
+import { z } from 'zod';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { adminActions, commissionConfig, commissionConfigHistory } from '../../db/schema';
+import { adminActions, commissionConfig, commissionConfigHistory, pricingRules } from '../../db/schema';
 import { adminAuthHeaderFor, createTestApp, customerAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
 import {
@@ -51,8 +54,46 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
     financeAuth = await adminAuthHeaderFor(app, { adminId: finance.id, subRole: 'finance' });
   });
 
-  describe('RBAC (§4.2)', () => {
-    it('lets finance and super_admin read, and refuses operations and support', async () => {
+  describe('RBAC (§4.2 + W10 decision G1)', () => {
+    it('lets operations, finance and super_admin reach PRICING, and keeps support out', async () => {
+      // G1: §4.2 gives Operations the pricing and surge levers, and the shared
+      // permission map has always granted `operations` `pricing.edit` — the nav
+      // item existed while the route answered 403. This is the route agreeing.
+      for (const subRole of ['operations', 'finance', 'super_admin'] as const) {
+        const admin = await seedAdmin(db, { subRole });
+        await request(app.getHttpServer())
+          .get('/v1/admin/pricing')
+          .set('Authorization', await adminAuthHeaderFor(app, { adminId: admin.id, subRole }))
+          .expect(200);
+      }
+
+      const support = await seedAdmin(db, { subRole: 'support' });
+      await request(app.getHttpServer())
+        .get('/v1/admin/pricing')
+        .set('Authorization', await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }))
+        .expect(403);
+    });
+
+    it('lets operations WRITE pricing (G1) but never commission', async () => {
+      const ops = await seedAdmin(db, { subRole: 'operations' });
+      const opsAuth = await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' });
+
+      await request(app.getHttpServer())
+        .put('/v1/admin/pricing')
+        .set('Authorization', opsAuth)
+        .send({ charges: { nightPct: 17 }, reason: 'Ops winter tweak' })
+        .expect(200);
+
+      // Setting a commission rate is a money decision; operations proposes
+      // (W11's `commission_proposals`), it does not set.
+      await request(app.getHttpServer())
+        .put('/v1/admin/commission')
+        .set('Authorization', opsAuth)
+        .send({ bands: [{ band: 'A', pct: 9 }] })
+        .expect(403);
+    });
+
+    it('keeps commission at finance and super_admin, and refuses operations and support', async () => {
       for (const subRole of ['finance', 'super_admin'] as const) {
         const admin = await seedAdmin(db, { subRole });
         await request(app.getHttpServer())
@@ -61,8 +102,6 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
           .expect(200);
       }
 
-      // `operations` can approve a driver's documents. Re-rating every future
-      // booking on the platform is a different authority (§4.2).
       for (const subRole of ['operations', 'support'] as const) {
         const admin = await seedAdmin(db, { subRole });
         await request(app.getHttpServer())
@@ -83,10 +122,21 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
 
     it('refuses a support admin the WRITE as well as the read', async () => {
       const support = await seedAdmin(db, { subRole: 'support' });
+      const supportAuth = await adminAuthHeaderFor(app, {
+        adminId: support.id,
+        subRole: 'support',
+      });
+
       await request(app.getHttpServer())
         .put('/v1/admin/commission')
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }))
+        .set('Authorization', supportAuth)
         .send({ bands: [{ band: 'A', pct: 9 }] })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .put('/v1/admin/pricing')
+        .set('Authorization', supportAuth)
+        .send({ charges: { nightPct: 17 } })
         .expect(403);
     });
   });
@@ -307,6 +357,219 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
           .send({ charges })
           .expect(422);
       }
+    });
+  });
+
+  describe('POST /v1/admin/pricing/rules (W10)', () => {
+    // ~0.5 km apart, so the quote lands in the 0–5 km slab — where a new 3 km
+    // band can be made to matter.
+    const SHORT_PICKUP = { lat: 12.9716, lng: 77.5946 };
+    const SHORT_DROP = { lat: 12.974, lng: 77.597 };
+
+    const estimateShortTrip = (customerAuth: string) =>
+      request(app.getHttpServer())
+        .post('/v1/pricing/estimate')
+        .set('Authorization', customerAuth)
+        .send({
+          serviceSlug: 'car_tow',
+          vehicleClass: 'wheel_lift',
+          pickup: SHORT_PICKUP,
+          drop: SHORT_DROP,
+          scheduledAt: '2026-08-16T18:00:00.000Z',
+        })
+        .expect(200);
+
+    it('adds a slab and prices the very NEXT estimate from it', async () => {
+      const customerAuth = await customerAuthHeaderFor(app, { userId: await seedCustomer(db) });
+
+      const before = await estimateShortTrip(customerAuth);
+      expect(before.body.breakdown.basePaise).toBe(99_900);
+
+      const created = await request(app.getHttpServer())
+        .post('/v1/admin/pricing/rules')
+        .set('Authorization', financeAuth)
+        .send({
+          ruleKind: 'slab',
+          vehicleClass: 'wheel_lift',
+          maxKm: 3,
+          pricePaise: 123_400,
+          reason: 'Airport runs',
+        })
+        .expect(200);
+
+      expectMatchesContract(adminPricingRuleSchema, created.body);
+      expect(created.body.maxKm).toBe(3);
+      expect(created.body.isActive).toBe(true);
+
+      // NO cache flush between these two calls: the write invalidated the rate
+      // card. §6.7 promises "no deploy", not "no deploy but wait for the TTL".
+      const after = await estimateShortTrip(customerAuth);
+      expect(after.body.breakdown.basePaise).toBe(123_400);
+
+      const audits = await db
+        .select()
+        .from(adminActions)
+        .where(eq(adminActions.action, 'pricing.rule.create'));
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.subjectId).toBe(created.body.id);
+      expect(audits[0]!.reason).toBe('Airport runs');
+    });
+
+    it('refuses a shape the CHECK would refuse, as a field-level 422', async () => {
+      const seeded = await db.select().from(pricingRules);
+      const cases: Array<Record<string, unknown>> = [
+        // slab with a service_type — the service column is roadside-only.
+        { ruleKind: 'slab', serviceType: 'battery', vehicleClass: 'wheel_lift', maxKm: 5, pricePaise: 1_000 },
+        // slab with a ceiling — slabs are single prices.
+        { ruleKind: 'slab', vehicleClass: 'wheel_lift', maxKm: 5, pricePaise: 1_000, priceMaxPaise: 2_000 },
+        // slab without its band.
+        { ruleKind: 'slab', vehicleClass: 'wheel_lift', pricePaise: 1_000 },
+        // long_distance without a ceiling.
+        { ruleKind: 'long_distance', vehicleClass: 'flatbed', maxKm: 700, pricePaise: 1_000 },
+        // inverted §7.3 range — would quote a longer tow LESS (the price_range
+        // CHECK's whole reason for existing).
+        { ruleKind: 'long_distance', vehicleClass: 'flatbed', maxKm: 700, pricePaise: 5_000, priceMaxPaise: 4_000 },
+        // roadside without a service…
+        { ruleKind: 'roadside', maxKm: 5, pricePaise: 1_000 },
+        // …and roadside that carries fields no lookup path reads.
+        { ruleKind: 'roadside', serviceType: 'battery', maxKm: 5, pricePaise: 1_000 },
+      ];
+
+      for (const body of cases) {
+        await request(app.getHttpServer())
+          .post('/v1/admin/pricing/rules')
+          .set('Authorization', financeAuth)
+          .send(body)
+          .expect(422);
+      }
+
+      // Nothing was written and nothing was audited — a refused shape never
+      // reached the database, so no rollback story is needed.
+      expect(await db.select().from(pricingRules)).toHaveLength(seeded.length);
+      expect(
+        await db.select().from(adminActions).where(eq(adminActions.action, 'pricing.rule.create')),
+      ).toHaveLength(0);
+    });
+
+    it('refuses a second ACTIVE rule on the same band, and deactivation frees it', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/v1/admin/pricing/rules')
+        .set('Authorization', financeAuth)
+        .send({ ruleKind: 'slab', vehicleClass: 'wheel_lift', maxKm: 5, pricePaise: 111_100 })
+        .expect(409);
+      expect(JSON.stringify(response.body)).toMatch(/deactivate/i);
+
+      // The unique indexes are PARTIAL on `is_active`, so retiring the incumbent
+      // is the documented way to reuse a band — prove it, rather than documenting
+      // a conflict the operator cannot get out of.
+      const config = (
+        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+      ).body;
+      const incumbent = config.rules.find(
+        (rule: { ruleKind: string; vehicleClass: string; maxKm: number }) =>
+          rule.ruleKind === 'slab' && rule.vehicleClass === 'wheel_lift' && rule.maxKm === 5,
+      );
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/pricing/rules/${incumbent.id}/deactivate`)
+        .set('Authorization', financeAuth)
+        .send({ reason: 'Superseded by the 3 km band' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/admin/pricing/rules')
+        .set('Authorization', financeAuth)
+        .send({
+          ruleKind: 'slab',
+          vehicleClass: 'wheel_lift',
+          maxKm: 5,
+          pricePaise: 111_100,
+          reason: 'Replacement band',
+        })
+        .expect(200);
+    });
+  });
+
+  describe('POST /v1/admin/pricing/rules/:id/deactivate (W10)', () => {
+    it('retires a rule without deleting it, and a double tap writes one audit row', async () => {
+      const config = (
+        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+      ).body;
+      const slab = config.rules.find(
+        (rule: { ruleKind: string; vehicleClass: string; maxKm: number }) =>
+          rule.ruleKind === 'slab' && rule.vehicleClass === 'wheel_lift' && rule.maxKm === 10,
+      );
+
+      const retired = await request(app.getHttpServer())
+        .post(`/v1/admin/pricing/rules/${slab.id}/deactivate`)
+        .set('Authorization', financeAuth)
+        .send({ reason: 'Season over' })
+        .expect(200);
+      expect(retired.body.isActive).toBe(false);
+
+      // RETIRED, NOT DELETED — the row survives so the audit trail's reference
+      // stays coherent and history keeps saying what old bookings were priced on.
+      const rows = await db.select().from(pricingRules).where(eq(pricingRules.id, slab.id));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.isActive).toBe(false);
+
+      // Idempotent: the second call is a no-op, not a second audit row.
+      await request(app.getHttpServer())
+        .post(`/v1/admin/pricing/rules/${slab.id}/deactivate`)
+        .set('Authorization', financeAuth)
+        .send({})
+        .expect(200);
+      const audits = await db
+        .select()
+        .from(adminActions)
+        .where(eq(adminActions.action, 'pricing.rule.deactivate'));
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.before).toBeTruthy();
+      expect(audits[0]!.after).toBeTruthy();
+    });
+
+    it('404s an unknown rule', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/admin/pricing/rules/00000000-0000-0000-0000-000000000000/deactivate')
+        .set('Authorization', financeAuth)
+        .send({})
+        .expect(404);
+    });
+  });
+
+  describe('GET /v1/admin/pricing/history (W10)', () => {
+    it('reads the audit rows back as the version history, newest first', async () => {
+      await request(app.getHttpServer())
+        .put('/v1/admin/pricing')
+        .set('Authorization', financeAuth)
+        .send({ charges: { nightPct: 20 }, reason: 'Winter adjustments' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/admin/pricing/rules')
+        .set('Authorization', financeAuth)
+        .send({
+          ruleKind: 'roadside',
+          serviceType: 'accident_recovery',
+          pricePaise: 88_000,
+          reason: 'New roadside service',
+        })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .get('/v1/admin/pricing/history')
+        .set('Authorization', financeAuth)
+        .expect(200);
+
+      expectMatchesContract(z.array(adminPricingHistoryEntrySchema), response.body);
+      expect(response.body.map((entry: { action: string }) => entry.action)).toEqual([
+        'pricing.rule.create',
+        'pricing.update',
+      ]);
+      // Whole before/after snapshots — §9.4.8's "saved (versioned)".
+      expect(response.body[0].after).toBeTruthy();
+      expect(response.body[1].before).toBeTruthy();
+      expect(response.body[1].reason).toBe('Winter adjustments');
     });
   });
 

@@ -7,14 +7,25 @@ import {
   type AdminCommissionConfig,
   type AdminCommissionUpdate,
   type AdminPricingConfig,
+  type AdminPricingHistoryEntry,
+  type AdminPricingRule,
+  type AdminPricingRuleCreate,
+  type AdminPricingRuleDeactivate,
   type AdminPricingUpdate,
   type Band,
   type CommissionHistoryEntry,
 } from '@towing/api-contracts';
 import { asc, desc, eq } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
+import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { DB, type Database } from '../../db/db.module';
-import { chargeConfig, commissionConfig, commissionConfigHistory, pricingRules } from '../../db/schema';
+import {
+  adminActions,
+  chargeConfig,
+  commissionConfig,
+  commissionConfigHistory,
+  pricingRules,
+} from '../../db/schema';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
 import type { SessionContext } from '../auth/token.service';
 import { PricingConfigRepo } from '../pricing/pricing-config.repo';
@@ -61,16 +72,7 @@ export class AdminConfigService {
         surgePctPeak: Number(charges.surgePctPeak),
         haversineRoadFactor: Number(charges.haversineRoadFactor),
       },
-      rules: rules.map((rule) => ({
-        id: rule.id,
-        ruleKind: rule.ruleKind,
-        serviceType: rule.serviceType,
-        vehicleClass: rule.vehicleClass,
-        maxKm: rule.maxKm === null ? null : Number(rule.maxKm),
-        pricePaise: rupeeStringToPaise(rule.price),
-        priceMaxPaise: rule.priceMax === null ? null : rupeeStringToPaise(rule.priceMax),
-        isActive: rule.isActive,
-      })),
+      rules: rules.map(toPricingRule),
     };
   }
 
@@ -148,6 +150,145 @@ export class AdminConfigService {
 
     await this.pricingConfig.invalidate();
     return after;
+  }
+
+  /**
+   * W10: add a slab, a §7.3 range or a flat fare. Before this, the matrices
+   * were unextendable — `adminPricingUpdateSchema` edits rows by id, and a fare
+   * table you cannot add a row to is a snapshot, not a rate card.
+   *
+   * A DUPLICATE ACTIVE BAND IS A 409, NOT A 500 FROM POSTGRES.
+   * `uq_pricing_rules_distance_band` and `uq_pricing_rules_roadside` are
+   * PARTIAL on `is_active`, so a collision is a business fact ("wheel-lift
+   * already has a 10 km slab") rather than a schema error — deactivating the
+   * old row is the documented way to reuse a band, and the conflict message
+   * says so.
+   *
+   * The whole before/after lives in the audit row, which is also the version
+   * history `pricingHistory` reads back. No separate version table.
+   */
+  async createPricingRule(
+    adminId: string,
+    body: AdminPricingRuleCreate,
+    context: SessionContext,
+  ): Promise<AdminPricingRule> {
+    let created: PricingRuleRow;
+    try {
+      const inserted = await this.db
+        .insert(pricingRules)
+        .values({
+          ruleKind: body.ruleKind,
+          serviceType: body.serviceType ?? null,
+          vehicleClass: body.vehicleClass ?? null,
+          maxKm: body.maxKm == null ? null : body.maxKm.toFixed(2),
+          price: paiseToRupeeString(body.pricePaise),
+          priceMax: body.priceMaxPaise == null ? null : paiseToRupeeString(body.priceMaxPaise),
+        })
+        .returning();
+
+      created = inserted[0]!;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw ApiException.conflict(
+          'An active rule already covers that band — edit or deactivate it instead',
+          {
+            ruleKind: body.ruleKind,
+            vehicleClass: body.vehicleClass ?? null,
+            maxKm: body.maxKm ?? null,
+            serviceType: body.serviceType ?? null,
+          },
+        );
+      }
+      throw error;
+    }
+
+    const dto = toPricingRule(created);
+
+    await this.audit.record({
+      adminId,
+      action: 'pricing.rule.create',
+      subjectType: 'pricing_config',
+      subjectId: dto.id,
+      before: null,
+      after: dto,
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    await this.pricingConfig.invalidate();
+    return dto;
+  }
+
+  /**
+   * W10 "retire a slab" — DEACTIVATE, never hard-delete. A deleted row would
+   * orphan the audit trail's reference and silently rewrite what an old booking
+   * was priced against; `is_active = false` takes the rule out of the rate card
+   * (`PricingConfigRepo.read` filters on it) while the history stays coherent.
+   *
+   * IDEMPOTENT BY DESIGN: a double-tapped button must not write a second audit
+   * row for a state that is already true, so an already-inactive rule is
+   * returned untouched.
+   *
+   * Existing bookings keep their locked fare — locking reads the rate card once,
+   * at confirm, and stores the numbers (§7.5).
+   */
+  async deactivatePricingRule(
+    adminId: string,
+    ruleId: string,
+    body: AdminPricingRuleDeactivate,
+    context: SessionContext,
+  ): Promise<AdminPricingRule> {
+    const rows = await this.db
+      .select()
+      .from(pricingRules)
+      .where(eq(pricingRules.id, ruleId))
+      .limit(1);
+    const existing = rows[0];
+    if (!existing) throw ApiException.notFound('Pricing rule not found');
+    if (!existing.isActive) return toPricingRule(existing);
+
+    const updated = await this.db
+      .update(pricingRules)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(pricingRules.id, ruleId))
+      .returning();
+    const dto = toPricingRule(updated[0]!);
+
+    await this.audit.record({
+      adminId,
+      action: 'pricing.rule.deactivate',
+      subjectType: 'pricing_config',
+      subjectId: ruleId,
+      before: toPricingRule(existing),
+      after: dto,
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    await this.pricingConfig.invalidate();
+    return dto;
+  }
+
+  /** §9.4.8's "saved (versioned)" — the audit rows, read back as a feed. */
+  async pricingHistory(limit = 50): Promise<AdminPricingHistoryEntry[]> {
+    const rows = await this.db
+      .select()
+      .from(adminActions)
+      .where(eq(adminActions.subjectType, 'pricing_config'))
+      .orderBy(desc(adminActions.createdAt), desc(adminActions.id))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      id: row.id,
+      adminId: row.adminId,
+      action: row.action,
+      reason: row.reason,
+      before: row.before ?? null,
+      after: row.after ?? null,
+      createdAt: row.createdAt.toISOString(),
+    }));
   }
 
   async getCommission(): Promise<AdminCommissionConfig> {
@@ -265,4 +406,20 @@ export class AdminConfigService {
       createdAt: row.createdAt.toISOString(),
     }));
   }
+}
+
+type PricingRuleRow = typeof pricingRules.$inferSelect;
+
+/** One mapping for every reader of `pricing_rules` here — GET, create, deactivate. */
+function toPricingRule(rule: PricingRuleRow): AdminPricingRule {
+  return {
+    id: rule.id,
+    ruleKind: rule.ruleKind,
+    serviceType: rule.serviceType,
+    vehicleClass: rule.vehicleClass,
+    maxKm: rule.maxKm === null ? null : Number(rule.maxKm),
+    pricePaise: rupeeStringToPaise(rule.price),
+    priceMaxPaise: rule.priceMax === null ? null : rupeeStringToPaise(rule.priceMax),
+    isActive: rule.isActive,
+  };
 }

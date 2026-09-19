@@ -24,6 +24,7 @@ import {
   adminPayoutSlaResponseSchema,
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
+  adminPricingHistoryEntrySchema,
   adminRefundsResponseSchema,
   adminTransactionsResponseSchema,
   adminSessionsResponseSchema,
@@ -116,107 +117,123 @@ describe('response contracts', () => {
    * only realm this table covered until Phase 14 added customer read routes
    * and A1 added the admin console's eight.
    */
-  const ROUTES: Array<{ path: string; schema: z.ZodType; realm?: 'fleet' | 'customer' | 'admin' }> = [
-    { path: '/v1/fleet/dashboard', schema: dashboardSummarySchema },
-    { path: '/v1/fleet/trucks', schema: trucksListResponseSchema },
-    { path: '/v1/fleet/drivers', schema: driversListResponseSchema },
-    { path: '/v1/fleet/jobs', schema: jobsListResponseSchema },
-    { path: '/v1/fleet/alerts', schema: alertsListResponseSchema },
-    { path: '/v1/fleet/earnings', schema: earningsSummarySchema },
-    { path: '/v1/fleet/earnings/split', schema: splitsListResponseSchema },
-    { path: '/v1/fleet/payouts', schema: payoutsListResponseSchema },
-    { path: '/v1/fleet/settings', schema: fleetSettingsSchema },
-    { path: '/v1/fleet/realtime/positions', schema: positionsSnapshotSchema },
-    // All three arms of the discriminated union — a union is only as checked as
-    // its least-exercised member.
-    { path: `/v1/fleet/reports?groupBy=truck&${RANGE}`, schema: reportResponseSchema },
-    { path: `/v1/fleet/reports?groupBy=driver&${RANGE}`, schema: reportResponseSchema },
-    { path: `/v1/fleet/reports?groupBy=period&${RANGE}`, schema: reportResponseSchema },
-    // Phase 14 — the customer realm's first entry in this table.
-    { path: '/v1/services', schema: serviceCatalogResponseSchema, realm: 'customer' },
-    // Phase 15. Seeded with a real trip below — an empty list matches almost
-    // any schema, which is what makes an unseeded row in this table worthless.
-    { path: '/v1/bookings', schema: bookingListResponseSchema, realm: 'customer' },
-    // A1 — the admin console's eight, plus W2's admins list and W1's session
-    // list. Super-admin satisfies every role set, so one token covers them all.
-    { path: '/v1/admin/drivers/pending', schema: adminPendingDriversResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/drivers', schema: adminDriversDirectoryResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/fleets', schema: adminFleetsResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/directory/zones', schema: adminDirectoryZonesResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
-    // W9 — the console's reads. The refunds collection has a processed partial
-    // refund seeded below; the ledger feed has a real wallet leg; the
-    // invariants panel's zeros are asserted, not assumed.
-    {
-      path: '/v1/admin/finance/transactions',
-      schema: adminTransactionsResponseSchema,
-      realm: 'admin',
-    },
-    { path: '/v1/admin/finance/ledger', schema: adminLedgerResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/finance/refunds', schema: adminRefundsResponseSchema, realm: 'admin' },
-    {
-      path: '/v1/admin/finance/invariants',
-      schema: adminInvariantsResponseSchema,
-      realm: 'admin',
-    },
-    {
-      path: '/v1/admin/finance/payouts/sla',
-      schema: adminPayoutSlaResponseSchema,
-      realm: 'admin',
-    },
-    { path: '/v1/admin/pricing', schema: adminPricingConfigSchema, realm: 'admin' },
-    { path: '/v1/admin/commission', schema: adminCommissionConfigSchema, realm: 'admin' },
-    {
-      path: '/v1/admin/commission/history',
-      schema: z.array(commissionHistoryEntrySchema),
-      realm: 'admin',
-    },
-    { path: '/v1/admin/dispatch-config', schema: adminDispatchConfigSchema, realm: 'admin' },
-    { path: '/v1/admin/auth/me', schema: adminIdentitySchema, realm: 'admin' },
-    { path: '/v1/admin/admins', schema: adminAdminsListResponseSchema, realm: 'admin' },
-    // W1 §3.6. The session list renders refresh-token FAMILIES, so it needs a
-    // real issued session — an empty list is exactly the vacuous row this
-    // file's doctrine warns about. The fixture above mints one.
-    { path: '/v1/admin/auth/sessions', schema: adminSessionsResponseSchema, realm: 'admin' },
-    // W1 §3.5. Seeded with one audit row below for the same reason.
-    { path: '/v1/admin/audit', schema: adminAuditListResponseSchema, realm: 'admin' },
-    // W21 — subject-scoped by necessity; the subject id is seeded below and is
-    // deliberately NOT a real driver: `admin_notes.subject_id` is FK-free.
-    {
-      path: `/v1/admin/notes?subjectType=driver&subjectId=${NOTES_SUBJECT_ID}`,
-      schema: adminNotesResponseSchema,
-      realm: 'admin',
-    },
-    // W3/W4 — the ops surface. Live is seeded below with an online driver,
-    // an active booking and a zone (an empty list matches almost any schema);
-    // activity is non-empty via the audit row above whenever Redis is empty.
-    { path: '/v1/admin/ops/dashboard', schema: adminOpsDashboardResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/ops/activity', schema: adminOpsActivityResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/ops/badges', schema: adminOpsBadgesResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/ops/live', schema: adminOpsLiveResponseSchema, realm: 'admin' },
-    // W5 — the inspector list. Seeded with a live search below; the
-    // parameterised detail cannot sit in this static table and is excluded
-    // (see EXCLUDED) with its contract asserted in
-    // `admin-ops-dispatch.e2e.spec.ts`.
-    {
-      path: '/v1/admin/ops/dispatch',
-      schema: adminDispatchInspectorListResponseSchema,
-      realm: 'admin',
-    },
-    // W6 — the directory list and the suspension-request inbox. Users exist in
-    // every fixture set; the request row is seeded below.
-    { path: '/v1/admin/users', schema: adminDirectoryUsersResponseSchema, realm: 'admin' },
-    {
-      path: '/v1/admin/suspension-requests',
-      schema: adminSuspensionRequestsResponseSchema,
-      realm: 'admin',
-    },
-    // W8 — the bookings list and the dispute queue. Both are seeded below
-    // with real rows: a booking that settled, and an open dispute on it.
-    { path: '/v1/admin/bookings', schema: adminBookingsResponseSchema, realm: 'admin' },
-    { path: '/v1/admin/disputes', schema: adminDisputesResponseSchema, realm: 'admin' },
-  ];
+  const ROUTES: Array<{ path: string; schema: z.ZodType; realm?: 'fleet' | 'customer' | 'admin' }> =
+    [
+      { path: '/v1/fleet/dashboard', schema: dashboardSummarySchema },
+      { path: '/v1/fleet/trucks', schema: trucksListResponseSchema },
+      { path: '/v1/fleet/drivers', schema: driversListResponseSchema },
+      { path: '/v1/fleet/jobs', schema: jobsListResponseSchema },
+      { path: '/v1/fleet/alerts', schema: alertsListResponseSchema },
+      { path: '/v1/fleet/earnings', schema: earningsSummarySchema },
+      { path: '/v1/fleet/earnings/split', schema: splitsListResponseSchema },
+      { path: '/v1/fleet/payouts', schema: payoutsListResponseSchema },
+      { path: '/v1/fleet/settings', schema: fleetSettingsSchema },
+      { path: '/v1/fleet/realtime/positions', schema: positionsSnapshotSchema },
+      // All three arms of the discriminated union — a union is only as checked as
+      // its least-exercised member.
+      { path: `/v1/fleet/reports?groupBy=truck&${RANGE}`, schema: reportResponseSchema },
+      { path: `/v1/fleet/reports?groupBy=driver&${RANGE}`, schema: reportResponseSchema },
+      { path: `/v1/fleet/reports?groupBy=period&${RANGE}`, schema: reportResponseSchema },
+      // Phase 14 — the customer realm's first entry in this table.
+      { path: '/v1/services', schema: serviceCatalogResponseSchema, realm: 'customer' },
+      // Phase 15. Seeded with a real trip below — an empty list matches almost
+      // any schema, which is what makes an unseeded row in this table worthless.
+      { path: '/v1/bookings', schema: bookingListResponseSchema, realm: 'customer' },
+      // A1 — the admin console's eight, plus W2's admins list and W1's session
+      // list. Super-admin satisfies every role set, so one token covers them all.
+      {
+        path: '/v1/admin/drivers/pending',
+        schema: adminPendingDriversResponseSchema,
+        realm: 'admin',
+      },
+      { path: '/v1/admin/drivers', schema: adminDriversDirectoryResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/fleets', schema: adminFleetsResponseSchema, realm: 'admin' },
+      {
+        path: '/v1/admin/directory/zones',
+        schema: adminDirectoryZonesResponseSchema,
+        realm: 'admin',
+      },
+      { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
+      // W9 — the console's reads. The refunds collection has a processed
+      // partial refund seeded below; the ledger feed has a real wallet leg;
+      // the invariants panel's zeros are asserted, not assumed.
+      {
+        path: '/v1/admin/finance/transactions',
+        schema: adminTransactionsResponseSchema,
+        realm: 'admin',
+      },
+      { path: '/v1/admin/finance/ledger', schema: adminLedgerResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/finance/refunds', schema: adminRefundsResponseSchema, realm: 'admin' },
+      {
+        path: '/v1/admin/finance/invariants',
+        schema: adminInvariantsResponseSchema,
+        realm: 'admin',
+      },
+      {
+        path: '/v1/admin/finance/payouts/sla',
+        schema: adminPayoutSlaResponseSchema,
+        realm: 'admin',
+      },
+      { path: '/v1/admin/pricing', schema: adminPricingConfigSchema, realm: 'admin' },
+      // W10 — the version history reads `admin_actions` rows whose subject is
+      // `pricing_config`; one is seeded below so this is not an empty-array row.
+      {
+        path: '/v1/admin/pricing/history',
+        schema: z.array(adminPricingHistoryEntrySchema),
+        realm: 'admin',
+      },
+      { path: '/v1/admin/commission', schema: adminCommissionConfigSchema, realm: 'admin' },
+      {
+        path: '/v1/admin/commission/history',
+        schema: z.array(commissionHistoryEntrySchema),
+        realm: 'admin',
+      },
+      { path: '/v1/admin/dispatch-config', schema: adminDispatchConfigSchema, realm: 'admin' },
+      { path: '/v1/admin/auth/me', schema: adminIdentitySchema, realm: 'admin' },
+      { path: '/v1/admin/admins', schema: adminAdminsListResponseSchema, realm: 'admin' },
+      // W1 §3.6. The session list renders refresh-token FAMILIES, so it needs a
+      // real issued session — an empty list is exactly the vacuous row this
+      // file's doctrine warns about. The fixture above mints one.
+      { path: '/v1/admin/auth/sessions', schema: adminSessionsResponseSchema, realm: 'admin' },
+      // W1 §3.5. Seeded with one audit row below for the same reason.
+      { path: '/v1/admin/audit', schema: adminAuditListResponseSchema, realm: 'admin' },
+      // W21 — subject-scoped by necessity; the subject id is seeded below and is
+      // deliberately NOT a real driver: `admin_notes.subject_id` is FK-free.
+      {
+        path: `/v1/admin/notes?subjectType=driver&subjectId=${NOTES_SUBJECT_ID}`,
+        schema: adminNotesResponseSchema,
+        realm: 'admin',
+      },
+      // W3/W4 — the ops surface. Live is seeded below with an online driver,
+      // an active booking and a zone (an empty list matches almost any schema);
+      // activity is non-empty via the audit row above whenever Redis is empty.
+      { path: '/v1/admin/ops/dashboard', schema: adminOpsDashboardResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/ops/activity', schema: adminOpsActivityResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/ops/badges', schema: adminOpsBadgesResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/ops/live', schema: adminOpsLiveResponseSchema, realm: 'admin' },
+      // W5 — the inspector list. Seeded with a live search below; the
+      // parameterised detail cannot sit in this static table and is excluded
+      // (see EXCLUDED) with its contract asserted in
+      // `admin-ops-dispatch.e2e.spec.ts`.
+      {
+        path: '/v1/admin/ops/dispatch',
+        schema: adminDispatchInspectorListResponseSchema,
+        realm: 'admin',
+      },
+      // W6 — the directory list and the suspension-request inbox. Users exist in
+      // every fixture set; the request row is seeded below.
+      { path: '/v1/admin/users', schema: adminDirectoryUsersResponseSchema, realm: 'admin' },
+      {
+        path: '/v1/admin/suspension-requests',
+        schema: adminSuspensionRequestsResponseSchema,
+        realm: 'admin',
+      },
+      // W8 — the bookings list and the dispute queue. Both are seeded below
+      // with real rows: a booking that settled, and an open dispute on it.
+      { path: '/v1/admin/bookings', schema: adminBookingsResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/disputes', schema: adminDisputesResponseSchema, realm: 'admin' },
+    ];
 
   beforeAll(async () => {
     db = await setupTestDatabase();
@@ -303,6 +320,18 @@ describe('response contracts', () => {
       reason: 'contract coverage seed',
     });
 
+    // W10 — the same table feeds `GET /admin/pricing/history`, which filters on
+    // the REAL subject type the pricing write path records (`pricing_config`;
+    // the seed row above is older fixture noise and deliberately unmatched).
+    await db.insert(adminActions).values({
+      adminId: superAdmin.id,
+      action: 'pricing.update',
+      subjectType: 'pricing_config',
+      before: { charges: { nightPct: 15 } },
+      after: { charges: { nightPct: 18 } },
+      reason: 'contract coverage seed',
+    });
+
     // W21 — one note on the subject the notes row above queries.
     await db.insert(adminNotes).values({
       subjectType: 'driver',
@@ -355,9 +384,9 @@ describe('response contracts', () => {
       reason: 'contract coverage seed',
     });
 
-    // W8 — one open dispute so the queue row above is non-empty. It names the
-    // paid booking seeded for the fleet realm; opened_from_status is paid,
-    // which is the origin the money exits are defined for.
+    // W8 — one open dispute so the queue row above is non-empty. The paid
+    // booking it names is the one seeded for the fleet realm; `opened_from`
+    // is `paid`, which is the origin the money exits are defined for.
     await db.insert(disputes).values({
       bookingId: contractPaidBookingId,
       openedByType: 'admin',
@@ -371,7 +400,7 @@ describe('response contracts', () => {
     // W9 — the console reads need real rows, or their contract entries are the
     // vacuous kind this file warns about. A captured payment on the paid
     // booking the dispute names, a processed PARTIAL refund against it (which
-    // also keeps payments.refunded_amount honest), and one wallet leg so the
+    // also keeps `payments.refunded_amount` honest), and one wallet leg so the
     // ledger feed has a row to page through.
     const [contractPayment] = await db
       .insert(payments)
@@ -563,22 +592,22 @@ const EXCLUDED = new Set([
   // in `admin-kyc-w7.e2e.spec.ts`, which uploads real versions first.
   '/v1/admin/drivers/:id/document-versions',
   // W8 — the bookings detail and its audited invoice link, parameterised by
-  // booking id. Asserted with expectMatchesContract against
-  // adminBookingDetailSchema / adminBookingInvoiceSchema in
-  // admin-bookings.e2e.spec.ts, which owns a real booking.
+  // booking id. Asserted with `expectMatchesContract` against
+  // `adminBookingDetailSchema` / `adminBookingInvoiceSchema` in
+  // `admin-bookings.e2e.spec.ts`, which owns a real booking.
   '/v1/admin/bookings/:id',
   '/v1/admin/bookings/:id/invoice',
   // W8 — the bookings CSV, a byte stream like the fleet exports above; its
   // shape (header order, no formula injection) is asserted in
-  // admin-bookings.e2e.spec.ts.
+  // `admin-bookings.e2e.spec.ts`.
   '/v1/admin/bookings/export.csv',
   // W8 — the dispute detail, parameterised; asserted with
-  // expectMatchesContract against adminDisputeDetailSchema in
-  // admin-disputes.e2e.spec.ts, which opens a real dispute.
+  // `expectMatchesContract` against `adminDisputeDetailSchema` in
+  // `admin-disputes.e2e.spec.ts`, which opens a real dispute.
   '/v1/admin/disputes/:id',
   // W9 — the reconciliation download is a byte stream like the fleet exports;
   // its header order and signed refund rows are asserted in
-  // admin-finance-console.e2e.spec.ts.
+  // \`admin-finance-console.e2e.spec.ts\`.
   '/v1/admin/finance/reconciliation.csv',
   // W6 — the fleets directory's parameterised routes: detail asserted against
   // `adminFleetDetailSchema`, the sub-reads against the FLEET console's own
