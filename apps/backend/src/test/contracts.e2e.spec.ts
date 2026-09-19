@@ -31,6 +31,7 @@ import {
   adminTransactionsResponseSchema,
   adminSessionsResponseSchema,
   adminSuspensionRequestsResponseSchema,
+  adminZonesResponseSchema,
   appConfigSchema,
   alertsListResponseSchema,
   bookingListResponseSchema,
@@ -217,6 +218,9 @@ describe('response contracts', () => {
         realm: 'admin',
       },
       { path: '/v1/admin/dispatch-config', schema: adminDispatchConfigSchema, realm: 'admin' },
+      // W13 — the zone list, non-empty because the ops fixture below seeds an
+      // active zone (and `seedPricingFixtures` seeds the launch set beside it).
+      { path: '/v1/admin/zones', schema: adminZonesResponseSchema, realm: 'admin' },
       { path: '/v1/admin/auth/me', schema: adminIdentitySchema, realm: 'admin' },
       { path: '/v1/admin/admins', schema: adminAdminsListResponseSchema, realm: 'admin' },
       // W1 §3.6. The session list renders refresh-token FAMILIES, so it needs a
@@ -650,6 +654,12 @@ const EXCLUDED = new Set([
   // its header order and signed refund rows are asserted in
   // \`admin-finance-console.e2e.spec.ts\`.
   '/v1/admin/finance/reconciliation.csv',
+  // W13 — parameterised zone reads. Asserted with `expectMatchesContract`
+  // against `adminZoneSchema` and `adminZoneVersionSchema` in
+  // `admin-zones.e2e.spec.ts`, which creates a real zone and edits it twice so
+  // the version drawer has more than one row to read.
+  '/v1/admin/zones/:id',
+  '/v1/admin/zones/:id/versions',
   // W6 — the fleets directory's parameterised routes: detail asserted against
   // `adminFleetDetailSchema`, the sub-reads against the FLEET console's own
   // schemas, all in `admin-fleets-directory.e2e.spec.ts`.

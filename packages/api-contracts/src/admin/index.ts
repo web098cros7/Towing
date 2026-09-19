@@ -15,3 +15,4 @@ export * from './ops-kpis';
 export * from './ops';
 export * from './permissions';
 export * from './realtime';
+export * from './zones';

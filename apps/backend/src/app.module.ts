@@ -28,6 +28,7 @@ import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 import { AdminNotesModule } from './modules/admin-notes/admin-notes.module';
 import { AdminConfigModule } from './modules/admin-config/admin-config.module';
+import { AdminZonesModule } from './modules/admin-zones/admin-zones.module';
 import { AppConfigModule } from './modules/app-config/app-config.module';
 import { AdminDriversModule } from './modules/admin-drivers/admin-drivers.module';
 import { AdminFleetsModule } from './modules/admin-fleets/admin-fleets.module';
@@ -105,6 +106,7 @@ import { RedisModule } from './redis/redis.module';
     CouponsModule,
     InvoicesModule,
     AdminConfigModule,
+    AdminZonesModule,
     AppConfigModule,
     TrucksModule,
     DriversModule,
