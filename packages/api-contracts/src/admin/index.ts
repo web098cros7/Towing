@@ -6,6 +6,7 @@ export * from './directory';
 export * from './notes';
 export * from './dispatch';
 export * from './drivers';
+export * from './impersonation';
 export * from './pricing';
 export * from './finance';
 export * from './ops-kpis';

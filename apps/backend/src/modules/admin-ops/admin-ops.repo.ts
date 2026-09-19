@@ -52,6 +52,12 @@ export interface LiveDriverRow {
   lat: number | null;
   lng: number | null;
   lastPingAt: string | null;
+  /**
+   * W6 (C8): online + approved, but would an offer actually reach them right
+   * now? False for a shelved suspension, a suspended fleet, or a zone
+   * restriction on their CURRENT zone — the map still draws them, distinctly.
+   */
+  dispatchable: boolean;
 }
 
 export interface LiveBookingRow {
@@ -345,8 +351,19 @@ export class AdminOpsRepo {
       select d.id as driver_id, d.name, d.current_zone_id,
              ST_X(d.current_location::geometry)::float8 as lng,
              ST_Y(d.current_location::geometry)::float8 as lat,
-             d.last_ping_at
+             d.last_ping_at,
+             -- W6 (C8): drawn, but would this driver actually get an offer
+             -- right now? A live job's shelf, a suspended fleet, and a zone
+             -- restriction for their CURRENT zone all say no — the map shows
+             -- them so an operator can see WHY supply disappeared.
+             (d.pending_suspension_at is null
+              and coalesce(f.status <> 'suspended', true)
+              and coalesce(not exists (
+                select 1 from driver_zone_restrictions r
+                where r.driver_id = d.id and r.zone_id = d.current_zone_id
+              ), true)) as dispatchable
       from drivers d
+      left join fleets f on f.id = d.fleet_id
       where d.is_online = true and d.kyc_status = 'approved'
         ${zoneFilter}
       order by d.name asc nulls last
@@ -357,6 +374,7 @@ export class AdminOpsRepo {
       lng: number | null;
       lat: number | null;
       last_ping_at: Date | string | null;
+      dispatchable: boolean;
     }>;
     return rows.map((row) => ({
       driverId: row.driver_id,
@@ -365,6 +383,7 @@ export class AdminOpsRepo {
       lat: row.lat,
       lng: row.lng,
       lastPingAt: row.last_ping_at === null ? null : toIso(row.last_ping_at),
+      dispatchable: row.dispatchable,
     }));
   }
 

@@ -4,6 +4,7 @@ import {
   adminAuditListResponseSchema,
   adminCommissionConfigSchema,
   adminDirectoryUsersResponseSchema,
+  adminDirectoryZonesResponseSchema,
   adminDispatchConfigSchema,
   adminDispatchInspectorListResponseSchema,
   adminDriversDirectoryResponseSchema,
@@ -131,6 +132,7 @@ describe('response contracts', () => {
     { path: '/v1/admin/drivers/pending', schema: adminPendingDriversResponseSchema, realm: 'admin' },
     { path: '/v1/admin/drivers', schema: adminDriversDirectoryResponseSchema, realm: 'admin' },
     { path: '/v1/admin/fleets', schema: adminFleetsResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/directory/zones', schema: adminDirectoryZonesResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
     { path: '/v1/admin/pricing', schema: adminPricingConfigSchema, realm: 'admin' },
@@ -472,6 +474,15 @@ const EXCLUDED = new Set([
   '/v1/admin/fleets/:id/trucks',
   '/v1/admin/fleets/:id/drivers',
   '/v1/admin/fleets/:id/earnings',
+  // W6/G8 — the app-view tree. Every route here needs a LIVE impersonation
+  // session, which a static walk cannot mint — `admin-impersonation.e2e.spec.ts`
+  // owns one, asserts all five against the customer schemas each section
+  // reuses, and pins the whole tree to GET-only off the router itself.
+  '/v1/admin/users/:id/app-view/trips',
+  '/v1/admin/users/:id/app-view/wallet',
+  '/v1/admin/users/:id/app-view/notifications',
+  '/v1/admin/users/:id/app-view/vehicles',
+  '/v1/admin/users/:id/app-view/addresses',
 ]);
 
 /** Express 5 keeps the registered layers on `router.stack`. */

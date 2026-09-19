@@ -37,9 +37,13 @@ export class BookingsRepo {
     const decoded = cursor ? decodeCursor(cursor) : null;
 
     const rows = await this.db
-      .select({ booking: bookings, serviceSlug: services.slug })
+      .select({
+        booking: bookings,
+        serviceSlug: sql<
+          string | null
+        >`(select s.slug from services s where s.service_type = ${bookings.serviceType} order by s.display_order asc limit 1)`,
+      })
       .from(bookings)
-      .leftJoin(services, eq(services.serviceType, bookings.serviceType))
       .where(
         and(
           eq(bookings.userId, userId),
@@ -69,9 +73,13 @@ export class BookingsRepo {
   /** Scoped by `userId` in the WHERE, never checked afterwards — a filter that runs is a filter. */
   async detail(userId: string, bookingId: string): Promise<BookingDetail | null> {
     const [row] = await this.db
-      .select({ booking: bookings, serviceSlug: services.slug })
+      .select({
+        booking: bookings,
+        serviceSlug: sql<
+          string | null
+        >`(select s.slug from services s where s.service_type = ${bookings.serviceType} order by s.display_order asc limit 1)`,
+      })
       .from(bookings)
-      .leftJoin(services, eq(services.serviceType, bookings.serviceType))
       .where(and(eq(bookings.id, bookingId), eq(bookings.userId, userId)))
       .limit(1);
 

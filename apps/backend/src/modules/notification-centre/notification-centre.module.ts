@@ -22,5 +22,7 @@ import { NotificationCentreService } from './notification-centre.service';
   imports: [AuthModule],
   controllers: [MeNotificationsController, DriverNotificationsController],
   providers: [NotificationCentreService],
+  // W6: the admin app-view lists a customer's notifications through it.
+  exports: [NotificationCentreService],
 })
 export class NotificationCentreModule {}

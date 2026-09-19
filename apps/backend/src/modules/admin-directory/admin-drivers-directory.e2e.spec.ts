@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
   adminDriverBookingsResponseSchema,
+  adminDirectoryZonesResponseSchema,
   adminDriverDirectoryDetailSchema,
   adminDriverZonesResponseSchema,
   adminDriversDirectoryResponseSchema,
@@ -176,6 +177,20 @@ describe('admin directory drivers (W6)', () => {
       .get('/v1/admin/drivers?online=1')
       .set('Authorization', opsToken)
       .expect(422);
+  });
+
+  it('lists zones for the directory pickers (C9)', async () => {
+    const south = await seedZone('South Zone');
+    await seedZone('North Zone');
+
+    const res = await request(app.getHttpServer())
+      .get('/v1/admin/directory/zones')
+      .set('Authorization', opsToken)
+      .expect(200);
+    expectMatchesContract(adminDirectoryZonesResponseSchema, res.body);
+    const ids = res.body.items.map((zone: { id: string }) => zone.id);
+    expect(ids).toContain(south);
+    expect(res.body.items.every((zone: { isActive: boolean }) => zone.isActive)).toBe(true);
   });
 
   it('keeps GET /v1/admin/drivers/pending on the KYC queue, not the :id route', async () => {

@@ -33,5 +33,7 @@ import { MeService } from './me.service';
     MeEmergencyContactsService,
     AccountPrivacyService,
   ],
+  // W6: the admin app-view's vehicles/addresses sections read through these.
+  exports: [MeVehiclesService, MeAddressesService],
 })
 export class MeModule {}

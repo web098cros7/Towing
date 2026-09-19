@@ -5,7 +5,9 @@ import { AdminFleetsModule } from '../admin-fleets/admin-fleets.module';
 import { AuthModule } from '../auth/auth.module';
 import { BookingsModule } from '../bookings/bookings.module';
 import { DriversModule } from '../drivers/drivers.module';
+import { MeModule } from '../me/me.module';
 import { MoneyModule } from '../money/money.module';
+import { NotificationCentreModule } from '../notification-centre/notification-centre.module';
 import { TrucksModule } from '../trucks/trucks.module';
 import { AccountSuspensionService } from './account-suspension.service';
 import { AdminDirectoryController } from './admin-directory.controller';
@@ -13,6 +15,7 @@ import { AdminDirectoryRepo } from './admin-directory.repo';
 import { AdminDirectoryService } from './admin-directory.service';
 import { AdminDriversDirectoryController } from './admin-drivers-directory.controller';
 import { AdminFleetsDirectoryController } from './admin-fleets-directory.controller';
+import { ImpersonationService } from './impersonation.service';
 
 /**
  * W6's directory: user search/detail/trips, the suspension request flow, and
@@ -41,13 +44,15 @@ import { AdminFleetsDirectoryController } from './admin-fleets-directory.control
     TrucksModule,
     DriversModule,
     MoneyModule,
+    NotificationCentreModule,
+    MeModule,
   ],
   controllers: [
     AdminDirectoryController,
     AdminDriversDirectoryController,
     AdminFleetsDirectoryController,
   ],
-  providers: [AdminDirectoryRepo, AdminDirectoryService, AccountSuspensionService],
+  providers: [AdminDirectoryRepo, AdminDirectoryService, AccountSuspensionService, ImpersonationService],
   exports: [AccountSuspensionService],
 })
 export class AdminDirectoryModule {}

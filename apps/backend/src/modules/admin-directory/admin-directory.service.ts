@@ -16,6 +16,7 @@ import type {
   AdminDriverZonesUpdate,
   AdminDriversDirectoryQuery,
   AdminDriversDirectoryResponse,
+  AdminDirectoryZonesResponse,
   AdminFleetDetail,
   AdminFleetSuspendBody,
   AdminFleetSuspensionResponse,
@@ -263,6 +264,11 @@ export class AdminDirectoryService {
   /** An unknown fleet must 404 on its sub-reads, not read as "empty". */
   private async assertFleet(fleetId: string): Promise<void> {
     if (!(await this.repo.fleetDetail(fleetId))) throw ApiException.notFound('Fleet not found');
+  }
+
+  /** C9: the zone picker — id/name/active for every filter and editor. */
+  async zones(): Promise<AdminDirectoryZonesResponse> {
+    return { items: await this.repo.zones() };
   }
 
   /**

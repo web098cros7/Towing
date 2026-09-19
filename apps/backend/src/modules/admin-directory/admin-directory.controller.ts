@@ -1,15 +1,23 @@
 import { Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
 import {
+  adminAppViewCursorQuerySchema,
+  adminAppViewQuerySchema,
   adminCan,
   adminDirectorySuspendBodySchema,
   adminDirectoryUserBookingsQuerySchema,
   adminDirectoryUsersQuerySchema,
+  adminImpersonationEndBodySchema,
+  adminImpersonationStartBodySchema,
   adminSuspensionRequestCreateBodySchema,
   adminSuspensionRequestDecisionBodySchema,
   adminSuspensionRequestsQuerySchema,
+  type AdminAppViewCursorQuery,
+  type AdminAppViewQuery,
   type AdminDirectorySuspendBody,
   type AdminDirectoryUserBookingsQuery,
   type AdminDirectoryUsersQuery,
+  type AdminImpersonationEndBody,
+  type AdminImpersonationStartBody,
   type AdminSuspensionRequestCreateBody,
   type AdminSuspensionRequestDecisionBody,
   type AdminSuspensionRequestsQuery,
@@ -23,6 +31,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Permissions, Realms } from '../auth/realm.decorator';
 import { sessionContextFrom } from '../auth/token.service';
 import { AdminDirectoryService } from './admin-directory.service';
+import { ImpersonationService } from './impersonation.service';
 
 /**
  * W6's directory surface (§9.4.4): `/v1/admin/users*` and the suspension
@@ -44,7 +53,10 @@ import { AdminDirectoryService } from './admin-directory.service';
 @UseGuards(JwtAuthGuard)
 @Realms('admin')
 export class AdminDirectoryController {
-  constructor(private readonly directory: AdminDirectoryService) {}
+  constructor(
+    private readonly directory: AdminDirectoryService,
+    private readonly impersonation: ImpersonationService,
+  ) {}
 
   @Get('users')
   @Permissions('user.read')
@@ -98,10 +110,96 @@ export class AdminDirectoryController {
     return this.directory.reactivateUser(auth.sub, userId, sessionContextFrom(request));
   }
 
+  @Post('users/:id/impersonate')
+  @Permissions('impersonate.read')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  impersonate(
+    @ZodParam(z.uuid(), 'id') userId: string,
+    @ZodBody(adminImpersonationStartBodySchema) body: AdminImpersonationStartBody,
+    @Req() request: AuthedRequest,
+  ) {
+    const auth = requireAdmin(request);
+    return this.impersonation.start(auth.sub, userId, body.reason, sessionContextFrom(request));
+  }
+
+  @Post('users/:id/impersonate/end')
+  @Permissions('impersonate.read')
+  @HttpCode(HttpStatus.OK)
+  endImpersonation(
+    @ZodParam(z.uuid(), 'id') userId: string,
+    @ZodBody(adminImpersonationEndBodySchema) body: AdminImpersonationEndBody,
+    @Req() request: AuthedRequest,
+  ) {
+    const auth = requireAdmin(request);
+    return this.impersonation.end(auth.sub, userId, body.session, sessionContextFrom(request));
+  }
+
+  @Get('users/:id/app-view/trips')
+  @Permissions('impersonate.read')
+  appViewTrips(
+    @ZodParam(z.uuid(), 'id') userId: string,
+    @ZodQuery(adminAppViewCursorQuerySchema) query: AdminAppViewCursorQuery,
+    @Req() request: AuthedRequest,
+  ) {
+    const auth = requireAdmin(request);
+    return this.impersonation.trips(auth.sub, userId, query);
+  }
+
+  @Get('users/:id/app-view/wallet')
+  @Permissions('impersonate.read')
+  appViewWallet(
+    @ZodParam(z.uuid(), 'id') userId: string,
+    @ZodQuery(adminAppViewQuerySchema) query: AdminAppViewQuery,
+    @Req() request: AuthedRequest,
+  ) {
+    const auth = requireAdmin(request);
+    return this.impersonation.walletView(auth.sub, userId, query);
+  }
+
+  @Get('users/:id/app-view/notifications')
+  @Permissions('impersonate.read')
+  appViewNotifications(
+    @ZodParam(z.uuid(), 'id') userId: string,
+    @ZodQuery(adminAppViewCursorQuerySchema) query: AdminAppViewCursorQuery,
+    @Req() request: AuthedRequest,
+  ) {
+    const auth = requireAdmin(request);
+    return this.impersonation.notificationsView(auth.sub, userId, query);
+  }
+
+  @Get('users/:id/app-view/vehicles')
+  @Permissions('impersonate.read')
+  appViewVehicles(
+    @ZodParam(z.uuid(), 'id') userId: string,
+    @ZodQuery(adminAppViewQuerySchema) query: AdminAppViewQuery,
+    @Req() request: AuthedRequest,
+  ) {
+    const auth = requireAdmin(request);
+    return this.impersonation.vehiclesView(auth.sub, userId, query);
+  }
+
+  @Get('users/:id/app-view/addresses')
+  @Permissions('impersonate.read')
+  appViewAddresses(
+    @ZodParam(z.uuid(), 'id') userId: string,
+    @ZodQuery(adminAppViewQuerySchema) query: AdminAppViewQuery,
+    @Req() request: AuthedRequest,
+  ) {
+    const auth = requireAdmin(request);
+    return this.impersonation.addressesView(auth.sub, userId, query);
+  }
+
   @Get('suspension-requests')
   @Permissions('user.suspend.request')
   requests(@ZodQuery(adminSuspensionRequestsQuerySchema) query: AdminSuspensionRequestsQuery) {
     return this.directory.listRequests(query);
+  }
+
+  @Get('directory/zones')
+  @Permissions('user.read')
+  zones() {
+    return this.directory.zones();
   }
 
   @Post('suspension-requests')

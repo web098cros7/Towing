@@ -84,6 +84,8 @@ import { ReportsService } from './reports.service';
   // pattern — so specs can reach the concrete adapter without widening the port.
   exports: [
     EarningsService,
+    // W6: the admin app-view renders the customer wallet through this service.
+    WalletService,
     EarningsProjectorService,
     PayoutsService,
     PayoutsRepo,

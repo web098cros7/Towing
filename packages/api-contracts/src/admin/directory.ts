@@ -201,3 +201,20 @@ export const adminSuspensionRequestDecisionBodySchema = z.object({
 export type AdminSuspensionRequestDecisionBody = z.infer<
   typeof adminSuspensionRequestDecisionBodySchema
 >;
+
+// ---------------------------------------------------------------------------
+// W6: the zone picker (C9) — directory filters and the restrictions editor
+// ---------------------------------------------------------------------------
+
+/** Id/name/active is everything the pickers show; the editor is W13's. */
+export const adminDirectoryZoneSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  isActive: z.boolean(),
+});
+export type AdminDirectoryZone = z.infer<typeof adminDirectoryZoneSchema>;
+
+export const adminDirectoryZonesResponseSchema = z.object({
+  items: z.array(adminDirectoryZoneSchema),
+});
+export type AdminDirectoryZonesResponse = z.infer<typeof adminDirectoryZonesResponseSchema>;

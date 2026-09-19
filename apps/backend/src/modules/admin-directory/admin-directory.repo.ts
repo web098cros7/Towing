@@ -8,6 +8,7 @@ import {
   type AdminDriverDirectoryDetail,
   type AdminDriverDirectoryItem,
   type AdminDriverZoneRef,
+  type AdminDirectoryZone,
   type AdminFleetItem,
   type AdminSuspensionRequest,
 } from '@towing/api-contracts';
@@ -449,6 +450,15 @@ export class AdminDirectoryRepo {
 
     const row = rows[0];
     return row ? this.fleetOf(row) : undefined;
+  }
+
+  /** The zone picker's list (C9): id/name/active, every zone, stable order. */
+  async zones(): Promise<AdminDirectoryZone[]> {
+    const rows = await this.db
+      .select({ id: serviceZones.id, name: serviceZones.name, isActive: serviceZones.isActive })
+      .from(serviceZones)
+      .orderBy(serviceZones.name);
+    return rows;
   }
 
   // -------------------------------------------------------------------------

@@ -44,6 +44,9 @@ import { DispatchConfigRepo } from './dispatch-config.repo';
     BookingOtpService,
     BookingsRepo,
     DispatchConfigRepo,
+    // W6: the admin app-view reads a customer's trips through the same service
+    // the customer route uses — one definition of "what the customer sees".
+    BookingsService,
     // Phase 17's engine publishes §9.1.6 wave progress through it, and Phase 18
     // will publish live driver position on the same rooms.
     CustomerGateway,

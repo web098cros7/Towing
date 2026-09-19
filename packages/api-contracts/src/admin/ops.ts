@@ -137,6 +137,13 @@ export const adminLiveDriverSchema = z.object({
   at: z.iso.datetime().nullable(),
   /** True when this row came from the driver's PostGIS column, not the hot Redis hash. */
   fromFallback: z.boolean(),
+  /**
+   * W6: whether a fresh offer could actually reach this driver right now.
+   * False for a shelved suspension, a suspended fleet, or a §6.10 restriction
+   * on their current zone — the map draws them distinctly rather than hiding
+   * them, so an operator can see why supply disappeared (W4's rule).
+   */
+  dispatchable: z.boolean(),
 });
 export type AdminLiveDriver = z.infer<typeof adminLiveDriverSchema>;
 

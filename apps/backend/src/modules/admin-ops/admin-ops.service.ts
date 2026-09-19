@@ -310,6 +310,7 @@ export class AdminOpsService {
             speedKph: fix.speedKph,
             at: fix.at,
             fromFallback: false,
+            dispatchable: row.dispatchable,
           };
         }
         return {
@@ -324,6 +325,7 @@ export class AdminOpsService {
           speedKph: null,
           at: row.lastPingAt,
           fromFallback: true,
+          dispatchable: row.dispatchable,
         };
       }),
       bookings: bookingRows.map((row) => ({
