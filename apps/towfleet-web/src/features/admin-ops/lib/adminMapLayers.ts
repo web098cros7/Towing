@@ -25,6 +25,8 @@ export const ADMIN_HEADINGS_SOURCE = 'admin-driver-headings';
 export const ADMIN_BOOKINGS_SOURCE = 'admin-bookings';
 export const ADMIN_LEGS_SOURCE = 'admin-booking-legs';
 export const ADMIN_ZONES_SOURCE = 'admin-zones';
+/** W5: the inspector's search-radius rings. */
+export const ADMIN_RINGS_SOURCE = 'admin-search-rings';
 
 export const ADMIN_DRIVER_DOT_LAYER = 'admin-driver-dot';
 export const ADMIN_DRIVER_HALO_LAYER = 'admin-driver-halo';
@@ -33,6 +35,8 @@ export const ADMIN_BOOKING_PICKUP_LAYER = 'admin-booking-pickup';
 export const ADMIN_LEG_LINE_LAYER = 'admin-booking-leg';
 export const ADMIN_ZONE_FILL_LAYER = 'admin-zone-fill';
 export const ADMIN_ZONE_LINE_LAYER = 'admin-zone-line';
+/** W5: one circle per recorded wave. */
+export const ADMIN_RING_LINE_LAYER = 'admin-search-ring';
 
 /** Length of the direction whisker, in metres on the ground (fleet parity). */
 const HEADING_WHISKER_M = 90;
@@ -179,6 +183,46 @@ export function adminZonesToGeoJson(zones: Array<{ id: string; name: string; geo
   };
 }
 
+/** W5: one recorded wave's search radius around the booking pickup. */
+export interface AdminMapRing {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  wave: number;
+}
+
+/**
+ * W5: rings as POLYGONS, not MapLibre circle pixels.
+ *
+ * A circle layer's radius is measured in screen pixels and would lie at every
+ * zoom — "4 km" has to stay 4 km on the ground. 64 segments is smooth at the
+ * zooms a search is inspected at, and the maths reuses the heading whisker's
+ * metres-per-degree conversion.
+ */
+export function adminRingsToGeoJson(rings: AdminMapRing[]): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: rings.map((ring) => ({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [ringCoordinates(ring)] },
+      properties: { wave: ring.wave, radiusKm: ring.radiusKm },
+    })),
+  };
+}
+
+function ringCoordinates(ring: AdminMapRing, steps = 64): Array<[number, number]> {
+  const coordinates: Array<[number, number]> = [];
+  const meters = ring.radiusKm * 1_000;
+  for (let step = 0; step <= steps; step += 1) {
+    const angle = (step / steps) * 2 * Math.PI;
+    const dLat = (meters * Math.cos(angle)) / METERS_PER_DEG_LAT;
+    const dLng =
+      (meters * Math.sin(angle)) / (METERS_PER_DEG_LAT * Math.cos((ring.lat * Math.PI) / 180));
+    coordinates.push([ring.lng + dLng, ring.lat + dLat]);
+  }
+  return coordinates;
+}
+
 function markerColorExpression(colors: MapColors): ExpressionSpecification {
   return [
     'case',
@@ -205,6 +249,10 @@ function markerOpacityExpression(): ExpressionSpecification {
 
 export function addAdminLayers(map: MapLibreMap, colors: MapColors): void {
   map.addSource(ADMIN_ZONES_SOURCE, {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] } as never,
+  });
+  map.addSource(ADMIN_RINGS_SOURCE, {
     type: 'geojson',
     data: { type: 'FeatureCollection', features: [] } as never,
   });
@@ -236,6 +284,18 @@ export function addAdminLayers(map: MapLibreMap, colors: MapColors): void {
     type: 'line',
     source: ADMIN_ZONES_SOURCE,
     paint: { 'line-color': colors.zoneLine, 'line-width': 1.5, 'line-dasharray': [3, 2] },
+  });
+
+  map.addLayer({
+    id: ADMIN_RING_LINE_LAYER,
+    type: 'line',
+    source: ADMIN_RINGS_SOURCE,
+    paint: {
+      'line-color': colors.onJob,
+      'line-opacity': 0.5,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 14, 2],
+      'line-dasharray': [4, 3],
+    },
   });
 
   map.addLayer({
@@ -309,6 +369,9 @@ export function applyAdminColors(map: MapLibreMap, colors: MapColors): void {
   }
   if (map.getLayer(ADMIN_ZONE_LINE_LAYER)) {
     map.setPaintProperty(ADMIN_ZONE_LINE_LAYER, 'line-color', colors.zoneLine);
+  }
+  if (map.getLayer(ADMIN_RING_LINE_LAYER)) {
+    map.setPaintProperty(ADMIN_RING_LINE_LAYER, 'line-color', colors.onJob);
   }
   if (map.getLayer(ADMIN_LEG_LINE_LAYER)) {
     map.setPaintProperty(ADMIN_LEG_LINE_LAYER, 'line-color', colors.onJob);

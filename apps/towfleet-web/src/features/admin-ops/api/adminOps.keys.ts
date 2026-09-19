@@ -13,4 +13,8 @@ export const adminOpsKeys = {
   /** Filter-parameterised: the zone narrowing is a room join AND a query param. */
   live: (filters: { zoneId: string | null; status: string | null }) =>
     ['admin-ops', 'live', filters.zoneId, filters.status] as const,
+  /** W5: the live-searches list. */
+  dispatchList: () => ['admin-ops', 'dispatch'] as const,
+  /** W5: one booking's wave history. */
+  dispatch: (bookingId: string) => ['admin-ops', 'dispatch', bookingId] as const,
 };

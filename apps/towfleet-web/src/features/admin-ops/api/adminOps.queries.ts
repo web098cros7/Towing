@@ -62,3 +62,32 @@ export function useAdminOpsLive(
     staleTime: 0,
   });
 }
+
+/**
+ * W5's inspector reads. Both poll on the same 10 s cadence the dashboard uses
+ * when the transport is down — a search is a live thing, and the inspector is
+ * where an operator waits for the next wave. No socket patches: unlike the
+ * dashboard, a wave log is an append-only record nothing streams yet.
+ */
+export function useAdminDispatchSearches(enabled: boolean, mode: RealtimeMode) {
+  return useQuery({
+    queryKey: adminOpsKeys.dispatchList(),
+    queryFn: () => adminOpsDataSource.dispatchSearches(),
+    enabled,
+    refetchInterval: pollingInterval(mode),
+  });
+}
+
+export function useAdminDispatchInspector(
+  bookingId: string | null,
+  enabled: boolean,
+  mode: RealtimeMode,
+) {
+  return useQuery({
+    queryKey: adminOpsKeys.dispatch(bookingId ?? 'none'),
+    queryFn: () => adminOpsDataSource.dispatchInspector(bookingId!),
+    enabled: enabled && bookingId !== null,
+    refetchInterval: pollingInterval(mode),
+    staleTime: 0,
+  });
+}

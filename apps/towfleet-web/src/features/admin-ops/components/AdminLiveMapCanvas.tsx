@@ -16,14 +16,17 @@ import {
   ADMIN_DRIVERS_SOURCE,
   ADMIN_HEADINGS_SOURCE,
   ADMIN_LEGS_SOURCE,
+  ADMIN_RINGS_SOURCE,
   ADMIN_ZONES_SOURCE,
   addAdminLayers,
+  adminRingsToGeoJson,
   adminZonesToGeoJson,
   applyAdminColors,
   bookingLegsToGeoJson,
   bookingPickupsToGeoJson,
   driverHeadingsToGeoJson,
   driversToGeoJson,
+  type AdminMapRing,
 } from '../lib/adminMapLayers';
 import { DriverPositionAnimator } from '../lib/driverAnimator';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -35,6 +38,11 @@ export interface AdminLiveMapCanvasProps {
   selectedDriverId: string | null;
   selectedBookingId: string | null;
   onSelect: (selection: { driverId: string | null; bookingId: string | null }) => void;
+  /**
+   * W5: search-radius rings for the dispatch inspector's mini-map. Optional so
+   * the live map's callers are untouched — an absent prop draws nothing.
+   */
+  rings?: AdminMapRing[];
 }
 
 /** Bengaluru (§2 persona city) — where the camera starts before any data lands. */
@@ -58,6 +66,7 @@ export default function AdminLiveMapCanvas({
   selectedDriverId,
   selectedBookingId,
   onSelect,
+  rings,
 }: AdminLiveMapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -168,6 +177,17 @@ export default function AdminLiveMapCanvas({
     }
   }, [zones, ready]);
 
+  // W5: the inspector's rings, drawn from the wave log — set outside the RAF
+  // loop because they change when data does, not when positions do.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    const source = map.getSource(ADMIN_RINGS_SOURCE);
+    if (source && 'setData' in source) {
+      (source as maplibregl.GeoJSONSource).setData(adminRingsToGeoJson(rings ?? []) as never);
+    }
+  }, [rings, ready]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
@@ -180,6 +200,16 @@ export default function AdminLiveMapCanvas({
         if (driver.lat !== null && driver.lng !== null) points.push([driver.lng, driver.lat]);
       }
       for (const booking of bookings) points.push([booking.pickup.lng, booking.pickup.lat]);
+      // W5: include the rings' centres and their widest edges, or a wave whose
+      // radius spans the whole viewport would start cropped.
+      for (const ring of rings ?? []) {
+        points.push([ring.lng, ring.lat]);
+        points.push([ring.lng, ring.lat + ring.radiusKm / 111.32]);
+        points.push([
+          ring.lng + ring.radiusKm / (111.32 * Math.cos((ring.lat * Math.PI) / 180)),
+          ring.lat,
+        ]);
+      }
       if (points.length > 0) {
         const bounds = new maplibregl.LngLatBounds();
         for (const point of points) bounds.extend(point);

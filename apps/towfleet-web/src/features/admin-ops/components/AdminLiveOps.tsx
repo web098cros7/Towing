@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { AdminLiveBooking, AdminLiveDriver } from '@towing/api-contracts';
 import {
@@ -13,6 +14,7 @@ import {
   StatusChip,
 } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
+import { useAdminCan } from '@/components/admin/Can';
 import { useAdminRealtime } from '@/features/admin-realtime/AdminRealtimeProvider';
 import { adminOpsSubscribe } from '@/features/admin-realtime/lib/socket';
 import { ageSeconds, presenceFor, presenceLabel } from '@/features/realtime/presence';
@@ -233,6 +235,8 @@ function DriverPanel({
 }
 
 function BookingPanel({ booking }: { booking: AdminLiveBooking }): React.ReactNode {
+  const can = useAdminCan();
+
   return (
     <Card data-testid="admin-booking-panel">
       <CardContent className="flex flex-col gap-1 p-4 text-sm">
@@ -254,6 +258,14 @@ function BookingPanel({ booking }: { booking: AdminLiveBooking }): React.ReactNo
         <div className="text-text-secondary">
           Created <RelativeTime at={booking.createdAt} />
         </div>
+        {can('ops.dispatch.inspect') ? (
+          <Link
+            href={`/admin/ops/dispatch/${booking.bookingId}`}
+            className="text-sm text-brand hover:underline"
+          >
+            Open dispatch inspector →
+          </Link>
+        ) : null}
         {/* Details only: cancel/reassign land with W8. */}
       </CardContent>
     </Card>

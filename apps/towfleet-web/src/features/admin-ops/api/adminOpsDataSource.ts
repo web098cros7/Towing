@@ -1,4 +1,6 @@
 import type {
+  AdminDispatchInspectorListResponse,
+  AdminDispatchInspectorResponse,
   AdminOpsActivityResponse,
   AdminOpsBadgesResponse,
   AdminOpsDashboardResponse,
@@ -9,6 +11,8 @@ import { adminApiFetch } from '@/lib/adminApiClient';
 import { env } from '@/lib/env';
 import { resolveMock } from '@/lib/mockUtils';
 import {
+  adminDispatchInspectorMock,
+  adminDispatchSearchesMock,
   adminOpsActivityMock,
   adminOpsBadgesMock,
   adminOpsKpisMock,
@@ -28,6 +32,10 @@ export interface AdminOpsDataSource {
   badges(): Promise<AdminOpsBadgesResponse>;
   activity(): Promise<AdminOpsActivityResponse>;
   live(query: AdminOpsLiveQuery): Promise<AdminOpsLiveResponse>;
+  /** W5: live searches, oldest first. */
+  dispatchSearches(): Promise<AdminDispatchInspectorListResponse>;
+  /** W5: one booking's recorded waves, attempts and resolved config. */
+  dispatchInspector(bookingId: string): Promise<AdminDispatchInspectorResponse>;
 }
 
 /** The `empty` dev-state: a valid payload of zeros, not a broken one. */
@@ -78,6 +86,18 @@ const mockSource: AdminOpsDataSource = {
       at: new Date().toISOString(),
       degraded: false,
     }),
+  dispatchSearches: () =>
+    resolveMock(env.mockAdminOpsState, adminDispatchSearchesMock, {
+      items: [],
+      at: new Date().toISOString(),
+    }),
+  dispatchInspector: () =>
+    resolveMock(env.mockAdminOpsState, adminDispatchInspectorMock, {
+      ...adminDispatchInspectorMock,
+      waves: [],
+      attempts: [],
+      liveWave: null,
+    }),
 };
 
 const restSource: AdminOpsDataSource = {
@@ -91,6 +111,10 @@ const restSource: AdminOpsDataSource = {
     const qs = params.toString();
     return adminApiFetch<AdminOpsLiveResponse>(`ops/live${qs ? `?${qs}` : ''}`);
   },
+  dispatchSearches: () =>
+    adminApiFetch<AdminDispatchInspectorListResponse>('ops/dispatch'),
+  dispatchInspector: (bookingId) =>
+    adminApiFetch<AdminDispatchInspectorResponse>(`ops/dispatch/${bookingId}`),
 };
 
 export const adminOpsDataSource: AdminOpsDataSource = env.useMocks ? mockSource : restSource;
