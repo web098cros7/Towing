@@ -22,6 +22,13 @@ export const SUBJECT_READ_PERMISSION: Record<string, AdminPermission> = {
   payout: 'finance.read',
   refund: 'finance.read',
   driver: 'user.read',
+  /**
+   * W7: per-document decisions are the KYC drawer's own history, and `kyc.read`
+   * is that screen's gate — the same rule as `driver` above, which deliberately
+   * uses `user.read` instead because finance needs suspension history and holds
+   * no `kyc.read`.
+   */
+  driver_document: 'kyc.read',
   user: 'user.read',
   fleet: 'user.read',
   truck: 'user.read',

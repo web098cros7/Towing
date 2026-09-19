@@ -2,18 +2,22 @@ import { Controller, Get, HttpCode, HttpStatus, Post, Put, Req, UseGuards } from
 import {
   adminCapabilitiesUpdateSchema,
   adminDocumentReviewSchema,
+  adminKycBulkRequestSchema,
   adminKycDecisionSchema,
+  adminPendingDriversQuerySchema,
   type AdminCapabilitiesUpdate,
   type AdminDocumentReview,
+  type AdminKycBulkRequest,
   type AdminKycDecision,
+  type AdminPendingDriversQuery,
 } from '@towing/api-contracts';
 import { z } from 'zod';
 import { ApiException } from '../../common/errors/api-exception';
 import { ThrottleBucket } from '../../common/throttling/throttler.config';
-import { ZodBody, ZodParam } from '../../common/validation/zod.decorators';
+import { ZodBody, ZodParam, ZodQuery } from '../../common/validation/zod.decorators';
 import type { AuthedRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { Realms, Roles } from '../auth/realm.decorator';
+import { Permissions, Realms, Roles } from '../auth/realm.decorator';
 import { sessionContextFrom } from '../auth/token.service';
 import { AdminDriversService } from './admin-drivers.service';
 
@@ -35,8 +39,39 @@ export class AdminDriversController {
 
   @Get('pending')
   @Roles('super_admin', 'operations', 'support')
-  pending() {
-    return this.drivers.pending();
+  pending(@ZodQuery(adminPendingDriversQuerySchema) query: AdminPendingDriversQuery) {
+    return this.drivers.pending(query);
+  }
+
+  /**
+   * W7's bulk decision — `kyc.bulk` is the permission the §4.2 matrix already
+   * grants super admin and operations, and nobody else. It sits ABOVE `:id/kyc`
+   * so the literal path is matched first, the same rule `pending` follows.
+   *
+   * The `money` bucket, like the single decision route: fifty decisions in one
+   * request is not a read burst, but it is exactly the shape a compromised
+   * session would use to mass-approve supply.
+   */
+  @Post('kyc/bulk')
+  @Permissions('kyc.bulk')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  bulkDecide(
+    @ZodBody(adminKycBulkRequestSchema) body: AdminKycBulkRequest,
+    @Req() request: AuthedRequest,
+  ) {
+    return this.drivers.bulkDecide(adminId(request), body, sessionContextFrom(request));
+  }
+
+  /**
+   * W7's document history — every upload of every document for one driver,
+   * newest first. `kyc.read` because this is the drawer's own data; support
+   * reads the queue and therefore reads this too.
+   */
+  @Get(':id/document-versions')
+  @Permissions('kyc.read')
+  documentVersions(@ZodParam(z.uuid(), 'id') driverId: string) {
+    return this.drivers.documentVersions(driverId);
   }
 
   @Post(':id/kyc')

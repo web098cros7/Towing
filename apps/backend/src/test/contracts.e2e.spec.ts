@@ -467,6 +467,10 @@ const EXCLUDED = new Set([
   // because the KYC module registers first; `:id` must never shadow it.
   '/v1/admin/drivers/:id',
   '/v1/admin/drivers/:id/bookings',
+  // W7 - the document history. Parameterised by driver id, so it belongs here
+  // with its contract asserted (`adminDriverDocumentVersionsResponseSchema`)
+  // in `admin-kyc-w7.e2e.spec.ts`, which uploads real versions first.
+  '/v1/admin/drivers/:id/document-versions',
   // W6 — the fleets directory's parameterised routes: detail asserted against
   // `adminFleetDetailSchema`, the sub-reads against the FLEET console's own
   // schemas, all in `admin-fleets-directory.e2e.spec.ts`.

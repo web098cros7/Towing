@@ -4,19 +4,26 @@ import type {
   AdminCapabilitiesUpdate,
   AdminDocumentReview,
   AdminDocumentReviewResult,
+  AdminDriverDocumentVersion,
+  AdminDriverDocumentVersionsResponse,
+  AdminKycBulkItemResult,
+  AdminKycBulkRequest,
+  AdminKycBulkResponse,
   AdminKycDecision,
   AdminKycResult,
+  AdminPendingDocument,
+  AdminPendingDriversQuery,
   AdminPendingDriversResponse,
 } from '@towing/api-contracts';
 import { ErrorCodes } from '@towing/api-contracts';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { DeviceRegistryService } from '../../common/notifications/device-registry.service';
 import { NotificationService } from '../../common/notifications/notification.service';
 import { keyFromFileUrl } from '../../common/storage/file-url';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
-import { bookings, driverDocuments, drivers } from '../../db/schema';
+import { bookings, driverDocumentVersions, driverDocuments, drivers } from '../../db/schema';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 import type { KycStatus } from '../auth/auth.types';
@@ -41,6 +48,24 @@ const NEXT_STATUS: Record<AdminKycDecision['decision'], KycStatus> = {
 
 /** Thumbnail links in the queue are short-lived — re-fetch the queue rather than caching them. */
 const THUMBNAIL_TTL_SECONDS = 5 * 60;
+
+/**
+ * One row of the document-history read: a recorded version, or the read-time
+ * fallback synthesised from `driver_documents` (see `documentVersions`).
+ * Database types, not the wire shape — the ISO conversion happens once, at the
+ * return.
+ */
+type VersionRow = {
+  id: string;
+  docType: AdminDriverDocumentVersion['docType'];
+  status: AdminDriverDocumentVersion['status'];
+  rejectionReason: string | null;
+  verifiedBy: string | null;
+  verifiedAt: Date | null;
+  supersededAt: Date | null;
+  createdAt: Date;
+  fileUrl: string;
+};
 
 /**
  * The §3.1 KYC queue and per-document review (Phase 11) — built on Phase 10's
@@ -278,33 +303,97 @@ export class AdminDriversService implements OnModuleInit {
 
     const shelved: AdminKycResult | Pick<AdminKycResult, 'driverId' | 'kycStatus' | 'rejectionReason'> =
       await this.db.transaction(async (tx) => {
-      // The lock both suspension branches and `applyPendingSuspension` take
-      // before reading. `OfferService.accept` locks this same row before the
-      // booking row, so driver-then-booking order holds everywhere.
-      await tx
-        .select({ id: drivers.id })
-        .from(drivers)
-        .where(eq(drivers.id, driverId))
-        .for('update');
-      const live = await this.liveBooking(driverId, tx);
-      const now = new Date();
+        // The lock both suspension branches and `applyPendingSuspension` take
+        // before reading. `OfferService.accept` locks this same row before the
+        // booking row, so driver-then-booking order holds everywhere.
+        await tx
+          .select({ id: drivers.id })
+          .from(drivers)
+          .where(eq(drivers.id, driverId))
+          .for('update');
+        const live = await this.liveBooking(driverId, tx);
+        const now = new Date();
 
-      if (live && mode === 'immediate') {
-        throw new ApiException(
-          HttpStatus.CONFLICT,
-          ErrorCodes.INVALID_BOOKING_STATE,
-          'Driver holds an active booking — reassign or cancel it first (admin dispositions land in W8), or suspend after the current job',
-          { bookingId: live.id, status: live.status },
-        );
-      }
+        if (live && mode === 'immediate') {
+          throw new ApiException(
+            HttpStatus.CONFLICT,
+            ErrorCodes.INVALID_BOOKING_STATE,
+            'Driver holds an active booking — reassign or cancel it first (admin dispositions land in W8), or suspend after the current job',
+            { bookingId: live.id, status: live.status },
+          );
+        }
 
-      if (live) {
+        if (live) {
+          const [after] = await tx
+            .update(drivers)
+            .set({
+              pendingSuspensionReason: body.reason ?? null,
+              pendingSuspensionBy: adminId,
+              pendingSuspensionAt: now,
+              updatedAt: now,
+            })
+            .where(eq(drivers.id, driverId))
+            .returning({
+              id: drivers.id,
+              kycStatus: drivers.kycStatus,
+              rejectionReason: drivers.rejectionReason,
+              approvedBy: drivers.approvedBy,
+              pendingSuspensionReason: drivers.pendingSuspensionReason,
+              pendingSuspensionBy: drivers.pendingSuspensionBy,
+              pendingSuspensionAt: drivers.pendingSuspensionAt,
+            });
+
+          // 18 Sep correction: NO evict here. `evictRevoked` deletes the driver
+          // hash and flips `is_online` off, so every later ping comes back unknown
+          // → rehydrate refuses → the customer's live tracking freezes for the
+          // rest of the job, the trip replay loses its tail, and EnRouteWatcher
+          // goes blind. Eviction buys nothing either: eligibility already excludes
+          // a driver with an active booking, and the shelf keeps them out if the
+          // booking goes back to searching. Sessions, devices, `kyc_status` and
+          // presence all stay — the driver must finish the job. Eviction happens
+          // in `applyPendingSuspension`, when the suspension actually applies.
+          await this.audit.record(
+            {
+              adminId,
+              action: 'driver.kyc.suspend',
+              subjectType: 'driver',
+              subjectId: driverId,
+              before: before as unknown as Record<string, unknown>,
+              after: (after ?? null) as unknown as Record<string, unknown> | null,
+              reason: body.reason ?? null,
+              ip: context.ip ?? null,
+              userAgent: context.userAgent ?? null,
+            },
+            { tx },
+          );
+
+          return {
+            driverId,
+            kycStatus: after!.kycStatus,
+            rejectionReason: after!.rejectionReason,
+            sessionsRevoked: 0,
+            suspensionPending: true,
+          };
+        }
+
+        // No live booking: the pre-A14 immediate path, verbatim in effect. The
+        // row change and its audit row commit together; the side effects below
+        // run after commit.
         const [after] = await tx
           .update(drivers)
           .set({
-            pendingSuspensionReason: body.reason ?? null,
-            pendingSuspensionBy: adminId,
-            pendingSuspensionAt: now,
+            kycStatus: 'suspended',
+            approvedBy: null,
+            approvedAt: null,
+            rejectionReason: null,
+            pendingSuspensionReason: null,
+            pendingSuspensionBy: null,
+            pendingSuspensionAt: null,
+            // W6: the applied suspension's who/why/when (0024's trio) — the
+            // shelf uses `pendingSuspension*` until this branch applies it.
+            suspendedAt: now,
+            suspendedBy: adminId,
+            suspensionReason: body.reason ?? null,
             updatedAt: now,
           })
           .where(eq(drivers.id, driverId))
@@ -313,20 +402,8 @@ export class AdminDriversService implements OnModuleInit {
             kycStatus: drivers.kycStatus,
             rejectionReason: drivers.rejectionReason,
             approvedBy: drivers.approvedBy,
-            pendingSuspensionReason: drivers.pendingSuspensionReason,
-            pendingSuspensionBy: drivers.pendingSuspensionBy,
-            pendingSuspensionAt: drivers.pendingSuspensionAt,
           });
 
-        // 18 Sep correction: NO evict here. `evictRevoked` deletes the driver
-        // hash and flips `is_online` off, so every later ping comes back unknown
-        // → rehydrate refuses → the customer's live tracking freezes for the
-        // rest of the job, the trip replay loses its tail, and EnRouteWatcher
-        // goes blind. Eviction buys nothing either: eligibility already excludes
-        // a driver with an active booking, and the shelf keeps them out if the
-        // booking goes back to searching. Sessions, devices, `kyc_status` and
-        // presence all stay — the driver must finish the job. Eviction happens
-        // in `applyPendingSuspension`, when the suspension actually applies.
         await this.audit.record(
           {
             adminId,
@@ -346,60 +423,8 @@ export class AdminDriversService implements OnModuleInit {
           driverId,
           kycStatus: after!.kycStatus,
           rejectionReason: after!.rejectionReason,
-          sessionsRevoked: 0,
-          suspensionPending: true,
         };
-      }
-
-      // No live booking: the pre-A14 immediate path, verbatim in effect. The
-      // row change and its audit row commit together; the side effects below
-      // run after commit.
-      const [after] = await tx
-        .update(drivers)
-        .set({
-          kycStatus: 'suspended',
-          approvedBy: null,
-          approvedAt: null,
-          rejectionReason: null,
-          pendingSuspensionReason: null,
-          pendingSuspensionBy: null,
-          pendingSuspensionAt: null,
-          // W6: the applied suspension's who/why/when (0024's trio) — the
-          // shelf uses `pendingSuspension*` until this branch applies it.
-          suspendedAt: now,
-          suspendedBy: adminId,
-          suspensionReason: body.reason ?? null,
-          updatedAt: now,
-        })
-        .where(eq(drivers.id, driverId))
-        .returning({
-          id: drivers.id,
-          kycStatus: drivers.kycStatus,
-          rejectionReason: drivers.rejectionReason,
-          approvedBy: drivers.approvedBy,
-        });
-
-      await this.audit.record(
-        {
-          adminId,
-          action: 'driver.kyc.suspend',
-          subjectType: 'driver',
-          subjectId: driverId,
-          before: before as unknown as Record<string, unknown>,
-          after: (after ?? null) as unknown as Record<string, unknown> | null,
-          reason: body.reason ?? null,
-          ip: context.ip ?? null,
-          userAgent: context.userAgent ?? null,
-        },
-        { tx },
-      );
-
-      return {
-        driverId,
-        kycStatus: after!.kycStatus,
-        rejectionReason: after!.rejectionReason,
-      };
-    });
+      });
 
     if ('suspensionPending' in shelved) return shelved;
 
@@ -546,8 +571,17 @@ export class AdminDriversService implements OnModuleInit {
    * Strictly `kyc_status = 'pending'` — "submitted and awaiting a human", per
    * migration 0007's default change. An `incomplete` driver (nothing submitted
    * yet) must never appear here, however long ago they signed up.
+   *
+   * W7 paginated it and flattened the reads: ONE query for the page's drivers,
+   * ONE for their documents and ONE batch of presigns. Until W7 this ran a
+   * document query and a presign PER ROW, which is the N+1 the guide names.
    */
-  async pending(): Promise<AdminPendingDriversResponse> {
+  async pending(query: AdminPendingDriversQuery): Promise<AdminPendingDriversResponse> {
+    const { page, limit } = query;
+    const awaiting = eq(drivers.kycStatus, 'pending');
+
+    const [totals] = await this.db.select({ total: count() }).from(drivers).where(awaiting);
+
     const rows = await this.db
       .select({
         id: drivers.id,
@@ -556,54 +590,240 @@ export class AdminDriversService implements OnModuleInit {
         vehicleClass: drivers.vehicleClass,
         longDistanceEnabled: drivers.longDistanceEnabled,
         kycSubmittedAt: drivers.kycSubmittedAt,
+        currentLocation: drivers.currentLocation,
+        lastPingAt: drivers.lastPingAt,
       })
       .from(drivers)
-      .where(eq(drivers.kycStatus, 'pending'))
+      .where(awaiting)
       // Oldest submission first — a queue should clear front-to-back.
-      .orderBy(asc(drivers.kycSubmittedAt));
+      .orderBy(asc(drivers.kycSubmittedAt))
+      .limit(limit)
+      .offset((page - 1) * limit);
 
-    const items = await Promise.all(
-      rows.map(async (row) => {
-        const docs = await this.db
+    const ids = rows.map((row) => row.id);
+    const docs = ids.length
+      ? await this.db
           .select({
             id: driverDocuments.id,
+            driverId: driverDocuments.driverId,
             docType: driverDocuments.docType,
             status: driverDocuments.status,
             rejectionReason: driverDocuments.rejectionReason,
             fileUrl: driverDocuments.fileUrl,
           })
           .from(driverDocuments)
-          .where(eq(driverDocuments.driverId, row.id));
+          .where(inArray(driverDocuments.driverId, ids))
+      : [];
 
-        const documents = await Promise.all(
-          docs.map(async (doc) => {
-            const thumbnail = await this.storage.presignGet(
-              keyFromFileUrl(doc.fileUrl),
-              THUMBNAIL_TTL_SECONDS,
-            );
-            return {
-              id: doc.id,
-              docType: doc.docType,
-              status: doc.status,
-              rejectionReason: doc.rejectionReason,
-              thumbnailUrl: thumbnail.url,
-            };
-          }),
-        );
-
-        return {
-          id: row.id,
-          name: row.name,
-          mobile: row.mobile,
-          vehicleClass: row.vehicleClass,
-          longDistanceEnabled: row.longDistanceEnabled,
-          kycSubmittedAt: row.kycSubmittedAt?.toISOString() ?? null,
-          documents,
-        };
-      }),
+    const thumbnails = await Promise.all(
+      docs.map((doc) => this.storage.presignGet(keyFromFileUrl(doc.fileUrl), THUMBNAIL_TTL_SECONDS)),
     );
 
-    return { items };
+    const byDriver = new Map<string, AdminPendingDocument[]>();
+    docs.forEach((doc, index) => {
+      const list = byDriver.get(doc.driverId) ?? [];
+      list.push({
+        id: doc.id,
+        docType: doc.docType,
+        status: doc.status,
+        rejectionReason: doc.rejectionReason,
+        thumbnailUrl: thumbnails[index]!.url,
+      });
+      byDriver.set(doc.driverId, list);
+    });
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        mobile: row.mobile,
+        vehicleClass: row.vehicleClass,
+        longDistanceEnabled: row.longDistanceEnabled,
+        kycSubmittedAt: row.kycSubmittedAt?.toISOString() ?? null,
+        // W7's "GPS on map" is the LAST KNOWN location, and it says so: no
+        // document carries capture-time coordinates, and a position without a
+        // ping timestamp would be a claim the data cannot support.
+        lastKnownLocation:
+          row.currentLocation && row.lastPingAt
+            ? {
+                lat: row.currentLocation.lat,
+                lng: row.currentLocation.lng,
+                at: row.lastPingAt.toISOString(),
+              }
+            : null,
+        documents: byDriver.get(row.id) ?? [],
+      })),
+      page,
+      limit,
+      total: totals?.total ?? 0,
+    };
+  }
+
+  /**
+   * §9.4.3's history — one row per UPLOAD, newest first, each with its own
+   * short-TTL thumbnail so a superseded file stays inspectable. The row was
+   * created `pending` by `DriverKycService.confirm` and is completed by
+   * `reviewDocument` below.
+   *
+   * Read-time fallback for pre-W7 data: migration 0024 shipped the table and
+   * nothing wrote it, so a document confirmed before W7 has no version row.
+   * Rather than show an empty history for those, the CURRENT
+   * `driver_documents` row is synthesised as the single entry — honest about
+   * what is known, and it disappears the moment the driver resubmits.
+   */
+  async documentVersions(driverId: string): Promise<AdminDriverDocumentVersionsResponse> {
+    const recorded = await this.db
+      .select({
+        id: driverDocumentVersions.id,
+        docType: driverDocumentVersions.docType,
+        status: driverDocumentVersions.status,
+        rejectionReason: driverDocumentVersions.rejectionReason,
+        verifiedBy: driverDocumentVersions.verifiedBy,
+        verifiedAt: driverDocumentVersions.verifiedAt,
+        supersededAt: driverDocumentVersions.supersededAt,
+        createdAt: driverDocumentVersions.createdAt,
+        fileUrl: driverDocumentVersions.fileUrl,
+      })
+      .from(driverDocumentVersions)
+      .where(eq(driverDocumentVersions.driverId, driverId))
+      .orderBy(desc(driverDocumentVersions.createdAt));
+
+    const current = await this.db
+      .select({
+        id: driverDocuments.id,
+        docType: driverDocuments.docType,
+        status: driverDocuments.status,
+        rejectionReason: driverDocuments.rejectionReason,
+        verifiedBy: driverDocuments.verifiedBy,
+        verifiedAt: driverDocuments.verifiedAt,
+        fileUrl: driverDocuments.fileUrl,
+        updatedAt: driverDocuments.updatedAt,
+      })
+      .from(driverDocuments)
+      .where(eq(driverDocuments.driverId, driverId));
+
+    if (recorded.length === 0 && current.length === 0) {
+      const [driver] = await this.db
+        .select({ id: drivers.id })
+        .from(drivers)
+        .where(eq(drivers.id, driverId))
+        .limit(1);
+      if (!driver) throw ApiException.notFound('Driver not found');
+    }
+
+    const covered = new Set(recorded.map((row) => row.docType));
+    /**
+     * Migration 0024 stores both `doc_type` and `status` as TEXT (the versions
+     * table is written before it is queried, and W7's writers are the only
+     * ones), so the DB gives `string` where the contract gives an enum. The
+     * casts are the one place that gap is bridged.
+     */
+    const rows: VersionRow[] = [
+      ...recorded.map((row) => ({
+        ...row,
+        docType: row.docType as VersionRow['docType'],
+        status: row.status as VersionRow['status'],
+      })),
+      ...current
+        .filter((doc) => !covered.has(doc.docType))
+        .map((doc) => ({
+          id: doc.id,
+          docType: doc.docType,
+          status: doc.status,
+          rejectionReason: doc.rejectionReason,
+          verifiedBy: doc.verifiedBy,
+          verifiedAt: doc.verifiedAt,
+          supersededAt: null,
+          createdAt: doc.updatedAt,
+          fileUrl: doc.fileUrl,
+        })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const thumbnails = await Promise.all(
+      rows.map((row) => this.storage.presignGet(keyFromFileUrl(row.fileUrl), THUMBNAIL_TTL_SECONDS)),
+    );
+
+    return {
+      items: rows.map((row, index) => ({
+        id: row.id,
+        docType: row.docType,
+        status: row.status,
+        rejectionReason: row.rejectionReason,
+        verifiedBy: row.verifiedBy,
+        verifiedAt: row.verifiedAt?.toISOString() ?? null,
+        supersededAt: row.supersededAt?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+        thumbnailUrl: thumbnails[index]!.url,
+      })),
+    };
+  }
+
+  /**
+   * §9.4.3's bulk approve/reject — capped at 50 by the contract.
+   *
+   * PER-ITEM, NEVER ALL-OR-NOTHING: every id runs through the SAME `decide()`
+   * the single-driver route uses, so a bulk action cannot drift from a single
+   * one — audit row, notification, session/device revocation and presence
+   * eviction all stay in one place. A driver who was already decided elsewhere
+   * (or deleted) is recorded as that driver's failure and the loop carries on.
+   */
+  async bulkDecide(
+    adminId: string,
+    body: AdminKycBulkRequest,
+    context: SessionContext = {},
+  ): Promise<AdminKycBulkResponse> {
+    const results: AdminKycBulkItemResult[] = [];
+
+    for (const driverId of body.driverIds) {
+      try {
+        const decided = await this.decide(
+          adminId,
+          driverId,
+          { decision: body.decision, reason: body.reason },
+          context,
+        );
+        results.push({ driverId, ok: true, kycStatus: decided.kycStatus, error: null });
+      } catch (error) {
+        const failure =
+          error instanceof ApiException
+            ? { code: error.code, message: error.message }
+            : { code: ErrorCodes.INTERNAL, message: 'Decision failed' };
+        this.logger.warn(`bulk ${body.decision} failed for driver ${driverId}: ${failure.code}`);
+        results.push({ driverId, ok: false, kycStatus: null, error: failure });
+      }
+    }
+
+    const succeeded = results.filter((result) => result.ok).length;
+
+    // The per-driver rows already exist (written by `decide()`); this is the
+    // ACTION's row, so "who bulk-approved forty drivers" is answerable without
+    // stitching forty timestamps. A subject type of its own: it is not a fact
+    // about any one driver, and `subject-access` deliberately has no readers
+    // for it.
+    await this.audit.record({
+      adminId,
+      action: `driver.kyc.bulk_${body.decision}`,
+      subjectType: 'driver_kyc_bulk',
+      subjectId: null,
+      before: null,
+      after: {
+        decision: body.decision,
+        requested: body.driverIds.length,
+        succeeded,
+        failed: results.length - succeeded,
+        driverIds: body.driverIds,
+      },
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    return {
+      decision: body.decision,
+      succeeded,
+      failed: results.length - succeeded,
+      results,
+    };
   }
 
   /**
@@ -626,6 +846,7 @@ export class AdminDriversService implements OnModuleInit {
         docType: driverDocuments.docType,
         status: driverDocuments.status,
         rejectionReason: driverDocuments.rejectionReason,
+        fileUrl: driverDocuments.fileUrl,
       })
       .from(driverDocuments)
       .where(and(eq(driverDocuments.id, documentId), eq(driverDocuments.driverId, driverId)))
@@ -652,6 +873,33 @@ export class AdminDriversService implements OnModuleInit {
         status: driverDocuments.status,
         rejectionReason: driverDocuments.rejectionReason,
       });
+
+    /**
+     * W7: complete the version row this review is about.
+     *
+     * Matched on the FILE (driver + doc type + the url read above), not on
+     * "the latest version": an admin who has had the drawer open while the
+     * driver resubmitted would otherwise stamp the NEW file with the old
+     * file's verdict. When the file has since been replaced this updates
+     * nothing, and the new version stays `pending` for a human — which is the
+     * truth. The review itself still lands on `driver_documents` (that row IS
+     * the current verdict) and in the audit trail below.
+     */
+    await this.db
+      .update(driverDocumentVersions)
+      .set({
+        status,
+        rejectionReason: body.decision === 'reject' ? (body.reason ?? null) : null,
+        verifiedBy: adminId,
+        verifiedAt: now,
+      })
+      .where(
+        and(
+          eq(driverDocumentVersions.driverId, driverId),
+          eq(driverDocumentVersions.docType, before.docType),
+          eq(driverDocumentVersions.fileUrl, before.fileUrl),
+        ),
+      );
 
     await this.audit.record({
       adminId,

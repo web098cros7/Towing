@@ -108,10 +108,18 @@ describe('admin permissions (§4.2 matrix)', () => {
     expect(SPEC_42[0]!.support).toBe('none');
     for (const subRole of ['super_admin', 'operations'] as const) {
       expect(holds(subRole, 'kyc.review')).toBe(true);
+      // W7 gated the bulk route on kyc.bulk rather than on kyc.review: it is
+      // the same pair of sub-roles, and the separate permission is what the
+      // §4.2 table already carries ("new" for the bulk action).
+      expect(holds(subRole, 'kyc.bulk')).toBe(true);
     }
     for (const subRole of ['support', 'finance'] as const) {
       expect(holds(subRole, 'kyc.review')).toBe(false);
+      expect(holds(subRole, 'kyc.bulk')).toBe(false);
     }
+    // Support reads the queue and the documents, and decides nothing.
+    expect(holds('support', 'kyc.read')).toBe(true);
+    expect(holds('finance', 'kyc.read')).toBe(false);
   });
 
   it('Suspend/Reactivate: support may request (user.suspend.request) but never perform (user.suspend)', () => {
