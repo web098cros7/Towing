@@ -106,7 +106,7 @@ const CHUNK = 50;
 const LOAD_CHUNK = 200;
 
 /** Tables owned by the app (CASCADE resolves FK order). */
-const APP_TABLES = [
+export const APP_TABLES = [
   'alerts',
   // Before `admin_users`: an audit row references the admin who wrote it, and
   // although CASCADE resolves the order anyway, the list reads as the graph.
@@ -162,6 +162,29 @@ const APP_TABLES = [
   'addresses',
   'emergency_contacts',
   'users',
+  // W5–W13. This list is the reset, and a table missing from it is a reset that
+  // leaves rows behind — which is how the M4 gate caught `app_config`: a
+  // singleton the migration seeds, absent here, so a second `runSeed` collided
+  // with the row the first one wrote. Most of these cascade from the tables
+  // above; the four that do NOT have a foreign key are the dangerous ones, and
+  // they are named last on purpose:
+  'dispatch_wave_logs',
+  'driver_document_versions',
+  'driver_zone_restrictions',
+  'disputes',
+  'dispute_evidence',
+  'ratings',
+  'suspension_requests',
+  'impersonation_sessions',
+  'admin_recovery_codes',
+  'coupons',
+  'coupon_redemptions',
+  // FK-free or nearly so — a leftover row here outlives every CASCADE.
+  'admin_notes',
+  'service_zone_versions',
+  'commission_proposals',
+  'commission_guardrail',
+  'app_config',
 ] as const;
 
 type HistoricalStatus = 'paid' | 'completed' | 'cancelled' | 'no_drivers_found' | 'disputed';
