@@ -12,17 +12,16 @@ import { adminLogin } from './support/adminLogin';
  * paisa" is a fact rather than a fixture.
  */
 
-test('the Finance queue is reachable from the topbar and lists both owner types', async ({
-  page,
-}) => {
+test('the Finance queue lists both owner types', async ({ page }) => {
   await adminLogin(page);
 
-  // The topbar had NO navigation until Phase 19 — this link is the whole
-  // reason a second admin page is usable at all. Reached from the KYC queue
-  // because A6's neutral landing carries no shell.
-  await page.goto('/admin/drivers');
-  await page.getByRole('link', { name: 'Payouts' }).click();
-  await expect(page).toHaveURL(/\/admin\/finance/);
+  // W1 §3.2 moved section navigation from the topbar into the permission-
+  // filtered sidebar, so this no longer clicks a topbar link. It stays a DIRECT
+  // goto rather than a sidebar click on purpose: the mock identity is
+  // `operations`, which holds `finance.summary` but not `finance.read`, so the
+  // sidebar correctly HIDES Finance for it — the filtering itself is asserted
+  // in `admin-shell.spec.ts`.
+  await page.goto('/admin/finance');
 
   await expect(page.getByRole('heading', { name: 'Payout approvals' })).toBeVisible();
 

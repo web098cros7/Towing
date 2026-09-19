@@ -1,30 +1,22 @@
 'use client';
 
 import { LogOut } from 'lucide-react';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@towing/web-ui';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
 
 /**
- * §9.4's admin shell.
+ * The console's topbar (W1 §3.2).
  *
- * Two pages and a way to reach both: Phase 11's KYC queue and §9.4.10's
- * Finance queue. A6 removed the hardcoded `/admin/drivers` landing (here,
- * `middleware.ts`, `app/admin/page.tsx`) that used to drop every sub-role —
- * including finance, who gets a 403 from the KYC queue — onto that one page.
- * Everyone lands on `/admin` now; role-aware routing arrives with A7.
+ * The two section links it used to carry (KYC queue, Payouts) moved to
+ * `AdminSidebar` — one navigation surface, filtered by permission, instead of
+ * a topbar that only grew. What stays: brand, the signed-in identity, the
+ * theme toggle and logout.
  */
-const LINKS = [
-  { href: '/admin/drivers', label: 'KYC queue' },
-  { href: '/admin/finance', label: 'Payouts' },
-] as const;
-
 export function AdminTopbar() {
   const router = useRouter();
-  const pathname = usePathname();
   const queryClient = useQueryClient();
   const { admin } = useAdminIdentity();
 
@@ -40,29 +32,7 @@ export function AdminTopbar() {
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-card px-6">
-      <div className="flex items-center gap-6">
-        <span className="font-display text-lg font-bold text-brand">Towing Admin</span>
-
-        <nav className="flex items-center gap-1" aria-label="Admin sections">
-          {LINKS.map((link) => {
-            const active = pathname?.startsWith(link.href) ?? false;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                aria-current={active ? 'page' : undefined}
-                className={
-                  active
-                    ? 'rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-on-brand'
-                    : 'rounded-lg px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary'
-                }
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+      <span className="font-display text-lg font-bold text-brand">Towing Admin</span>
 
       <div className="flex items-center gap-2">
         {admin ? (

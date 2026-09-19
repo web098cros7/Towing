@@ -26,5 +26,11 @@ export async function adminLogin(
   // to the queue they need. Wait for the post-login URL that is NOT the login
   // page: a bare `/\/admin/` also matches `/admin/login`, which fires the
   // next `goto` before verify's `Set-Cookie` lands (M0-F3's live race).
-  await expect(page).toHaveURL(/\/admin$/);
+  //
+  // 15 s, not the 5 s default: on a COLD `next start` (first hits load route
+  // modules from disk) the default has been observed to expire before the
+  // client's post-verify navigation settles, failing whole batch runs on
+  // timing alone. Warm runs complete this in ~100 ms, so the larger ceiling
+  // costs nothing when it is not needed.
+  await expect(page).toHaveURL(/\/admin$/, { timeout: 15_000 });
 }

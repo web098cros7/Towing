@@ -8,12 +8,17 @@ import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
 /**
  * Admin landing (A6, neutral per M0-F7) + card filtering (A7).
  *
+ * LIVES INSIDE `(console)` AS OF W1: it used to sit at `app/admin/page.tsx`,
+ * a sibling of the console route group, so `/admin` — the one URL every admin
+ * lands on — was the only screen without the shell. Moving it into the group
+ * gives it the sidebar and topbar like every other console page; the URL is
+ * unchanged (route groups do not appear in paths).
+ *
  * NO role redirect: dropping every non-finance admin on the KYC queue
  * contradicts A6's "no admin is dropped on a queue". Cards for queues the
  * role would get a 403 on are hidden instead (support never sees payouts,
- * finance never sees the verification queue). While identity resolves, all
- * cards show — the page is static scaffolding W3 replaces with the ops
- * dashboard, so keep it dumb and let nothing else depend on it.
+ * finance never sees the verification queue). W3 replaces this scaffolding
+ * with the ops dashboard.
  */
 const SECTIONS = [
   {
