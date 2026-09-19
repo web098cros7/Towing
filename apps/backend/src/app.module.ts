@@ -58,6 +58,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { TrucksModule } from './modules/trucks/trucks.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { AdminRealtimeModule } from './realtime/admin-realtime.module';
 import { RedisModule } from './redis/redis.module';
 
 @Module({
@@ -118,6 +119,7 @@ import { RedisModule } from './redis/redis.module';
     SettingsModule,
     WebhooksModule,
     RealtimeModule,
+    AdminRealtimeModule,
     HealthModule,
     MetricsModule,
   ],

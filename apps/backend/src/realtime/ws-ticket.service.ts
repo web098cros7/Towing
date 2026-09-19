@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import type { FleetId } from '@towing/api-contracts';
+import { adminSubRoleSchema, type AdminSubRole, type FleetId } from '@towing/api-contracts';
 import type { Redis } from 'ioredis';
 import { ENV, type Env } from '../config/env';
 import { REDIS, wsTicketKey } from '../redis/redis.constants';
@@ -44,6 +44,18 @@ export type WsTicketClaims =
        * with a valid ticket cannot redirect it at another booking.
        */
       bookingId: string;
+    }
+  | {
+      realm: 'admin';
+      /** `admin_users.id` — decides the `admin:user:{id}` room and nothing else. */
+      subjectId: string;
+      /**
+       * §4.2 sub-role, carried so `realtime:ready` needs no extra DB read and
+       * W1's badge/subscription logic can reason about the viewer without one.
+       * The socket is deliberately NOT scoped by it — permissions are enforced
+       * per route and per frame emission, not by room membership.
+       */
+      subRole: AdminSubRole;
     };
 
 /**
@@ -126,6 +138,15 @@ function narrowClaims(parsed: unknown): WsTicketClaims | null {
 
   if (claims.realm === 'customer' && typeof claims.bookingId === 'string' && claims.bookingId.length > 0) {
     return { realm: 'customer', subjectId: claims.subjectId, bookingId: claims.bookingId };
+  }
+
+  // W1 (§3.4): the fourth realm. The sub-role is validated against the same
+  // enum the database and the permission map use — a ticket carrying a
+  // half-written value falls out here and the socket is refused, rather than
+  // joining the namespace with a claim nothing can reason about.
+  if (claims.realm === 'admin') {
+    const subRole = adminSubRoleSchema.safeParse(claims.subRole);
+    if (subRole.success) return { realm: 'admin', subjectId: claims.subjectId, subRole: subRole.data };
   }
 
   if (claims.realm === 'fleet' && typeof claims.fleetId === 'string' && claims.fleetId.length > 0) {
