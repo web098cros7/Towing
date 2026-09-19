@@ -13,6 +13,7 @@ import {
 } from '@towing/web-ui';
 import { useAdminPendingDrivers } from '../api/adminDrivers.queries';
 import { useDecideKyc, useReviewDocument, useUpdateDriverCapabilities } from '../api/adminDrivers.mutations';
+import { NotesPanel } from '@/features/admin-notes/components/NotesPanel';
 import { DOC_TYPE_LABEL, type DocReviewStatus } from '../types';
 
 const DOC_STATUS_VARIANT: Record<DocReviewStatus, 'success' | 'warning' | 'error'> = {
@@ -204,6 +205,11 @@ export function DriverKycDrawer({
             />
           </div>
         ) : null}
+
+        {/* W21: the same panel drops into every detail screen. */}
+        <div className="mt-5 border-t border-border pt-4">
+          <NotesPanel subjectType="driver" subjectId={driver.id} />
+        </div>
       </DialogBody>
 
       <DialogFooter>

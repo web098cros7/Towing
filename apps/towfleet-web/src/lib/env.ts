@@ -29,6 +29,10 @@ export const env = {
   mockAdminAdminsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_ADMINS_STATE ?? '') as MockState,
   /** W1's audit viewer (M1). */
   mockAdminAuditState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_AUDIT_STATE ?? '') as MockState,
+  /** W21's admin notes (M1). */
+  mockAdminNotesState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_NOTES_STATE ?? '') as MockState,
+  /** W1's active-session list (M1). */
+  mockAdminSessionsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_SESSIONS_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
