@@ -101,7 +101,7 @@ describe('W9 — capture after cancel (PaymentsService)', () => {
     // (1) The money is real and recorded.
     const [payment] = (await db.execute(sql`
       select status, gateway_ref, captured_at from payments where booking_id = ${bookingId}::uuid
-    `)) as unknown as Array<{ status: string; gateway_ref: string; captured_at: Date | null }>;
+    `)) as unknown as [{ status: string; gateway_ref: string; captured_at: Date | null }];
     expect(payment.status).toBe('captured');
     expect(payment.gateway_ref).toBe(handle.gatewayRef);
     expect(payment.captured_at).not.toBeNull();
@@ -130,9 +130,11 @@ describe('W9 — capture after cancel (PaymentsService)', () => {
     // second emit resolves to null rather than a second email.
     await payments.settleCapturedPayment(bookingId, handle);
     expect(emitSpy).toHaveBeenCalledTimes(2);
-    const [firstResult, secondResult] = emitSpy.mock.results.map((entry) => entry.value);
-    await expect(firstResult).resolves.not.toBeNull();
-    await expect(secondResult).resolves.toBeNull();
+    const results = emitSpy.mock.results.map(
+      (entry: { value: unknown }) => entry.value as Promise<unknown> | null,
+    );
+    await expect(results[0]).resolves.not.toBeNull();
+    await expect(results[1]).resolves.toBeNull();
 
     // (5) The ledger is untouched and the invariants agree.
     await expect(ledgerInvariants(db)).resolves.toEqual({
