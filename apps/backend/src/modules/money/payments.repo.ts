@@ -8,6 +8,8 @@ export interface PaymentRow {
   bookingId: string;
   amount: string;
   taxAmount: string;
+  /** W8 (migration 0025): the running total of refunds against this payment. */
+  refundedAmount: string;
   status: 'pending' | 'authorized' | 'captured' | 'failed' | 'refunded';
   purpose: PaymentPurpose;
   method: 'upi' | 'card' | 'cash' | 'wallet';
@@ -49,6 +51,7 @@ function toRow(row: Record<string, unknown>): PaymentRow {
     bookingId: row.booking_id as string,
     amount: row.amount as string,
     taxAmount: (row.tax_amount as string | null) ?? '0',
+    refundedAmount: (row.refunded_amount as string | null) ?? '0',
     status: row.status as PaymentRow['status'],
     purpose: row.purpose as PaymentPurpose,
     method: row.method as PaymentRow['method'],
@@ -138,6 +141,21 @@ export class PaymentsRepo {
     return rows[0] ? toRow(rows[0]) : null;
   }
 
+  /**
+   * The most recent payment for this booking and purpose, WHATEVER its status —
+   * W8's §14.2 recheck asks about exactly the half-finished states (`pending`,
+   * `authorized`, even `failed`) that `capturedFor` filters out.
+   */
+  async latestForBooking(bookingId: string, purpose: PaymentPurpose): Promise<PaymentRow | null> {
+    const rows = (await this.db.execute(sql`
+      select * from payments
+       where booking_id = ${bookingId}::uuid and purpose = ${purpose}
+       order by created_at desc
+       limit 1
+    `)) as unknown as Array<Record<string, unknown>>;
+    return rows[0] ? toRow(rows[0]) : null;
+  }
+
   async byGatewayRef(gatewayRef: string): Promise<PaymentRow | null> {
     const rows = (await this.db.execute(sql`
       select * from payments where gateway_ref = ${gatewayRef}
@@ -197,11 +215,47 @@ export class PaymentsRepo {
     return rows[0] ? toRow(rows[0]) : null;
   }
 
-  async markRefunded(paymentId: string): Promise<void> {
-    await this.db.execute(sql`
-      update payments set status = 'refunded', updated_at = now()
-       where id = ${paymentId}::uuid and status = 'captured'
-    `);
+  /**
+   * Bring `payments.refunded_amount` up to date from the refund rows, and flip
+   * `status` to `refunded` only at FULL coverage — amount-aware since W8.
+   *
+   * RECOMPUTE, NOT INCREMENT, and that is what makes it idempotent: a replayed
+   * refund (W9's carry-forward: "resume the remaining idempotent steps") calls
+   * this again and gets the same number, where an increment would add the same
+   * refund twice. The sum counts every non-failed refund row for this payment —
+   * full and partial alike — so "captured" survives a partial and disappears
+   * exactly when nothing is left to refund. `least()` keeps the recompute under
+   * the CHECK's cap even if rows were edited by hand.
+   */
+  async applyRefund(paymentId: string): Promise<PaymentRow | null> {
+    const rows = (await this.db.execute(sql`
+      update payments p
+         set refunded_amount = least(
+               p.amount,
+               coalesce(
+                 (select sum(r.amount) from refunds r
+                   where r.payment_id = p.id and r.status <> 'failed'),
+                 0
+               )
+             ),
+             status = case
+               when least(
+                      p.amount,
+                      coalesce(
+                        (select sum(r.amount) from refunds r
+                          where r.payment_id = p.id and r.status <> 'failed'),
+                        0
+                      )
+                    ) >= p.amount
+                 then 'refunded'::payment_status
+               else p.status
+             end,
+             updated_at = now()
+       where p.id = ${paymentId}::uuid
+      returning *
+    `)) as unknown as Array<Record<string, unknown>>;
+
+    return rows[0] ? toRow(rows[0]) : null;
   }
 
   /**

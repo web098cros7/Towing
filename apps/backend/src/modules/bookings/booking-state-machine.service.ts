@@ -141,6 +141,14 @@ export interface TransitionParams {
   bookingId: string;
   to: JobStatus;
   actor: BookingActor;
+  /**
+   * W8: which admin wrote this row, when the actor is `admin` — written to
+   * `booking_status_history.actor_id` (migration 0020 added the column and
+   * named W8 as its first caller). Null for every non-admin actor: a customer
+   * id or driver id in this column would be a half-truth, since the column is
+   * an FK to `admin_users`.
+   */
+  actorId?: string | null;
   note?: string | null;
   /** Extra columns to write in the same UPDATE — cancellation details, OTP flags. */
   patch?: Partial<typeof bookings.$inferInsert>;
@@ -269,6 +277,7 @@ export class BookingStateMachineService {
       bookingId,
       status: to,
       actor,
+      actorId: params.actorId ?? null,
       note: params.note ?? null,
     });
 

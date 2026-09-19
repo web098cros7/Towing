@@ -259,6 +259,36 @@ export class JobExecutionService {
    */
   async complete(bookingId: string, driverId: string): Promise<DriverJob> {
     const job = await this.requireDriverJob(bookingId, driverId);
+    await this.finalizeTrip(bookingId, job, { role: 'driver', id: driverId });
+    return this.job(bookingId, driverId, { allowEnded: true });
+  }
+
+  /**
+   * W8's `in_progress → completed` manual override (§9.4.7).
+   *
+   * ROUTED THROUGH THE SAME FINALIZER as the driver's own Complete, and that is
+   * the entire point of the method: §7.4's waiting charge must bill from the
+   * SNAPSHOT on the row (`waiting_free_minutes` / `waiting_per_minute`), and a
+   * second implementation of that arithmetic is exactly how the admin's number
+   * and the app's number drift apart. The only differences are the actor
+   * written to history (`admin` + the admin's id, via the machine) and the
+   * note.
+   */
+  async completeByAdmin(bookingId: string, adminId: string, note: string): Promise<void> {
+    const job = await this.repo.job(bookingId);
+    if (!job) throw ApiException.notFound('Booking not found');
+    if (!job.driverId) {
+      throw ApiException.conflict('This booking has no driver to finish the trip');
+    }
+    await this.finalizeTrip(bookingId, job, { role: 'admin', id: adminId, note });
+  }
+
+  /** The shared completion: §7.4's arithmetic, the transition, and the side effects. */
+  private async finalizeTrip(
+    bookingId: string,
+    job: JobRow,
+    actor: { role: 'driver' | 'admin'; id: string; note?: string },
+  ): Promise<void> {
     const now = new Date();
 
     const waitedMinutes = job.arrivedAt
@@ -289,7 +319,9 @@ export class JobExecutionService {
       const transition = await this.machine.transition(tx, {
         bookingId,
         to: 'completed',
-        actor: 'driver',
+        actor: actor.role,
+        actorId: actor.role === 'admin' ? actor.id : null,
+        note: actor.note ?? null,
         patch: {
           completedAt: now,
           waitingCharge: paiseToRupeeString(waitingPaise),
@@ -309,6 +341,7 @@ export class JobExecutionService {
       return transition;
     });
 
+    const driverId = job.driverId!;
     await this.afterJobEnded(bookingId, driverId);
     // A14: the job is done — a suspension shelved with `after_current_job`
     // applies now. Never throws (the shelf survives for the next ending), so
@@ -320,8 +353,6 @@ export class JobExecutionService {
     // §11.2's trip replay wants the final positions, and the flush is otherwise
     // on a ~30 s timer that a completed driver may go offline before.
     await this.flush.flushDriver(driverId).catch(() => undefined);
-
-    return this.job(bookingId, driverId, { allowEnded: true });
   }
 
   /**

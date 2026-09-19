@@ -13,5 +13,9 @@ import { AdminNotesService } from './admin-notes.service';
   imports: [AuthModule, AdminAuthModule],
   controllers: [AdminNotesController],
   providers: [AdminNotesService],
+  // W8's dispute `POST /:id/note` writes through this service rather than a
+  // second insert path, so the note's subject-access check and its audit row
+  // cannot drift from the panel's.
+  exports: [AdminNotesService],
 })
 export class AdminNotesModule {}

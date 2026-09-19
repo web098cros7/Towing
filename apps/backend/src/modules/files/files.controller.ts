@@ -26,7 +26,7 @@ const CONTENT_TYPE_BY_EXT: Record<string, string> = {
  * list alongside any new `PresignedUploadService` key prefix — Phase 12 added
  * `customer-vehicles/` for RC photo uploads.
  */
-const PUT_ALLOWED_PREFIXES = ['driver-documents/', 'customer-vehicles/'];
+const PUT_ALLOWED_PREFIXES = ['driver-documents/', 'customer-vehicles/', 'dispute-evidence/'];
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 

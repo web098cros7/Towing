@@ -343,6 +343,67 @@ export class DispatchService implements OnModuleInit {
   }
 
   /**
+   * W8's `offer_to_driver` reassign (§6.5 step 6): one EXCLUSIVE offer to an
+   * operator's chosen, eligibility-checked driver.
+   *
+   * The engine's own rules still apply — the driver must survive
+   * `CandidateSelectionService.select` at the widest ladder rung (an operator's
+   * explicit choice is not radius-limited the way an automatic wave is, but it
+   * is still gated on KYC, suspension, zone restrictions, presence and the
+   * already-offered set), and `OfferService.offer`'s lock still decides whether
+   * the offer is real.
+   *
+   * THE EXCLUSIVE WINDOW is the successor scheduled for exactly this offer's
+   * expiry: while the offer is open, the next wave is not due, so nobody else
+   * is asked. (A wave runs when its predecessor's offers resolve or expire by
+   * design — a booking whose assigned driver was reassigned has no live wave,
+   * and the successor this method schedules is the only one in flight.)
+   *
+   * Returns the exclusion reason when it refuses, so the console can say WHY
+   * (offline, suspended, already asked, lock lost) rather than a bare 422.
+   */
+  async adminOfferToDriver(
+    bookingId: string,
+    driverId: string,
+  ): Promise<{ offered: boolean; exclusion?: string; wave: number; radiusKm: number }> {
+    const booking = await this.repo.booking(bookingId);
+    if (!booking || booking.status !== 'searching') {
+      return { offered: false, exclusion: 'not_searching', wave: 0, radiusKm: 0 };
+    }
+
+    const config = await this.configFor(booking);
+    const ladder = booking.longDistance ? config.bandCRadiusLadderKm : config.radiusLadderKm;
+    const wave = booking.searchWave ?? 1;
+    const radiusKm = ladder[ladder.length - 1]!;
+
+    // A wide limit, not `offersPerWave`: the operator named a driver who may
+    // not be in the top of the score ranking, and the question here is
+    // eligibility, not rank.
+    const selected = await this.selection.select(booking, radiusKm, 50);
+    const candidate = selected.candidates.find((entry) => entry.driverId === driverId);
+    if (!candidate) {
+      const exclusion =
+        Object.entries(selected.excluded).find(([, detail]) =>
+          detail.driverIds.includes(driverId),
+        )?.[0] ?? 'not_eligible';
+      return { offered: false, exclusion, wave, radiusKm };
+    }
+
+    const offered = await this.offers.offer(
+      booking,
+      candidate,
+      wave,
+      radiusKm,
+      config.offerTimeoutSeconds,
+    );
+    if (offered) {
+      // The exclusive window: the next wave waits out the offer just sent.
+      await this.reschedule(bookingId, config.offerTimeoutSeconds * 1_000, 'admin-offer-to-driver');
+    }
+    return { offered, exclusion: offered ? undefined : 'offer_locked', wave, radiusKm };
+  }
+
+  /**
    * §5.1's `searching → no_drivers_found`.
    *
    * NOT TERMINAL, deliberately: §9.1.6 gives that screen a "retry / widen"

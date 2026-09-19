@@ -1,4 +1,4 @@
-import type { DeferredTrigger, Recipient, RegisteredTrigger } from './trigger.types';
+import type { DeferredTrigger, Recipient, RegisteredTrigger, TriggerContext } from './trigger.types';
 
 /**
  * THE §12.2 REGISTRY — the durable half of Phase 13.
@@ -140,11 +140,50 @@ export interface OpsLedgerDriftPayload extends Record<string, unknown> {
   opsEmail: string;
 }
 
+/** W8 — §12.2's *Dispute update* row, both events, customer AND driver. */
+export interface DisputeUpdatePayload extends Record<string, unknown> {
+  disputeId: string;
+  bookingId: string;
+  userId: string;
+  driverId: string | null;
+  status: 'open' | 'resolved';
+  /** Present on the resolve event only. */
+  resolution?: string;
+}
+
+/** W8 — §14.2's unpaid-booking nudge (row `payment_status`). */
+export interface PaymentReminderPayload extends Record<string, unknown> {
+  bookingId: string;
+  userId: string;
+  amountPaise: number;
+  /** `bookingId:IST-day` — one reminder per booking per day. */
+  reminderKey: string;
+}
+
 // ---------------------------------------------------------------------------
 // Registered
 // ---------------------------------------------------------------------------
 
 const one = (recipient: Recipient | null): Recipient[] => (recipient ? [recipient] : []);
+
+/**
+ * W8: §12.2's *Dispute update* row addresses BOTH parties — the customer whose
+ * fare is in question and the driver whose work is. Each resolve is
+ * independent; a dispute opened before a driver was assigned has only the
+ * customer to tell, which is why the driver side is optional rather than
+ * awaited unconditionally.
+ */
+const withDisputeCounterparties = async (
+  ctx: TriggerContext,
+  userId: string,
+  driverId: string | null,
+): Promise<Recipient[]> => {
+  const [customer, driver] = await Promise.all([
+    ctx.resolver.resolveUser(userId),
+    driverId ? ctx.resolver.resolveDriver(driverId) : Promise.resolve(null),
+  ]);
+  return [...one(customer), ...one(driver)];
+};
 
 /**
  * Type-checks each trigger against its OWN payload at the definition site, then
@@ -608,6 +647,72 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     variables: (p: NoDriversFoundPayload) => ({ reference: p.reference }),
   }),
 
+  // ── W8: money and disputes ──────────────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * §12.2 row *Dispute update* — the row W8 exists to register (it has sat in
+     * `DEFERRED_TRIGGERS` since the spine shipped, waiting for the route that
+     * can reach `DISPUTED`).
+     *
+     * ALWAYS ON: a dispute is the customer's money or the driver's work being
+     * questioned, not a progress update they can mute. The dedupe key is
+     * `(disputeId, status)` — stable across a double-submitted open, distinct
+     * across the open and the resolve.
+     */
+    event: 'dispute.opened',
+    matrixRow: 'dispute_update',
+    channels: ['push', 'whatsapp'],
+    template: 'dispute_opened',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'towgo://bookings' },
+    dedupeKey: (p: DisputeUpdatePayload) => `${p.disputeId}:opened`,
+    resolve: (p: DisputeUpdatePayload, ctx) => withDisputeCounterparties(ctx, p.userId, p.driverId),
+    variables: (p: DisputeUpdatePayload) => ({
+      reference: `TW-${p.bookingId.slice(0, 8).toUpperCase()}`,
+    }),
+  }),
+
+  defineTrigger({
+    /** The other half of the same row — the exit, whatever it was. */
+    event: 'dispute.resolved',
+    matrixRow: 'dispute_update',
+    channels: ['push', 'whatsapp'],
+    template: 'dispute_resolved',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'towgo://bookings' },
+    dedupeKey: (p: DisputeUpdatePayload) => `${p.disputeId}:resolved`,
+    resolve: (p: DisputeUpdatePayload, ctx) => withDisputeCounterparties(ctx, p.userId, p.driverId),
+    variables: (p: DisputeUpdatePayload) => ({
+      reference: `TW-${p.bookingId.slice(0, 8).toUpperCase()}`,
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §14.2's unpaid-booking reminder, under the existing *Payment status* row.
+     *
+     * `money`, not `transactional` — a nudge is exactly the kind of money
+     * message §12.3's preference toggle exists for (a receipt is not; that is
+     * why the receipt trigger is `alwaysOn` and this one is not). The dedupe
+     * key is `bookingId:IST-day`: a double-tapped button collapses, tomorrow's
+     * deliberate nudge does not.
+     */
+    event: 'payment.reminder',
+    matrixRow: 'payment_status',
+    channels: ['push', 'sms'],
+    template: 'payment_reminder',
+    category: 'money',
+    alwaysOn: false,
+    dedupeKey: (p: PaymentReminderPayload) => p.reminderKey,
+    resolve: (p: PaymentReminderPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: PaymentReminderPayload) => ({
+      amount: (p.amountPaise / 100).toFixed(2),
+    }),
+  }),
+
   // --- Operational templates -------------------------------------------------
   // Not §12.2 rows. They carry no `matrixRow` claim, and `registry.spec.ts`
   // counts them neither for nor against completeness — the registry has to
@@ -805,12 +910,6 @@ export const DEFERRED_TRIGGERS: DeferredTrigger[] = [
     unregisteredUntilPhase: 20,
     reason:
       '`sos_alerts`, `POST /v1/sos` and the emergency-contact fan-out are Phase 20. The WhatsApp adapter and the always-on `safety` category ship here so Phase 20 invents nothing.',
-  },
-  {
-    matrixRow: 'dispute_update',
-    unregisteredUntilPhase: 20,
-    reason:
-      'Phase 20, not 19: `POST /v1/admin/bookings/:id/dispute` is the only thing that can set DISPUTED, and it is in the Phase 20 block.',
   },
 ];
 

@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { ENV, type Env } from '../../config/env';
 import { PAYMENT_GATEWAY, type PaymentGatewayPort } from './payment-gateway.port';
-import { PaymentsRepo } from './payments.repo';
+import { PaymentsRepo, type PaymentRow } from './payments.repo';
 import { PaymentsService } from './payments.service';
 
 /**
@@ -63,6 +63,51 @@ export class PaymentReconcileService implements OnModuleInit {
       { reason: 'cron' },
       this.env.PAYMENT_RECONCILE_CRON,
     );
+  }
+
+  /**
+   * W8's §14.2 "recheck": the single-booking path of the sweep, for one
+   * payment, right now.
+   *
+   * The same fetch → settle/fail decision as `reconcile`, deliberately WITHOUT
+   * the grace window and the stuck-age rule: an operator is explicitly asking
+   * "is the money there?", and answering from the vendor is the whole request.
+   * A payment the vendor still reports as pending is left pending — the sweep
+   * keeps watching it.
+   */
+  async recheckBooking(bookingId: string): Promise<{
+    paymentId: string | null;
+    paymentStatus: PaymentRow['status'] | null;
+    settled: boolean;
+  }> {
+    const payment = await this.repo.latestForBooking(bookingId, 'booking');
+    if (!payment) return { paymentId: null, paymentStatus: null, settled: false };
+
+    // Captured or refunded: the vendor was asked a moment ago (or the money has
+    // since gone back) — nothing to re-check.
+    if (payment.status === 'captured' || payment.status === 'refunded') {
+      return { paymentId: payment.id, paymentStatus: payment.status, settled: payment.status === 'captured' };
+    }
+
+    const handle = await this.gateway.fetchPayment({
+      gatewayRef: payment.gatewayRef,
+      orderRef: payment.gatewayOrderRef,
+    });
+
+    if (handle.status === 'captured') {
+      await this.payments.settleCapturedPayment(bookingId, handle);
+      return { paymentId: payment.id, paymentStatus: 'captured', settled: true };
+    }
+
+    if (handle.status === 'failed') {
+      await this.payments.markFailed(
+        payment.id,
+        handle.failureReason ?? 'The gateway reported this payment as failed',
+      );
+      return { paymentId: payment.id, paymentStatus: 'failed', settled: false };
+    }
+
+    return { paymentId: payment.id, paymentStatus: payment.status, settled: false };
   }
 
   /**

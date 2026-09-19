@@ -31,6 +31,7 @@ import { AdminConfigModule } from './modules/admin-config/admin-config.module';
 import { AdminDriversModule } from './modules/admin-drivers/admin-drivers.module';
 import { AdminFleetsModule } from './modules/admin-fleets/admin-fleets.module';
 import { AdminDirectoryModule } from './modules/admin-directory/admin-directory.module';
+import { AdminBookingsModule } from './modules/admin-bookings/admin-bookings.module';
 import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
 import { AdminOpsModule } from './modules/admin-ops/admin-ops.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
@@ -96,6 +97,7 @@ import { RedisModule } from './redis/redis.module';
     AdminDriversModule,
     AdminFleetsModule,
     AdminDirectoryModule,
+    AdminBookingsModule,
     AdminFinanceModule,
     AdminOpsModule,
     RatingsModule,

@@ -270,6 +270,18 @@ export class AdminOpsRepo {
   }
 
   /**
+   * W8: open disputes — the Disputes badge's source since 0025. `<> 'resolved'`
+   * matches the partial unique index's predicate, so the badge and "one open
+   * dispute per booking" agree on what "open" means by construction.
+   */
+  async openDisputes(): Promise<number> {
+    const rows = (await this.db.execute(sql`
+      select count(*)::int as n from disputes where status <> 'resolved'
+    `)) as unknown as Array<{ n: number }>;
+    return rows[0]?.n ?? 0;
+  }
+
+  /**
    * Backfill rows from history, newest first. `is_first` marks each booking's
    * opening row — creation writes that row directly with `searching` (A18), so
    * it is the one row that is a creation rather than a transition.

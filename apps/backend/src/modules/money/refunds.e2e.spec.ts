@@ -98,7 +98,7 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
     return bookingId;
   };
 
-  it('a full refund of a paid booking completes: gateway, legs, move, markRefunded', async () => {
+  it('a full refund of a paid booking completes: gateway, legs, move, amount-aware payment update', async () => {
     const bookingId = await seedPaidBooking();
 
     const result = await refunds.refundBooking({
@@ -112,10 +112,11 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
 
     // Gateway refunded through the dev adapter.
     const [refund] = (await db.execute(sql`
-      select status, gateway_ref from refunds where id = ${result.refundId}::uuid
-    `)) as unknown as [{ status: string; gateway_ref: string }];
+      select status, gateway_ref, kind from refunds where id = ${result.refundId}::uuid
+    `)) as unknown as [{ status: string; gateway_ref: string; kind: string }];
     expect(refund.status).toBe('processed');
     expect(refund.gateway_ref).toMatch(/^rfnd_dev_/);
+    expect(refund.kind).toBe('full');
 
     // Compensating leg negates the original credit; the original is untouched.
     expect(await legs(bookingId)).toEqual([
@@ -138,11 +139,13 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
     `)) as unknown as [{ total: string; commission: string; payout: string }];
     expect(money).toEqual({ total: '1000.00', commission: '100.00', payout: '900.00' });
 
-    // markRefunded reached.
+    // The amount-aware payment update reached full coverage.
     const [payment] = (await db.execute(sql`
-      select status from payments where booking_id = ${bookingId}::uuid
-    `)) as unknown as [{ status: string }];
+      select status, refunded_amount::text as refunded from payments
+       where booking_id = ${bookingId}::uuid
+    `)) as unknown as [{ status: string; refunded: string }];
     expect(payment.status).toBe('refunded');
+    expect(payment.refunded).toBe('1000.00');
 
     await expectNoDrift();
   });
@@ -175,14 +178,21 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
     await expectNoDrift();
   });
 
-  it('a replayed refund moves no money twice', async () => {
+  it('a replayed refund resumes the remaining idempotent steps (W9 carry-forward)', async () => {
     const bookingId = await seedPaidBooking();
-    // A crash between the refund row and the transition leaves exactly this:
-    // the row exists, the payment is still captured.
+    const refundCall = vi.spyOn(app.get(PAYMENT_GATEWAY), 'refund');
+    refundCall.mockClear(); // the spy object is shared across tests in this file
+
+    // The crash window this test pins: the gateway call DID run (its refund
+    // ref is on the row) and the process died before the compensating legs,
+    // the transition and the payment update. Under the old behaviour the
+    // replay returned `replayed: true` and left exactly this mess behind.
     await db.execute(sql`
-      insert into refunds (booking_id, amount, reason, status, idempotency_key, initiated_by)
-      values (${bookingId}::uuid, 1000.00, 'cancellation', 'processed',
-              ${`rf:v1:${bookingId}:cancellation`}, ${adminId})
+      insert into refunds (booking_id, payment_id, amount, reason, status,
+                           idempotency_key, initiated_by, kind, gateway_ref)
+      select booking_id, id, 1000.00, 'cancellation', 'processed',
+             'rf:v1:' || booking_id::text || ':cancellation', ${adminId}, 'full', 'rfnd_dev_crashed'
+        from payments where booking_id = ${bookingId}::uuid
     `);
 
     const result = await refunds.refundBooking({
@@ -193,9 +203,52 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
     });
 
     expect(result).toMatchObject({ replayed: true });
-    // Nothing else ran: booking unmoved, no legs, payment still captured.
-    expect(await status(bookingId)).toBe('paid');
-    expect(await legs(bookingId)).toEqual([{ type: 'driver_share_credit', amount: '900.00' }]);
+    // The gateway was NOT called again — the row already names its refund.
+    expect(refundCall).not.toHaveBeenCalled();
+    // The remaining steps ran: the leg, the transition, the amount update.
+    expect(await legs(bookingId)).toEqual([
+      { type: 'driver_share_credit', amount: '900.00' },
+      { type: 'refund_debit', amount: '-900.00' },
+    ]);
+    expect(await status(bookingId)).toBe('disputed');
+    const [payment] = (await db.execute(sql`
+      select status, refunded_amount::text as refunded from payments
+       where booking_id = ${bookingId}::uuid
+    `)) as unknown as [{ status: string; refunded: string }];
+    expect(payment).toEqual({ status: 'refunded', refunded: '1000.00' });
+
+    await expectNoDrift();
+  });
+
+  it('a replay after a completed refund is a no-op, not a second clawback', async () => {
+    const bookingId = await seedPaidBooking();
+    await refunds.refundBooking({
+      bookingId,
+      reason: 'cancellation',
+      initiatedBy: adminId,
+      transitionTo: 'disputed',
+    });
+
+    // Same key: found BEFORE the captured-payment guard — the payment is
+    // `refunded` now, and the guard would otherwise 409 a legitimate replay.
+    const result = await refunds.refundBooking({
+      bookingId,
+      reason: 'cancellation',
+      initiatedBy: adminId,
+      transitionTo: 'disputed',
+    });
+
+    expect(result).toMatchObject({ replayed: true });
+    // One credit, one clawback — the resume changed nothing.
+    expect(await legs(bookingId)).toEqual([
+      { type: 'driver_share_credit', amount: '900.00' },
+      { type: 'refund_debit', amount: '-900.00' },
+    ]);
+    const [payment] = (await db.execute(sql`
+      select status, refunded_amount::text as refunded from payments
+       where booking_id = ${bookingId}::uuid
+    `)) as unknown as [{ status: string; refunded: string }];
+    expect(payment).toEqual({ status: 'refunded', refunded: '1000.00' });
 
     await expectNoDrift();
   });
@@ -241,6 +294,7 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
     // and the compensating legs — not from `transition()` after they ran.
     const bookingId = await seedPaidBooking();
     const refundCall = vi.spyOn(app.get(PAYMENT_GATEWAY), 'refund');
+    refundCall.mockClear(); // the spy object is shared across tests in this file
 
     await expect(
       refunds.refundBooking({

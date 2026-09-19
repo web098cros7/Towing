@@ -124,6 +124,38 @@ export class InvoiceService implements OnModuleInit {
     return { url: presigned.url, expiresAt: presigned.expiresAt };
   }
 
+  /**
+   * W8's admin view of the same document (§9.4.7's "invoice PDF" action).
+   *
+   * SKIPS THE OWNERSHIP CHECK, AND ONLY THAT. The refusal that stops a
+   * customer reading someone else's invoice is a customer-scoped rule; the
+   * admin console is reachable only through `booking.read` and every view is
+   * audited (`booking.invoice.view`), so the check here would be security
+   * theatre that merely blocks support from answering "can I see the invoice?".
+   * The paid-or-rendered rule stays: an admin must not trigger invoice
+   * GENERATION for a trip that never paid, but an invoice that already exists
+   * (a refunded booking keeps its key) is served whatever the status.
+   */
+  async adminLink(bookingId: string): Promise<InvoiceLinkDto> {
+    const [row] = (await this.db.execute(sql`
+      select status, invoice_key from bookings where id = ${bookingId}::uuid
+    `)) as unknown as Array<{ status: string; invoice_key: string | null } | undefined>;
+
+    if (!row) throw ApiException.notFound('Booking not found');
+
+    if (row.status !== 'paid' && !row.invoice_key) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.INVOICE_NOT_READY,
+        'An invoice is available once the trip is paid for',
+        { status: row.status },
+      );
+    }
+
+    const presigned = await this.storage.presignGet(await this.ensure(bookingId), LINK_TTL_SECONDS);
+    return { url: presigned.url, expiresAt: presigned.expiresAt };
+  }
+
   private async data(bookingId: string): Promise<InvoiceData> {
     const [row] = (await this.db.execute(sql`
       select b.id, b.created_at, b.paid_at, b.pickup_address, b.drop_address,

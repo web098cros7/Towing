@@ -4,6 +4,8 @@ export * from './admin-users';
 export * from './audit';
 export * from './directory';
 export * from './notes';
+export * from './bookings';
+export * from './disputes';
 export * from './dispatch';
 export * from './drivers';
 export * from './impersonation';

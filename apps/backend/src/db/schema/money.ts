@@ -97,6 +97,15 @@ export const payments = pgTable(
      */
     idempotencyKey: text('idempotency_key').notNull(),
     capturedAt: timestamp('captured_at', { withTimezone: true }),
+    /**
+     * W8 (migration 0025) — the running total of refunds posted against this
+     * payment. Full vs partial is no longer a boolean: `status` flips to
+     * `refunded` only when this reaches `amount`, so a partially-refunded
+     * booking keeps its payment `captured` — which is what lets the booking
+     * stay `paid` without drift. The CHECK (`0 <= refunded_amount <= amount`)
+     * makes the cap a database fact.
+     */
+    refundedAmount: money('refunded_amount').notNull().default('0'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -190,6 +199,24 @@ export const refunds = pgTable(
     idempotencyKey: text('idempotency_key').notNull(),
     /** `system` for the §3.5 cancellation path, an admin id for a dispute. */
     initiatedBy: text('initiated_by').notNull().default('system'),
+    /**
+     * W8 (migration 0025): `full` reverses the remaining un-reversed settlement
+     * credit legs and the booking leaves `paid`; `partial` claws back the
+     * liable party's share and the booking STAYS `paid`. `dispute_id` links a
+     * resolution refund to the dispute that ordered it; `payment_id` is what
+     * `payments.refunded_amount` is recomputed from — the recompute (rather
+     * than an increment) is what makes a replayed refund amount-idempotent.
+     *
+     * `dispute_id` is deliberately NOT a Drizzle FK: `disputes.refund_id`
+     * already points back here, and declaring both directions creates the same
+     * unresolvable insert order `bookings.payment_id` documents. The SQL
+     * migration carries the real constraint (and `payment_id`'s).
+     */
+    kind: text('kind').notNull().default('full'),
+    disputeId: uuid('dispute_id'),
+    paymentId: uuid('payment_id').references(() => payments.id),
+    /** Partial refunds only: `driver` | `fleet` | `platform` — who bore X. */
+    liability: text('liability'),
     failureReason: text('failure_reason'),
     processedAt: timestamp('processed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

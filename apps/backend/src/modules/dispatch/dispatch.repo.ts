@@ -343,6 +343,45 @@ export class DispatchRepo {
   }
 
   /**
+   * W8: §6.5's admin reassign, recorded as an attempt — the first writer of the
+   * `reassigned` outcome that migration 0023 added to the CHECK.
+   *
+   * The TWIN of `recordUnable`, and the distinction is the point: `unable`
+   * means the DRIVER could not deliver (it feeds their completion rate),
+   * `reassigned` means an OPERATOR moved the job and nobody should be
+   * penalised. Neither enters `recomputeAcceptanceRate` — its denominator is
+   * the explicit `('accepted','rejected','expired')` allowlist. What BOTH do is
+   * put the driver in `excludedDrivers()`, which is what keeps the previous
+   * driver out of the resumed search without any special-casing.
+   *
+   * The wave and radius are copied from the accepted attempt for the same
+   * reason `recordUnable` copies them: the inspector shows where the journey
+   * actually ended, not a fabricated wave 0.
+   */
+  async recordReassigned(bookingId: string, driverId: string): Promise<void> {
+    const [accepted] = await this.db
+      .select({ wave: dispatchAttempts.wave, radiusKm: dispatchAttempts.radiusKm })
+      .from(dispatchAttempts)
+      .where(
+        and(
+          eq(dispatchAttempts.bookingId, bookingId),
+          eq(dispatchAttempts.driverId, driverId),
+          eq(dispatchAttempts.outcome, 'accepted'),
+        ),
+      )
+      .limit(1);
+
+    await this.db.insert(dispatchAttempts).values({
+      bookingId,
+      driverId,
+      wave: accepted?.wave ?? 1,
+      radiusKm: accepted?.radiusKm ?? '0.00',
+      outcome: 'reassigned',
+      respondedAt: new Date(),
+    });
+  }
+
+  /**
    * Resolves an offer, and returns whether it actually moved.
    *
    * The `outcome = 'offered'` predicate is the idempotency: an expiry job that

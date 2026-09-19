@@ -38,8 +38,10 @@ import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
  * Why an offer died before it was decided. W6 adds `fleet_suspended` (A15):
  * a suspended fleet's live offers are revoked with a reason that names the
  * real cause — the driver did nothing wrong and the client can say so.
+ * W8 adds `reassigned`: an operator moved the job away from its driver, which
+ * is likewise not the offered drivers' fault.
  */
-type RevokeReason = 'cancelled' | 'paused' | 'fleet_suspended';
+type RevokeReason = 'cancelled' | 'paused' | 'fleet_suspended' | 'reassigned';
 
 /**
  * Grace added to the offer TTL when locking a driver.
@@ -219,17 +221,25 @@ export class OfferService {
   }
 
   /**
-   * Tell the driver HOLDING a cancelled booking (M0-F6).
+   * Tell the driver HOLDING a booking whose job just ended (M0-F6 / W8).
    *
    * `revokeAll` only moves still-`offered` attempts, so the holder — whose
    * attempt is `accepted` — is never reached by it. No attempt row is touched
-   * here (there is nothing to resolve: the booking is cancelled) and no rate
-   * is recomputed; this is purely the frame the A13 handler waits for. Lives
-   * here rather than in `DispatchService` because this service owns the
-   * `DriverGateway` — dispatch must not gain a second import for it.
+   * here (there is nothing to resolve) and no rate is recomputed; this is
+   * purely the frame the A13 handler waits for. Lives here rather than in
+   * `DispatchService` because this service owns the `DriverGateway` — dispatch
+   * must not gain a second import for it.
+   *
+   * The reason is a parameter as of W8: a reassigned driver must see "moved to
+   * another driver", not the cancelled frame, or the app tells them a trip
+   * they were removed from was cancelled.
    */
-  notifyHolderRevoked(driverId: string, bookingId: string): void {
-    this.gateway.emitJobRevoked(driverId, bookingId, 'cancelled');
+  notifyHolderRevoked(
+    driverId: string,
+    bookingId: string,
+    reason: 'cancelled' | 'reassigned' = 'cancelled',
+  ): void {
+    this.gateway.emitJobRevoked(driverId, bookingId, reason);
   }
 
   /**

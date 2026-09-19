@@ -133,8 +133,10 @@ export const jobRevokedSchema = z.object({
    * different feeling from "you were too slow". `fleet_suspended` (W6) is
    * A15's: the fleet was suspended while the offer was still live, and the
    * frame reaching the driver beats the offer timing out against their rate.
+   * `reassigned` (W8) is an operator moving the job: the driver did nothing
+   * wrong, and the app must not render it as a cancellation.
    */
-  reason: z.enum(['taken', 'expired', 'cancelled', 'paused', 'fleet_suspended']),
+  reason: z.enum(['taken', 'expired', 'cancelled', 'paused', 'fleet_suspended', 'reassigned']),
   at: z.iso.datetime(),
 });
 export type JobRevokedEvent = z.infer<typeof jobRevokedSchema>;

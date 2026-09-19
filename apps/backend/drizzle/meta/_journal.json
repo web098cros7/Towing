@@ -176,6 +176,13 @@
       "when": 1789746600001,
       "tag": "0024_admin_directory_search",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789814000000,
+      "tag": "0025_admin_bookings_disputes",
+      "breakpoints": true
     }
   ]
 }

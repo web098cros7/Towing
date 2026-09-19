@@ -339,6 +339,48 @@ export const TEMPLATES = {
       subject: `Receipt for booking ${v.bookingRef ?? ''}`,
     }),
   },
+
+  /**
+   * W8 — §12.2 "Dispute update", both events.
+   *
+   * Deliberately outcome-free on the resolve message: the exits range from a
+   * full refund to a charge upheld, and a push body that guesses which one
+   * happened would be wrong half the time. The app carries the resolution; the
+   * notification's job is to bring the person back to it.
+   */
+  dispute_opened: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'We are reviewing your dispute',
+      body: `We have opened a review for trip ${v.reference ?? 'your trip'}. We will update you here.`,
+      subject: null,
+    }),
+  },
+
+  dispute_resolved: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'Your dispute is resolved',
+      body: `The review for trip ${v.reference ?? 'your trip'} is complete. Open the app to see the outcome.`,
+      subject: null,
+    }),
+  },
+
+  /** W8 — §14.2's unpaid-booking nudge (see the trigger for the dedupe rule). */
+  payment_reminder: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['amount'],
+    render: (v) => ({
+      title: 'Payment pending',
+      body: `Your trip payment of ₹${v.amount ?? ''} is still pending. Pay in the app to keep booking with us.`,
+      subject: null,
+    }),
+  },
 } as const satisfies Record<string, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof TEMPLATES;

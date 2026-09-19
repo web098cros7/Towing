@@ -98,3 +98,23 @@ export const adminFinanceConfigUpdateSchema = adminFinanceConfigSchema
     { message: 'The partial-fee window must not start before the free window ends' },
   );
 export type AdminFinanceConfigUpdate = z.infer<typeof adminFinanceConfigUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// W8: refunds — the money the dispute exits move (W9 adds the console around it)
+// ---------------------------------------------------------------------------
+
+/**
+ * Migration 0025 added `refunds.kind`: a full reversal and a partial one are
+ * different operations with different ledger consequences. A full refund
+ * reverses every settlement credit leg and the booking leaves `paid`; a
+ * partial refund claws back the liable party's share and the booking STAYS
+ * `paid` — `ledgerDrift` sums only credits and `reversalDrift` only bounds
+ * them, so a partially-refunded paid booking is drift-free by construction.
+ */
+export const REFUND_KINDS = ['full', 'partial'] as const;
+export const refundKindSchema = z.enum(REFUND_KINDS);
+export type RefundKind = z.infer<typeof refundKindSchema>;
+
+export const refundStatusSchema = z.enum(['pending', 'processed', 'failed']);
+export type RefundStatus = z.infer<typeof refundStatusSchema>;
+

@@ -2,9 +2,11 @@ import type { INestApplication } from '@nestjs/common';
 import {
   adminAdminsListResponseSchema,
   adminAuditListResponseSchema,
+  adminBookingsResponseSchema,
   adminCommissionConfigSchema,
   adminDirectoryUsersResponseSchema,
   adminDirectoryZonesResponseSchema,
+  adminDisputesResponseSchema,
   adminDispatchConfigSchema,
   adminDispatchInspectorListResponseSchema,
   adminDriversDirectoryResponseSchema,
@@ -60,6 +62,7 @@ import {
   adminNotes,
   bookingStatusHistory,
   commissionConfigHistory,
+  disputes,
   driverDocuments,
   drivers,
   payouts,
@@ -182,6 +185,10 @@ describe('response contracts', () => {
       schema: adminSuspensionRequestsResponseSchema,
       realm: 'admin',
     },
+    // W8 — the bookings list and the dispute queue. Both are seeded below
+    // with real rows: a booking that settled, and an open dispute on it.
+    { path: '/v1/admin/bookings', schema: adminBookingsResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/disputes', schema: adminDisputesResponseSchema, realm: 'admin' },
   ];
 
   beforeAll(async () => {
@@ -197,7 +204,12 @@ describe('response contracts', () => {
 
     await seedTruck(db, fleetId, { plate: 'KA-51-CT-0001' });
     const driverId = await seedDriver(db, { fleetId });
-    await seedBooking(db, { userId: fleet.ownerId, fleetId, driverId, status: 'paid' });
+    const contractPaidBookingId = await seedBooking(db, {
+      userId: fleet.ownerId,
+      fleetId,
+      driverId,
+      status: 'paid',
+    });
     await seedPayoutAccount(db, fleetId);
 
     // Phase 14's customer-realm row needs a customer token and a populated
@@ -314,6 +326,19 @@ describe('response contracts', () => {
       subjectId: pendingDriverId,
       requestedBy: superAdmin.id,
       reason: 'contract coverage seed',
+    });
+
+    // W8 — one open dispute so the queue row above is non-empty. It names the
+    // paid booking seeded for the fleet realm; opened_from_status is paid,
+    // which is the origin the money exits are defined for.
+    await db.insert(disputes).values({
+      bookingId: contractPaidBookingId,
+      openedByType: 'admin',
+      openedById: superAdmin.id,
+      reasonCode: 'overcharge',
+      description: 'contract coverage dispute',
+      status: 'open',
+      openedFromStatus: 'paid',
     });
   });
 
@@ -471,6 +496,20 @@ const EXCLUDED = new Set([
   // with its contract asserted (`adminDriverDocumentVersionsResponseSchema`)
   // in `admin-kyc-w7.e2e.spec.ts`, which uploads real versions first.
   '/v1/admin/drivers/:id/document-versions',
+  // W8 — the bookings detail and its audited invoice link, parameterised by
+  // booking id. Asserted with expectMatchesContract against
+  // adminBookingDetailSchema / adminBookingInvoiceSchema in
+  // admin-bookings.e2e.spec.ts, which owns a real booking.
+  '/v1/admin/bookings/:id',
+  '/v1/admin/bookings/:id/invoice',
+  // W8 — the bookings CSV, a byte stream like the fleet exports above; its
+  // shape (header order, no formula injection) is asserted in
+  // admin-bookings.e2e.spec.ts.
+  '/v1/admin/bookings/export.csv',
+  // W8 — the dispute detail, parameterised; asserted with
+  // expectMatchesContract against adminDisputeDetailSchema in
+  // admin-disputes.e2e.spec.ts, which opens a real dispute.
+  '/v1/admin/disputes/:id',
   // W6 — the fleets directory's parameterised routes: detail asserted against
   // `adminFleetDetailSchema`, the sub-reads against the FLEET console's own
   // schemas, all in `admin-fleets-directory.e2e.spec.ts`.
