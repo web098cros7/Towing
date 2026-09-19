@@ -26,6 +26,14 @@ const CHUNK_SIZE = 500;
  *    operator attached, and this is what makes that free.
  *  - **Chunked** at 500 positions per frame, so one flush after a cold start
  *    cannot build a multi-megabyte packet.
+ *
+ * W4 adds zone routing: when an operator filters the map to zones, their
+ * socket joins those `admin:zone:{id}` rooms and leaves the broadcast (the
+ * gateway marks it in `ZONE_FILTERED_ROOM`); this relay then emits each zone's
+ * group to its room and the full batch to everyone else — so the filter
+ * reduces what is SENT, and no socket receives any position twice (groups go
+ * to zone rooms only, the broadcast excludes filtering sockets). When nobody
+ * filters, the original single-frame path is kept.
  */
 @Injectable()
 export class AdminLocationRelay implements OnModuleInit, OnModuleDestroy {
@@ -100,8 +108,49 @@ export class AdminLocationRelay implements OnModuleInit, OnModuleDestroy {
       this.pending.clear();
 
       const emittedAt = new Date().toISOString();
+
+      // Fast path: no operator is filtering by zone, so the zone split below
+      // would only buy grouping work with nothing to route to. This is W1's
+      // single-batch behaviour, byte for byte.
+      if (this.gateway.localFilteredSize() === 0) {
+        for (let offset = 0; offset < positions.length; offset += CHUNK_SIZE) {
+          this.gateway.emitOps(ADMIN_REALTIME_EVENT.LOCATION_UPDATE, {
+            positions: positions.slice(offset, offset + CHUNK_SIZE),
+            emittedAt,
+          });
+        }
+        return;
+      }
+
+      // W4 zone routing. Exactly-once delivery, by construction:
+      //  - a zone group goes to `admin:zone:{id}` — only sockets that joined
+      //    that room (and only that room carries the group);
+      //  - the full batch goes to `admin:ops` EXCEPT the filtered sockets, so
+      //    a filtering operator never sees it and an unfiltered one sees it
+      //    once;
+      //  - a position with no zone belongs to no zone room and reaches only
+      //    the broadcast. The driver channel's schema currently requires a
+      //    zone (the position type is nullable for the snapshot's benefit), so
+      //    this branch is defence, not a state the producer emits today.
+      const byZone = new Map<string, AdminDriverPosition[]>();
+      for (const position of positions) {
+        if (!position.zoneId) continue;
+        const group = byZone.get(position.zoneId);
+        if (group) group.push(position);
+        else byZone.set(position.zoneId, [position]);
+      }
+
+      for (const [zoneId, group] of byZone) {
+        for (let offset = 0; offset < group.length; offset += CHUNK_SIZE) {
+          this.gateway.emitZone(zoneId, ADMIN_REALTIME_EVENT.LOCATION_UPDATE, {
+            positions: group.slice(offset, offset + CHUNK_SIZE),
+            emittedAt,
+          });
+        }
+      }
+
       for (let offset = 0; offset < positions.length; offset += CHUNK_SIZE) {
-        this.gateway.emitOps(ADMIN_REALTIME_EVENT.LOCATION_UPDATE, {
+        this.gateway.emitOpsUnfiltered(ADMIN_REALTIME_EVENT.LOCATION_UPDATE, {
           positions: positions.slice(offset, offset + CHUNK_SIZE),
           emittedAt,
         });

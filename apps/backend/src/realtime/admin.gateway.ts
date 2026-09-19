@@ -30,6 +30,15 @@ import { WsExceptionFilter } from './ws-exception.filter';
 import { WsTicketService } from './ws-ticket.service';
 
 /**
+ * Bookkeeping room for sockets that joined a ZONE filter (W4). Nothing emits
+ * to it — the relay uses it as an `.except()` target so a filtering operator
+ * stops receiving the full position broadcast. Deliberately NOT in
+ * `@towing/api-contracts`: it is not part of the room protocol clients know,
+ * just the gateway's own accounting.
+ */
+const ZONE_FILTERED_ROOM = 'admin:zone-filtered';
+
+/**
  * The `/admin` namespace (W1, §3.4). Handshake auth joins `admin:ops` and
  * `admin:user:{adminId}`; `ops:subscribe` adds filtered zone/booking rooms.
  *
@@ -122,13 +131,25 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
       void socket.leave(room);
     }
 
+    const zoneRooms = (parsed.data.zoneIds ?? []).map(adminZoneRoom);
     const rooms = [
-      ...(parsed.data.zoneIds ?? []).map(adminZoneRoom),
+      ...zoneRooms,
       ...(parsed.data.bookingId ? [adminBookingRoom(parsed.data.bookingId)] : []),
     ];
     for (const room of rooms) {
       void socket.join(room);
     }
+
+    // A ZONE filter moves the socket out of the broadcast stream (W4): the
+    // relay emits each zone's group to its zone room and the full batch to
+    // `admin:ops` except this room, so a filtering operator gets exactly the
+    // zones they asked for — and gets them once, not twice. Booking-only
+    // filters stay IN the stream: a booking room narrows booking events, not
+    // the position feed, and the operator still wants the map behind the
+    // drawer.
+    if (zoneRooms.length > 0) void socket.join(ZONE_FILTERED_ROOM);
+    else void socket.leave(ZONE_FILTERED_ROOM);
+
     socket.data.filterRooms = rooms;
 
     return { ok: true };
@@ -139,12 +160,44 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     return this.namespace.adapter.rooms.get(adminOpsRoom())?.size ?? 0;
   }
 
+  /** Sockets on THIS node receiving only their subscribed zones (W4). */
+  localFilteredSize(): number {
+    return this.namespace.adapter.rooms.get(ZONE_FILTERED_ROOM)?.size ?? 0;
+  }
+
   /** Relay a Redis-sourced frame to this node's `admin:ops` sockets. */
   emitOps<E extends keyof AdminServerToClientEvents>(
     event: E,
     ...payload: Parameters<AdminServerToClientEvents[E]>
   ): void {
     this.localOperator().to(adminOpsRoom()).emit(event, ...payload);
+  }
+
+  /**
+   * The full position stream for sockets with NO zone filter (W4): `admin:ops`
+   * minus the sockets that joined `ZONE_FILTERED_ROOM`, so a filtering
+   * operator is neither pushed the whole country nor skipped; they receive
+   * only their zones' groups (see `AdminLocationRelay.flush`).
+   */
+  emitOpsUnfiltered<E extends keyof AdminServerToClientEvents>(
+    event: E,
+    ...payload: Parameters<AdminServerToClientEvents[E]>
+  ): void {
+    this.localOperator()
+      .to(adminOpsRoom())
+      .except(ZONE_FILTERED_ROOM)
+      .emit(event, ...payload);
+  }
+
+  /** One zone's position group to the operators watching that zone (W4). */
+  emitZone<E extends keyof AdminServerToClientEvents>(
+    zoneId: string,
+    event: E,
+    ...payload: Parameters<AdminServerToClientEvents[E]>
+  ): void {
+    this.localOperator()
+      .to(adminZoneRoom(zoneId))
+      .emit(event, ...payload);
   }
 
   /**
