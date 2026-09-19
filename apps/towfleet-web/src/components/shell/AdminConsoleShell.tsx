@@ -1,9 +1,12 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { AdminRealtimeProvider } from '@/features/admin-realtime/AdminRealtimeProvider';
+import type { AdminOpsBadges } from '@towing/api-contracts';
+import { AdminRealtimeProvider, useAdminRealtime } from '@/features/admin-realtime/AdminRealtimeProvider';
 import { ToastProvider } from '@/components/admin/ToastProvider';
+import { useAdminCan } from '@/components/admin/Can';
 import { useAdminIdleLogout } from '@/components/admin/useAdminIdleLogout';
+import { useAdminOpsBadges } from '@/features/admin-ops/api/adminOps.queries';
 import { AdminSidebar } from './AdminSidebar';
 import { AdminTopbar } from './AdminTopbar';
 
@@ -15,6 +18,10 @@ import { AdminTopbar } from './AdminTopbar';
  * A client component because three of those four things hold state or timers;
  * the layout above it stays a server component so the route tree keeps its
  * server boundary.
+ *
+ * W3 wires the sidebar badges: `ops:badges` frames patch the cached badge
+ * query inside `ConsoleFrame`, which is a child of the realtime provider for
+ * exactly that reason — the badge count and the socket share one connection.
  */
 export function AdminConsoleShell({ children }: { children: ReactNode }): ReactNode {
   useAdminIdleLogout();
@@ -22,14 +29,41 @@ export function AdminConsoleShell({ children }: { children: ReactNode }): ReactN
   return (
     <AdminRealtimeProvider>
       <ToastProvider>
-        <div className="flex min-h-screen">
-          <AdminSidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <AdminTopbar />
-            <main className="flex-1 p-6">{children}</main>
-          </div>
-        </div>
+        <ConsoleFrame>{children}</ConsoleFrame>
       </ToastProvider>
     </AdminRealtimeProvider>
   );
+}
+
+function ConsoleFrame({ children }: { children: ReactNode }): ReactNode {
+  const can = useAdminCan();
+  const { mode } = useAdminRealtime();
+  const badges = useAdminOpsBadges(can('ops.live'), mode);
+
+  return (
+    <div className="flex min-h-screen">
+      <AdminSidebar badges={badges.data ? navBadges(badges.data.badges) : undefined} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <AdminTopbar />
+        <main className="flex-1 p-6">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Badge payload keys → sidebar nav ids. The sidebar owns presentation; this is
+ * the only place the two vocabularies meet, so a renamed nav id breaks here
+ * loudly instead of a badge silently disappearing.
+ */
+function navBadges(badges: AdminOpsBadges): Record<string, number> {
+  return {
+    verification: badges.pendingKyc,
+    finance: badges.pendingPayouts,
+    sos: badges.openSos,
+    disputes: badges.openDisputes,
+    support: badges.openTickets,
+    users: badges.suspensionRequests,
+    privacy: badges.deletionRequests,
+  };
 }

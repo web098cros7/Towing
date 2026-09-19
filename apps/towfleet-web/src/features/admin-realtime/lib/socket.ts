@@ -1,27 +1,35 @@
 import {
   adminBookingStatusSchema,
   adminLocationUpdateSchema,
+  adminOpsBadgesEventSchema,
+  adminOpsMetricsEventSchema,
   type AdminBookingStatusEvent,
   type AdminLocationUpdateEvent,
+  type AdminOpsBadgesEvent,
+  type AdminOpsMetricsEvent,
 } from '@towing/api-contracts';
-import { createRealtimeConnection, type ConnectionHandlers } from '@/features/realtime/lib/realtimeConnection';
+import {
+  createRealtimeConnection,
+  type ConnectionHandlers,
+} from '@/features/realtime/lib/realtimeConnection';
 import { fetchAdminWsTicket } from './ticket';
 
 /**
  * The `/admin` namespace connection (W1 §3.4) — the fleet client's transport
  * with the admin realm's events.
  *
- * The two frames W1 ships declare producers on the backend AND consumers here:
- * `booking:status` (platform-wide, per A18's `ops:events`) and
- * `location:update` (batched driver positions). `ops:metrics`, `ops:badges`,
- * `sos:alert`, `dispatch:wave` and `ops:banner` are deliberately absent — the
- * backend's socket type omits them until the commit that emits them, and a
- * listener here for an event nothing sends would be dead code that reads like
- * a feature.
+ * W1 shipped `booking:status` and `location:update`; W3 adds the two frames its
+ * broadcaster now produces — `ops:metrics` and `ops:badges` — each in the same
+ * commit as its producer, per the rule this file's original comment stated.
+ * `sos:alert`, `dispatch:wave` and `ops:banner` remain absent until their
+ * workstreams emit them; a listener for an event nothing sends would be dead
+ * code that reads like a feature.
  */
 export interface AdminRealtimeHandlers extends ConnectionHandlers {
   onBookingStatus: (event: AdminBookingStatusEvent) => void;
   onLocationUpdate: (event: AdminLocationUpdateEvent) => void;
+  onOpsMetrics: (event: AdminOpsMetricsEvent) => void;
+  onOpsBadges: (event: AdminOpsBadgesEvent) => void;
 }
 
 /** One admin socket per tab; the ref-counting lives in the shared connection. */
@@ -35,6 +43,14 @@ export const adminRealtimeConnection = createRealtimeConnection<AdminRealtimeHan
     socket.on('location:update', (raw: unknown) => {
       const parsed = adminLocationUpdateSchema.safeParse(raw);
       if (parsed.success) handlers.onLocationUpdate(parsed.data);
+    });
+    socket.on('ops:metrics', (raw: unknown) => {
+      const parsed = adminOpsMetricsEventSchema.safeParse(raw);
+      if (parsed.success) handlers.onOpsMetrics(parsed.data);
+    });
+    socket.on('ops:badges', (raw: unknown) => {
+      const parsed = adminOpsBadgesEventSchema.safeParse(raw);
+      if (parsed.success) handlers.onOpsBadges(parsed.data);
     });
   },
 });

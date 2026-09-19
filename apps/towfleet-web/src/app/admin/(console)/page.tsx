@@ -1,67 +1,53 @@
 'use client';
 
-import Link from 'next/link';
-import { Card, CardContent } from '@towing/web-ui';
+import { Skeleton } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
+import { useAdminCan } from '@/components/admin/Can';
 import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
+import { AdminOpsHome } from '@/features/admin-ops/components/AdminOpsHome';
+import { AdminQuickLinks } from '@/features/admin-ops/components/QuickLinks';
 
 /**
- * Admin landing (A6, neutral per M0-F7) + card filtering (A7).
+ * `/admin` — W3's ops dashboard for `ops.live` holders (§9.4.2), with the
+ * neutral quick links kept for the one sub-role that does not hold it.
+ *
+ * Finance lacks `ops.live`, so a dashboard here would greet it with a 403 on
+ * the URL it lands on; a redirect would re-introduce the role routing M0-F7
+ * removed. The permission check is the same map the guard enforces
+ * server-side, so the UI and the API cannot disagree about who may look.
  *
  * LIVES INSIDE `(console)` AS OF W1: it used to sit at `app/admin/page.tsx`,
  * a sibling of the console route group, so `/admin` — the one URL every admin
- * lands on — was the only screen without the shell. Moving it into the group
- * gives it the sidebar and topbar like every other console page; the URL is
- * unchanged (route groups do not appear in paths).
- *
- * NO role redirect: dropping every non-finance admin on the KYC queue
- * contradicts A6's "no admin is dropped on a queue". Cards for queues the
- * role would get a 403 on are hidden instead (support never sees payouts,
- * finance never sees the verification queue). W3 replaces this scaffolding
- * with the ops dashboard.
+ * lands on — was the only screen without the shell.
  */
-const SECTIONS = [
-  {
-    href: '/admin/drivers',
-    title: 'Verification queue',
-    description: 'Driver documents awaiting review.',
-    roles: ['super_admin', 'operations', 'support'],
-  },
-  {
-    href: '/admin/finance',
-    title: 'Payout approvals',
-    description: 'Driver and fleet payouts above the auto-approval threshold.',
-    roles: ['super_admin', 'operations', 'finance'],
-  },
-] as const;
+export default function AdminHomePage() {
+  const { admin, isLoading } = useAdminIdentity();
+  const can = useAdminCan();
 
-export default function AdminIndexPage() {
-  const { admin } = useAdminIdentity();
-
-  const visible = admin
-    ? SECTIONS.filter((section) =>
-        (section.roles as readonly string[]).includes(admin.subRole),
-      )
-    : SECTIONS;
-
-  return (
-    <div>
-      <PageHeader
-        title="Operations"
-        description="Platform operations console. Choose a queue to start working."
-      />
-      <div className="grid gap-4 sm:grid-cols-2">
-        {visible.map((section) => (
-          <Link key={section.href} href={section.href}>
-            <Card>
-              <CardContent className="p-6">
-                <div className="font-semibold">{section.title}</div>
-                <div className="mt-1 text-sm text-text-secondary">{section.description}</div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+  if (isLoading) {
+    return (
+      <div>
+        <PageHeader title="Operations" description="Platform operations console." />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-28" />
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (!admin || !can('ops.live')) {
+    return (
+      <div>
+        <PageHeader
+          title="Operations"
+          description="Platform operations console. Choose a queue to start working."
+        />
+        <AdminQuickLinks />
+      </div>
+    );
+  }
+
+  return <AdminOpsHome />;
 }
