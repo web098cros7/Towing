@@ -40,6 +40,8 @@ export const env = {
   mockAdminBookingsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_BOOKINGS_STATE ?? '') as MockState,
   /** W8's dispute queue (M3). */
   mockAdminDisputesState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_DISPUTES_STATE ?? '') as MockState,
+  /** W10's rate-card editor (M4). */
+  mockAdminPricingState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PRICING_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
