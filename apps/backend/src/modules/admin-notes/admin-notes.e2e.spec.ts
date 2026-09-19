@@ -1,15 +1,27 @@
 import type { INestApplication } from '@nestjs/common';
-import { adminNotesResponseSchema, adminNoteSchema } from '@towing/api-contracts';
+import {
+  ADMIN_NOTE_SUBJECT_TYPES,
+  adminNotesResponseSchema,
+  adminNoteSchema,
+} from '@towing/api-contracts';
+import { randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions, adminNotes } from '../../db/schema';
-import { adminAuthHeaderFor, authHeaderFor, createTestApp } from '../../test/app';
+import {
+  adminAuthHeaderFor,
+  authHeaderFor,
+  createTestApp,
+  customerAuthHeaderFor,
+  driverAuthHeaderFor,
+} from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
 import {
   seedAdmin,
+  seedCustomer,
   seedDriver,
   seedFleet,
   setupTestDatabase,
@@ -30,10 +42,10 @@ const PAYOUT_SUBJECT = '55555555-5555-4555-8555-555555555555';
  *  2. Visibility follows the SUBJECT, not the route — the same map the audit
  *     viewer uses, so a screen's notes panel and its timeline cannot disagree.
  *  3. Notes never leak: a source-text guard (the `sole-writer.spec.ts` pattern)
- *     plus one runtime check that a fleet payload does not carry a note body.
- *     The guard is the load-bearing half — Drizzle selects columns explicitly,
- *     so the realistic leak is a future screen SELECTing the table, which the
- *     guard catches in the same commit.
+ *     plus runtime checks that fleet, driver and customer payloads do not
+ *     carry a note body. The guard is the load-bearing half — Drizzle selects
+ *     columns explicitly, so the realistic leak is a future screen SELECTing
+ *     the table, which the guard catches in the same commit.
  */
 describe('admin notes (/v1/admin/notes, W21)', () => {
   let app: INestApplication;
@@ -191,6 +203,19 @@ describe('admin notes (/v1/admin/notes, W21)', () => {
     const [row] = await db.select().from(adminNotes).where(eq(adminNotes.id, created.id));
     expect(row!.deletedAt).not.toBeNull();
 
+    // Every write leaves a trace — the delete included, with the body it
+    // retired and no pretend success payload after it.
+    const deleteAudits = await db
+      .select()
+      .from(adminActions)
+      .where(eq(adminActions.action, 'admin.note.delete'));
+    expect(deleteAudits).toHaveLength(1);
+    expect(deleteAudits[0]!.adminId).toBe(opsId);
+    expect(deleteAudits[0]!.subjectType).toBe('driver');
+    expect(deleteAudits[0]!.subjectId).toBe(DRIVER_SUBJECT);
+    expect(deleteAudits[0]!.before).toMatchObject({ noteId: created.id, body: 'superadmin edit' });
+    expect(deleteAudits[0]!.after).toBeNull();
+
     const after = await request(app.getHttpServer())
       .get('/v1/admin/notes')
       .query({ subjectType: 'driver', subjectId: DRIVER_SUBJECT })
@@ -237,27 +262,81 @@ describe('admin notes (/v1/admin/notes, W21)', () => {
     expect(superList.body.notes).toHaveLength(1);
   });
 
-  it('never leaks a note into a fleet payload', async () => {
+  it('attaches to every subject type the union admits', async () => {
+    const subjectIds = new Map(ADMIN_NOTE_SUBJECT_TYPES.map((type) => [type, randomUUID()]));
+
+    for (const subjectType of ADMIN_NOTE_SUBJECT_TYPES) {
+      const created = await createNote(superAuth, {
+        subjectType,
+        subjectId: subjectIds.get(subjectType),
+        body: `note on ${subjectType}`,
+      });
+      const parsed = expectMatchesContract(adminNoteSchema, created);
+      expect(parsed.subjectType).toBe(subjectType);
+    }
+
+    const audits = await db
+      .select()
+      .from(adminActions)
+      .where(eq(adminActions.action, 'admin.note.create'));
+    expect(audits).toHaveLength(ADMIN_NOTE_SUBJECT_TYPES.length);
+
+    // Each subject reads back on its own: one note each, nothing bleeding
+    // into a neighbouring subject's panel.
+    for (const subjectType of ADMIN_NOTE_SUBJECT_TYPES) {
+      const list = await request(app.getHttpServer())
+        .get('/v1/admin/notes')
+        .query({ subjectType, subjectId: subjectIds.get(subjectType) })
+        .set('Authorization', superAuth)
+        .expect(200);
+      const parsed = expectMatchesContract(adminNotesResponseSchema, list.body);
+      expect(parsed.notes).toHaveLength(1);
+      expect(parsed.notes[0]!.subjectId).toBe(subjectIds.get(subjectType));
+    }
+  });
+
+  it('never leaks a note into a fleet, driver or customer payload', async () => {
     const fleet = await seedFleet(db, 'Notes Fleet');
     const driverId = await seedDriver(db, { fleetId: fleet.fleetId, name: 'Note Subject' });
+    const customerId = await seedCustomer(db);
 
-    const secret = 'internal-only-evaluation-text';
+    const driverSecret = 'internal-only-driver-marker';
+    const customerSecret = 'internal-only-customer-marker';
     await createNote(opsAuth, {
       subjectType: 'driver',
       subjectId: driverId,
-      body: `${secret} — do not show this to the fleet owner`,
+      body: `${driverSecret} — do not show this to the fleet owner`,
+    });
+    await createNote(opsAuth, {
+      subjectType: 'user',
+      subjectId: customerId,
+      body: `${customerSecret} — internal only`,
     });
 
+    // Fleet payload: the fleet owner's view of the driver.
     const fleetAuth = await authHeaderFor(app, {
       userId: fleet.ownerId,
       fleetId: fleet.fleetId,
     });
-    const res = await request(app.getHttpServer())
+    const fleetRes = await request(app.getHttpServer())
       .get('/v1/fleet/drivers')
       .set('Authorization', fleetAuth)
       .expect(200);
+    expect(JSON.stringify(fleetRes.body)).not.toContain(driverSecret);
 
-    expect(JSON.stringify(res.body)).not.toContain(secret);
+    // Driver payload: the driver's own KYC view.
+    const driverRes = await request(app.getHttpServer())
+      .get('/v1/driver/kyc/status')
+      .set('Authorization', await driverAuthHeaderFor(app, { driverId }))
+      .expect(200);
+    expect(JSON.stringify(driverRes.body)).not.toContain(driverSecret);
+
+    // Customer payload: the customer's own profile.
+    const meRes = await request(app.getHttpServer())
+      .get('/v1/me')
+      .set('Authorization', await customerAuthHeaderFor(app, { userId: customerId }))
+      .expect(200);
+    expect(JSON.stringify(meRes.body)).not.toContain(customerSecret);
   });
 
   it('is reachable only by admin-realm tokens', async () => {

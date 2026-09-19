@@ -1,3 +1,4 @@
+import { ADMIN_NOTE_SUBJECT_TYPES } from '@towing/api-contracts';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -14,9 +15,9 @@ import { describe, expect, it } from 'vitest';
  *
  * NOTE: `ck_admin_notes_subject_type` duplicates a TypeScript union by design
  * (house rule: a migration spec wherever a CHECK duplicates a union). The
- * union itself (`adminNoteSubjectTypeSchema`) lands with the notes contracts
- * in W1-4 — that workstream extends this spec with the cross-check rather
- * than writing a second one.
+ * cross-check below pins the union the API validates against
+ * (`ADMIN_NOTE_SUBJECT_TYPES`) to the literals in this file, so the two
+ * cannot drift.
  */
 
 const MIGRATION = resolve(__dirname, '../../../drizzle/0020_admin_identity_audit_notes.sql');
@@ -91,5 +92,17 @@ describe('migration 0020 admin identity, audit cursor and notes', () => {
   it('keeps every statement drizzle-migrator separable', () => {
     const sql = migrationSql();
     expect(sql).toContain('--> statement-breakpoint');
+  });
+
+  it('pins the subject union to the CHECK — the API cannot admit a type the DB refuses', () => {
+    const sql = migrationSql();
+    const check = /"subject_type" IN \(([^)]+)\)/.exec(sql);
+    expect(check).toBeTruthy();
+
+    const literals = check![1]!
+      .split(',')
+      .map((raw) => raw.trim().replace(/^'|'$/g, ''))
+      .sort();
+    expect([...ADMIN_NOTE_SUBJECT_TYPES].sort()).toEqual(literals);
   });
 });

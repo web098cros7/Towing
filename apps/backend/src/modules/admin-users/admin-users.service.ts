@@ -347,9 +347,10 @@ export class AdminUsersService {
   /**
    * Kills the refresh family immediately AND tells every node to drop the
    * admin's sockets. The publish is W1-3's contract: `admin.gateway` consumes
-   * `admin:revoke` and leaves `admin:user:{id}`. Until W1-3 lands the publish
-   * has no consumer — session revocation ( enforced on the next request by
-   * the A17 guard) is what actually bites today, and the e2e asserts that.
+   * `admin:revoke` and leaves `admin:user:{id}` — the realtime e2e proves the
+   * socket drop, and this module's e2e channel-asserts the publish on both the
+   * demote and deactivate paths. Session revocation is the other half: the A17
+   * guard 401s the next request even when no socket was open.
    */
   private async killSessions(targetId: string, reason: string): Promise<void> {
     await this.tokens.revokeSubject(targetId, 'admin', reason);

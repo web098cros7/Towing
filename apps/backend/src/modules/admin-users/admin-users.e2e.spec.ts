@@ -5,6 +5,8 @@ import type { INestApplication } from '@nestjs/common';
 import {
   adminAdminDetailSchema,
   adminAdminsListResponseSchema,
+  adminCreateAdminResponseSchema,
+  adminResetPasswordResponseSchema,
   ErrorCodes,
 } from '@towing/api-contracts';
 import { desc, eq } from 'drizzle-orm';
@@ -138,36 +140,44 @@ describe('admin users (/v1/admin/admins)', () => {
       await request(server).get('/v1/admin/admins').expect(401);
     });
 
-    it('write routes refuse non-super admins (create, update, deactivate, reactivate, reset)', async () => {
-      const ops = await seedAdmin(db, { subRole: 'operations' });
-      const opsAuth = await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' });
-      const target = await seedAdmin(db, { subRole: 'support' });
+    it('write routes refuse every non-super sub-role (create, update, deactivate, reactivate, reset)', async () => {
       const server = app.getHttpServer();
+      const target = await seedAdmin(db, { subRole: 'support' });
 
-      await request(server)
-        .post('/v1/admin/admins')
-        .set('Authorization', opsAuth)
-        .send({ name: 'Nope', email: 'nope@towing.test', mobile: '+910000000001', subRole: 'support' })
-        .expect(403);
-      await request(server)
-        .put(`/v1/admin/admins/${target.id}`)
-        .set('Authorization', opsAuth)
-        .send({ name: 'Nope', reason: REASON })
-        .expect(403);
-      await request(server)
-        .post(`/v1/admin/admins/${target.id}/deactivate`)
-        .set('Authorization', opsAuth)
-        .send({ reason: REASON })
-        .expect(403);
-      await request(server)
-        .post(`/v1/admin/admins/${target.id}/reactivate`)
-        .set('Authorization', opsAuth)
-        .send({ reason: REASON })
-        .expect(403);
-      await request(server)
-        .post(`/v1/admin/admins/${target.id}/reset-password`)
-        .set('Authorization', opsAuth)
-        .expect(403);
+      for (const subRole of ['operations', 'support', 'finance'] as const) {
+        const other = await seedAdmin(db, { subRole });
+        const auth = await adminAuthHeaderFor(app, { adminId: other.id, subRole });
+
+        await request(server)
+          .post('/v1/admin/admins')
+          .set('Authorization', auth)
+          .send({
+            name: 'Nope',
+            email: `nope-${subRole}@towing.test`,
+            mobile: '+910000000001',
+            subRole: 'support',
+          })
+          .expect(403);
+        await request(server)
+          .put(`/v1/admin/admins/${target.id}`)
+          .set('Authorization', auth)
+          .send({ name: 'Nope', reason: REASON })
+          .expect(403);
+        await request(server)
+          .post(`/v1/admin/admins/${target.id}/deactivate`)
+          .set('Authorization', auth)
+          .send({ reason: REASON })
+          .expect(403);
+        await request(server)
+          .post(`/v1/admin/admins/${target.id}/reactivate`)
+          .set('Authorization', auth)
+          .send({ reason: REASON })
+          .expect(403);
+        await request(server)
+          .post(`/v1/admin/admins/${target.id}/reset-password`)
+          .set('Authorization', auth)
+          .expect(403);
+      }
     });
   });
 
@@ -214,8 +224,7 @@ describe('admin users (/v1/admin/admins)', () => {
         })
         .expect(200);
 
-      expectMatchesContract(adminAdminDetailSchema, res.body.admin);
-      expect(typeof res.body.temporaryPassword).toBe('string');
+      expectMatchesContract(adminCreateAdminResponseSchema, res.body);
 
       const audit = await latestAudit('admin.create');
       expect(audit).toBeDefined();
@@ -286,15 +295,22 @@ describe('admin users (/v1/admin/admins)', () => {
         .expect(403);
     });
 
-    it('deactivating an admin 401s their live access token (guard reads status)', async () => {
+    it('deactivating an admin 401s their live token and publishes admin:revoke', async () => {
       const ops = await seedAdmin(db, { subRole: 'operations', password: PASSWORD });
       const session = await login(ops.email, PASSWORD);
 
-      await request(app.getHttpServer())
-        .post(`/v1/admin/admins/${ops.id}/deactivate`)
-        .set('Authorization', await superAuth())
-        .send({ reason: REASON })
-        .expect(200);
+      // Same contract as the demote path: the refresh family dies AND every
+      // node is told to drop the admin's sockets (`admin-bridge` consumes
+      // `admin:revoke`; the drop itself is proven in admin-realtime.e2e).
+      const { messages } = await captureChannel(async () =>
+        request(app.getHttpServer())
+          .post(`/v1/admin/admins/${ops.id}/deactivate`)
+          .set('Authorization', await superAuth())
+          .send({ reason: REASON })
+          .expect(200),
+      );
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ adminId: ops.id, reason: 'deactivated' });
 
       await request(app.getHttpServer())
         .get('/v1/admin/auth/me')
@@ -360,7 +376,7 @@ describe('admin users (/v1/admin/admins)', () => {
         .set('Authorization', await superAuth())
         .expect(200);
 
-      expect(typeof res.body.temporaryPassword).toBe('string');
+      expectMatchesContract(adminResetPasswordResponseSchema, res.body);
 
       const [row] = await db.select().from(adminUsers).where(eq(adminUsers.id, ops.id));
       expect(row!.mustChangePassword).toBe(true);

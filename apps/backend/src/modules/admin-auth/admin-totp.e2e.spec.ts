@@ -7,8 +7,14 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { desc, eq } from 'drizzle-orm';
 import { adminActions, adminRecoveryCodes, adminUsers } from '../../db/schema';
-import { ErrorCodes } from '@towing/api-contracts';
+import {
+  adminRecoveryCodesResponseSchema,
+  adminTotpEnrollResponseSchema,
+  adminTotpStatusSchema,
+  ErrorCodes,
+} from '@towing/api-contracts';
 import { adminAuthHeaderFor, createTestApp } from '../../test/app';
+import { expectMatchesContract } from '../../test/contracts';
 import { seedAdmin, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 
@@ -71,6 +77,7 @@ describe('admin TOTP (/v1/admin/auth)', () => {
       .expect(200);
 
     expect(enroll.body.otpauthUri).toContain('otpauth://totp/');
+    expectMatchesContract(adminTotpEnrollResponseSchema, enroll.body);
 
     const secret = secretFromUri(enroll.body.otpauthUri);
     const code = await generate({ secret, epoch: stepEpoch(0) });
@@ -79,6 +86,8 @@ describe('admin TOTP (/v1/admin/auth)', () => {
       .set('Authorization', auth)
       .send({ code });
     expect(confirmed.status).toBe(200);
+    const status = expectMatchesContract(adminTotpStatusSchema, confirmed.body);
+    expect(status.enabled).toBe(true);
 
     return { auth, secret };
   }
@@ -225,6 +234,7 @@ describe('admin TOTP (/v1/admin/auth)', () => {
         .post('/v1/admin/auth/2fa/recovery-codes')
         .set('Authorization', auth)
         .expect(200);
+      expectMatchesContract(adminRecoveryCodesResponseSchema, issued.body);
       expect(issued.body.codes).toHaveLength(10);
 
       const [stored] = await db
@@ -281,11 +291,13 @@ describe('admin TOTP (/v1/admin/auth)', () => {
         .set('Authorization', auth)
         .expect(200);
 
-      await request(app.getHttpServer())
+      const disabled = await request(app.getHttpServer())
         .post('/v1/admin/auth/2fa/disable')
         .set('Authorization', auth)
         .send({ reason: 'lost authenticator device' })
         .expect(200);
+      const disabledStatus = expectMatchesContract(adminTotpStatusSchema, disabled.body);
+      expect(disabledStatus.enabled).toBe(false);
 
       const [row] = await db.select().from(adminUsers).where(eq(adminUsers.id, admin.id));
       expect(row!.twofaEnabled).toBe(false);
