@@ -7,6 +7,10 @@ import {
   adminFinanceConfigSchema,
   adminIdentitySchema,
   adminNotesResponseSchema,
+  adminOpsActivityResponseSchema,
+  adminOpsBadgesResponseSchema,
+  adminOpsDashboardResponseSchema,
+  adminOpsLiveResponseSchema,
   adminPendingDriversResponseSchema,
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
@@ -45,12 +49,23 @@ import {
   truncateAll,
   type TestDatabase,
 } from '../test/db';
-import { adminActions, adminNotes, commissionConfigHistory, driverDocuments, payouts } from '../db/schema';
+import {
+  adminActions,
+  adminNotes,
+  bookingStatusHistory,
+  commissionConfigHistory,
+  driverDocuments,
+  drivers,
+  payouts,
+  serviceZones,
+} from '../db/schema';
 import { seedBooking, seedTruck, seedWalletWithLedger } from '../test/fixtures';
-import { closeTestRedis } from '../test/redis';
+import { closeTestRedis, testRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
 import { seedPricingFixtures } from '../modules/pricing/pricing.e2e.spec';
 import { TokenService } from '../modules/auth/token.service';
+import { driverGeoKey } from '../redis/redis.constants';
+import { eq } from 'drizzle-orm';
 
 /**
  * Every fleet read endpoint, asserted against the schema its client parses.
@@ -133,6 +148,13 @@ describe('response contracts', () => {
       schema: adminNotesResponseSchema,
       realm: 'admin',
     },
+    // W3/W4 — the ops surface. Live is seeded below with an online driver,
+    // an active booking and a zone (an empty list matches almost any schema);
+    // activity is non-empty via the audit row above whenever Redis is empty.
+    { path: '/v1/admin/ops/dashboard', schema: adminOpsDashboardResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/ops/activity', schema: adminOpsActivityResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/ops/badges', schema: adminOpsBadgesResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/ops/live', schema: adminOpsLiveResponseSchema, realm: 'admin' },
   ];
 
   beforeAll(async () => {
@@ -222,6 +244,36 @@ describe('response contracts', () => {
       adminId: superAdmin.id,
       body: 'contract coverage note',
     });
+
+    // W3/W4 — the ops fixture set: an active zone, an online KYC-approved
+    // driver (Postgres decides the live map's drivers), a position in Redis
+    // (Redis decides where), and an active booking to draw — plus the history
+    // rows that give the dashboard's fill-rate arithmetic something to count.
+    const [opsZone] = await db
+      .insert(serviceZones)
+      .values({
+        name: 'Contract Ops Zone',
+        area: 'SRID=4326;POLYGON((77.45 12.80,77.80 12.80,77.80 13.15,77.45 13.15,77.45 12.80))',
+        surgeBand: 'standard',
+      })
+      .returning({ id: serviceZones.id });
+    const opsDriverId = await seedDriver(db, { name: 'Contract Ops Driver' });
+    await db
+      .update(drivers)
+      .set({ isOnline: true, lastPingAt: new Date(), currentZoneId: opsZone!.id })
+      .where(eq(drivers.id, opsDriverId));
+    await testRedis().geoadd(driverGeoKey(opsZone!.id), 77.5946, 12.9716, opsDriverId);
+
+    const opsBookingId = await seedBooking(db, {
+      userId: contractCustomer,
+      status: 'assigned',
+      driverId: opsDriverId,
+      pickupAddress: 'Contract Ops Pickup',
+    });
+    await db.insert(bookingStatusHistory).values([
+      { bookingId: opsBookingId, status: 'searching' },
+      { bookingId: opsBookingId, status: 'assigned' },
+    ]);
   });
 
   afterAll(async () => {

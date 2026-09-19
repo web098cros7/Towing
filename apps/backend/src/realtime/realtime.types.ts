@@ -1,6 +1,8 @@
 import type {
   AdminBookingStatusEvent,
   AdminLocationUpdateEvent,
+  AdminOpsBadgesEvent,
+  AdminOpsMetricsEvent,
   AdminReadyEvent,
   AdminSubRole,
   BookingStatusEvent,
@@ -200,16 +202,18 @@ export interface AdminClientToServerEvents {
 }
 
 /**
- * Only the events that have producers TODAY are declared. `ops:metrics`,
- * `ops:badges`, `sos:alert`, `dispatch:wave` and `ops:banner` are named in the
- * contracts enum for their consumers, but adding them to this type without a
- * producer would compile the fiction that they arrive — W3+ adds each one in
- * the commit that emits it.
+ * Only the events that have producers TODAY are declared. W3 added
+ * `ops:metrics` / `ops:badges` in the commit that emits them (the broadcaster +
+ * bridge); `sos:alert`, `dispatch:wave` and `ops:banner` remain named in the
+ * contracts enum for their consumers but stay out of this type until each has a
+ * producer — adding one earlier would compile the fiction that it arrives.
  */
 export interface AdminServerToClientEvents {
   'realtime:ready': (payload: AdminReadyEvent) => void;
   'booking:status': (payload: AdminBookingStatusEvent) => void;
   'location:update': (payload: AdminLocationUpdateEvent) => void;
+  'ops:metrics': (payload: AdminOpsMetricsEvent) => void;
+  'ops:badges': (payload: AdminOpsBadgesEvent) => void;
 }
 
 /** Attached at handshake; the only source of a socket's admin. */

@@ -39,7 +39,11 @@ import { WsTicketService } from './ws-ticket.service';
    * `ops:metrics` simply never arrived with no error anywhere. Three consumers
    * now subscribe to overlapping channels, and the list is what makes that a
    * composition rather than a race.
+   *
+   * `PositionsRepo` is exported from W4: the admin live snapshot reuses
+   * `activeZones()` rather than re-implementing it, so the admin map and the
+   * fleet map cannot disagree about the operating geography they draw.
    */
-  exports: [FleetGateway, WsTicketService, RealtimeSubscriberService],
+  exports: [FleetGateway, WsTicketService, RealtimeSubscriberService, PositionsRepo],
 })
 export class RealtimeModule {}

@@ -7,5 +7,7 @@ export * from './dispatch';
 export * from './drivers';
 export * from './pricing';
 export * from './finance';
+export * from './ops-kpis';
+export * from './ops';
 export * from './permissions';
 export * from './realtime';

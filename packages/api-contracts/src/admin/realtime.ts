@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { adminSubRoleSchema } from '../common/enums';
 import { jobStatusSchema } from '../fleet/jobs';
+import { adminOpsBadgesSchema, adminOpsKpisSchema } from './ops-kpis';
 
 /**
  * The `/admin` namespace (W1, §3.4).
@@ -141,8 +142,34 @@ export const opsBookingCreatedEventSchema = z.object({
 });
 export type OpsBookingCreatedEvent = z.infer<typeof opsBookingCreatedEventSchema>;
 
+/**
+ * The metrics/badge broadcaster's payloads (W3, §3.4), riding the SAME channel
+ * as the booking events — the guide's producer table lists the broadcaster as
+ * an `ops:events` producer, and one channel keeps the fan-out the bridge's job
+ * rather than N subscriptions.
+ *
+ * These are the Redis ENVELOPES; the socket frames (`ops:metrics` / `ops:badges`)
+ * carry the same bodies without `kind`, so a frame and its envelope cannot
+ * drift (`adminOpsMetricsEventSchema` / `adminOpsBadgesEventSchema` in `ops.ts`).
+ */
+export const opsAdminMetricsEventSchema = z.object({
+  kind: z.literal('ops_metrics'),
+  kpis: adminOpsKpisSchema,
+  at: z.iso.datetime(),
+});
+export type OpsAdminMetricsEvent = z.infer<typeof opsAdminMetricsEventSchema>;
+
+export const opsAdminBadgesEventSchema = z.object({
+  kind: z.literal('ops_badges'),
+  badges: adminOpsBadgesSchema,
+  at: z.iso.datetime(),
+});
+export type OpsAdminBadgesEvent = z.infer<typeof opsAdminBadgesEventSchema>;
+
 export const opsEventSchema = z.discriminatedUnion('kind', [
   opsBookingStatusEventSchema,
   opsBookingCreatedEventSchema,
+  opsAdminMetricsEventSchema,
+  opsAdminBadgesEventSchema,
 ]);
 export type OpsEvent = z.infer<typeof opsEventSchema>;

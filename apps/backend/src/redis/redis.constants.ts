@@ -166,6 +166,37 @@ export const wsTicketKey = (ticket: string): string => `ws:ticket:${ticket}`;
 export const metricsLockKey = (fleetId: string): string => `ops:metrics:lock:${fleetId}`;
 
 /**
+ * W3's admin metrics/badge broadcaster lock. Same cost-guard contract as
+ * `metricsLockKey`: whichever node wins recomputes the platform KPIs; losing it
+ * costs one skipped push, which the console's 10s poll and resync cover.
+ */
+export const adminOpsMetricsLockKey = 'ops:admin-metrics:lock';
+
+/**
+ * W3's activity feed — the last 50 domain events off `ops:events`, newest
+ * first. Appended once per message cluster-wide (a short NX marker dedupes
+ * multi-node delivery); read by `GET /v1/admin/ops/activity`, with a DB
+ * backfill when it is empty or Redis is down.
+ */
+export const adminOpsActivityKey = 'admin:ops:activity';
+
+/**
+ * The multi-node append guard: every node receives every `ops:events` message,
+ * and the first to `SET NX` this short-lived marker is the one that pushes the
+ * row — so the feed gets one copy, not one per task.
+ */
+export const adminOpsActivitySeenKey = (hash: string): string =>
+  `admin:ops:activity:seen:${hash}`;
+
+/**
+ * W3's KPI and badge caches. Invalidated by the broadcaster, then re-filled by
+ * whichever path computes next, so the REST response and the pushed frame
+ * cannot disagree.
+ */
+export const adminOpsDashboardCacheKey = 'admin:ops:dashboard';
+export const adminOpsBadgesCacheKey = 'admin:ops:badges';
+
+/**
  * Admin session revocation fan-out (W2 → W1-3 contract).
  *
  * `AdminUsersService` publishes `{ adminId, reason, at }` here whenever a
