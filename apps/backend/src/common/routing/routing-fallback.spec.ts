@@ -222,6 +222,8 @@ describe('production safety for the routing switch', () => {
       EXOTEL_SID: 'sid',
       EXOTEL_TOKEN: 'token',
       AUTH_DEV_OTP_ECHO: '',
+      // W2's at-rest TOTP key must not be the dev placeholder in production.
+      ADMIN_TOTP_ENC_KEY: 'a-real-production-totp-encryption-key-32ch',
     } as NodeJS.ProcessEnv;
 
     expect(() =>

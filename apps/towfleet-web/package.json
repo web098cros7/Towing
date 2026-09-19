@@ -19,6 +19,7 @@
     "maplibre-gl": "^5.24.0",
     "next": "^15.5.4",
     "papaparse": "^5.5.4",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.2.1",

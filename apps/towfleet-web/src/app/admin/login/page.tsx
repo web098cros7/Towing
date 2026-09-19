@@ -41,6 +41,11 @@ function AdminLoginForm() {
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [challengeId, setChallengeId] = useState<string | null>(null);
+  // W2: the challenge says which second factor it expects. SMS (the default)
+  // shows "we sent a code"; TOTP (an enrolled authenticator) shows "enter your
+  // authenticator code" and no SMS is ever sent. The same input accepts an
+  // 8-character recovery code, so recovery needs no second screen.
+  const [method, setMethod] = useState<'sms' | 'totp'>('sms');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -63,8 +68,9 @@ function AdminLoginForm() {
         setError(await readErrorMessage(res, 'Sign-in failed. Please try again.'));
         return;
       }
-      const body = (await res.json()) as { challengeId: string };
+      const body = (await res.json()) as { challengeId: string; method?: 'sms' | 'totp' };
       setChallengeId(body.challengeId);
+      setMethod(body.method === 'totp' ? 'totp' : 'sms');
       setOtp('');
       setStep('otp');
     } finally {
@@ -74,8 +80,9 @@ function AdminLoginForm() {
 
   const submitOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!/^\d{6}$/.test(otp) || !challengeId) {
-      setError('Enter the 6-digit code.');
+    // W2: six digits (SMS or authenticator) or an 8-character recovery code.
+    if (!/^(\d{6}|[A-Za-z0-9_-]{8})$/.test(otp) || !challengeId) {
+      setError(method === 'totp' ? 'Enter the 6-digit code or a recovery code.' : 'Enter the 6-digit code.');
       return;
     }
     setError(null);
@@ -140,17 +147,29 @@ function AdminLoginForm() {
             ) : (
               <form onSubmit={submitOtp} className="flex flex-col gap-4">
                 <p className="text-sm text-text-secondary">
-                  We sent a 6-digit code to your registered mobile number.
+                  {method === 'totp'
+                    ? 'Enter the code from your authenticator app — or a recovery code.'
+                    : 'We sent a 6-digit code to your registered mobile number.'}
                 </p>
-                <Field label="One-time code" htmlFor="otp" error={error ?? undefined}>
+                <Field
+                  label={method === 'totp' ? 'Authenticator code' : 'One-time code'}
+                  htmlFor="otp"
+                  error={error ?? undefined}
+                >
                   <Input
                     id="otp"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="000000"
+                    inputMode={method === 'totp' ? 'text' : 'numeric'}
+                    maxLength={method === 'totp' ? 8 : 6}
+                    placeholder={method === 'totp' ? '000000' : '000000'}
                     className="text-center text-lg tracking-[0.5em] font-bold"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) =>
+                      setOtp(
+                        method === 'totp'
+                          ? e.target.value.replace(/[^A-Za-z0-9_-]/g, '')
+                          : e.target.value.replace(/\D/g, ''),
+                      )
+                    }
                   />
                 </Field>
                 <Button type="submit" size="lg" disabled={submitting}>
