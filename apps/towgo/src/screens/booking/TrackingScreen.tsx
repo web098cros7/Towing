@@ -1,15 +1,41 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Share, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import {
+  Alert,
+  Linking,
+  Platform,
+  Share,
+  useWindowDimensions,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  useNavigation,
+  usePreventRemove,
+  useRoute,
+  type NavigationAction,
+  type RouteProp,
+} from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useTheme } from '@towing/theme';
-import { Button, StatusBadge, Text } from '@towing/ui';
-import { BackButton } from '@/components/BackButton';
+import type { BookingTracking } from '@towing/api-contracts';
+import { usePressablePrimitive } from '@towing/ui';
+import {
+  mitowColors,
+  mitowLayout,
+  mitowRadii,
+  mitowShadows,
+  MiButton,
+  MiCard,
+  MiHelpChip,
+  MiInfoBanner,
+  MiMapButton,
+  MiSheetPanel,
+  MiText,
+} from '@/design';
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
-import { TrustBanner } from '@/features/booking/components/TrustBanner';
 import { useBooking, useCancelBooking } from '@/features/bookings/api/bookings.queries';
-import { STATUS_META } from '@/features/bookings/statusMeta';
+import { openDriverChat } from '@/features/chat/openDriverChat';
 import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import { useRevokeShare, useShareTrip } from '@/features/tracking/api/tracking.queries';
 import { BookingOtpCard } from '@/features/tracking/components/BookingOtpCard';
@@ -19,58 +45,110 @@ import { RatingSheet } from '@/features/payments/components/RatingSheet';
 import { ConnectionBanner } from '@/features/tracking/components/ConnectionBanner';
 import { LiveEtaCard } from '@/features/tracking/components/LiveEtaCard';
 import { StatusTimeline, hasTimelinePosition } from '@/features/tracking/components/StatusTimeline';
-import { TrackingMap } from '@/features/tracking/components/TrackingMap';
+import {
+  TrackingMap,
+  type TrackingMapVariant,
+} from '@/features/tracking/components/TrackingMap';
+import { useCollectionCode } from '@/features/tracking/hooks/useCollectionCode';
 import { useLiveTracking } from '@/features/tracking/hooks/useLiveTracking';
-import { Share2 } from '@/icons';
 import { track } from '@/lib/analytics/analytics';
-import { BottomSheet, Pressable } from '@/motion';
+import { BottomSheet, haptics } from '@/motion';
 import type { RootStackParamList } from '@/navigation/types';
+import { ArrivalTimeline } from './tracking/ArrivalTimeline';
+import { CollectionCodeCard } from './tracking/CollectionCodeCard';
+import { CodeHeading, StaticTripHeading } from './tracking/TripHeadings';
+import { VehicleCard } from './tracking/VehicleCard';
+import {
+  displayDriver,
+  firstNameOf,
+  ratingLabel,
+  trackingDesignFor,
+  vehicleModelLabel,
+  vehiclePlateLabel,
+  type TrackedDriverDisplay,
+} from './tracking/trackingDisplay';
 
 /**
- * §9.1.7's live tracking — rebuilt in Phase 18.
+ * The live trip, one route (`Tracking`) drawing the rebuilt screen for each
+ * status (`trackingDesignFor`):
  *
- * WHAT THIS SCREEN USED TO BE, because it is the clearest statement of what the
- * phase was for. It rendered a real status pill on top of `assignedDriverMock` —
- * `Ramesh Kumar`, `KA 03 AB 1234`, rating 4.8, ETA 12 minutes — the same person
- * for every trip regardless of who actually matched, over a map whose route was
- * a hardcoded SVG path and whose driver marker was positioned at `left: '84%'`.
- * Its Cancel button called `navigation.popToTop()`: it cancelled nothing, the
- * booking stayed live, and a driver kept coming.
+ * - Figma 18 · Driver En Route (`225:85`), `assigned` (and the first read): the
+ *   ETA heading, the driver row, the vehicle card and "You're in safe hands".
+ * - Figma 19 · Driver Arriving (`253:1228`), `en_route`: "Trip in Progress",
+ *   the driver row, the vehicle card, the two-row arrival timeline and the same
+ *   banner at 19's size.
+ * - Figma 23 · Driver Arrived (`234:366`), `arrived`: "Driver has arrived", the
+ *   driver row, the vehicle card, "Verified Driver & Vehicle" and Confirm Pickup.
+ * - Figma 24 · Collection Code (`299:3840`), an in-screen step of `arrived`:
+ *   Confirm Pickup opens it (no server call: there is no customer pickup
+ *   action), and Back, the system back and Android's back button return to 23.
+ *   The map stays mounted throughout.
  *
- * Every one of those is gone. What replaces them:
- *   · a real driver, from `GET /bookings/:id/tracking`
- *   · a real position, interpolated and bearing-rotated (§11.4)
- *   · the collection OTP, from the hook that has existed unused since Phase 15
- *   · §11.6's honesty states, driven by real ping age
- *   · §11.7's share link
- *   · a cancel that quotes §3.5's fee and then actually cancels
+ * Each draws exactly what its frame draws over a live map, with Back and Help
+ * over it; nothing else. The collection code, sharing, the full timeline and
+ * cancel live on 20 Booking Details, one tap away on the vehicle card.
  *
- * THE SHEET IS THE UNIT OF LAYOUT and the map is the backdrop, unchanged from
- * Phase 12's arrangement — that part was right. What changed is that dragging
- * the sheet down now reveals something worth looking at.
+ * In progress, completed, paid and cancelled keep the previous draggable sheet
+ * and its content (collection code, share, timeline, cancel, payment and
+ * rating) until 25 onwards are rebuilt.
  */
+
+/** 18 / 19 Safe hands banner copy, verbatim (straight apostrophe U+0027). */
+const SAFE_TITLE = "You're in safe hands";
+const SAFE_SUBTITLE = 'All our drivers are verified and insured.';
+
+/** 19 heading `254:1456`, verbatim. */
+const ARRIVING_TITLE = 'Trip in Progress';
+const ARRIVING_SUBTITLE = 'Your tow truck is on the way to your location';
+
+/** 23 heading `236:334`, banner `236:360` and button `236:369`, verbatim (U+0026 ampersand). */
+const ARRIVED_TITLE = 'Driver has arrived';
+const ARRIVED_SUBTITLE = 'Your driver is at the pickup location';
+const VERIFIED_TITLE = 'Verified Driver & Vehicle';
+const VERIFIED_SUBTITLE = 'All our drivers are background verified.';
+const CONFIRM_PICKUP = 'Confirm Pickup';
+
+/** 18's sheet on the 852 frame: top 410.8, content to 360.3, then 80.9 to the bottom edge. */
+const SHEET_CONTENT_HEIGHT = 360.3;
+const EN_ROUTE_BOTTOM_SPACE = 80.9;
+/** 19's sheet hugs its content (the banner ends at 440.1) over a 34 bottom padding (sheet 474.1, top 377.9). */
+const ARRIVING_CONTENT_HEIGHT = 440.1;
+const ARRIVING_BOTTOM_SPACE = 34;
+/** 23's button ends at 435.8, 35.5 above the frame bottom (sheet 471.3, top 380.7). */
+const ARRIVED_CONTENT_HEIGHT = 435.8;
+const ARRIVED_BOTTOM_SPACE = 35.5;
+/** 24's sheet hugs 362 of content over MiSheetPanel's 34 bottom padding (sheet 396, top 456). */
+const CODE_CONTENT_HEIGHT = 362;
+const CODE_BOTTOM_SPACE = 34;
+/** Each bottom space includes the 34 home-indicator zone; taller system insets add to it. */
+const DESIGN_BOTTOM_INSET = 34;
+
+/** The rebuilt sheet on screen: 18, 19, 23, or 24 (a step of 23 with its own, shorter sheet). */
+type SheetDesign = 'enRoute18' | 'arriving19' | 'arrived23' | 'code24';
 
 const PEEK_RATIO = 0.28;
 const DEFAULT_RATIO = 0.55;
 const FULL_RATIO = 0.85;
 
+/** Back-like actions that return 24 to 23 instead of leaving the screen. */
+const BACK_ACTIONS: ReadonlySet<string> = new Set(['GO_BACK', 'POP']);
+
+/**
+ * Bookings whose arrival haptic has fired this session. Module-level rather than
+ * per mount, so leaving Tracking and reopening it on the same arrived trip does
+ * not buzz a second time.
+ */
+const arrivalBuzzedFor = new Set<string>();
+
 export function TrackingScreen() {
-  const theme = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
 
   const { bookingId } = useRoute<RouteProp<RootStackParamList, 'Tracking'>>().params;
 
   const { data: booking } = useBooking(bookingId, { poll: true });
-  /**
-   * ⚠ THE POLL STOPS ON A TERMINAL STATUS, which it did not before Phase 19.
-   *
-   * `useTracking`'s `enabled` defaults to true and this screen never passed it,
-   * so a finished trip kept polling `GET /bookings/:id/tracking` every ten
-   * seconds — forever, for as long as the screen stayed mounted. (`useBooking`
-   * already halted itself via `isActiveBooking`; the tracking hook is the one
-   * that did not.)
-   */
+  /** The poll stops on a terminal status so a finished trip does not keep polling. */
   const { tracking, presence } = useLiveTracking(bookingId, !isSettled(booking?.status));
 
   const shareTrip = useShareTrip(bookingId);
@@ -81,27 +159,91 @@ export function TrackingScreen() {
   const [rateOpen, setRateOpen] = useState(false);
 
   const goHome = useCallback(() => navigation.popToTop(), [navigation]);
-
-  const snapPoints = useMemo(
-    () => [screenHeight * PEEK_RATIO, screenHeight * DEFAULT_RATIO, screenHeight * FULL_RATIO],
-    [screenHeight],
+  /**
+   * Back `229:269`. The design draws no destination (spec Deviation 35, an open
+   * product decision), so the chevron does what the system back gesture does on
+   * this screen: return to whatever is underneath. From 16 Searching that is Home
+   * (Searching resets the stack to Tabs → Tracking); from a push notification it
+   * is the screen the customer was on. With nothing underneath it goes Home.
+   */
+  const goBack = useCallback(() => {
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Tabs', { screen: 'Home' });
+  }, [navigation]);
+  const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
+  const openBookingDetails = useCallback(
+    () => navigation.navigate('BookingDetails', { bookingId }),
+    [bookingId, navigation],
   );
 
   const status = tracking?.status ?? booking?.status;
+  const design = trackingDesignFor(status);
+
+  // --- 23 → 24 ------------------------------------------------------------
 
   /**
-   * ⚠ WHAT HAPPENED HERE BEFORE PHASE 19: NOTHING.
-   *
-   * The screen had no reaction to a terminal status at all. When a trip
-   * completed the badge flipped to "Completed", the cancel button disappeared,
-   * the ten-second poll carried on, and the customer sat on a live map of a
-   * finished trip with a back arrow. There was no way to pay, no invoice, and
-   * no rating prompt — the whole post-trip moment simply did not exist.
-   *
-   * A ONE-SHOT `useRef` GUARD, copying `SearchingScreen`'s `advanced.current`:
-   * without it, a customer who dismisses the payment sheet gets it thrown back
-   * at them on the very next poll, which is a trap rather than a prompt.
+   * 24 Collection Code is a step INSIDE the arrived status: "Confirm Pickup"
+   * opens it and calls no API (the customer has no pickup action; the driver
+   * starts the tow by entering this code). It only ever shows while `arrived`;
+   * any other status closes it, so a later `arrived` opens on 23 again.
    */
+  const [codeOpen, setCodeOpen] = useState(false);
+  const showCode = design === 'arrived23' && codeOpen;
+  useEffect(() => {
+    if (design !== 'arrived23') setCodeOpen(false);
+  }, [design]);
+  const openCode = useCallback(() => setCodeOpen(true), []);
+  const closeCode = useCallback(() => setCodeOpen(false), []);
+
+  /**
+   * Back on 24 returns to 23: the Back chevron (`closeCode`) directly, and
+   * Android's back button and the iOS back swipe as a GO_BACK / POP caught here.
+   * Anything else that would remove the screen (none today) closes 24 first and
+   * then goes ahead.
+   *
+   * The route turns the iOS back swipe off (`gestureEnabled: false`), which
+   * would stop the swipe before it ever reached this handler, so it is switched
+   * on while 24 is up. With removal prevented, native-stack cancels the swipe
+   * (`preventNativeDismiss`) and dispatches a POP, which lands here. 23 and
+   * earlier keep it off.
+   */
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: showCode });
+  }, [navigation, showCode]);
+  const pendingRemoval = useRef<NavigationAction | null>(null);
+  usePreventRemove(showCode, ({ data }) => {
+    if (!BACK_ACTIONS.has(data.action.type)) pendingRemoval.current = data.action;
+    setCodeOpen(false);
+  });
+  useEffect(() => {
+    if (showCode || !pendingRemoval.current) return;
+    const action = pendingRemoval.current;
+    pendingRemoval.current = null;
+    navigation.dispatch(action);
+  }, [navigation, showCode]);
+
+  /**
+   * §9.1.7's "arrived (OTP highlighted + haptic)": one success haptic on the
+   * transition into 23, which the old collection-code card used to fire. Once
+   * per booking, not on every poll that lands while arrived, and not again when
+   * the screen is reopened on the same arrived trip (`arrivalBuzzedFor`).
+   */
+  useEffect(() => {
+    if (design !== 'arrived23' || arrivalBuzzedFor.has(bookingId)) return;
+    arrivalBuzzedFor.add(bookingId);
+    haptics.success();
+  }, [bookingId, design]);
+
+  /**
+   * 24's six digits. Read from 23 on, so they are there the moment Confirm
+   * Pickup is tapped; gated on the server's own `otpAvailable`.
+   */
+  const collectionCode = useCollectionCode(
+    bookingId,
+    (booking?.otpAvailable ?? false) && design === 'arrived23',
+  );
+
+  /** One-shot: a dismissed payment sheet must not be thrown back on the next poll. */
   const settledOnce = useRef(false);
 
   useEffect(() => {
@@ -114,8 +256,6 @@ export function TrackingScreen() {
     }
 
     if (status === 'paid') {
-      // Already paid — reached by the §19.3 sweep or the webhook settling
-      // before the app got there. Straight to the rating.
       settledOnce.current = true;
       setRateOpen(true);
       return;
@@ -127,219 +267,294 @@ export function TrackingScreen() {
     }
   }, [goHome, status]);
 
-  /**
-   * §11.7's share sheet.
-   *
-   * RN CORE `Share`, not `expo-sharing`. The OTA policy has exactly three native
-   * rebuild points — Phases 12, 13 and 16 — and this phase adds no new native
-   * module by design. `Share.share` is part of React Native itself, so it costs
-   * nothing against that boundary.
-   */
   const onShare = useCallback(async () => {
     try {
       const link = await shareTrip.mutateAsync();
-      await Share.share({
-        message: `Follow my tow live: ${link.url}`,
-        url: link.url,
-      });
-      // §22.1. Emitted after the sheet returns, so it counts links that were
-      // actually sent rather than buttons that were tapped.
+      await Share.share({ message: `Follow my tow live: ${link.url}`, url: link.url });
       track('trip_shared');
     } catch {
-      // A dismissed share sheet rejects on iOS and is not an error. A failed
-      // mint is, and the mutation's own error state carries it.
+      // A dismissed share sheet rejects on iOS; a failed mint lives on the mutation.
     }
   }, [shareTrip]);
 
-  const onStopSharing = useCallback(() => {
-    revokeShare.mutate();
-  }, [revokeShare]);
+  const onStopSharing = useCallback(() => revokeShare.mutate(), [revokeShare]);
 
   /**
-   * §9.1.7's call button.
+   * Call (icon/phone) reaches the driver through `contact()` and hands the
+   * number to the system dialer, which shows it before anything is dialled. The
+   * design draws no dialog, warning or error, so none is added: a failed lookup
+   * or a missing number leaves the screen as it is (data gap 9).
    *
-   * THE PRIVACY WARNING IS NOT OPTIONAL WHEN `masked` IS FALSE. No masked-calling
-   * provider is provisioned (SETUP-CHECKLIST item 13), so the live path returns
-   * the driver's real number — and dialling it without saying so would disclose
-   * their personal mobile to a customer who had no way to know. The flag on the
-   * response exists precisely so this branch cannot be forgotten.
+   * Message (icon/message) is drawn as opening 22 Chat with Driver on every
+   * screen here: `openDriverChat` opens it in test mode and keeps the messages
+   * app with the live API until a chat backend exists.
    */
-  const onCall = useCallback(async () => {
-    let contact;
+  const callDriver = useCallback(async () => {
     try {
-      contact = await trackingDataSource.contact(bookingId);
+      const contact = await trackingDataSource.contact(bookingId);
+      if (!contact.dialNumber) return;
+      await Linking.openURL(`tel:${contact.dialNumber}`);
     } catch {
-      Alert.alert('Cannot call right now', 'Please try again in a moment.');
-      return;
+      // Nothing drawn for a failure; the button stays available to try again.
     }
-
-    if (!contact.dialNumber) {
-      Alert.alert('No number available', 'We do not have a contact number for your driver yet.');
-      return;
-    }
-
-    const dial = () => {
-      void Linking.openURL(`tel:${contact.dialNumber}`).catch(() => undefined);
-    };
-
-    if (contact.masked) {
-      dial();
-      return;
-    }
-
-    Alert.alert(
-      'Call your driver',
-      `You are about to call ${contact.displayName ?? 'your driver'} on their personal number, and they will see yours. Private numbers are coming soon.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Call', onPress: dial },
-      ],
-    );
   }, [bookingId]);
 
-  const onCancelConfirm = useCallback(() => {
-    cancelBooking.mutate(
-      { bookingId },
-      {
-        onSuccess: () => {
-          setCancelOpen(false);
-          goHome();
-        },
-        onError: () => {
-          setCancelOpen(false);
-          Alert.alert(
-            'Could not cancel',
-            'This trip cannot be cancelled here. Please call your driver or contact support.',
-          );
-        },
-      },
-    );
-  }, [bookingId, cancelBooking, goHome]);
+  const onCall = useCallback(() => void callDriver(), [callDriver]);
+  const onMessage = useCallback(
+    () => void openDriverChat(navigation, bookingId),
+    [bookingId, navigation],
+  );
 
-  /** §11.6's support shortcut. Phase 20 owns the ticket; this is the honest stop-gap. */
-  const onGetHelp = useCallback(() => {
-    navigation.navigate('ContactUs');
-  }, [navigation]);
+  /** The shared sheet's "Yes, Cancel Trip": cancels with the chosen chip's label as the reason. */
+  const onCancelConfirm = useCallback(
+    (reason?: string) => {
+      cancelBooking.mutate(
+        { bookingId, reason },
+        {
+          onSuccess: () => {
+            setCancelOpen(false);
+            goHome();
+          },
+          onError: () => {
+            setCancelOpen(false);
+            Alert.alert(
+              'Could not cancel',
+              'This trip cannot be cancelled here. Please call your driver or contact support.',
+            );
+          },
+        },
+      );
+    },
+    [bookingId, cancelBooking, goHome],
+  );
 
-  const sheetInset = screenHeight * PEEK_RATIO;
+  // --- Figma geometry ------------------------------------------------------
+
+  const [screenHeight, setScreenHeight] = useState(windowHeight);
+  const onRootLayout = useCallback((e: LayoutChangeEvent) => {
+    setScreenHeight(e.nativeEvent.layout.height);
+  }, []);
+
+  /** A drawn bottom space that includes the 34 home-indicator zone, grown by a taller inset. */
+  const bottomSpace = (drawn: number) =>
+    Math.max(drawn, drawn - DESIGN_BOTTOM_INSET + insets.bottom);
+
+  /** The legacy sheet is not measured: its map sizes itself from the snap points. */
+  const sheet: SheetDesign | null = showCode ? 'code24' : design === 'legacy' ? null : design;
+
+  /** Each sheet's drawn height, grown by a taller bottom inset. */
+  const drawnSheetHeight = (which: SheetDesign | null): number => {
+    switch (which) {
+      case 'arriving19':
+        return ARRIVING_CONTENT_HEIGHT + bottomSpace(ARRIVING_BOTTOM_SPACE);
+      case 'arrived23':
+        return ARRIVED_CONTENT_HEIGHT + bottomSpace(ARRIVED_BOTTOM_SPACE);
+      case 'code24':
+        return CODE_CONTENT_HEIGHT + bottomSpace(CODE_BOTTOM_SPACE);
+      default:
+        return SHEET_CONTENT_HEIGHT + bottomSpace(EN_ROUTE_BOTTOM_SPACE);
+    }
+  };
+
+  /**
+   * The sheet's height as `onLayout` measured it, TAGGED WITH THE SHEET IT
+   * MEASURED. A bare number still holds the previous sheet's height on the first
+   * render of the next one (18 → 19 would read 18's 441.2 against 19's 474.1),
+   * so the map would frame the new step against the old, taller map, and the
+   * controls would flash at the old positions. Until the new sheet has measured
+   * itself, its drawn height stands in.
+   */
+  const [measured, setMeasured] = useState<{ sheet: SheetDesign; height: number } | null>(null);
+  const onSheetLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      if (sheet) setMeasured({ sheet, height: e.nativeEvent.layout.height });
+    },
+    [sheet],
+  );
+  const sheetHeight =
+    measured !== null && measured.sheet === sheet ? measured.height : drawnSheetHeight(sheet);
+  const sheetTop = screenHeight - sheetHeight;
+
+  /** Back at y 49 and Help at 48.5 as drawn; only a taller Android status bar pushes them down. */
+  const controlsTop =
+    Platform.OS === 'android'
+      ? Math.max(mitowLayout.contentTop, insets.top)
+      : mitowLayout.contentTop;
+
+  const legacySnapPoints = useMemo(
+    () => [windowHeight * PEEK_RATIO, windowHeight * DEFAULT_RATIO, windowHeight * FULL_RATIO],
+    [windowHeight],
+  );
+  const legacyInset = windowHeight * PEEK_RATIO;
+
+  const driver = displayDriver(tracking);
+  const firstName = firstNameOf(driver?.name);
+
+  const mapVariant: TrackingMapVariant = showCode
+    ? 'code'
+    : design === 'enRoute18'
+      ? 'enRoute'
+      : design === 'arriving19'
+        ? 'arriving'
+        : design === 'arrived23'
+          ? 'arrived'
+          : 'legacy';
+
+  /**
+   * 18, 19 and 23 share one FixedSheet instance, so the blocks they share carry
+   * STABLE KEYS: without them React matches children by position, and a block
+   * that moves down a slot (19's Safe hands banner, below the timeline 18 does
+   * not have) would remount on the 18 → 19 switch.
+   */
+  const driverRow = (
+    <DriverRow key="driver" driver={driver} onCall={onCall} onMessage={onMessage} />
+  );
+  const vehicleCard = (
+    <VehicleCard
+      key="vehicle"
+      plate={vehiclePlateLabel(driver)}
+      model={vehicleModelLabel(driver)}
+      onPress={openBookingDetails}
+    />
+  );
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
-      <TrackingMap tracking={tracking} presence={presence} bottomInset={sheetInset} />
+    <View onLayout={onRootLayout} style={{ flex: 1, backgroundColor: mitowColors.surfacePage }}>
+      <StatusBar style="dark" />
 
-      <SafeAreaView edges={['top']} style={{ flex: 1 }} pointerEvents="box-none">
-        <View style={{ paddingHorizontal: 20, paddingTop: 4, alignSelf: 'flex-start' }}>
-          <BackButton onPress={goHome} />
-        </View>
-      </SafeAreaView>
+      <TrackingMap
+        tracking={tracking}
+        presence={presence}
+        variant={mapVariant}
+        sheetTop={sheetTop}
+        bottomInset={legacyInset}
+        driverChipLabel={firstName ? `${firstName} is here` : null}
+      />
 
-      <BottomSheet snapPoints={snapPoints} initialIndex={1}>
-        <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, gap: 16 }}>
-          {status ? (
-            <View style={{ flexDirection: 'row' }}>
-              <StatusBadge
-                label={STATUS_META[status].label}
-                tone={STATUS_META[status].tone}
-                icon={STATUS_META[status].icon}
-                pill
-              />
-            </View>
-          ) : null}
+      {/* Back (18 `229:269`, 19 `254:1516`, 23 `236:373`, 24 `299:4110`): Map Control 46 at (16, 49). */}
+      <MiMapButton
+        icon="chevron-left"
+        size={46}
+        accessibilityLabel="Go back"
+        onPress={showCode ? closeCode : goBack}
+        style={{ position: 'absolute', left: 16, top: controlsTop }}
+      />
+      {/*
+        Help: 18, 19 and 23 draw it at (284.8, 48.5), 13.2 from the right edge;
+        24 `299:4116` at (285, 49), 13 from it.
+      */}
+      <MiHelpChip
+        onPress={openSupport}
+        style={
+          showCode
+            ? { position: 'absolute', right: 13, top: controlsTop }
+            : { position: 'absolute', right: 13.2, top: controlsTop - 0.5 }
+        }
+      />
+
+      {design === 'enRoute18' ? (
+        <FixedSheet
+          onLayout={onSheetLayout}
+          paddingTop={10.1}
+          paddingBottom={bottomSpace(EN_ROUTE_BOTTOM_SPACE)}
+          gap={18}
+        >
+          <Grabber key="grabber" />
 
           {/*
-            §11.6, above everything else in the sheet. If the position cannot be
-            trusted, that is the first thing the customer needs to know — before
-            the ETA it makes unreliable and the driver card it sits under.
+            All four blocks are always drawn, so the sheet keeps its drawn height
+            (top edge at 410.8) from the first frame. Slots whose data has not
+            arrived keep their size with a placeholder bar.
           */}
-          <ConnectionBanner presence={presence} onGetHelp={onGetHelp} />
-
-          {tracking ? <LiveEtaCard tracking={tracking} /> : null}
-
-          {tracking?.driver ? (
-            <DriverInfoCard
-              driver={{
-                name: tracking.driver.name,
-                photoUrl: tracking.driver.photoUrl,
-                rating: tracking.driver.rating,
-                trips: tracking.driver.totalTrips,
-                vehiclePlate: tracking.driver.vehiclePlate,
-              }}
-              vehicleLabel={
-                tracking.driver.vehicleClass === 'flatbed' ? 'Flatbed tow truck' : 'Wheel-lift tow truck'
-              }
-              onCall={onCall}
-              // No `onMessage`: in-app chat is Phase 20, and a button that opens
-              // nothing is worse than a button that is not there.
-            />
-          ) : null}
-
-          <BookingOtpCard
-            bookingId={bookingId}
-            available={booking?.otpAvailable ?? false}
-            highlighted={status === 'arrived'}
+          <LiveEtaCard key="heading" tracking={tracking} />
+          {driverRow}
+          {vehicleCard}
+          {/* Safe hands banner `226:346`: 71.1 tall, padding 11 / 8. */}
+          <SafeHandsBanner key="safe-hands" height={71.1} paddingLeft={11} />
+        </FixedSheet>
+      ) : design === 'arriving19' ? (
+        <FixedSheet
+          onLayout={onSheetLayout}
+          paddingTop={14}
+          paddingBottom={bottomSpace(ARRIVING_BOTTOM_SPACE)}
+          gap={16}
+        >
+          <Grabber key="grabber" />
+          <StaticTripHeading key="heading" title={ARRIVING_TITLE} subtitle={ARRIVING_SUBTITLE} />
+          {driverRow}
+          {vehicleCard}
+          <ArrivalTimeline key="timeline" tracking={tracking} />
+          {/* Safe hands banner `254:1505`: 71 tall, padding 8 / 8 (the component's own). */}
+          <SafeHandsBanner key="safe-hands" height={71} paddingLeft={8} />
+        </FixedSheet>
+      ) : design === 'arrived23' && !showCode ? (
+        <FixedSheet
+          onLayout={onSheetLayout}
+          paddingTop={14}
+          paddingBottom={bottomSpace(ARRIVED_BOTTOM_SPACE)}
+          gap={16}
+        >
+          <Grabber key="grabber" />
+          <StaticTripHeading key="heading" title={ARRIVED_TITLE} subtitle={ARRIVED_SUBTITLE} />
+          {driverRow}
+          {vehicleCard}
+          {/* Verified banner `236:360`: Info Banner 75 tall, padding 8 / 8, no chevron. */}
+          <MiInfoBanner
+            key="verified"
+            icon="verified"
+            iconSize={49}
+            title={VERIFIED_TITLE}
+            subtitle={VERIFIED_SUBTITLE}
+            height={75}
           />
-
-          {/* §11.7. Only once there is something to watch. */}
-          {tracking?.driver ? (
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Button
-                  variant="secondary"
-                  onPress={onShare}
-                  disabled={shareTrip.isPending}
-                  leftIcon={Share2}
-                  accessibilityLabel="Share this trip"
-                  label={shareTrip.isPending ? 'Creating link…' : 'Share trip'}
-                  fullWidth
-                />
-              </View>
-              {tracking.shared ? (
-                <Pressable
-                  onPress={onStopSharing}
-                  accessibilityRole="button"
-                  accessibilityLabel="Stop sharing this trip"
-                  style={() => ({ justifyContent: 'center', paddingHorizontal: 12 })}
-                >
-                  <Text weight="medium" style={{ fontSize: 13, color: theme.colors.textSecondary }}>
-                    Stop sharing
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
-
-          {status && hasTimelinePosition(status) ? (
-            <View
-              style={{
-                backgroundColor: theme.colors.card,
-                borderRadius: 18,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                padding: 16,
-              }}
-            >
-              <StatusTimeline status={status} />
-            </View>
-          ) : null}
-
           {/*
-            Cancel lives at the bottom and only while the trip is still cancellable
-            (§5.1's terminal states have nothing to cancel). It opens the sheet
-            rather than acting, because §9.1.7 requires the fee to be shown first.
+            Confirm Pickup `236:369`: Primary Button 351.4 × 54.3, 21.4 below the
+            banner (the 16 gap + 5.4), 0.4 wider than the content column on the
+            right, as drawn. Opens 24.
           */}
-          {status && !['completed', 'paid', 'cancelled'].includes(status) ? (
-            <Button
-              variant="ghost"
-              onPress={() => setCancelOpen(true)}
-              accessibilityLabel="Cancel this trip"
-              label="Cancel trip"
-              fullWidth
-            />
-          ) : null}
-
-          <TrustBanner />
+          <MiButton
+            key="confirm-pickup"
+            label={CONFIRM_PICKUP}
+            trailingIcon="arrow-right"
+            height={54.3}
+            onPress={openCode}
+            style={{ marginTop: 5.4, marginRight: -0.4 }}
+          />
+        </FixedSheet>
+      ) : showCode ? (
+        /*
+          24's sheet `299:4128` is exactly MiSheetPanel's defaults: handle 36 × 5,
+          padding 14 / 21 / 34 / 21, gap 16, hugging its content.
+        */
+        <View
+          onLayout={onSheetLayout}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
+        >
+          <MiSheetPanel>
+            <CodeHeading firstName={firstName} />
+            {driverRow}
+            <CollectionCodeCard code={collectionCode} />
+          </MiSheetPanel>
         </View>
-      </BottomSheet>
+      ) : (
+        <BottomSheet snapPoints={legacySnapPoints} initialIndex={1}>
+          <LegacySheetContent
+            bookingId={bookingId}
+            tracking={tracking}
+            presence={presence}
+            status={status}
+            otpAvailable={booking?.otpAvailable ?? false}
+            sharePending={shareTrip.isPending}
+            onGetHelp={openSupport}
+            onCall={onCall}
+            onMessage={onMessage}
+            onVehicle={openBookingDetails}
+            onShare={onShare}
+            onStopSharing={onStopSharing}
+            onCancel={() => setCancelOpen(true)}
+          />
+        </BottomSheet>
+      )}
 
       <CancelTripSheet
         bookingId={bookingId}
@@ -349,7 +564,6 @@ export function TrackingScreen() {
         isCancelling={cancelBooking.isPending}
       />
 
-      {/* §9.1.9. Its AC ends "…and prompts rating", which is the handoff below. */}
       <PaymentSheet
         bookingId={bookingId}
         visible={payOpen}
@@ -373,7 +587,222 @@ export function TrackingScreen() {
   );
 }
 
-/** §5.1's terminal statuses, from this screen's point of view. */
+/**
+ * The fixed, non-draggable sheet of 18, 19 and 23: pinned to the bottom,
+ * surface/page, top corners 24, MiTow/Elevation/Sheet, left 21.6 / right 20.4.
+ * Its height is its content, measured for the map and the map controls.
+ */
+function FixedSheet({
+  children,
+  onLayout,
+  paddingTop,
+  paddingBottom,
+  gap,
+}: {
+  children: React.ReactNode;
+  onLayout: (e: LayoutChangeEvent) => void;
+  paddingTop: number;
+  paddingBottom: number;
+  gap: number;
+}) {
+  return (
+    <View
+      onLayout={onLayout}
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: mitowColors.surfacePage,
+        borderTopLeftRadius: mitowRadii.sheet,
+        borderTopRightRadius: mitowRadii.sheet,
+        ...mitowShadows.sheet,
+        paddingTop,
+        paddingLeft: 21.6,
+        paddingRight: 20.4,
+        paddingBottom,
+        gap,
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+
+/** Handle / Grabber (18 `226:318`, 19 `254:1455`, 23 `236:333`): 50 × 5, radius 2.5, border/handle, centred. */
+function Grabber() {
+  return (
+    <View style={{ height: 5, alignItems: 'center' }}>
+      <View
+        style={{
+          width: 50,
+          height: 5,
+          borderRadius: 2.5,
+          backgroundColor: mitowColors.borderHandle,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Driver (18 `234:315`, 19 `254:1459`, 23 `236:337`, 24 `299:4134`): the Driver Row bound to the tracked driver. */
+function DriverRow({
+  driver,
+  onCall,
+  onMessage,
+}: {
+  driver: TrackedDriverDisplay | null;
+  onCall: () => void;
+  onMessage: () => void;
+}) {
+  return (
+    <DriverInfoCard
+      driver={driver ? { name: driver.name, photoUrl: driver.photoUrl } : null}
+      ratingText={driver ? ratingLabel(driver.rating, driver.totalTrips) : null}
+      onCall={onCall}
+      onMessage={onMessage}
+    />
+  );
+}
+
+/**
+ * Safe hands banner: Info Banner, icon/color/verified 49, no chevron, "You're in
+ * safe hands". 18 `226:346` overrides it to 71.1 tall with padding 11 / 8; 19
+ * `254:1505` draws 71 with the component's own 8 / 8.
+ */
+function SafeHandsBanner({ height, paddingLeft }: { height: number; paddingLeft: number }) {
+  return (
+    <MiInfoBanner
+      icon="verified"
+      iconSize={49}
+      title={SAFE_TITLE}
+      subtitle={SAFE_SUBTITLE}
+      height={height}
+      paddingLeft={paddingLeft}
+      paddingRight={8}
+    />
+  );
+}
+
+/**
+ * The pre-redesign sheet for in progress / completed / paid, kept until 25
+ * onwards are rebuilt. Its shared blocks use the rebuilt components.
+ */
+function LegacySheetContent({
+  bookingId,
+  tracking,
+  presence,
+  status,
+  otpAvailable,
+  sharePending,
+  onGetHelp,
+  onCall,
+  onMessage,
+  onVehicle,
+  onShare,
+  onStopSharing,
+  onCancel,
+}: {
+  bookingId: string;
+  tracking: BookingTracking | undefined;
+  presence: 'live' | 'stale' | 'offline';
+  status: BookingTracking['status'] | undefined;
+  otpAvailable: boolean;
+  sharePending: boolean;
+  onGetHelp: () => void;
+  onCall: () => void;
+  onMessage: () => void;
+  onVehicle: () => void;
+  onShare: () => void;
+  onStopSharing: () => void;
+  onCancel: () => void;
+}) {
+  const driver = displayDriver(tracking);
+
+  return (
+    <View
+      style={{
+        paddingHorizontal: mitowLayout.sideMargin,
+        paddingTop: 8,
+        paddingBottom: 28,
+        gap: 18,
+      }}
+    >
+      <ConnectionBanner presence={presence} onGetHelp={onGetHelp} />
+
+      {tracking ? <LiveEtaCard tracking={tracking} /> : null}
+
+      {driver ? <DriverRow driver={driver} onCall={onCall} onMessage={onMessage} /> : null}
+
+      {driver ? (
+        <VehicleCard
+          plate={vehiclePlateLabel(driver)}
+          model={vehicleModelLabel(driver)}
+          onPress={onVehicle}
+        />
+      ) : null}
+
+      <BookingOtpCard
+        bookingId={bookingId}
+        available={otpAvailable}
+        highlighted={status === 'arrived'}
+      />
+
+      <SafeHandsBanner height={71.1} paddingLeft={11} />
+
+      {driver && tracking ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <MiButton
+              tone="quiet"
+              onPress={onShare}
+              disabled={sharePending}
+              accessibilityLabel="Share this trip"
+              label={sharePending ? 'Creating link…' : 'Share trip'}
+            />
+          </View>
+          {tracking.shared ? <StopSharing onPress={onStopSharing} /> : null}
+        </View>
+      ) : null}
+
+      {status && hasTimelinePosition(status) ? (
+        <MiCard padding={16}>
+          <StatusTimeline status={status} />
+        </MiCard>
+      ) : null}
+
+      {status && !['completed', 'paid', 'cancelled'].includes(status) ? (
+        <MiButton
+          tone="outline"
+          onPress={onCancel}
+          accessibilityLabel="Cancel this trip"
+          label="Cancel trip"
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function StopSharing({ onPress }: { onPress: () => void }) {
+  const Pressable = usePressablePrimitive();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      pressScale={1}
+      haptic="light"
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel="Stop sharing this trip"
+    >
+      <MiText variant="strong14" color="brand">
+        Stop sharing
+      </MiText>
+    </Pressable>
+  );
+}
+
+/** Terminal statuses, from this screen's point of view. */
 function isSettled(status: string | undefined): boolean {
   return status === 'completed' || status === 'paid' || status === 'cancelled';
 }

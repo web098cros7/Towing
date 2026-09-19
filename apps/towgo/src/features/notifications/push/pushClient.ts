@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 import type { DevicePlatform } from '@towing/api-contracts';
 
 /**
@@ -17,8 +17,7 @@ import type { DevicePlatform } from '@towing/api-contracts';
  */
 
 export type PushAvailability =
-  | { available: true }
-  | { available: false; reason: 'expo_go' | 'simulator' | 'module_missing' };
+  { available: true } | { available: false; reason: 'expo_go' | 'simulator' | 'module_missing' };
 
 /** The three states the UI has to be able to explain to a user. */
 export type PushPermission = 'granted' | 'denied' | 'undetermined';
@@ -118,6 +117,55 @@ export async function requestPermission(): Promise<PushPermission> {
 
   const { status } = await notifications.requestPermissionsAsync();
   return status as PushPermission;
+}
+
+/**
+ * Whether the OS notification prompt can be SHOWN here: a weaker question than
+ * `pushAvailability()`, which asks whether a TOKEN can be minted. The priming
+ * sheet (Figma 07) only needs this one: Expo Go and emulators can grant the
+ * permission even though remote push cannot reach them.
+ */
+export function canRequestPermission(): boolean {
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') return false;
+  // See requestOsPermission for how each platform asks inside Expo Go.
+  if (isExpoGo()) return true;
+  return notificationsModule() !== null;
+}
+
+/**
+ * Asks the OS for notification permission without ever loading
+ * `expo-notifications` where loading it is fatal. Never throws.
+ *
+ * Expo Go on Android: expo-notifications 57 THROWS at module load there
+ * (DevicePushTokenAutoRegistration.fx -> addPushTokenListener ->
+ * warnOfExpoGoPushUsage), and Metro reports a throw from a runtime `require`
+ * as fatal, so try/catch cannot save it. React Native's PermissionsAndroid asks
+ * for the same POST_NOTIFICATIONS permission with no expo-notifications involved.
+ */
+export async function requestOsPermission(): Promise<PushPermission> {
+  try {
+    if (!isExpoGo()) return await requestPermission();
+
+    if (Platform.OS === 'android') {
+      // Below Android 13 notifications are on by default and there is no
+      // runtime prompt; PermissionsAndroid would report the unknown permission
+      // as denied.
+      if (Number(Platform.Version) < 33) return 'granted';
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      );
+      return result === PermissionsAndroid.RESULTS.GRANTED ? 'granted' : 'denied';
+    }
+
+    // Expo Go on iOS: warnOfExpoGoPushUsage only console.warns there, so the
+    // module loads. Used for the permission ONLY; notificationsModule() still
+    // returns null in Expo Go, so no listener or token path changes.
+    const notifications = require('expo-notifications') as NotificationsModule;
+    const { status } = await notifications.requestPermissionsAsync();
+    return status as PushPermission;
+  } catch {
+    return 'undetermined';
+  }
 }
 
 /**

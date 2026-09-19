@@ -1,282 +1,128 @@
-import React, { useCallback, useState } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import React from 'react';
+import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  useAnimatedStyle,
-  useDerivedValue,
-  useSharedValue,
-  withSpring,
-  interpolate,
-} from 'react-native-reanimated';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useTheme } from '@towing/theme';
-import { BottomScrim, Text, type IconComponent } from '@towing/ui';
-import { Home, ClipboardList, Wrench, User } from '@/icons';
-import { Pressable, haptics } from '@/motion';
-
-const TAB_ICONS: Record<string, IconComponent> = {
-  Home,
-  Bookings: ClipboardList,
-  Services: Wrench,
-  Profile: User,
-};
-
-/** Pill height at the reference width; scaled per viewport at render time. */
-const BAR_H = 64;
-/** Inset from the screen edges. */
-const H_MARGIN = 16;
-/** Clearance between the pill and the last line of scroll content. */
-const CONTENT_GAP = 12;
-
-/** How far the scrim's fade reaches above the pill. */
-const SCRIM_EXTRA = 32;
-
-/** Row padding and per-item margin — the chip geometry is derived from these. */
-const ROW_PAD = 5;
-const ITEM_MARGIN = 3;
+import { mitowColors, MiTabItem, type MiLineIconName } from '@/design';
+import type { RootTabParamList } from './types';
 
 /**
- * Bottom clearance a scrolling screen must reserve so its last row is not hidden
- * behind the floating bar. Mirrors the driver app's hook of the same name.
+ * Figma Tab Item set `224:49`, as drawn on 08 Home (`226:270`) and pinned on
+ * 33 / 34 / 38 / 46.
+ *
+ * Labels verbatim. Icons are the Figma glyphs through `MiLineIcon` at 30; only
+ * the colour changes between states (text/secondary → brand/yellow), each glyph
+ * keeping its own solid and outline parts. Support uses `headset-filled`, the
+ * headset as the Tab Item draws it (right ear cup filled), which differs from
+ * the Help chip's headset.
+ */
+const TABS: Record<keyof RootTabParamList, { label: string; icon: MiLineIconName }> = {
+  Home: { label: 'Home', icon: 'home' },
+  Bookings: { label: 'Bookings', icon: 'calendar' },
+  SupportTab: { label: 'Support', icon: 'headset-filled' },
+  Profile: { label: 'Profile', icon: 'user' },
+};
+
+/**
+ * Tab Item height as it renders: 30 icon + 1 gap + 16.5 label line (Label 13 is
+ * 13/16.5). Figma rounds the item box to 48; using the rendered height keeps the
+ * bar at the drawn 84 with the items starting at the drawn 10.3.
+ */
+const ITEM_HEIGHT = 47.5;
+/** Tab Items sit 10.3 below the bar's top edge in both variants. */
+const PADDING_TOP = 10.3;
+/**
+ * The pinned bar's 1 px top stroke takes no layout space in Figma (items stay
+ * at y 10.3 in the 84 frame), but a React Native border does, so it comes out
+ * of the top padding.
+ */
+const PINNED_BORDER = 1;
+/**
+ * The bar is 84 tall on the 393 × 852 frame, INCLUDING the 34 pt home-indicator
+ * zone: 10.3 + 48 items + 25.7 below them. So on iOS the items sit 8.3 pt into
+ * the indicator zone exactly as drawn; below-item padding is inset − 8.3, never
+ * less than the drawn 25.7.
+ *
+ * Android's bottom inset is a real button / gesture bar the labels must never
+ * overlap, so there the padding is the full inset (still never under 25.7).
+ */
+const DRAWN_BELOW_ITEMS = 84 - PADDING_TOP - ITEM_HEIGHT;
+const IOS_INDICATOR_OVERLAP = 34 - DRAWN_BELOW_ITEMS;
+
+/**
+ * Bottom clearance a scrolling screen must reserve. The bar is in normal flow,
+ * so the navigator already excludes it from the screen area; this is only
+ * breathing room under the last row. Kept because tab screens import it.
  */
 export function useTabBarSpace(): number {
-  const theme = useTheme();
-  const insets = useSafeAreaInsets();
-  return Math.max(insets.bottom, theme.spacing.md) + theme.scale(BAR_H) + CONTENT_GAP;
-}
-
-type TabItemProps = {
-  routeName: string;
-  focused: boolean;
-  chipHeight: number;
-  onPress: () => void;
-};
-
-/**
- * One tab. A component rather than inline JSX because each item owns hooks.
- *
- * Icon colour, icon strokeWidth and font weight are all un-animatable — the
- * first two are SVG props on a lucide component that exposes no animated
- * variant, the third is a text style. So each is rendered twice, inactive
- * beneath and active absolutely positioned over it, with their opacity
- * crossfaded. That buys a real colour-and-weight dissolve instead of a discrete
- * swap, for the cost of one extra SVG per tab.
- */
-function TabItem({ routeName, focused, chipHeight, onPress }: TabItemProps) {
-  const theme = useTheme();
-  const Icon = TAB_ICONS[routeName] ?? Home;
-  const iconSize = theme.sizes.icon.lg;
-  const snappy = theme.motion.spring.snappy;
-
-  const progress = useDerivedValue(() => withSpring(focused ? 1 : 0, snappy));
-
-  const iconStackStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(progress.value, [0, 1], [1, 1.08]) }],
-  }));
-  const activeStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
-  const inactiveStyle = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
-
-  return (
-    <Pressable
-      onPress={onPress}
-      pressScale={theme.motion.pressScale.chip}
-      accessibilityRole="button"
-      accessibilityState={{ selected: focused }}
-      accessibilityLabel={routeName}
-      style={{
-        flex: 1,
-        height: chipHeight,
-        marginHorizontal: ITEM_MARGIN,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 3,
-      }}
-    >
-      <Animated.View style={[{ width: iconSize, height: iconSize }, iconStackStyle]}>
-        <Animated.View style={inactiveStyle}>
-          <Icon size={iconSize} color={theme.colors.tabInactive} strokeWidth={2} />
-        </Animated.View>
-        <Animated.View style={[{ position: 'absolute' }, activeStyle]}>
-          <Icon size={iconSize} color={theme.colors.tabActive} strokeWidth={2.4} />
-        </Animated.View>
-      </Animated.View>
-
-      {/* The SEMIBOLD copy sits in flow and defines the layout; the medium one is
-          overlaid on it, so the weight change cannot shift anything.
-
-          The wider variant has to be the one in flow. Sizing this box to the
-          medium copy left the semibold copy a couple of dp short, and once RN
-          has to fit an ellipsis as well it drops two characters — which is why
-          the selected tab read "Bookin…" and "Servic…" while every unselected
-          label was fine. */}
-      <View>
-        <Animated.View style={activeStyle}>
-          <Text
-            variant="label"
-            weight="semibold"
-            numberOfLines={1}
-            style={{ color: theme.colors.tabActive }}
-          >
-            {routeName}
-          </Text>
-        </Animated.View>
-        <Animated.View style={[{ position: 'absolute', left: 0, right: 0 }, inactiveStyle]}>
-          <Text
-            variant="label"
-            weight="medium"
-            numberOfLines={1}
-            align="center"
-            style={{ color: theme.colors.tabInactive }}
-          >
-            {routeName}
-          </Text>
-        </Animated.View>
-      </View>
-    </Pressable>
-  );
+  return 12;
 }
 
 /**
- * Floating pill nav: a stadium-shaped bar inset from the screen edges, with a
- * rounded chip that springs between tabs.
+ * Two variants, no shadow in either:
  *
- * The wrapper is absolutely positioned and has **no background of its own** —
- * content scrolls behind the pill and screens reserve room with
- * `useTabBarSpace()`. An in-flow wrapper with a background paints a visible
- * band across the foot of every screen, which is the bug this replaces (and the
- * same one the driver bar already avoids this way). The moving chip is an extra
- * absolutely-positioned child *inside* the existing row, never a new wrapper,
- * so that fix stays intact.
+ * - HOME (08): no border and nothing of its own beyond white, so it reads as
+ *   the last part of Home's white bottom sheet, exactly as Figma nests it.
+ * - PINNED (every other tab, 33 / 34 / 38 / 46): white with a 1 px border/subtle
+ *   top border.
+ *
+ * Pressing Support never selects it: `BottomTabs` intercepts that tab's
+ * `tabPress` and pushes root `Support` (58).
  */
 export function TabBar({ state, navigation }: BottomTabBarProps) {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const onHome = state.routes[state.index]?.name === 'Home';
 
-  const barHeight = theme.scale(BAR_H);
-  const chipHeight = theme.scale(54);
-  const snappy = theme.motion.spring.snappy;
-
-  // Items are flex: 1 in a row of known padding, so one row measurement gives
-  // every chip position. Simpler and race-free next to four onLayout callbacks,
-  // and it keeps the chip width constant so only translateX ever animates.
-  const [rowWidth, setRowWidth] = useState(0);
-  const count = state.routes.length;
-  const itemWidth = rowWidth > 0 ? (rowWidth - ROW_PAD * 2) / count : 0;
-  const chipWidth = Math.max(itemWidth - ITEM_MARGIN * 2, 0);
-
-  // -1 means "not measured yet" and holds the chip hidden, so it never paints a
-  // frame at x=0 before the real geometry arrives.
-  const chipX = useSharedValue(-1);
-
-  const onRowLayout = useCallback((e: LayoutChangeEvent) => {
-    setRowWidth(e.nativeEvent.layout.width);
-  }, []);
-
-  const targetX = ROW_PAD + state.index * itemWidth + ITEM_MARGIN;
-
-  React.useEffect(() => {
-    if (itemWidth <= 0) return;
-    if (chipX.value < 0) {
-      chipX.value = targetX; // first placement: no travel from nowhere
-    } else {
-      chipX.value = withSpring(targetX, snappy);
-    }
-  }, [targetX, itemWidth, chipX, snappy]);
-
-  const chipStyle = useAnimatedStyle(() => ({
-    opacity: chipX.value < 0 ? 0 : 1,
-    transform: [{ translateX: Math.max(chipX.value, 0) }],
-  }));
-
-  const barBottom = Math.max(insets.bottom, theme.spacing.md);
-  const scrimHeight = barBottom + barHeight + SCRIM_EXTRA;
+  const paddingBottom =
+    Platform.OS === 'ios'
+      ? Math.max(DRAWN_BELOW_ITEMS, insets.bottom - IOS_INDICATOR_OVERLAP)
+      : Math.max(DRAWN_BELOW_ITEMS, insets.bottom);
 
   return (
     <View
-      pointerEvents="box-none"
       style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        height: scrimHeight,
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: mitowColors.surfacePage,
+        paddingTop: onHome ? PADDING_TOP : PADDING_TOP - PINNED_BORDER,
+        paddingHorizontal: 5,
+        paddingBottom,
+        borderTopWidth: onHome ? 0 : PINNED_BORDER,
+        borderTopColor: mitowColors.borderSubtle,
       }}
     >
-      {/* Full-bleed, so it has to sit outside the H_MARGIN inset below. */}
-      <BottomScrim height={scrimHeight} />
+      {state.routes.map((route, index) => {
+        const focused = state.index === index;
+        const tab = TABS[route.name as keyof RootTabParamList];
+        if (!tab) return null;
 
-      <View
-        pointerEvents="box-none"
-        style={{
-          position: 'absolute',
-          left: H_MARGIN,
-          right: H_MARGIN,
-          bottom: barBottom,
-        }}
-      >
-        <View
-          onLayout={onRowLayout}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            height: barHeight,
-            // Stadium: radius is half the height, so the ends are true semicircles.
-            borderRadius: barHeight / 2,
-            backgroundColor: theme.colors.tabBarBg,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            paddingHorizontal: ROW_PAD,
-            shadowColor: '#000000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.08,
-            shadowRadius: 14,
-            elevation: 8,
-          }}
-        >
-          {/* Declared first so it paints behind the items. */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: 'absolute',
-                left: 0,
-                top: (barHeight - chipHeight) / 2,
-                width: chipWidth,
-                height: chipHeight,
-                borderRadius: chipHeight / 2,
-                backgroundColor: theme.colors.brandTint,
-              },
-              chipStyle,
-            ]}
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+          // The selection haptic is fired by the pressable on press-in.
+          if (!focused && !event.defaultPrevented) {
+            navigation.navigate(route.name, route.params);
+          }
+        };
+
+        const onLongPress = () => {
+          navigation.emit({ type: 'tabLongPress', target: route.key });
+        };
+
+        return (
+          <MiTabItem
+            key={route.key}
+            label={tab.label}
+            icon={tab.icon}
+            active={focused}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            style={{ flex: 1 }}
           />
-
-          {state.routes.map((route, index) => {
-            const focused = state.index === index;
-
-            const onPress = () => {
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (!focused && !event.defaultPrevented) {
-                haptics.selection();
-                navigation.navigate(route.name);
-              }
-            };
-
-            return (
-              <TabItem
-                key={route.key}
-                routeName={route.name}
-                focused={focused}
-                chipHeight={chipHeight}
-                onPress={onPress}
-              />
-            );
-          })}
-        </View>
-      </View>
+        );
+      })}
     </View>
   );
 }

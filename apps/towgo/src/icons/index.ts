@@ -10,8 +10,12 @@ export {
   LocateFixed,
   Navigation,
   ArrowLeft,
+  // MiTow redesign: the Continue/Verify CTAs carry a trailing arrow, and the
+  // redesigned nav bar uses a chevron back affordance rather than an arrow.
+  ArrowRight,
   ArrowUpDown,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Info,
   // §9.1.5's surge badge (Phase 14). The curated set had no

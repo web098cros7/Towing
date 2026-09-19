@@ -28,7 +28,8 @@
 #   · the emailed invoice — SES has never sent anything.
 #
 # No `testID` convention exists in this repo. Every step below matches visible
-# copy or an `accessibilityLabel` via `id:`.
+# copy or an `accessibilityLabel` as text (Maestro's `id:` selects a testID,
+# which this app never sets), as a full regex (see customer-login.yaml).
 
 appId: in.mitow.customer
 ---
@@ -38,35 +39,36 @@ appId: in.mitow.customer
 #
 # The bookings list's fixtures include a completed trip; opening it is cheaper
 # and more reliable than driving a whole booking to completion, which
-# `customer-booking.yaml` already covers.
-- tapOn: 'Trips'
-- assertVisible: 'Your trips'
+# `customer-booking.yaml` already covers. The tab bar reads Home, Bookings,
+# Support, Profile; there is no "Trips" tab.
+- tapOn: 'Bookings'
+- assertVisible: 'My Bookings'
 
-- tapOn: 'Completed'
-- assertVisible: 'Total'
+# A booking card is one accessible element labelled
+# "<pickup> to <drop>, <status>, <fare>".
+- tapOn: '.*Completed.*'
 
-# ── §9.1.9's rating entry, for a customer who dismissed the prompt ──────────
-- assertVisible: 'Rate this trip'
-- tapOn: 'Rate this trip'
+# Booking Details is now Figma 20, which draws the ACTIVE trip. A finished one
+# shows the same layout with its status card reading "Completed" (one accessible
+# element, "<title>. <subtitle>"), every timeline row done, and no pinned
+# Cancel / Share bar.
+- assertVisible: 'Booking Details'
+- assertVisible: 'Completed. Your tow is complete'
+- assertVisible: 'Driver Details'
+- assertVisible: 'Tow Truck Details'
+- assertNotVisible: 'Cancel Booking'
 
-- assertVisible: 'How was your tow'
-# `RatingInput` labels each star for accessibility, which is the only handle a
-# flow has on it — there is no testID convention here.
-- tapOn:
-    id: '5 stars'
-- tapOn:
-    id: 'Submit rating'
+# ── Moved off Booking Details: the rating entry and the invoice download ────
+# The old screen carried "Total", "Rate this trip" → "Edit your rating" and
+# "Download invoice" rows. Figma 20 draws none of them (its spec lists fare,
+# invoice and rating rows under "Not drawn"); they belong to 35 Completed Trip
+# Details, which is not rebuilt. Their steps (§9.1.9's rating entry for a
+# customer who dismissed the prompt, "How was your tow…", "5 stars", "Submit
+# rating", "You rated 5 out of 5", and §9.1.10's "Download invoice") come back
+# with 35. The invoice PDF itself stays covered by `invoice.e2e.spec.ts`.
 
-# Back on the detail, the row now offers to amend rather than to rate.
-- assertVisible: 'Edit your rating'
-- assertVisible: 'You rated 5 out of 5'
-
-# ── §9.1.10's invoice download ─────────────────────────────────────────────
-#
-# The tap is asserted, NOT the PDF: `Linking.openURL` hands the signed URL to
-# the OS browser, which is outside the app under test. That the URL resolves to
-# real `%PDF-` bytes is asserted in `invoice.e2e.spec.ts`.
-- assertVisible: 'Download invoice'
+# Booking Details is a root screen with no tab bar: back to the list first.
+- tapOn: 'Go back'
 
 # ── §9.1.9's wallet ────────────────────────────────────────────────────────
 - tapOn: 'Profile'
@@ -75,7 +77,7 @@ appId: in.mitow.customer
 # The screen that showed a fictional "HDFC Visa •••• 4321" from a hardcoded
 # fixture until Phase 19, with every row wired to `const notReady = () => {}`.
 - assertVisible: 'Wallet'
-- assertVisible: 'saved securely by our payment provider'
+- assertVisible: '.*saved securely by our payment provider.*'
 
 - tapOn: 'Wallet'
 - assertVisible: 'Balance'

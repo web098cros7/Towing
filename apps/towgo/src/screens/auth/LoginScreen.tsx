@@ -1,401 +1,368 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
+import { Alert, Image, Keyboard, View, type LayoutChangeEvent, type TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTheme } from '@towing/theme';
+import { usePressablePrimitive } from '@towing/ui';
 import {
-  Animated,
-  BackHandler,
-  Easing,
-  Image,
-  Pressable,
-  ScrollView,
-  View,
-  useWindowDimensions,
-} from 'react-native';
-import { motion, useTheme } from '@towing/theme';
-import { Button, Text } from '@towing/ui';
-import { Logo } from '@/components/Logo';
-import { TextField } from '@/components/TextField';
-import { OtpInput, type OtpInputHandle } from '@towing/ui';
-import { useSendOtp, useVerifyOtp } from '@/features/auth/api/auth.queries';
-import { Phone } from '@/icons';
-import { env } from '@/lib/env';
+  mitowColors,
+  mitowLayout,
+  mitowRadii,
+  mitowShadows,
+  MiButton,
+  MiScreen,
+  MiSegmented,
+  MiText,
+  MiTowLockup,
+} from '@/design';
+import { useSendOtp } from '@/features/auth/api/auth.queries';
+import type { RootStackParamList } from '@/navigation/types';
+import {
+  DEFAULT_LOGIN_DIAL_CODE,
+  LOGIN_DIAL_CODES,
+  type LoginDialCode,
+} from './login/dialCodes.data';
+import { LoginDialCodeButton } from './login/LoginDialCodeButton';
+import { LoginMethodField } from './login/LoginMethodField';
+import { LOGIN_METHODS, type LoginMethodKey } from './login/loginMethods.data';
+import { boardTagline, useScaledTypeStyle } from './login/loginType';
+import { pickDialCode } from './login/pickDialCode';
+import { useKeyboardOverlap } from './login/useKeyboardOverlap';
 
 /**
- * Login (Figma `38:2`, "Mobile Screen Login V2") — hero art, MiTow logo,
- * Welcome header, then ONE animated form area that steps between phone entry
- * and OTP entry.
+ * Figma 03 · Login (`258:1547`), built from the spec.
  *
- * ONE SCREEN, NOT TWO. This replaced `PhoneEntryScreen` + `OtpScreen`, and the
- * merge is what buys the design's feel: the hero, logo and header never move
- * while the form underneath slides between steps (Material shared-axis X — the
- * exiting pane slides/fades left, the entering one arrives from the right).
- * As two stack screens, the whole page re-entered and the top half visibly
- * repainted on every transition.
+ * One static frame: nothing scrolls. The canvas zone (logo, tagline, headline,
+ * body, hero) sits in normal flow below the status bar, and the white panel
+ * follows 16 below the hero and runs to the bottom edge. On the 393×852 frame
+ * that puts the panel top at y392.
  *
- * The design frame has only the password variant of this screen; the OTP step
- * reuses its field/button grammar (52dp controls, radius 12, 24dp gutters) so
- * both steps read as the same screen. Per-product decision: OTP boxes instead
- * of the password field — auth here has no passwords at all (spec §9.1.1).
+ * Two states the design does not draw (spec data gap 7) keep the panel's
+ * content reachable without scrolling: on a screen too short for the frame, and
+ * while the keyboard is up, the panel moves up over the hero by exactly the
+ * missing height.
  */
+const heroImage = require('@/assets/illustrations/login-hero.jpg');
 
-const DESIGN_WIDTH = 390;
-const HERO_WIDTH = 325;
-const HERO_HEIGHT = 158;
-
-/**
- * Same two layers as `HomeHero`, but COINCIDENT — the login design bakes truck
- * and skyline into one 325×158 block (`image 6`), unlike Home where the
- * skyline is offset for depth. Reusing the assets keeps the APK free of a
- * third copy of the same artwork.
- */
-const truckImage = require('@/assets/illustrations/hero-truck.png');
-const skylineImage = require('@/assets/illustrations/hero-skyline.png');
+/** 2a Logo mark: 13.5 below the status bar, x22.5. */
+const LOGO_TOP = 13.5;
+const LOGO_LEFT = 22.5;
+/** 2b Tagline: 6.5 below the mark, x22. */
+const MARK_TO_TAGLINE = 6.5;
+const TAGLINE_LEFT = 22;
+/** 3 Headline: 16.52 below the tagline. */
+const TAGLINE_TO_HEADLINE = 16.52;
+/** 4 Body: 6 below the headline, soft-wrapped in a 300 px box. */
+const HEADLINE_TO_BODY = 6;
+const BODY_WIDTH = 300;
+/** 5 Hero slot: 351×133 on the 393 frame, radius 16. */
+const HERO_HEIGHT = 133;
+/** 6 Panel: top padding 20. */
+const PANEL_PAD_TOP = 20;
+/** 6.4 "OR" row: 17 tall, gap 12. */
+const OR_ROW_HEIGHT = 17;
+/** 6.5 Sign-up row: 21.5 below the OR row, gap 6. */
+const OR_TO_SIGN_UP = 21.5;
+const SIGN_UP_GAP = 6;
 
 const DIGITS_ONLY = /\D/g;
-const OTP_LENGTH = 6;
 
-/** Both panes' content fits inside this; the taller (OTP) pane sets it. */
-const FORM_HEIGHT = 288;
-
-type Step = 'phone' | 'otp';
+const SEGMENT_OPTIONS = LOGIN_METHODS.map((method) => ({
+  key: method.key,
+  label: method.segmentLabel,
+}));
 
 export function LoginScreen() {
   const theme = useTheme();
-  const { width } = useWindowDimensions();
-  const scale = Math.min(width / DESIGN_WIDTH, 1.15);
+  const insets = useSafeAreaInsets();
+  const Pressable = usePressablePrimitive();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const taglineType = useScaledTypeStyle(boardTagline);
 
-  const [step, setStep] = useState<Step>('phone');
+  const [methodKey, setMethodKey] = useState<LoginMethodKey>('mobile');
+  const method = LOGIN_METHODS.find((m) => m.key === methodKey) ?? LOGIN_METHODS[0];
+  const [dialCode, setDialCode] = useState<LoginDialCode>(DEFAULT_LOGIN_DIAL_CODE);
   const [digits, setDigits] = useState('');
-  const [code, setCode] = useState('');
-  const [challengeId, setChallengeId] = useState('');
-  const [secondsLeft, setSecondsLeft] = useState(0);
-
+  const [email, setEmail] = useState('');
   const sendOtp = useSendOtp();
-  const verifyOtp = useVerifyOtp();
-  const submittedRef = useRef(false);
-  const otpRef = useRef<OtpInputHandle>(null);
+  const inputRef = useRef<TextInput | null>(null);
 
-  /** 0 = phone pane, 1 = OTP pane. Drives both panes' opacity + translateX. */
-  const progress = useRef(new Animated.Value(0)).current;
+  const mobile = `${dialCode.dialCode}${digits}`;
+  // TEMPORARY: any number is accepted so the flow can be walked end to end
+  // without a real SMS provider. The real rule is /^[6-9]\d{9}$/ (a valid Indian
+  // mobile); restore it before this reaches anyone outside the team.
+  const validMobile = digits.length > 0;
 
-  const animateTo = useCallback(
-    (to: Step) => {
-      setStep(to);
-      Animated.timing(progress, {
-        toValue: to === 'otp' ? 1 : 0,
-        duration: motion.duration.slow,
-        easing: Easing.bezier(...motion.easing.standard),
-        useNativeDriver: true,
-      }).start();
-      if (to === 'otp') {
-        // Focus once the pane is inbound; a delay past the fade-in midpoint
-        // keeps the keyboard from popping while the phone pane is still visible.
-        setTimeout(() => otpRef.current?.focus(), motion.duration.fast);
-      }
+  const onChangeDigits = useCallback(
+    (value: string) => {
+      setDigits(value.replace(DIGITS_ONLY, '').slice(0, dialCode.nationalNumberLength));
     },
-    [progress],
+    [dialCode.nationalNumberLength],
   );
 
-  const mobile = `+91${digits}`;
-
-  /** Written each render below — lets echoDevOtp (declared first) reach onChangeCode. */
-  const onChangeCodeRef = useRef<(value: string) => void>(() => {});
-
-  /**
-   * DEV ONLY — auto-fill the code from the backend's OTP echo.
-   *
-   * Against a real backend with no SMS provider (SETUP-CHECKLIST item 2, MSG91
-   * unpurchased), the code is never delivered to the handset — it only exists
-   * in the server's logs. The backend exposes `GET /v1/auth/dev/otp` for this
-   * exact situation, gated three ways server-side (404s unless
-   * `AUTH_DEV_OTP_ECHO`, the adapter only records under the same flag, and
-   * production refuses to boot with it set). Client-side this is additionally
-   * dead code outside `__DEV__` and does nothing in mock mode, where the fixed
-   * 123456 already works. `env.devOtpEcho` (EXPO_PUBLIC_DEV_OTP_ECHO) extends it
-   * to the preview EAS environment, where __DEV__ is false.
-   *
-   * The 600ms delay lets the pane transition land so the boxes visibly fill;
-   * filling all six auto-submits, so a dev login is: number → Send OTP → done.
-   * Silent on any failure — a 404 just means the server flag is off, and the
-   * user types the code from the server logs instead.
-   */
-  const echoDevOtp = useCallback(
-    (forChallenge: string) => {
-      // __DEV__ always; a release build only when its EAS environment opts in.
-      if (!(__DEV__ || env.devOtpEcho) || env.useMocks) return;
-      setTimeout(() => {
-        fetch(`${env.apiBaseUrl}/v1/auth/dev/otp?challengeId=${forChallenge}`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((j: { otp?: string } | null) => {
-            if (j?.otp) onChangeCodeRef.current(j.otp);
-          })
-          .catch(() => {});
-      }, 600);
-    },
-    [],
-  );
-
-  // ---- phone step -----------------------------------------------------------
-
-  const onChangeDigits = useCallback((value: string) => {
-    setDigits(value.replace(DIGITS_ONLY, '').slice(0, 10));
+  const onChangeMethod = useCallback((key: string) => {
+    if (key === 'mobile' || key === 'email') setMethodKey(key);
   }, []);
 
-  const requestOtp = useCallback(async () => {
+  const onPressDialCode = useCallback(() => {
+    void pickDialCode(LOGIN_DIAL_CODES).then((picked) => {
+      if (!picked) return;
+      setDialCode(picked);
+      setDigits((current) => current.slice(0, picked.nationalNumberLength));
+    });
+  }, []);
+
+  const submit = useCallback(async () => {
+    // The design draws Continue at full strength with an empty field and draws
+    // no disabled or loading state, so the button always looks the same; an
+    // empty field just puts the cursor in it and a second tap while a request
+    // is in flight is ignored.
+    if (methodKey === 'email') {
+      if (!email.trim()) {
+        inputRef.current?.focus();
+        return;
+      }
+      // The auth API is phone OTP only (spec data gap 1): there is no email
+      // log-in to send this to yet.
+      Alert.alert('Email log-in is not available yet', 'Use your mobile number to log in for now.');
+      return;
+    }
+    if (sendOtp.isPending) return;
+    if (!validMobile) {
+      inputRef.current?.focus();
+      return;
+    }
     try {
       const res = await sendOtp.mutateAsync(mobile);
-      setChallengeId(res.challengeId);
-      setSecondsLeft(res.resendAfterSeconds);
-      submittedRef.current = false;
-      setCode('');
-      animateTo('otp');
-      echoDevOtp(res.challengeId);
-    } catch {
-      // Surfaced inline below via sendOtp.error.
+      navigation.navigate('VerifyOtp', {
+        challengeId: res.challengeId,
+        mobile,
+        resendAfterSeconds: res.resendAfterSeconds,
+      });
+    } catch (error) {
+      // No inline error state is drawn on 03; the OS alert adds nothing to the
+      // screen itself.
+      Alert.alert(
+        'Could not send the code',
+        error instanceof Error ? error.message : 'Something went wrong.',
+      );
     }
-  }, [animateTo, echoDevOtp, mobile, sendOtp]);
+  }, [email, methodKey, mobile, navigation, sendOtp, validMobile]);
 
-  const validMobile = /^[6-9]\d{9}$/.test(digits);
+  // Static-frame fit. Heights are measured, not assumed, because the copy
+  // scales with `theme.scaleRatio`.
+  const frameRef = useRef<View>(null);
+  const {
+    visible: keyboardVisible,
+    overlap: keyboardOverlap,
+    onFrameLayout: onKeyboardFrameLayout,
+  } = useKeyboardOverlap(frameRef);
+  const [frameHeight, setFrameHeight] = useState(0);
+  const [canvasHeight, setCanvasHeight] = useState(0);
+  const [formHeight, setFormHeight] = useState(0);
+  const [footerHeight, setFooterHeight] = useState(0);
 
-  // ---- OTP step -------------------------------------------------------------
-
-  useEffect(() => {
-    if (secondsLeft <= 0) return;
-    const t = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(t);
-  }, [secondsLeft]);
-
-  const submit = useCallback(
-    async (otp: string) => {
-      if (submittedRef.current) return;
-      submittedRef.current = true;
-      try {
-        await verifyOtp.mutateAsync({ challengeId, otp });
-        // Root navigator swaps to the authenticated stack once authStore flips.
-      } catch {
-        submittedRef.current = false;
-      }
+  const onFrameLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      setFrameHeight(event.nativeEvent.layout.height);
+      onKeyboardFrameLayout();
     },
-    [challengeId, verifyOtp],
+    [onKeyboardFrameLayout],
   );
 
-  const onChangeCode = useCallback(
-    (value: string) => {
-      setCode(value);
-      if (value.length === OTP_LENGTH) submit(value);
-    },
-    [submit],
-  );
-  onChangeCodeRef.current = onChangeCode;
-
-  const resend = useCallback(async () => {
-    if (secondsLeft > 0 || sendOtp.isPending) return;
-    submittedRef.current = false;
-    setCode('');
-    const res = await sendOtp.mutateAsync(mobile);
-    setChallengeId(res.challengeId);
-    setSecondsLeft(res.resendAfterSeconds);
-    echoDevOtp(res.challengeId);
-  }, [echoDevOtp, mobile, secondsLeft, sendOtp]);
-
-  const backToPhone = useCallback(() => {
-    setCode('');
-    submittedRef.current = false;
-    verifyOtp.reset();
-    animateTo('phone');
-  }, [animateTo, verifyOtp]);
-
-  // Hardware back on the OTP step returns to the phone step instead of
-  // backgrounding the app — the exact behaviour the old two-screen stack had.
-  useEffect(() => {
-    if (step !== 'otp') return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      backToPhone();
-      return true;
-    });
-    return () => sub.remove();
-  }, [backToPhone, step]);
-
-  // ---- shared-axis pane styles ---------------------------------------------
-
-  const phonePaneStyle = {
-    opacity: progress.interpolate({
-      inputRange: [0, 0.5],
-      outputRange: [1, 0],
-      extrapolate: 'clamp' as const,
-    }),
-    transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [0, -64] }) }],
-  };
-  const otpPaneStyle = {
-    opacity: progress.interpolate({
-      inputRange: [0.5, 1],
-      outputRange: [0, 1],
-      extrapolate: 'clamp' as const,
-    }),
-    transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [64, 0] }) }],
-  };
+  // What must stay visible inside the panel: everything down to the sign-up row
+  // clear of the home indicator / navigation bar; with the keyboard up, the
+  // segments, field and Continue clear of the keyboard.
+  const panelNeeds =
+    PANEL_PAD_TOP +
+    formHeight +
+    (keyboardVisible
+      ? keyboardOverlap + mitowLayout.blockGap
+      : footerHeight + Math.max(insets.bottom, mitowLayout.sheetPadBottom));
+  const measured = frameHeight > 0 && canvasHeight > 0 && formHeight > 0 && footerHeight > 0;
+  const panelMarginTop = measured
+    ? Math.max(
+        -canvasHeight,
+        Math.min(mitowLayout.blockGap, frameHeight - canvasHeight - panelNeeds),
+      )
+    : mitowLayout.blockGap;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.surface0 }}
-      contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Hero — truck over skyline, centered, scaled off the 390 design frame. */}
-      <View style={{ alignItems: 'center', paddingTop: 40 }}>
-        <View style={{ width: HERO_WIDTH * scale, height: HERO_HEIGHT * scale }}>
-          <Image
-            source={skylineImage}
-            resizeMode="contain"
-            style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.52 }}
-            accessibilityIgnoresInvertColors
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          />
-          <Image
-            source={truckImage}
-            resizeMode="contain"
-            style={{ width: '100%', height: '100%' }}
-            accessibilityIgnoresInvertColors
-            accessibilityLabel="Tow truck loading a car"
-          />
-        </View>
+    <MiScreen backgroundColor={mitowColors.surfaceCanvas} edges={['top']}>
+      <View
+        ref={frameRef}
+        style={{ flex: 1 }}
+        onLayout={onFrameLayout}
+        // A tap outside the field closes the keyboard (the number pad has no
+        // return key). Buttons and the field claim their own taps first.
+        onStartShouldSetResponder={() => Keyboard.isVisible()}
+        onResponderRelease={() => Keyboard.dismiss()}
+      >
+        {/* Canvas zone: logo → hero. */}
+        <View onLayout={(event) => setCanvasHeight(event.nativeEvent.layout.height)}>
+          {/* 2a Logo mark 421:19914: 77 × 39.48. */}
+          <View style={{ marginTop: LOGO_TOP, marginLeft: LOGO_LEFT, alignSelf: 'flex-start' }}>
+            <MiTowLockup artwork="mark" width={77} bowlColor="#FFFFFF" />
+          </View>
 
-        <View style={{ alignItems: 'center', paddingTop: 4, gap: 4 }}>
-          <Logo width={150 * scale} />
-          <Text
-            color="tertiary"
-            style={{ fontSize: 8, lineHeight: 12, letterSpacing: 1.6 }}
-            uppercase
+          {/* 2b Tagline 259:1750: Board/Tagline, text/secondary. */}
+          <MiText
+            color="secondary"
+            numberOfLines={1}
+            style={{ ...taglineType, marginTop: MARK_TO_TAGLINE, marginLeft: TAGLINE_LEFT }}
           >
-            Towing. Fast. Reliable.
-          </Text>
+            {"MOVE. WE'RE THERE."}
+          </MiText>
+
+          {/* 3 Headline 259:1751. */}
+          <MiText
+            variant="display34"
+            style={{ marginTop: TAGLINE_TO_HEADLINE, marginLeft: mitowLayout.sideMargin }}
+          >
+            Welcome Back!
+          </MiText>
+
+          {/* 4 Body 259:1752: the 300 box scales with the type so the drawn
+              two-line break holds on every device. */}
+          <MiText
+            variant="bodyL155"
+            color="secondary"
+            style={{
+              marginTop: HEADLINE_TO_BODY,
+              marginLeft: mitowLayout.sideMargin,
+              width: BODY_WIDTH * theme.scaleRatio,
+            }}
+          >
+            Log in to book a tow, get roadside assistance and manage your trips.
+          </MiText>
+
+          {/* 5 Hero 403:19243: image fill, cover-cropped live from the full source. */}
+          <View
+            style={{
+              marginTop: mitowLayout.blockGap,
+              marginHorizontal: mitowLayout.sideMargin,
+              height: HERO_HEIGHT,
+              borderRadius: mitowRadii.image,
+              overflow: 'hidden',
+            }}
+          >
+            <Image
+              source={heroImage}
+              resizeMode="cover"
+              style={{ width: '100%', height: '100%' }}
+              accessibilityIgnoresInvertColors
+              accessible
+              accessibilityLabel="A tow truck carrying a car"
+            />
+          </View>
         </View>
 
-        <View style={{ alignItems: 'center', paddingTop: 20, gap: 6 }}>
-          <Text weight="semibold" style={{ fontSize: 22, lineHeight: 28, letterSpacing: -0.55 }}>
-            Welcome
-          </Text>
-          <Text color="secondary" style={{ fontSize: 13, lineHeight: 19.5 }}>
-            Login to continue and book your tow.
-          </Text>
-        </View>
-      </View>
-
-      {/* Animated form area. Both panes stay mounted so they can crossfade. */}
-      <View style={{ height: FORM_HEIGHT, marginTop: 24 }}>
-        <Animated.View
-          pointerEvents={step === 'phone' ? 'auto' : 'none'}
-          style={[
-            { position: 'absolute', left: 0, right: 0, paddingHorizontal: 24, gap: 14 },
-            phonePaneStyle,
-          ]}
+        {/* 6 Login panel 259:1753: white, top radius 24, no border, Elevation/Sheet,
+            16 below the hero, runs to the bottom edge. */}
+        <View
+          style={{
+            flexGrow: 1,
+            marginTop: panelMarginTop,
+            backgroundColor: mitowColors.surfacePage,
+            borderTopLeftRadius: mitowRadii.sheet,
+            borderTopRightRadius: mitowRadii.sheet,
+            ...mitowShadows.sheet,
+            paddingTop: PANEL_PAD_TOP,
+            paddingHorizontal: mitowLayout.sideMargin,
+          }}
         >
-          <TextField
-            label="Mobile Number"
-            value={digits}
-            onChangeText={onChangeDigits}
-            keyboardType="number-pad"
-            placeholder="Enter mobile number"
-            leftSlot={
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Phone size={17} color={theme.colors.textTertiary} />
-                <Text style={{ fontSize: 14, lineHeight: 20 }}>+91</Text>
-                <View style={{ width: 1, height: 22, backgroundColor: theme.colors.border }} />
-              </View>
-            }
-          />
+          <View onLayout={(event) => setFormHeight(event.nativeEvent.layout.height)}>
+            {/* 6.1 Method segmented control 259:1754. */}
+            <MiSegmented options={SEGMENT_OPTIONS} value={methodKey} onChange={onChangeMethod} />
 
-          {sendOtp.isError ? (
-            <Text color="error" style={{ fontSize: 13 }}>
-              {sendOtp.error instanceof Error ? sendOtp.error.message : 'Something went wrong.'}
-            </Text>
-          ) : null}
+            {/* 6.2 Field 259:1759: 16 below. */}
+            <View style={{ marginTop: mitowLayout.blockGap }}>
+              {methodKey === 'mobile' ? (
+                <LoginMethodField
+                  key="mobile"
+                  method={method}
+                  value={digits}
+                  onChangeText={onChangeDigits}
+                  onSubmit={submit}
+                  inputRef={inputRef}
+                  maxLength={dialCode.nationalNumberLength}
+                  leading={
+                    <LoginDialCodeButton dialCode={dialCode.dialCode} onPress={onPressDialCode} />
+                  }
+                />
+              ) : (
+                <LoginMethodField
+                  key="email"
+                  method={method}
+                  value={email}
+                  onChangeText={setEmail}
+                  onSubmit={submit}
+                  inputRef={inputRef}
+                />
+              )}
+            </View>
 
-          <Button
-            label="Send OTP"
-            fullWidth
-            disabled={!validMobile || sendOtp.isPending}
-            loading={sendOtp.isPending}
-            onPress={requestOtp}
-          />
+            {/* 6.3 Continue 259:1768: Primary Button, trailing arrow, 16 below. */}
+            <MiButton
+              label="Continue"
+              trailingIcon="arrow-right"
+              onPress={submit}
+              style={{ marginTop: mitowLayout.blockGap }}
+            />
+          </View>
 
-          {env.googleSignInEnabled ? (
-            <Button label="Continue with Google" variant="ghost" fullWidth onPress={() => {}} />
-          ) : null}
-        </Animated.View>
+          <View
+            style={{ paddingTop: mitowLayout.blockGap }}
+            onLayout={(event) => setFooterHeight(event.nativeEvent.layout.height)}
+          >
+            {/* 6.4 "OR" row 259:1774: 16 below Continue. */}
+            <View
+              style={{
+                minHeight: OR_ROW_HEIGHT,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1, height: 1, backgroundColor: mitowColors.borderSubtle }} />
+              <MiText variant="label13" color="secondary">
+                OR
+              </MiText>
+              <View style={{ flex: 1, height: 1, backgroundColor: mitowColors.borderSubtle }} />
+            </View>
 
-        <Animated.View
-          pointerEvents={step === 'otp' ? 'auto' : 'none'}
-          style={[
-            { position: 'absolute', left: 0, right: 0, paddingHorizontal: 24, gap: 14 },
-            otpPaneStyle,
-          ]}
-        >
-          <View style={{ gap: 4 }}>
-            {/* "Enter the code" is `customer-login.yaml`'s step-2 marker. */}
-            <Text weight="medium" style={{ fontSize: 13, lineHeight: 17, color: theme.colors.textSecondary }}>
-              Enter the code
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text color="secondary" style={{ fontSize: 13, lineHeight: 19.5 }}>
-                Sent to {mobile}
-              </Text>
-              <Pressable onPress={backToPhone} hitSlop={8} accessibilityRole="button">
-                <Text color="brand" weight="medium" style={{ fontSize: 13, lineHeight: 19.5 }}>
-                  Change
-                </Text>
+            {/* 6.5 Sign-up row 259:1787: centred, items top. */}
+            <View
+              style={{
+                marginTop: OR_TO_SIGN_UP,
+                flexDirection: 'row',
+                justifyContent: 'center',
+                alignItems: 'flex-start',
+                gap: SIGN_UP_GAP,
+              }}
+            >
+              <MiText variant="bodyM15" color="secondary">
+                {"Don't have an account?"}
+              </MiText>
+              <Pressable
+                // Drawn as a tappable link, but no destination exists in Figma
+                // (spec data gap 3): like Home's hamburger, it does nothing yet.
+                onPress={() => {}}
+                pressScale={theme.motion.pressScale.chip}
+                haptic="light"
+                hitSlop={12}
+                accessibilityRole="link"
+                accessibilityLabel="Sign Up"
+              >
+                <MiText variant="strong15" color="brand">
+                  Sign Up
+                </MiText>
               </Pressable>
             </View>
           </View>
-
-          <OtpInput ref={otpRef} value={code} onChange={onChangeCode} error={verifyOtp.isError} />
-
-          {verifyOtp.isError ? (
-            <Text color="error" style={{ fontSize: 13 }}>
-              {verifyOtp.error instanceof Error
-                ? verifyOtp.error.message
-                : 'That code was not accepted.'}
-            </Text>
-          ) : null}
-
-          <Button
-            label="Verify"
-            fullWidth
-            disabled={code.length !== OTP_LENGTH || verifyOtp.isPending}
-            loading={verifyOtp.isPending}
-            onPress={() => submit(code)}
-          />
-
-          <Button
-            label={secondsLeft > 0 ? `Resend code in ${secondsLeft}s` : 'Resend code'}
-            variant="ghost"
-            fullWidth
-            disabled={secondsLeft > 0 || sendOtp.isPending}
-            loading={step === 'otp' && sendOtp.isPending}
-            onPress={resend}
-          />
-        </Animated.View>
+        </View>
       </View>
-
-      {/*
-        Legal footer, per the design. Deliberately NOT links yet: LegalScreen
-        lives in the authenticated stack, so there is nothing to navigate to
-        from here — and a link that goes nowhere is worse than styled text.
-        The DPDP consent overlay after first login is where agreement is
-        actually captured.
-      */}
-      <View style={{ marginTop: 'auto', paddingHorizontal: 24, paddingTop: 24 }}>
-        <Text align="center" style={{ fontSize: 10, lineHeight: 16.5 }} color="secondary">
-          By continuing, you agree to our{' '}
-          <Text color="brand" style={{ fontSize: 10, lineHeight: 16.5, textDecorationLine: 'underline' }}>
-            Terms of Service
-          </Text>{' '}
-          and{' '}
-          <Text color="brand" style={{ fontSize: 10, lineHeight: 16.5, textDecorationLine: 'underline' }}>
-            Privacy Policy
-          </Text>
-        </Text>
-      </View>
-    </ScrollView>
+    </MiScreen>
   );
 }

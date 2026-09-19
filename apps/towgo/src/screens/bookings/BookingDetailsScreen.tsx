@@ -1,274 +1,476 @@
-import React, { useCallback, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, Linking, ScrollView, Share, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useTheme } from '@towing/theme';
+import type { JobStatus } from '@towing/api-contracts';
+import { usePressablePrimitive } from '@towing/ui';
 import {
-  Screen,
-  Text,
-  OfflineBanner,
-  EmptyState,
-  ErrorState,
-  IconButton,
-} from '@towing/ui';
+  MiButton,
+  MiCard,
+  MiHelpChip,
+  MiLineIcon,
+  MiScreen,
+  MiSpinner,
+  MiSummaryRow,
+  MiText,
+  MiTimelineRow,
+  mitowColors,
+  mitowLayout,
+} from '@/design';
+import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
+import { useBooking, useCancelBooking } from '@/features/bookings/api/bookings.queries';
+import { openDriverChat } from '@/features/chat/openDriverChat';
+import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
+import { useShareTrip } from '@/features/tracking/api/tracking.queries';
+import { CancelTripSheet } from '@/features/tracking/components/CancelTripSheet';
+import { track } from '@/lib/analytics/analytics';
+import type { RootStackParamList } from '@/navigation/types';
+import { VehicleCard } from '@/screens/booking/tracking/VehicleCard';
 import {
-  Headphones,
-  ClipboardList,
-  Truck,
-  Clock,
-  Route,
-  IndianRupee,
-  Receipt,
-  ShieldCheck,
-  ArrowLeft,
-  Download,
-  Star,
-} from '@/icons';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useTabBarSpace } from '@/navigation/TabBar';
-import { useBooking } from '@/features/bookings/api/bookings.queries';
-import { BookingHero } from '@/features/bookings/components/BookingHero';
-import { RouteRows } from '@/features/bookings/components/RouteRows';
-import { DetailRow, RowDivider } from '@/components/DetailRow';
-import { RatingSheet } from '@/features/payments/components/RatingSheet';
-import { useInvoiceLink, useRatingState } from '@/features/payments/api/payments.queries';
-import { BookingDetailSkeleton } from '@/features/bookings/components/BookingDetailSkeleton';
-import { PAYMENT_LABEL } from '@/features/bookings/labels';
-import { towTypes } from '@/features/booking/data/towTypes.data';
-import { formatEta, formatPaise } from '@/utils/format';
-import type { BookingsStackParamList, RootStackParamList } from '@/navigation/types';
+  displayDriver,
+  ratingLabel,
+  vehicleModelLabel,
+  vehiclePlateLabel,
+} from '@/screens/booking/tracking/trackingDisplay';
+import { StatusCard } from './booking-details/StatusCard';
+import { isLiveStatus, statusCardCopy, timelineRows } from './booking-details/bookingProgress';
+import { useBookingTracking, useEtaMinutes } from './booking-details/useBookingLive';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/** Bottom bar `239:689`: padding 12 top (from the outer edge), 34 bottom (the home-indicator zone). */
+const BAR_PAD_TOP = 12;
+const BAR_PAD_BOTTOM = 34;
+/** Top border 1 border/subtle, inside and not in layout: RN's border takes layout space, so 12 − 1. */
+const BAR_BORDER = 1;
+/**
+ * "Share Live Location" side padding. The label is 146 wide at Strong 16 and the
+ * drawn inner width is only 137.5 at the master's padding 16; Figma lets the
+ * centred label run into the padding (11.75 either side at 393). The label is
+ * centred, so a smaller padding renders identically wherever it fits and only
+ * stops the single-line label from ellipsising. 8 is not enough on a 360-wide
+ * Android phone (Inter SemiBold measures 136.8 at the 15 pt it scales to, against
+ * 137 inside a 153 button), so 4 leaves room without changing the drawn look.
+ */
+const SHARE_PAD = 4;
+/** Timeline Row time box width for "10:05 AM" (61), used while a reached step's instant is unknown. */
+const TIME_SLOT_WIDTH = 61;
+/** Locations card `239:670`: padding 14 from the outer edge, the 1.2 stroke not in layout. */
+const LOCATIONS_BORDER = 1.2;
+
+const noop = () => {};
 
 /**
- * Booking details.
+ * Figma 20 · Booking Details (`238:554`), with 21 · Cancel Trip (`291:2309`) as a
+ * sheet over it. A pushed root route with no tab bar.
  *
- * Structured as one flat list rather than a stack of cards. Nesting bordered,
- * shadowed cards inside a bordered page is what made this screen read as
- * cluttered: every card boundary is a line the eye has to parse before it gets
- * to the content. Here a single 24pt heading carries the hierarchy, every row
- * shares one icon column, and hairlines do the grouping.
+ * Drawn at its full scroll length (393 × 1024). Everything scrolls, the header
+ * included; only the bottom bar is pinned. Content column: padding 0 / 21 / 24,
+ * gap 16. Top to bottom: the top bar (bare Back chevron + Help chip), the title,
+ * the status card, the six-row booking timeline, a divider, Driver Details, a
+ * divider, Tow Truck Details (vehicle card + locations card). Pinned: "Cancel
+ * Booking" + "Share Live Location".
+ *
+ * Only the `en_route` state is drawn. The status card and timeline follow the
+ * booking status (`booking-details/bookingProgress.ts`); the bottom bar shows
+ * while the booking is live, which is every status the API lets a customer
+ * cancel from (searching, assigned, en route, arrived, in progress), and is hidden
+ * once it is finished (completed, paid, cancelled, no drivers found, disputed).
+ *
+ * DATA: the booking detail gives the status, the confirm time and the two
+ * addresses; the tracking payload gives the driver, vehicle, ETA and the other
+ * timeline instants (`GET /bookings/:id` carries no driver at all). Slots whose
+ * value is not known keep their drawn size with a placeholder bar (18's rule),
+ * including the Driver and Tow Truck sections before a driver is assigned.
  */
 export function BookingDetailsScreen() {
-  const theme = useTheme();
-  const tabBarSpace = useTabBarSpace();
-  const online = useOnlineStatus();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<BookingsStackParamList, 'BookingDetails'>>();
-  const { bookingId } = route.params;
+  const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
+  const { bookingId } = useRoute<RouteProp<RootStackParamList, 'BookingDetails'>>().params;
 
-  const { data, isPending, isError, refetch } = useBooking(bookingId);
+  const { data: booking, isPending, isError, refetch } = useBooking(bookingId, { poll: true });
 
-  const goBack = useCallback(() => navigation.goBack(), [navigation]);
-  const openSupport = useCallback(() => navigation.navigate('ContactUs'), [navigation]);
+  // The booking of record's status: polled every 10 s while live, and the one the
+  // My Bookings active-trip card reads (in test mode the shared mock trip clock
+  // drives it, so it agrees with the Tracking screen).
+  const status: JobStatus | undefined = booking?.status;
+  const live = isLiveStatus(status);
+  // Nothing to read while searching: no driver, vehicle or ETA exists before
+  // assignment (the server sends `driver: null`). Read from assignment on.
+  const searching = status === 'searching';
+  const { data: tracking } = useBookingTracking(bookingId, booking != null && !searching, live);
 
-  const [rateOpen, setRateOpen] = useState(false);
-  const invoice = useInvoiceLink();
-  // Only fetched once the trip is finished — an unrated-state read on a live
-  // trip is a request nobody needs.
-  const rating = useRatingState(bookingId, data?.status === 'paid' || data?.status === 'completed');
+  const etaMinutes = useEtaMinutes(searching ? undefined : tracking);
+  const driver = searching ? null : displayDriver(tracking);
+
+  const shareTrip = useShareTrip(bookingId);
+  const cancelBooking = useCancelBooking();
+  const [cancelOpen, setCancelOpen] = useState(false);
+  // A booking that stops being live (the driver started the tow, or it was
+  // cancelled elsewhere) can no longer be cancelled here: close 21 over it.
+  useEffect(() => {
+    if (!live) setCancelOpen(false);
+  }, [live]);
+
+  // --- Actions -------------------------------------------------------------
+
+  /** Back `239:555`: to whatever pushed this screen (18's vehicle card, or a My Bookings row). */
+  const goBack = useCallback(() => {
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Tabs', { screen: 'Home' });
+  }, [navigation]);
+
+  /** Help `239:558`: 58 Support, as every Help chip does. */
+  const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
 
   /**
-   * §9.1.10's invoice download.
-   *
-   * `Linking.openURL` ON A SIGNED URL, which is what keeps this from adding a
-   * native module: `expo-file-system` and `expo-sharing` are both native, and
-   * Phase 19 already spends its one rebuild point on `react-native-razorpay`.
-   * The URL expires in five minutes, so it is fetched on tap rather than held.
+   * Status card `239:567` (chevron): the live view of this trip. 20 is usually
+   * pushed FROM 18, so `pop: true` returns to that screen instead of stacking a
+   * second copy; with none underneath (opened from My Bookings) it pushes one.
+   * A booking still searching has no driver to track: its live view is 16
+   * Searching, which hands off to 18 by itself once a driver accepts.
    */
-  const openInvoice = useCallback(() => {
-    invoice.mutate(bookingId, {
-      onSuccess: (link) => {
-        void Linking.openURL(link.url).catch(() =>
-          Alert.alert('Could not open the invoice', 'Please try again in a moment.'),
-        );
-      },
-      onError: () =>
-        Alert.alert(
-          'Invoice not ready',
-          'We are still preparing this invoice. Please try again shortly.',
-        ),
-    });
-  }, [bookingId, invoice]);
-  const notReady = useCallback(() => {}, []);
+  const openLiveView = useCallback(() => {
+    if (status === 'searching') navigation.navigate('Searching', { bookingId }, { pop: true });
+    else navigation.navigate('Tracking', { bookingId }, { pop: true });
+  }, [bookingId, navigation, status]);
 
-  const towName = data ? (towTypes.find((t) => t.id === data.towTypeId)?.name ?? 'Tow') : '';
+  /** Call: the same as 18, the driver's number handed to the phone's dialer. */
+  const onCall = useCallback(async () => {
+    try {
+      const contact = await trackingDataSource.contact(bookingId);
+      if (!contact.dialNumber) return;
+      await Linking.openURL(`tel:${contact.dialNumber}`);
+    } catch {
+      // Nothing drawn for a failure; the button stays available to try again.
+    }
+  }, [bookingId]);
+
+  /** Message: 22 Chat with Driver through the one shared action. */
+  const onMessage = useCallback(
+    () => void openDriverChat(navigation, bookingId),
+    [bookingId, navigation],
+  );
+
+  /**
+   * Share Live Location `239:695`: mint (or reuse) the §11.7 link and hand it to
+   * the phone's share sheet, as the tracking screen does. The share message is
+   * the app's existing copy; Figma draws none (DATA-GAPS-20-21.md).
+   */
+  const onShare = useCallback(async () => {
+    try {
+      const link = await shareTrip.mutateAsync();
+      await Share.share({ message: `Follow my tow live: ${link.url}`, url: link.url });
+      track('trip_shared');
+    } catch {
+      // A dismissed share sheet rejects on iOS; a failed mint lives on the mutation.
+    }
+  }, [shareTrip]);
+
+  /** After a successful cancel: Home, as the tracking screen does after its cancel. */
+  const goHome = useCallback(() => {
+    navigation.popToTop();
+    navigation.navigate('Tabs', { screen: 'Home' });
+  }, [navigation]);
+
+  /** 21's "Yes, Cancel Trip": cancels with the chosen chip's label as the reason. */
+  const onCancelConfirm = useCallback(
+    (reason?: string) => {
+      cancelBooking.mutate(
+        { bookingId, reason },
+        {
+          onSuccess: () => {
+            setCancelOpen(false);
+            goHome();
+          },
+          onError: () => {
+            setCancelOpen(false);
+            // The tracking screen's existing failure copy. 21 draws no failure state,
+            // and a chargeable tier has no payment step yet (DATA-GAPS-20-21.md).
+            Alert.alert(
+              'Could not cancel',
+              'This trip cannot be cancelled here. Please call your driver or contact support.',
+            );
+          },
+        },
+      );
+    },
+    [bookingId, cancelBooking, goHome],
+  );
+
+  // --- Content -------------------------------------------------------------
 
   let content: React.ReactNode;
   if (isPending) {
-    content = <BookingDetailSkeleton />;
-  } else if (isError) {
+    // Not drawn: the loader until the booking arrives.
     content = (
-      <View style={{ paddingTop: theme.spacing.xl }}>
-        <ErrorState
-          title="Couldn't load this booking"
-          body="Check your connection and try again."
-          onRetry={() => refetch()}
-        />
+      <View style={{ alignItems: 'center', paddingTop: 24 }}>
+        <MiSpinner />
       </View>
     );
-  } else if (!data) {
+  } else if (isError && !booking) {
+    // Only when there is nothing to show: a failed background poll keeps the
+    // loaded booking on screen, and the next poll tries again.
     content = (
-      <View style={{ paddingTop: theme.spacing.xl }}>
-        <EmptyState
-          icon={ClipboardList}
-          title="Booking not found"
-          body="This booking may have been removed."
-          actionLabel="Back to bookings"
-          onAction={goBack}
-        />
-      </View>
+      <LoadProblem
+        title="Couldn't load this booking"
+        body="Check your connection and try again."
+        onRetry={() => void refetch()}
+      />
     );
+  } else if (!booking || !status) {
+    content = <LoadProblem title="Booking not found" body="This booking may have been removed." />;
   } else {
+    const card = statusCardCopy(status, etaMinutes);
+    const rows = timelineRows(status, booking.createdAt, tracking);
+
     content = (
       <>
-        <View style={{ gap: theme.spacing.xs }}>
-          <Text variant="h1">Booking details</Text>
-          <Text variant="caption" color="secondary">
-            {data.reference}
-          </Text>
-        </View>
-
-        <BookingHero
-          booking={data}
-          towName={towName}
-          onCall={notReady}
-          onMessage={notReady}
+        {/* Status `239:567`: opens the live view while the trip is live. */}
+        <StatusCard
+          title={card.title}
+          subtitle={card.subtitle}
+          onPress={live ? openLiveView : undefined}
         />
 
-        <View>
-          <RowDivider />
-          <RouteRows booking={data} />
+        {/* Booking timeline `239:576`: six Timeline Rows, 40 tall, the last 28 with no connector. */}
+        <View style={{ overflow: 'hidden' }}>
+          {rows.map((row, index) => {
+            const last = index === rows.length - 1;
+            return (
+              <MiTimelineRow
+                key={row.title}
+                state={row.state}
+                title={row.title}
+                time={row.time}
+                timeSlotWidth={TIME_SLOT_WIDTH}
+                last={last}
+                height={last ? 28 : 40}
+              />
+            );
+          })}
+        </View>
 
-          <RowDivider />
-          <DetailRow icon={Truck} label="Tow type" value={`${towName} tow truck`} />
-          {/*
-            Duration, distance and payment are unknown until the trip has run —
-            a searching booking legitimately has none of them. An omitted row
-            reads better than "null km", and §10.9's feedback states are about
-            not pretending to know things.
-          */}
-          {data.durationMinutes !== null ? (
-            <>
-              <RowDivider />
-              <DetailRow
-                icon={Clock}
-                label="Duration"
-                value={formatEta(data.durationMinutes)}
-                tabular
-              />
-            </>
-          ) : null}
-          {data.distanceKm !== null ? (
-            <>
-              <RowDivider />
-              <DetailRow icon={Route} label="Distance" value={`${data.distanceKm} km`} tabular />
-            </>
-          ) : null}
-          {data.paymentMethod ? (
-            <>
-              <RowDivider />
-              <DetailRow
-                icon={IndianRupee}
-                label="Payment"
-                value={PAYMENT_LABEL[data.paymentMethod]}
-              />
-            </>
-          ) : null}
-          <RowDivider />
-          <DetailRow
-            icon={Receipt}
-            label={data.status === 'paid' ? 'Total paid' : 'Total'}
-            value={formatPaise(data.farePaise)}
-            strong
-            tabular
+        <Divider />
+
+        {/*
+          Driver details `239:642`: gap 12. Before a driver exists (searching) the
+          row keeps its drawn slots with placeholders, and Call / Message do
+          nothing: there is nobody to call or write to yet.
+        */}
+        <View style={{ gap: mitowLayout.headingGap }}>
+          <MiText variant="heading18" accessibilityRole="header">
+            Driver Details
+          </MiText>
+          <DriverInfoCard
+            driver={driver ? { name: driver.name, photoUrl: driver.photoUrl } : null}
+            ratingText={driver ? ratingLabel(driver.rating, driver.totalTrips) : null}
+            onCall={driver ? () => void onCall() : noop}
+            onMessage={driver ? onMessage : noop}
           />
-          <RowDivider />
-
-          {/*
-            §9.1.10's "invoice (PDF) download".
-            Gated on `paid`, following this screen's omit-when-unknown rule —
-            an invoice row on an unpaid trip is a row that 409s when tapped.
-          */}
-          {data.status === 'paid' ? (
-            <>
-              <DetailRow
-                icon={Download}
-                label="Download invoice"
-                description={invoice.isPending ? 'Preparing…' : undefined}
-                chevron
-                onPress={openInvoice}
-              />
-              <RowDivider />
-            </>
-          ) : null}
-
-          {/* §9.1.10's "rate & review", reachable for anyone who dismissed the prompt. */}
-          {data.status === 'paid' || data.status === 'completed' ? (
-            <>
-              <DetailRow
-                icon={Star}
-                label={rating.data?.mine ? 'Edit your rating' : 'Rate this trip'}
-                description={
-                  rating.data?.mine
-                    ? `You rated ${rating.data.mine.rating} out of 5`
-                    : 'Your rating decides who we send next time'
-                }
-                chevron
-                onPress={() => setRateOpen(true)}
-              />
-              <RowDivider />
-            </>
-          ) : null}
         </View>
 
-        <View style={{ gap: theme.spacing.sm }}>
-          <Text variant="h2">Help &amp; support</Text>
-          <View>
-            <DetailRow
-              icon={Headphones}
-              label="Need help?"
-              description="Get support for this booking"
-              chevron
-              onPress={openSupport}
-            />
-            <RowDivider />
-            <DetailRow
-              icon={ShieldCheck}
-              label="Report an issue"
-              description="Tell us what went wrong on this trip"
-              chevron
-              onPress={openSupport}
-            />
-          </View>
-        </View>
+        <Divider />
 
-        <RatingSheet
-          bookingId={bookingId}
-          driverName={data.driverName}
-          visible={rateOpen}
-          onDismiss={() => setRateOpen(false)}
-        />
+        {/* Tow truck details `239:661`: gap 12. */}
+        <View style={{ gap: mitowLayout.headingGap }}>
+          <MiText variant="heading18" accessibilityRole="header">
+            Tow Truck Details
+          </MiText>
+          {/* Vehicle `239:663`: the chevron is hidden on this instance and the card is not tappable. */}
+          <VehicleCard
+            plate={vehiclePlateLabel(driver)}
+            model={vehicleModelLabel(driver)}
+            showChevron={false}
+          />
+          {/* Locations `239:670`: no divider between the rows, no chevrons. */}
+          <MiCard
+            radius={16}
+            borderWidth={LOCATIONS_BORDER}
+            elevation="card"
+            padding={14 - LOCATIONS_BORDER}
+            gap={15}
+          >
+            <MiSummaryRow label="Pickup Location" value={booking.originLabel} icon="map-pin" />
+            <MiSummaryRow label="Drop Location" value={booking.destinationLabel} icon="map-pin" />
+          </MiCard>
+        </View>
       </>
     );
   }
 
-  return (
-    <Screen
-      scroll
-      edges={['top']}
-      banner={<OfflineBanner visible={!online} />}
-      contentContainerStyle={{ paddingBottom: tabBarSpace }}
-    >
-      {/* Sections sit 28 apart — comfortably more than the 14 of padding inside a
-          row, so each group reads as its own block without needing a border. */}
-      <View style={{ paddingHorizontal: 20, paddingTop: theme.spacing.xs, gap: 28 }}>
-        {/* Back sits on its own line, left-aligned. A centred title with a floating
-            action over it read as an accident rather than a layout. */}
-        <View style={{ flexDirection: 'row' }}>
-          <IconButton icon={ArrowLeft} label="Go back" onPress={goBack} variant="surface" />
-        </View>
+  const showBar = booking != null && live;
 
+  return (
+    <MiScreen
+      edges={['top']}
+      footer={
+        showBar ? (
+          <BottomBar
+            bottomPadding={Math.max(insets.bottom, BAR_PAD_BOTTOM)}
+            // The server refuses a share until a driver is assigned (409 while searching).
+            shareDisabled={status === 'searching'}
+            sharing={shareTrip.isPending}
+            onCancel={() => setCancelOpen(true)}
+            onShare={() => void onShare()}
+          />
+        ) : null
+      }
+    >
+      <StatusBar style="dark" />
+      <ScrollView
+        style={{ flex: 1 }}
+        // Content `239:552`: padding 0 / 21 / 24, gap 16. With no pinned bar the
+        // column also clears the home indicator.
+        contentContainerStyle={{
+          paddingHorizontal: mitowLayout.sideMargin,
+          paddingBottom: 24 + (showBar ? 0 : insets.bottom),
+          gap: mitowLayout.blockGap,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Header onBack={goBack} onHelp={openSupport} />
         {content}
+      </ScrollView>
+
+      {booking && status ? (
+        <CancelTripSheet
+          bookingId={bookingId}
+          visible={cancelOpen}
+          onDismiss={() => setCancelOpen(false)}
+          onConfirm={onCancelConfirm}
+          isCancelling={cancelBooking.isPending}
+          driverName={driver?.name ?? null}
+          etaMinutes={etaMinutes}
+          status={status}
+        />
+      ) : null}
+    </MiScreen>
+  );
+}
+
+/**
+ * Header `239:553`: the top bar (351 × 46, space-between, items centred), a 12
+ * gap, then "Booking Details" in Display 27.
+ *
+ * Back `239:555` is a bare 46 × 46 frame (no fill, border, shadow or circle) with
+ * icon/chevron-left 24 on the 21 margin; the whole box is the hit area. Help
+ * `239:558` is the full Help Button (padding 16, 95 wide), 21 from the right edge.
+ */
+function Header({ onBack, onHelp }: { onBack: () => void; onHelp: () => void }) {
+  const Pressable = usePressablePrimitive();
+
+  return (
+    <View style={{ gap: mitowLayout.headingGap }}>
+      <View
+        style={{
+          height: 46,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <Pressable
+          onPress={onBack}
+          pressScale={0.9}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={{ width: 46, height: 46, justifyContent: 'center', alignItems: 'flex-start' }}
+        >
+          <MiLineIcon name="chevron-left" size={24} />
+        </Pressable>
+        <MiHelpChip onPress={onHelp} />
       </View>
-    </Screen>
+      <MiText variant="display27" numberOfLines={1} accessibilityRole="header">
+        Booking Details
+      </MiText>
+    </View>
+  );
+}
+
+/** Divider `239:641` / `239:660`: 1 tall (not a hairline), border/subtle, full content width. */
+function Divider() {
+  return <View style={{ height: 1, backgroundColor: mitowColors.borderSubtle }} />;
+}
+
+/**
+ * Bottom bar (pinned) `239:689`: white, a 1 border/subtle top border, padding
+ * 12 / 21 / 34, gap 12, items top-aligned. "Cancel Booking" is Secondary Button
+ * Tone=Strong, "Share Live Location" is Primary Button; both flex 1 × 54 with no icons.
+ */
+function BottomBar({
+  bottomPadding,
+  shareDisabled,
+  sharing,
+  onCancel,
+  onShare,
+}: {
+  bottomPadding: number;
+  shareDisabled: boolean;
+  sharing: boolean;
+  onCancel: () => void;
+  onShare: () => void;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+        paddingTop: BAR_PAD_TOP - BAR_BORDER,
+        paddingHorizontal: mitowLayout.sideMargin,
+        paddingBottom: bottomPadding,
+        borderTopWidth: BAR_BORDER,
+        borderTopColor: mitowColors.borderSubtle,
+        backgroundColor: mitowColors.surfacePage,
+      }}
+    >
+      <MiButton
+        tone="secondaryStrong"
+        label="Cancel Booking"
+        onPress={onCancel}
+        style={{ flex: 1 }}
+      />
+      <MiButton
+        tone="dark"
+        label="Share Live Location"
+        onPress={onShare}
+        loading={sharing}
+        disabled={shareDisabled}
+        paddingLeft={SHARE_PAD}
+        paddingRight={SHARE_PAD}
+        style={{ flex: 1 }}
+      />
+    </View>
+  );
+}
+
+/**
+ * Not drawn: the booking could not be loaded, or does not exist. The screen's
+ * header stays (so Back and Help still work) with a short message under it,
+ * using the app's existing copy.
+ */
+function LoadProblem({
+  title,
+  body,
+  onRetry,
+}: {
+  title: string;
+  body: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <View style={{ gap: mitowLayout.headingGap, paddingTop: 8 }}>
+      <View style={{ gap: 4 }}>
+        <MiText variant="heading18">{title}</MiText>
+        <MiText variant="bodyM15" color="secondary">
+          {body}
+        </MiText>
+      </View>
+      {onRetry ? <MiButton tone="secondarySubtle" label="Try again" onPress={onRetry} /> : null}
+    </View>
   );
 }

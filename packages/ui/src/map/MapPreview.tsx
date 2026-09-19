@@ -4,7 +4,15 @@ import { MapPreviewMaps } from './MapPreview.maps';
 import { MapPreviewPlaceholder } from './MapPreview.placeholder';
 import type { MapPreviewProps } from './types';
 
-export type { MapPreviewProps, MapMarker, MapCoordinate, MapRegion } from './types';
+export type {
+  MapPreviewProps,
+  MapMarker,
+  MapCoordinate,
+  MapRegion,
+  MapOverlay,
+  MapPreviewController,
+  MapFitPadding,
+} from './types';
 export { configureMaps, isNativeMapAvailable, type MapConfig } from './config';
 
 /**
@@ -25,5 +33,9 @@ export { configureMaps, isNativeMapAvailable, type MapConfig } from './config';
 export function MapPreview(props: MapPreviewProps) {
   // Read per render, not at module scope: `configureMaps` runs during app boot,
   // and a module-scope constant would capture the value from before it was set.
-  return isNativeMapAvailable() ? <MapPreviewMaps {...props} /> : <MapPreviewPlaceholder {...props} />;
+  return isNativeMapAvailable() ? (
+    <MapPreviewMaps {...props} />
+  ) : (
+    <MapPreviewPlaceholder {...props} />
+  );
 }

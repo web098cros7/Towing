@@ -11,12 +11,16 @@
 #   reached for a booking that actually exists → the trip survives leaving that
 #   screen, via an active-trip card that did not exist at all before.
 #
-# The booking legitimately stays in SEARCHING: dispatch is Phase 17, so nothing
-# can match it. This flow asserts that honest end state rather than waiting for
-# a driver who cannot arrive.
+# The booking is still SEARCHING when the flow reaches the bookings list, and
+# the flow then cancels it from Booking Details (20) through Cancel Trip (21).
+# The mock search runs a timeline (see `bookingsMockSource.ts`): a new booking's
+# search widens wave by wave and reads back as `no_drivers_found` (17) after
+# 30 s, and only a retried search is matched (18). `customer-tracking.yaml`
+# walks that path; this flow has to reach the bookings list and the cancel
+# inside those 30 s, while the booking is still live.
 #
 # Matches on visible copy and accessibilityLabel only — this codebase has no
-# testID convention (see customer-login.yaml).
+# testID convention (see customer-login.yaml, which also explains the `.*`).
 #
 # ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
 # Maestro flow in this repo has ever run. Reviewed against the screens as
@@ -26,76 +30,117 @@ appId: in.mitow.customer
 - runFlow: customer-login.yaml
 
 # ── Step 1: open the booking flow from Home ─────────────────────────────────
-- assertVisible: 'Fast Towing,'
-- tapOn: 'Where do you need a tow?'
-- assertVisible: 'Enter location'
+- assertVisible: 'Fast Towing,.*'
+# The redesigned Home (08) still shows "Where do you need a tow?", but as the
+# sheet's HEADING rather than a control — tapping it does nothing now. The CTA
+# directly beneath it is what opens this step.
+- tapOn: 'Book a Tow'
+- assertVisible: 'Enter Location'
 
 # ── Step 2: pickup and drop, both carrying real coordinates ─────────────────
-# Typing an address leaves `dropCoords` null, so the recents list is the only
-# source of a coordinate until Phase 16 adds Places autocomplete and a map pin.
-- tapOn: 'Drop location'
-- tapOn: 'Koramangala'
+# Enter Location (10) draws no suggestions list, so a Saved & Recent row is
+# still the surest source of a coordinate: typed text only resolves to a place
+# once editing ends. Pickup already holds the mock default ("MG Road,
+# Bengaluru").
+#
+# "Drop Location" is both the field's visible label and its input's
+# accessibilityLabel. Focusing it makes the next row tap fill Drop; the keyboard
+# then has to go, or it covers the rows.
+- tapOn: 'Drop Location'
+- hideKeyboard
+# A recent row, tapped by its accessibilityLabel ("<title>. <subtitle>").
+# Koramangala is no longer a recent row: 10 draws "Kempegowda Intl. Airport"
+# and "HSR Layout", and the airport lies outside the seeded service zone.
+- tapOn: 'HSR Layout. Sector 2, HSR Layout, Bengaluru'
 
 # §9.1.5's schedule pill — `onPress={() => {}}` until Phase 15, so `'later'`
-# was unreachable and this sheet did not exist.
+# was unreachable and this sheet did not exist. Sheet 11's preset rows are
+# labelled "<title>. <subtitle>" too.
 - tapOn: 'Pickup now'
 - assertVisible: 'When do you need the tow?'
-- tapOn: 'Now'
+- tapOn: 'Now. Nearest available tow truck'
+# Figma 11 added a Done button. Tapping a row now only MOVES the selection, so
+# the choice has to be committed here — previously the row tap did both.
+- tapOn: 'Done'
 
 - tapOn: 'Continue'
 
 # ── Step 3: the fare estimate ───────────────────────────────────────────────
-- assertVisible: 'Select Tow Type'
-# The estimate is a real request even in mock mode and the CTA stays disabled
-# until it lands, so the breakdown affordance is the sync point.
-- assertVisible:
-    id: 'View fare breakdown'
-    timeout: 10000
-
+- assertVisible: 'Select Vehicle'
+# Book a Tow (14) never disables a control. The Estimated Fare row opens the
+# breakdown once a quote is on screen and asks for one again otherwise, so the
+# breakdown sheet (15) opening is the sync point for an estimate having landed.
 - tapOn: 'View fare breakdown'
-- assertVisible: 'Fare breakdown'
+- extendedWaitUntil:
+    visible: 'Fare breakdown'
+    timeout: 10000
 - assertVisible: 'Base fare'
 - assertVisible: 'Total estimate'
-- assertVisible: 'Fare locks when you confirm; it may change with demand until then.'
-- tapOn: 'Got it'
+- assertVisible: 'Fare locks when you confirm. Until then it may change with demand, tolls or waiting time.'
+- tapOn: 'Got It'
 
 # A note the driver will see. `setNote` was never called from anywhere before.
-- tapOn: 'Add Note (Optional): Add'
-- assertVisible: 'Add a note for the driver'
+# Figma 14 draws the notes field as the input itself: the note is typed in
+# place (no sheet, no Save) and stays on screen as the field's value.
+- tapOn: 'Additional notes'
 - inputText: 'Blue hatchback, basement parking'
-- tapOn: 'Save'
-- assertVisible: 'Add Note (Optional): Edit'
+- hideKeyboard
+- assertVisible: 'Blue hatchback, basement parking'
 
 # ── Step 4: confirm — the real POST ─────────────────────────────────────────
 - tapOn: 'Confirm Booking'
 
-# §9.1.6. The booking now exists and sits in SEARCHING; nothing can move it on
-# until Phase 17, and the screen says so rather than faking a match.
-- assertVisible:
-    text: 'Searching for Tow'
+# §9.1.6. The booking now exists and sits in SEARCHING (16).
+- extendedWaitUntil:
+    visible: 'Searching for Tow'
     timeout: 15000
-- assertVisible: "We'll notify you as soon as a driver accepts your request."
+# The banner TITLE, not its subtitle: Figma 16 makes the subtitle report the live
+# search radius and driver count, which the mock search widens every 10 s, so it
+# is not a fixed string.
+- assertVisible: 'Hang tight!'
 
 # ── Step 5: the trip survives leaving the screen ────────────────────────────
 # THE POINT OF THE ACTIVE-TRIP CARD. Leaving the search used to lose the trip
 # entirely — nothing outside the tracking screen knew one was running.
 #
-# This leaves WITHOUT cancelling: "Cancel request" would end the booking, which
-# is the opposite of what this step proves.
-- tapOn:
-    id: 'Go back'
-- assertVisible: 'Select Tow Type'
+# This leaves WITHOUT cancelling: "Cancel Request" would end the booking, which
+# is the opposite of what this step proves. Figma 16 draws no back control
+# (only Help and Cancel Request) and the screen turns the iOS back swipe off, so
+# the way out is Android's system back — THIS STEP IS ANDROID-ONLY. Confirm
+# REPLACED Book a Tow with the search, so back lands on Enter Location, then on
+# Home.
+- pressKey: back
+- assertVisible: 'Enter Location'
+- pressKey: back
+- assertVisible: 'Fast Towing,.*'
 
 - tapOn: 'Bookings'
 - assertVisible: 'My Bookings'
-- assertVisible: 'Current trip'
+# The card's accessibilityLabel starts "Current trip, <status>, …".
+- assertVisible: 'Current trip.*'
 - assertVisible: 'Finding you a driver'
 
-# ── Cleanup ─────────────────────────────────────────────────────────────────
-# Leaving an open booking behind would trip §3.8's one-active-booking guard on
-# the next run — a second confirm would be refused with `active_booking_exists`.
-# §3.5 makes cancelling free for the whole of SEARCHING.
-- tapOn: 'Current trip'
-- assertVisible: 'Searching for Tow'
-- tapOn: 'Cancel request'
-- assertVisible: 'Fast Towing,'
+# ── Cleanup: cancel from Booking Details (20) through Cancel Trip (21) ──────
+# The active-trip card opens Booking Details, which now pins "Cancel Booking"
+# for every live status, searching included. Cancelling here also keeps a real
+# backend's §3.8 one-active-booking guard (`active_booking_exists`) clear for
+# the next run.
+#
+# TIMING: this must still land inside the mock search's 30 s. Once the search
+# lapses to `no_drivers_found` the booking is no longer live and 20 hides its
+# bottom bar, so "Cancel Booking" would not be there to tap.
+- tapOn: 'Current trip.*'
+- assertVisible: 'Booking Details'
+# The status card is one accessible element: "<title>. <subtitle>. Open live tracking".
+- assertVisible: 'Booking Confirmed. Finding you a driver.*'
+- tapOn: 'Cancel Booking'
+# Selectors are regexes, so the "?" and the parentheses are escaped.
+- assertVisible: 'Cancel this trip\?'
+- assertVisible: 'Tell us why \(optional\)'
+# Single-select and optional; the label is sent verbatim as the cancel reason.
+- tapOn: 'Changed my plans'
+- tapOn: 'Yes, Cancel Trip'
+# A successful cancel goes Home.
+- extendedWaitUntil:
+    visible: 'Fast Towing,.*'
+    timeout: 10000

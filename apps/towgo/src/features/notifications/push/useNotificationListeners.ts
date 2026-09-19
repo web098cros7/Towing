@@ -81,13 +81,8 @@ function navigateTo(action: NotificationAction): void {
   if (!destination || !navigationRef.isReady()) return;
 
   if (destination.screen === 'BookingDetails') {
-    // NESTED, not a root route. `BookingDetails` lives inside the Bookings
-    // tab's own stack — deliberately, so the tab bar stays visible on it — so
-    // reaching it from outside means naming the whole path.
-    navigationRef.navigate('Tabs', {
-      screen: 'Bookings',
-      params: { screen: 'BookingDetails', params: destination.params },
-    });
+    // A root route: Figma 20 draws Booking Details with no tab bar.
+    navigationRef.navigate('BookingDetails', destination.params);
     return;
   }
   if (destination.screen === 'Tracking') {

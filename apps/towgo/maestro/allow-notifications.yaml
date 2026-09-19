@@ -14,20 +14,30 @@ appId: in.mitow.customer
 - launchApp:
     clearState: true
 
-# Same login steps as customer-login.yaml (kept in sync with the single-screen
-# LoginScreen since the Figma 38:2 redesign).
-- assertVisible: "Welcome"
-- tapOn: "Enter mobile number"
+# Same login steps as customer-login.yaml, kept in sync with the MiTow redesign:
+# Welcome (02) → Login (03) → Verify OTP (04) → Profile Setup (05) → consent
+# (06). See that file for why the multi-line markers end in `.*`.
+- assertVisible: 'Reliable Towing.*'
+- tapOn: "Log In"
+- assertVisible: "Welcome Back!"
+- tapOn: "Enter your mobile number"
 - inputText: "9876543210"
-- tapOn: "Send OTP"
+- tapOn: "Continue"
 - assertVisible: "Enter the code"
 - tapOn: "One-time code"
-- inputText: "123456"
+- inputText: "000000"
+
+- assertVisible: 'What should we.*'
+- tapOn: "Enter your full name"
+- inputText: "Rahul Sharma"
+- hideKeyboard
+- tapOn: "Continue"
 
 - assertVisible: "Before you continue"
 - tapOn: "I Agree"
 
-# The priming sheet — our own screen, not the OS.
+# The priming sheet (07) — our own screen, not the OS. It slides over Home a
+# moment after the consent overlay closes.
 - assertVisible: "Know when your driver arrives"
 - tapOn: "Turn on notifications"
 
@@ -38,4 +48,4 @@ appId: in.mitow.customer
     commands:
       - tapOn: "Allow"
 
-- assertVisible: "Fast Towing,"
+- assertVisible: 'Fast Towing,.*'

@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '@towing/theme';
 import { Text } from './Text';
 
@@ -16,12 +16,37 @@ export type OtpInputHandle = {
   focus: () => void;
 };
 
+/** State of one digit box, handed to a caller-supplied `renderCell`. */
+export type OtpCellState = {
+  index: number;
+  /** '' when this box has no digit yet. */
+  digit: string;
+  /** The box the next digit lands in, while the hidden input has focus. */
+  active: boolean;
+  filled: boolean;
+  error: boolean;
+};
+
 export type OtpInputProps = {
   value: string;
   onChange: (digits: string) => void;
   /** Paints every box border with the error colour until the next keystroke. */
   error?: boolean;
   autoFocus?: boolean;
+  /**
+   * Presentation seam — replaces how ONE box is drawn, nothing else.
+   *
+   * Added for TowGo's MiTow redesign, which restyles the cells (48×56, r12, a
+   * yellow focus ring and a caret) while the driver app's booking-OTP keypad
+   * keeps the original look. Omitting it renders exactly as this component
+   * always has, so the driver app is unaffected by construction.
+   *
+   * Behaviour deliberately stays here: the single hidden input, paste, SMS
+   * autofill and `accessibilityLabel="One-time code"` must not be duplicated.
+   */
+  renderCell?: (cell: OtpCellState) => React.ReactNode;
+  /** Merged onto the row of boxes — e.g. to change the gap. */
+  containerStyle?: StyleProp<ViewStyle>;
 };
 
 /**
@@ -44,7 +69,7 @@ export type OtpInputProps = {
  * job flow both tap it by that label — no testID convention exists in this repo).
  */
 export const OtpInput = forwardRef<OtpInputHandle, OtpInputProps>(function OtpInput(
-  { value, onChange, error = false, autoFocus = false },
+  { value, onChange, error = false, autoFocus = false, renderCell, containerStyle },
   ref,
 ) {
   const theme = useTheme();
@@ -64,10 +89,21 @@ export const OtpInput = forwardRef<OtpInputHandle, OtpInputProps>(function OtpIn
 
   return (
     <Pressable onPress={focus} accessible={false}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+      <View
+        style={[{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }, containerStyle]}
+      >
         {Array.from({ length: LENGTH }, (_, i) => {
           const digit = value[i] ?? '';
           const active = focused && i === activeIndex;
+
+          if (renderCell) {
+            return (
+              <React.Fragment key={i}>
+                {renderCell({ index: i, digit, active, filled: digit !== '', error })}
+              </React.Fragment>
+            );
+          }
+
           return (
             <View
               key={i}

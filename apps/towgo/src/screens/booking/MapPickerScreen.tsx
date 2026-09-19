@@ -1,37 +1,93 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Platform, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@towing/theme';
-import { Button, MapPreview, Text, type MapRegion } from '@towing/ui';
-import { ArrowLeft, MapPin } from '@/icons';
+import {
+  MapPreview,
+  isNativeMapAvailable,
+  type MapPreviewController,
+  type MapRegion,
+} from '@towing/ui';
+import {
+  mitowColors,
+  mitowLayout,
+  mitowType,
+  MiButton,
+  MiLineIcon,
+  MiMapButton,
+  MiMapCallout,
+  MiSheetPanel,
+  MiText,
+} from '@/design';
 import { useBookingStore } from '@/features/booking/store/bookingStore';
 import { useLocationStore } from '@/features/location/locationStore';
-import { useReverseGeocode } from '@/features/places/api/places.queries';
 import type { RootStackParamList } from '@/navigation/types';
-import { Pressable } from '@/motion';
+import type { LatLng } from '@/types/geo';
+import { readDeviceFix } from './pick-on-map/deviceFix';
+import { usePickOnMapPlace } from './pick-on-map/usePickOnMapPlace';
+
+/** Figma 13 geometry (393 x 852 frame). */
+const CARD_PAD_TOP = 20;
+/** The map runs 31 under the card's top edge (map 660, card top 629). */
+const MAP_UNDER_CARD = 31;
+/** Map centre (330) to the centre pin frame's top (291). */
+const PIN_ABOVE_CENTRE = 39;
+const PIN_SIZE = 44;
+/** Callout instance width 110 = text box 94 + padding 8 each side. */
+const CALLOUT_TEXT_BOX = 94;
+const CALLOUT_PADDING = 8;
+const CALLOUT_TO_PIN = 4;
+/** Pin frame x 175 and callout x 142 both centre on x 197, half a dp right of mid. */
+const PIN_OFFSET_FROM_MID = 0.5;
+/** Back left 16; Locate me right 16 and 16 above the card. */
+const FLOAT_INSET = 16;
+const ADDRESS_ICON = 26;
+const ADDRESS_ICON_GAP = 12;
+const ADDRESS_TEXT_GAP = 3;
+/** The address is drawn on two lines, and the card is 223 tall with them. */
+const ADDRESS_LINES = 2;
+/** ~500 m across: the pin lands on a building, not a neighbourhood. */
+const MAP_ZOOM_DELTA = 0.0045;
+/** ~2 m. The first settle reports the opening camera back with float noise. */
+const SAME_POINT_DEGREES = 2e-5;
+/** MiText's `maxFontSizeMultiplier`. */
+const MAX_FONT_SCALE = 1.2;
+
+const roundHalf = (n: number) => Math.round(n * 2) / 2;
 
 /**
- * §9.1.5 step 2 — the draggable pin.
+ * How much larger than its token MiText renders a style on this device: the
+ * theme's width ratio (half-px rounded, as MiText rounds) times the OS font
+ * scale up to MiText's cap. 1 on the 393 design frame at default font size.
+ */
+function renderedTypeScale(tokenSize: number, ratio: number, fontScale: number): number {
+  const size = ratio === 1 ? tokenSize : roundHalf(tokenSize * ratio);
+  return (size / tokenSize) * Math.min(fontScale, MAX_FONT_SCALE);
+}
+
+function samePoint(a: LatLng, b: LatLng): boolean {
+  return (
+    Math.abs(a.latitude - b.latitude) < SAME_POINT_DEGREES &&
+    Math.abs(a.longitude - b.longitude) < SAME_POINT_DEGREES
+  );
+}
+
+/**
+ * Figma 13 · Pick on Map (`289:2080`).
  *
- * "Select on map" has been a dead button since Phase 12 and was re-homed here
- * from Phase 15 for one reason: a pin needs a rendered map underneath it, which
- * is what this phase installs.
- *
- * THE PIN DOES NOT MOVE; THE MAP DOES. The marker is a fixed overlay at the
- * screen's centre and the customer pans the world beneath it, which is how every
- * ride-hailing app does this and is not merely convention: a genuinely draggable
- * marker has to be grabbed accurately with a thumb that then covers it, and it
- * cannot be positioned near the screen edge at all. Reading the camera's centre
- * on settle also means there is exactly one source of truth for "where the pin
- * is" — no gesture state to keep in sync with a coordinate.
+ * The pin is fixed; the customer pans the map beneath it. The camera centre on
+ * settle is the picked point, reverse-geocoded into the bottom card.
  */
 export function MapPickerScreen() {
-  const theme = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { params } = useRoute<RouteProp<RootStackParamList, 'MapPicker'>>();
   const field = params?.field ?? 'pickup';
+  const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
+  const theme = useTheme();
 
   const setPickupAddress = useBookingStore((s) => s.setPickupAddress);
   const setDropAddress = useBookingStore((s) => s.setDropAddress);
@@ -39,52 +95,48 @@ export function MapPickerScreen() {
   const setDropCoords = useBookingStore((s) => s.setDropCoords);
   const storePickup = useBookingStore((s) => s.pickupCoords);
   const storeDrop = useBookingStore((s) => s.dropCoords);
+  const storeLabel = useBookingStore((s) => (field === 'pickup' ? s.pickupAddress : s.dropAddress));
   const deviceLocation = useLocationStore((s) => s.pickup.coords);
 
-  /**
-   * Opens on the point being edited, falling back to the other end of the trip
-   * and then to the device — so a customer correcting a drop starts at the drop,
-   * not back at their own doorstep 20 km away.
-   */
-  const initialPoint = (field === 'pickup' ? storePickup : storeDrop) ?? deviceLocation ?? storePickup;
+  const fieldPoint = field === 'pickup' ? storePickup : storeDrop;
 
-  const initialRegion = useRef<MapRegion>({
-    latitude: initialPoint.latitude,
-    longitude: initialPoint.longitude,
-    // ~500 m across: close enough that the pin is placed on a building rather
-    // than a neighbourhood, which is the whole point of dropping one.
-    latitudeDelta: 0.0045,
-    longitudeDelta: 0.0045,
-  }).current;
-
-  const [centre, setCentre] = useState({
-    latitude: initialPoint.latitude,
-    longitude: initialPoint.longitude,
+  // Opens on the point being edited, then the device, then the pickup.
+  const [opening] = useState(() => {
+    const point = fieldPoint ?? deviceLocation ?? storePickup;
+    return {
+      point: { latitude: point.latitude, longitude: point.longitude },
+      // The stored label names the opening point only when it IS this field's point.
+      label: fieldPoint ? storeLabel : '',
+    };
   });
-  /** True between the first pan and the camera settling — the label is stale meanwhile. */
-  const [moving, setMoving] = useState(false);
+  const [initialRegion] = useState<MapRegion>(() => ({
+    ...opening.point,
+    latitudeDelta: MAP_ZOOM_DELTA,
+    longitudeDelta: MAP_ZOOM_DELTA,
+  }));
 
-  const { data: place, isFetching } = useReverseGeocode(centre);
+  const map = useRef<MapPreviewController>(null);
+  const [centre, setCentre] = useState<LatLng>(opening.point);
 
-  /**
-   * The label under the pin goes stale the instant the map starts moving, and
-   * saying so is the difference between a picker that feels precise and one
-   * that appears to lag. Without this the sheet keeps showing the previous
-   * address over a map that has already moved, and "Confirm" would accept a
-   * point the customer is no longer looking at.
-   */
-  const onRegionChangeStart = useCallback(() => setMoving(true), []);
+  const card = usePickOnMapPlace(centre);
+  // Until the first lookup answers, the opening point keeps the label it was
+  // stored with. The title line is always drawn, so it never collapses.
+  const title = card.title ?? (samePoint(centre, opening.point) ? opening.label : '');
+  const address = card.address ?? '';
 
   const onRegionChangeComplete = useCallback((region: MapRegion) => {
-    setMoving(false);
     setCentre({ latitude: region.latitude, longitude: region.longitude });
   }, []);
 
+  const onLocate = useCallback(async () => {
+    const fix = await readDeviceFix();
+    if (fix) map.current?.animateToCoordinate(fix);
+  }, []);
+
   const onConfirm = useCallback(() => {
-    // The label may be absent (reverse geocode in flight or failed); the
-    // COORDINATE never is, and it is the half that prices the trip. Falling back
-    // to a formatted coordinate keeps the field honest rather than blank.
-    const label = place?.label ?? `${centre.latitude.toFixed(5)}, ${centre.longitude.toFixed(5)}`;
+    // The coordinate always exists; with no title yet (lookup in flight or
+    // failed) a formatted coordinate keeps the field honest.
+    const label = title || `${centre.latitude.toFixed(5)}, ${centre.longitude.toFixed(5)}`;
 
     if (field === 'pickup') {
       setPickupAddress(label);
@@ -94,129 +146,150 @@ export function MapPickerScreen() {
       setDropCoords(centre);
     }
     navigation.goBack();
-  }, [place, centre, field, setPickupAddress, setDropAddress, setPickupCoords, setDropCoords, navigation]);
+  }, [
+    title,
+    centre,
+    field,
+    setPickupAddress,
+    setDropAddress,
+    setPickupCoords,
+    setDropCoords,
+    navigation,
+  ]);
 
-  const outsideZone = place !== undefined && place.zoneId === null;
+  // The map, pin, callout and Locate me are placed from the measured screen and
+  // card, and drawn only once both are known, so nothing moves after it appears.
+  const [screenHeight, setScreenHeight] = useState<number | null>(null);
+  const [cardHeight, setCardHeight] = useState<number | null>(null);
+  const onRootLayout = useCallback((e: LayoutChangeEvent) => {
+    setScreenHeight(e.nativeEvent.layout.height);
+  }, []);
+  const onCardLayout = useCallback((e: LayoutChangeEvent) => {
+    setCardHeight(e.nativeEvent.layout.height);
+  }, []);
+  const measured = screenHeight !== null && cardHeight !== null;
+
+  const mapHeight = measured ? screenHeight - cardHeight + MAP_UNDER_CARD : 0;
+  const pinTop = mapHeight / 2 - PIN_ABOVE_CENTRE;
+  // Anchored by its bottom edge so the 4 gap to the pin holds at any text height.
+  const calloutBottom = (screenHeight ?? 0) - (pinTop - CALLOUT_TO_PIN);
+
+  // 49 from the top as drawn; only a taller Android status bar pushes it down.
+  const backTop =
+    Platform.OS === 'android'
+      ? Math.max(mitowLayout.contentTop, insets.top)
+      : mitowLayout.contentTop;
+
+  // The design wraps the unbroken string inside a 94 text box as "Move the map"
+  // / "to set the point". MiText scales the type per device while the box is
+  // fixed, which would wrap it into three lines on a 412 phone, so the text box
+  // scales with the rendered type and keeps those two lines. 110 on the frame.
+  const calloutScale = renderedTypeScale(mitowType.bodyXS135.fontSize, theme.scaleRatio, fontScale);
+  const calloutWidth =
+    (calloutScale === 1 ? CALLOUT_TEXT_BOX : roundHalf(CALLOUT_TEXT_BOX * calloutScale)) +
+    CALLOUT_PADDING * 2;
+
+  // Two address lines reserved, so the card keeps its drawn height before the
+  // first lookup lands and for a one-line address.
+  const addressLineHeight =
+    (theme.scaleRatio === 1
+      ? mitowType.bodyS14.lineHeight
+      : roundHalf(mitowType.bodyS14.lineHeight * theme.scaleRatio)) *
+    Math.min(fontScale, MAX_FONT_SCALE);
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
-      <MapPreview
-        style={StyleSheet.absoluteFill}
-        initialRegion={initialRegion}
-        onRegionChange={onRegionChangeStart}
-        onRegionChangeComplete={onRegionChangeComplete}
-        showRecenter={false}
-        showUserLocation
-        userLocationLabel=""
+    <View style={{ flex: 1, backgroundColor: mitowColors.surfacePage }} onLayout={onRootLayout}>
+      {/* Edge-to-edge: the bar is transparent over the map; its content is dark. */}
+      <StatusBar style="dark" />
+
+      {measured && isNativeMapAvailable() ? (
+        <MapPreview
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: mapHeight }}
+          initialRegion={initialRegion}
+          onRegionChangeComplete={onRegionChangeComplete}
+          controllerRef={map}
+          // Lifts the provider logo above the card. Equal top and bottom keep the
+          // camera centre at the map's vertical centre, where the pin tip is.
+          mapPadding={{ top: MAP_UNDER_CARD, bottom: MAP_UNDER_CARD }}
+          showRecenter={false}
+          showUserLocation={false}
+          userLocationLabel=""
+        />
+      ) : null}
+
+      <MiMapButton
+        icon="chevron-left"
+        size={46}
+        accessibilityLabel="Go back"
+        onPress={() => navigation.goBack()}
+        style={{ position: 'absolute', left: FLOAT_INSET, top: backTop }}
       />
 
-      {/*
-        The pin, pinned. `pointerEvents: none` is load-bearing — an overlay that
-        swallowed touches would make the map underneath undraggable, which is the
-        one thing this screen exists to do.
-      */}
-      <View pointerEvents="none" style={styles.pinWrap}>
-        <MapPin
-          size={38}
-          color={theme.colors.brand}
-          // Anchored so the point of the pin sits on the camera centre rather
-          // than the icon's middle — otherwise the confirmed coordinate is half
-          // an icon north of where it looks.
-          style={{ marginBottom: 38 }}
-        />
-      </View>
+      <View onLayout={onCardLayout} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+        <MiSheetPanel showHandle={false} paddingTop={CARD_PAD_TOP}>
+          <MiText variant="overline12" color="secondary" numberOfLines={1}>
+            PICKUP LOCATION
+          </MiText>
 
-      <SafeAreaView edges={['top']} style={styles.header} pointerEvents="box-none">
-        <Pressable
-          onPress={() => navigation.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          style={() => ({
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            marginLeft: 16,
-            backgroundColor: theme.colors.card,
-            alignItems: 'center',
-            justifyContent: 'center',
-            ...theme.shadows.fab,
-          })}
-        >
-          <ArrowLeft size={22} color={theme.colors.textPrimary} />
-        </Pressable>
-      </SafeAreaView>
-
-      <SafeAreaView edges={['bottom']} style={styles.sheet}>
-        <View
-          style={{
-            backgroundColor: theme.colors.card,
-            borderTopLeftRadius: 22,
-            borderTopRightRadius: 22,
-            paddingHorizontal: 20,
-            paddingTop: 18,
-            paddingBottom: 14,
-            gap: 14,
-            ...theme.shadows.card,
-          }}
-        >
-          <View style={{ gap: 4 }}>
-            <Text variant="overline" color="tertiary">
-              {field === 'pickup' ? 'Pickup Location' : 'Drop Location'}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 24 }}>
-              {moving || isFetching ? (
-                <ActivityIndicator size="small" color={theme.colors.brand} />
-              ) : (
-                <MapPin size={17} color={theme.colors.brand} />
-              )}
-              <Text weight="semibold" numberOfLines={2} style={{ fontSize: 15, lineHeight: 21, flex: 1 }}>
-                {moving ? 'Move the map to set the point' : (place?.address ?? 'Locating…')}
-              </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: ADDRESS_ICON_GAP }}>
+            <MiLineIcon name="map-pin" size={ADDRESS_ICON} />
+            <View style={{ flex: 1, gap: ADDRESS_TEXT_GAP }}>
+              <MiText variant="title20">{title || ' '}</MiText>
+              <MiText
+                variant="bodyS14"
+                color="secondary"
+                style={{ minHeight: addressLineHeight * ADDRESS_LINES }}
+              >
+                {address}
+              </MiText>
             </View>
           </View>
 
-          {outsideZone ? (
-            <Text color="error" style={{ fontSize: 13, lineHeight: 18 }}>
-              We don’t operate here yet — pick a point inside a service area.
-            </Text>
-          ) : null}
+          <MiButton label="Confirm pickup" onPress={onConfirm} />
+        </MiSheetPanel>
+      </View>
 
-          <Button
-            label={field === 'pickup' ? 'Confirm pickup' : 'Confirm drop'}
-            fullWidth
-            height={50}
-            // Blocked only while the camera is in flight. An unresolved LABEL is
-            // fine — the coordinate is what the trip is priced from — but an
-            // unsettled camera means the point under the pin is still changing.
-            disabled={moving}
-            onPress={onConfirm}
+      {measured ? (
+        <>
+          <MiMapButton
+            icon="locate"
+            size={50}
+            accessibilityLabel="Locate me"
+            onPress={() => void onLocate()}
+            style={{ position: 'absolute', right: FLOAT_INSET, bottom: cardHeight + FLOAT_INSET }}
           />
-        </View>
-      </SafeAreaView>
+
+          {/* Fixed centre pin: its tip marks the camera centre. Never blocks map gestures. */}
+          <View
+            pointerEvents="none"
+            style={{ position: 'absolute', top: pinTop, left: 0, right: 0, alignItems: 'center' }}
+          >
+            <MiLineIcon
+              name="map-pin"
+              size={PIN_SIZE}
+              style={{ transform: [{ translateX: PIN_OFFSET_FROM_MID }] }}
+            />
+          </View>
+
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              bottom: calloutBottom,
+              left: 0,
+              right: 0,
+              alignItems: 'center',
+            }}
+          >
+            <MiMapCallout
+              text="Move the map to set the point"
+              tail="bottom"
+              width={calloutWidth}
+              style={{ transform: [{ translateX: PIN_OFFSET_FROM_MID }] }}
+            />
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  pinWrap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-});

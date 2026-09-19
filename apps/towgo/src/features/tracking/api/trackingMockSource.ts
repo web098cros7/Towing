@@ -1,10 +1,17 @@
-import type {
-  BookingShareResponse,
-  BookingTracking,
-  CallContact,
-  CancellationQuote,
+import { Image } from 'react-native';
+import {
+  encodePolyline,
+  type BookingShareResponse,
+  type BookingTracking,
+  type CallContact,
+  type CancellationQuote,
 } from '@towing/api-contracts';
 import { env } from '@/lib/env';
+import type {
+  BookingTrackingDisplay,
+  TrackedDriverDisplay,
+} from '@/screens/booking/tracking/trackingDisplay';
+import { mockTripPhase } from './mockTripClock';
 import type { TrackingDataSource } from './trackingDataSource';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -18,9 +25,13 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * bearing rotation or the pan-pause. A static mock would make every one of those
  * unreachable without a device and a real driver.
  *
- * So the driver walks a fixed path from a start point toward the pickup, one
- * step per read, at the cadence the screen polls. The path is short and loops at
- * the end, which is enough to see the marker move, turn and arrive.
+ * So the trip follows the shared mock trip clock (`mockTripClock.ts`, the same
+ * one `bookingsMockSource` reads for the booking's status):
+ *   · `assigned` — the truck waits at the start of the approach (18);
+ *   · `en_route` — it walks the approach to the pickup, placed by the clock
+ *     rather than by the read count, so the walk takes the same time whatever
+ *     the poll cadence (19);
+ *   · `arrived`  — it stands on the pickup, and stays there (23 and 24).
  *
  * `EXPO_PUBLIC_MOCK_TRACKING_STATE` forces the §11.6 honesty states, which are
  * otherwise unreachable in mock mode because a mock never goes stale:
@@ -32,18 +43,64 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const PICKUP = { lat: 12.9716, lng: 77.5946 };
 const DROP = { lat: 12.9345, lng: 77.6266 };
 
-/** A short approach from the north-east, ending at the pickup. */
+/**
+ * A short approach from the north-west, ending at the pickup: Figma 18 draws the
+ * truck up and to the left of the destination pin.
+ */
 const APPROACH = [
-  { lat: 12.9812, lng: 77.6042 },
-  { lat: 12.9793, lng: 77.6021 },
-  { lat: 12.9771, lng: 77.6003 },
-  { lat: 12.9754, lng: 77.5982 },
-  { lat: 12.9738, lng: 77.5964 },
-  { lat: 12.9724, lng: 77.5952 },
+  { lat: 12.98, lng: 77.5872 },
+  { lat: 12.9788, lng: 77.5886 },
+  { lat: 12.9776, lng: 77.5898 },
+  { lat: 12.9765, lng: 77.5912 },
+  { lat: 12.9748, lng: 77.5925 },
+  { lat: 12.973, lng: 77.5938 },
   PICKUP,
 ];
 
-let step = 0;
+/**
+ * Figma 18's example driver ("Rakesh Kumar", "4.8 (500+ trips)", "KA 01 AB 1234",
+ * "Tata 407 (Flatbed)", IMG-01 photo). `vehicleMake` / `vehicleModel` are the
+ * app-local extension in `TrackedDriverDisplay` (the contract has no make or
+ * model yet); "(Flatbed)" comes from the contract's own `vehicleClass`.
+ * The photo is a bundled asset resolved to a URI, so it travels through the
+ * contract's `photoUrl` exactly like a server URL would.
+ */
+const MOCK_DRIVER: TrackedDriverDisplay = {
+  name: 'Rakesh Kumar',
+  photoUrl: Image.resolveAssetSource(
+    require('@/screens/booking/tracking/assets/mock-driver-photo.png'),
+  ).uri,
+  rating: 4.8,
+  totalTrips: 512,
+  vehiclePlate: 'KA 01 AB 1234',
+  vehicleClass: 'flatbed',
+  vehicleMake: 'Tata',
+  vehicleModel: '407',
+};
+
+/** The approach's legs (7 points, 6 legs); the pickup is the last point. */
+const LEGS = APPROACH.length - 1;
+
+/** Figma 18's "Arriving in 5 mins", and 19's "10:12 AM" → "Est. 10:17 AM": five clock minutes out. */
+const DRAWN_ETA_SECONDS = 5 * 60;
+
+/**
+ * A road-shaped route from the truck to the pickup. Each leg turns a corner
+ * (north-south, then east-west) the way a street grid does, so the design's
+ * solid route line has something to draw in mock mode. `from` is the truck,
+ * which may be part-way along the leg to `APPROACH[nextIndex]`.
+ */
+function mockRoute(from: { lat: number; lng: number }, nextIndex: number): string {
+  const points = [from, ...APPROACH.slice(nextIndex)];
+  const out: { lat: number; lng: number }[] = [];
+  points.forEach((point, i) => {
+    const previous = points[i - 1];
+    if (previous) out.push({ lat: point.lat, lng: previous.lng });
+    out.push(point);
+  });
+  return encodePolyline(out);
+}
+
 let shared: BookingShareResponse | null = null;
 
 /** Bearing from one point to the next, so the marker turns the way it is going. */
@@ -53,7 +110,28 @@ function bearing(from: { lat: number; lng: number }, to: { lat: number; lng: num
   const x =
     Math.cos(toRad(from.lat)) * Math.sin(toRad(to.lat)) -
     Math.sin(toRad(from.lat)) * Math.cos(toRad(to.lat)) * Math.cos(toRad(to.lng - from.lng));
-  return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * Where the truck is `progress` (0 → 1) of the way along the approach: the
+ * point itself, the approach index it is heading for, and its bearing.
+ */
+function alongApproach(progress: number): {
+  here: { lat: number; lng: number };
+  nextIndex: number;
+  headingDeg: number;
+} {
+  const scaled = Math.min(Math.max(progress, 0), 1) * LEGS;
+  const leg = Math.min(LEGS - 1, Math.floor(scaled));
+  const t = scaled - leg;
+  const from = APPROACH[leg]!;
+  const to = APPROACH[leg + 1]!;
+  return {
+    here: { lat: from.lat + (to.lat - from.lat) * t, lng: from.lng + (to.lng - from.lng) * t },
+    nextIndex: leg + 1,
+    headingDeg: bearing(from, to),
+  };
 }
 
 /** Ages the fix so the §11.6 states can be forced without waiting for one. */
@@ -68,50 +146,60 @@ export const trackingMockSource: TrackingDataSource = {
     await delay(300);
     if (env.mockTrackingState === 'error') throw new Error('Failed to load tracking');
 
-    const index = Math.min(step, APPROACH.length - 1);
-    const next = APPROACH[Math.min(step + 1, APPROACH.length - 1)]!;
-    const here = APPROACH[index]!;
-    // Loops rather than stopping, so the screen can be watched for as long as
-    // somebody wants to look at it.
-    step = (step + 1) % (APPROACH.length + 4);
+    const now = Date.now();
+    const phase = mockTripPhase(bookingId, now);
+    const arrived = phase.status === 'arrived';
+    const { here, nextIndex, headingDeg } = alongApproach(phase.progress);
 
-    const arrived = index >= APPROACH.length - 1;
+    /**
+     * Assigned: the drawn five minutes. En route: a fixed arrival instant five
+     * minutes after the driver set off, so 19's "Est." clock holds still the way
+     * a real estimate does while the truck keeps to it. Arrived: none left.
+     *
+     * The arrival is five minutes after the WHOLE MINUTE the driver set off in,
+     * because 19 draws both as clock minutes: set off at 10:12:40, a plain
+     * +5 minutes is 10:17:40, which rounds to "Est. 10:18 AM" beside "10:12 AM".
+     */
+    const arrivalAt =
+      phase.enRouteAt === null
+        ? null
+        : Math.floor(phase.enRouteAt / 60_000) * 60_000 + DRAWN_ETA_SECONDS * 1000;
+    const etaSeconds = arrived
+      ? 0
+      : arrivalAt === null
+        ? DRAWN_ETA_SECONDS
+        : Math.max(60, Math.round((arrivalAt - now) / 1000));
 
-    return {
+    const tracking: BookingTrackingDisplay = {
       bookingId,
-      status: arrived ? 'arrived' : 'en_route',
-      driver: {
-        name: 'Anita Sharma',
-        photoUrl: null,
-        rating: 4.9,
-        totalTrips: 214,
-        vehiclePlate: 'KA 05 MJ 8842',
-        vehicleClass: 'flatbed',
-      },
+      status: phase.status,
+      driver: MOCK_DRIVER,
       position: {
         lat: here.lat,
         lng: here.lng,
-        headingDeg: bearing(here, next),
-        speedKph: arrived ? 0 : 28,
+        headingDeg,
+        speedKph: phase.status === 'en_route' ? 28 : 0,
         lowAccuracy: false,
-        at: new Date(Date.now() - fixAge()).toISOString(),
+        at: new Date(now - fixAge()).toISOString(),
       },
-      etaSeconds: Math.max(60, (APPROACH.length - index) * 90),
-      // Labelled `haversine` because it IS a straight line — the mock has no
-      // Directions result, and claiming a routed source would make the app draw
-      // a solid line through buildings and call it a road.
-      etaSource: 'haversine',
-      routePolyline: null,
+      etaSeconds,
+      // The mock route follows a street grid (see `mockRoute`), so it is labelled
+      // as a routed source and drawn as the design's solid line.
+      etaSource: 'google_directions',
+      routePolyline: arrived ? null : mockRoute(here, nextIndex),
       routeDropPolyline: null,
       pickup: PICKUP,
       drop: DROP,
-      assignedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
-      arrivedAt: arrived ? new Date().toISOString() : null,
+      assignedAt: new Date(phase.matchedAt).toISOString(),
+      arrivedAt: phase.arrivedAt === null ? null : new Date(phase.arrivedAt).toISOString(),
       startedAt: null,
       completedAt: null,
       shared: shared !== null,
-      at: new Date().toISOString(),
+      at: new Date(now).toISOString(),
+      // App-local: the contract has no en-route instant yet (19's "Driver on the way" time).
+      enRouteAt: phase.enRouteAt === null ? null : new Date(phase.enRouteAt).toISOString(),
     };
+    return tracking;
   },
 
   async share(bookingId: string): Promise<BookingShareResponse> {
@@ -133,19 +221,16 @@ export const trackingMockSource: TrackingDataSource = {
 
   async cancellationQuote(): Promise<CancellationQuote> {
     await delay(250);
-    // The chargeable branch, so the sheet's fee copy is reachable in mock mode.
-    //
-    // `chargeable` IS NOW TRUE — Phase 19 shipped collection, and the previous
-    // version of this comment predicted exactly that. The sheet's "we cannot
-    // take this fee yet" block disappears on its own, and the confirm button
-    // now opens the fee payment sheet.
+    // The FREE tier, the one 21 draws ("No fee"), and the same tier the mock
+    // cancel itself answers with (`bookingsMockSource.cancelBooking`), so the
+    // quote never names a fee the cancel then does not take. The app has no
+    // fee payment step: a chargeable quote only changes the badge to the amount.
     return {
-      tier: 'full',
-      feePaise: 120_000,
-      reason: 'Your driver is already on the way',
+      tier: 'free',
+      feePaise: 0,
+      reason: 'Free within 2 minutes of booking',
       chargeable: true,
-      // §3.5 compensates the driver out of the fee — half, by default.
-      driverCompensationPaise: 60_000,
+      driverCompensationPaise: 0,
     };
   },
 
@@ -159,7 +244,7 @@ export const trackingMockSource: TrackingDataSource = {
       dialNumber: '+919876500000',
       masked: false,
       party: 'driver',
-      displayName: 'Anita Sharma',
+      displayName: MOCK_DRIVER.name,
       reference: null,
     };
   },

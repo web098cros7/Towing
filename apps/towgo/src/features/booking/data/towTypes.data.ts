@@ -1,54 +1,56 @@
 import type { TowType } from '../types';
 
 /**
- * The four duty classes (Figma 31:66), as PRESENTATION over §7's two vehicle
- * classes.
+ * Figma 14 "Select Vehicle": exactly the three drawn tiles, Car, SUV and Bike.
  *
- * The prices that used to live here are gone. Their own comment said they
- * "become the estimate API later (spec §7.6 — fare matrix by vehicle class +
- * distance)" — Phase 14 is later. What a static array can legitimately own is
- * the artwork, the label and which base matrix the class bills against; what it
- * cannot own is a fare, because §7 needs the distance and the zone.
- *
- * `image` stays `ImageSourcePropType`: bundled artwork is correctly a
- * `require()`, and the Phase 12 contract-correction that swapped image props
- * for URL strings applies to SERVER-sourced images only.
+ * The ids and the §7 base matrix each bills against are unchanged, so pricing
+ * is unaffected: a car bills wheel-lift, an SUV flatbed (§7.2), a bike
+ * wheel-lift (and the `bike_tow` catalogue row pins wheel-lift anyway).
  */
 export const towTypes: TowType[] = [
   {
     id: 'light',
-    name: 'Light Duty',
-    categories: 'Cars, Hatchbacks',
+    name: 'Car',
+    categories: 'Hatchback / Sedan',
     vehicleClass: 'wheel_lift',
-    image: require('@/assets/illustrations/tow-light.png'),
+    icon: 'car',
   },
   {
     id: 'medium',
-    name: 'Medium Duty',
-    categories: 'SUVs, MUVs',
-    // An SUV goes on a flatbed (§7.2 names "luxury, SUV, EV") — this is the
-    // boundary between the two base matrices, not a cosmetic tier.
+    name: 'SUV',
+    categories: 'SUV / MUV',
     vehicleClass: 'flatbed',
-    image: require('@/assets/illustrations/tow-medium.png'),
+    icon: 'suv',
   },
   {
-    id: 'heavy',
-    name: 'Heavy Duty',
-    categories: 'Trucks, Buses',
-    vehicleClass: 'flatbed',
-    image: require('@/assets/illustrations/tow-heavy.png'),
-  },
-  {
-    id: 'euro',
-    name: 'Euro Duty',
-    categories: 'Rigs',
-    vehicleClass: 'flatbed',
-    image: require('@/assets/illustrations/tow-heavy.png'),
-    disabled: true,
+    id: 'bike',
+    name: 'Bike',
+    categories: '2 Wheeler',
+    vehicleClass: 'wheel_lift',
+    icon: 'bike',
   },
 ];
 
-/** The §7 base matrix a duty class bills against. Falls back to the light class. */
+/** The §7 base matrix a vehicle bills against. Falls back to wheel-lift. */
 export function vehicleClassFor(id: TowType['id']): 'wheel_lift' | 'flatbed' {
   return towTypes.find((type) => type.id === id)?.vehicleClass ?? 'wheel_lift';
+}
+
+/**
+ * The tow-method slot of Figma 15's subtitle ("Tow a Car · Flatbed · …"), bound
+ * to the class the estimate actually bills.
+ *
+ * Only "Flatbed" is drawn. The design pairs it with Car, but `car_tow` leaves
+ * the class open and a Car bills wheel-lift (above), so a Car quote reads
+ * "Wheel-lift", the same label 18's Vehicle Card and the `wheel_lift_tow`
+ * catalogue row use. Showing "Flatbed" for a wheel-lift job would promise the
+ * customer a truck that is not coming. The owner has to decide the Car mapping.
+ */
+const TOW_METHOD_LABELS: Record<'wheel_lift' | 'flatbed', string> = {
+  flatbed: 'Flatbed',
+  wheel_lift: 'Wheel-lift',
+};
+
+export function towMethodLabelFor(vehicleClass: 'wheel_lift' | 'flatbed'): string {
+  return TOW_METHOD_LABELS[vehicleClass];
 }

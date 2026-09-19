@@ -1,136 +1,285 @@
-import React from 'react';
-import { TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, TextInput, View, type TextStyle } from 'react-native';
+import Svg, { Circle, Line } from 'react-native-svg';
 import { useTheme } from '@towing/theme';
-import { ArrowUpDown } from '@/icons';
-import { useBookingStore } from '../store/bookingStore';
-import { Pressable } from '@/motion';
+import { usePressablePrimitive } from '@towing/ui';
+import {
+  mitowColors,
+  mitowRadii,
+  mitowShadows,
+  mitowType,
+  MiLineIcon,
+  MiMapButton,
+  MiText,
+} from '@/design';
 
 export type LocationField = 'pickup' | 'drop';
 
+/** Figma stroke of the Locations card (289:2209): 1.2 border/subtle. */
+const CARD_BORDER = 1.2;
 /**
- * Label-less address entry (Rapido pattern): two single-line inputs whose
- * placeholder text names the field ("Pickup location" / "Drop location"), with
- * green/red timeline dots as the indicator and a swap control.
+ * Figma padding 14 is measured from the OUTER edge (the stroke takes no layout
+ * space there). RN borders do, so the padding is 14 - 1.2.
  */
-export function LocationFields({
-  onFocusField,
-}: {
-  onFocusField?: (field: LocationField) => void;
-}) {
-  const theme = useTheme();
-  const pickupAddress = useBookingStore((s) => s.pickupAddress);
-  const dropAddress = useBookingStore((s) => s.dropAddress);
-  const setPickupAddress = useBookingStore((s) => s.setPickupAddress);
-  const setDropAddress = useBookingStore((s) => s.setDropAddress);
-  const swapAddresses = useBookingStore((s) => s.swapAddresses);
+const CARD_PADDING = 14 - CARD_BORDER;
+/** Row height (289:2210 / 289:2220). */
+const ROW_HEIGHT = 42;
+/** Marker box, text column offset = 26 + gap 14. */
+const MARKER = 26;
+const ROW_GAP = 14;
 
-  const inputStyle = {
-    flex: 1,
-    fontFamily: theme.fonts.medium,
-    fontSize: 15,
-    height: 44,
-    color: theme.colors.textPrimary,
+const roundHalf = (n: number) => Math.round(n * 2) / 2;
+
+/** MiTow/Body M 15 for the editable value, scaled like MiText. */
+function useValueStyle(): TextStyle {
+  const theme = useTheme();
+  const t = mitowType.bodyM15;
+  const r = theme.scaleRatio;
+  const lineHeight = r === 1 ? t.lineHeight : roundHalf(t.lineHeight * r);
+  return {
+    height: lineHeight,
+    fontFamily: theme.fonts[t.weight],
+    fontSize: r === 1 ? t.fontSize : roundHalf(t.fontSize * r),
+    lineHeight,
+    letterSpacing: t.letterSpacing,
+    color: mitowColors.textPrimary,
     padding: 0,
     margin: 0,
     includeFontPadding: false,
-    textAlignVertical: 'center',
-  } as const;
+  };
+}
 
+/** Pickup marker 289:2211: 26 box, 20px #CCD2DA disc with a 10px #0B0C0E centre. */
+function PickupMarker() {
+  return (
+    <Svg width={MARKER} height={MARKER} viewBox="0 0 26 26">
+      <Circle cx={13} cy={13} r={10} fill={mitowColors.borderHandle} />
+      <Circle cx={13} cy={13} r={5} fill={mitowColors.textPrimary} />
+    </Svg>
+  );
+}
+
+type RowProps = {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChangeText: (text: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  inputRef: React.RefObject<TextInput | null>;
+  returnKeyType: 'next' | 'done';
+  onSubmitEditing?: () => void;
+  marker: React.ReactNode;
+  trailing: React.ReactNode;
+};
+
+/**
+ * One location row: marker 26, gap 14, text column (label Body S 14 / value
+ * Body M 15, gap 3), 40 round button.
+ *
+ * At rest the value is plain single-line text, exactly as drawn, ending in an
+ * ellipsis if an address is wider than the 229 column (the design does not
+ * settle overflow). The TextInput under it only shows its own text while the
+ * customer is typing.
+ */
+function LocationRow({
+  label,
+  value,
+  placeholder,
+  onChangeText,
+  onFocus,
+  onBlur,
+  inputRef,
+  returnKeyType,
+  onSubmitEditing,
+  marker,
+  trailing,
+}: RowProps) {
+  const Pressable = usePressablePrimitive();
+  const valueStyle = useValueStyle();
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: ROW_GAP, height: ROW_HEIGHT }}>
+      {marker}
+      {/*
+        Tapping the label focuses the value. A text field does not shrink when
+        tapped, so there is no press scale; the caret, the keyboard and a
+        selection haptic are the feedback.
+      */}
+      <Pressable
+        onPress={() => inputRef.current?.focus()}
+        pressScale={1}
+        haptic="selection"
+        accessible={false}
+        style={{ flex: 1, gap: 3 }}
+      >
+        <MiText variant="bodyS14" color="secondary" numberOfLines={1}>
+          {label}
+        </MiText>
+        <View>
+          <TextInput
+            ref={inputRef}
+            value={value}
+            onChangeText={onChangeText}
+            onFocus={() => {
+              setFocused(true);
+              onFocus();
+            }}
+            onBlur={() => {
+              setFocused(false);
+              onBlur();
+            }}
+            placeholder={focused ? placeholder : undefined}
+            placeholderTextColor={mitowColors.textPlaceholder}
+            style={[valueStyle, focused ? null : { color: 'transparent' }]}
+            selectionColor={mitowColors.brandYellow}
+            cursorColor={mitowColors.textPrimary}
+            maxFontSizeMultiplier={1.2}
+            autoCorrect={false}
+            returnKeyType={returnKeyType}
+            onSubmitEditing={onSubmitEditing}
+            accessibilityLabel={label}
+          />
+          {focused ? null : (
+            <View
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={StyleSheet.absoluteFill}
+            >
+              <MiText variant="bodyM15" color={value ? 'primary' : 'placeholder'} numberOfLines={1}>
+                {value || placeholder || ''}
+              </MiText>
+            </View>
+          )}
+        </View>
+      </Pressable>
+      {trailing}
+    </View>
+  );
+}
+
+/**
+ * Figma 10 Locations card (289:2209): pickup row, inset divider, drop row, and
+ * the dashed connector between the two markers.
+ *
+ * Presentational: the screen owns what each value shows (the booking's place,
+ * or the customer's text while they type) and what a finished edit does. The
+ * pickup has no placeholder (none is drawn); the drop's empty state is the
+ * drawn "Where should we tow it?".
+ */
+export function LocationFields({
+  pickupInputRef,
+  dropInputRef,
+  pickupText,
+  dropText,
+  onChangeText,
+  onFocusField,
+  onBlurField,
+  onLocate,
+  onSwap,
+  locating = false,
+}: {
+  pickupInputRef: React.RefObject<TextInput | null>;
+  dropInputRef: React.RefObject<TextInput | null>;
+  pickupText: string;
+  dropText: string;
+  onChangeText: (field: LocationField, text: string) => void;
+  onFocusField: (field: LocationField) => void;
+  /** Editing ended (keyboard Done / Next, or focus moved away). */
+  onBlurField: (field: LocationField) => void;
+  onLocate: () => void;
+  onSwap: () => void;
+  locating?: boolean;
+}) {
   return (
     <View
       style={{
-        backgroundColor: theme.colors.card,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        paddingHorizontal: 14,
-        flexDirection: 'row',
-        alignItems: 'center',
+        backgroundColor: mitowColors.surfacePage,
+        borderWidth: CARD_BORDER,
+        borderColor: mitowColors.borderSubtle,
+        borderRadius: mitowRadii.card,
+        padding: CARD_PADDING,
         gap: 12,
-        ...theme.shadows.card,
+        ...mitowShadows.card,
       }}
     >
-      {/* Timeline dots aligned to each row */}
-      <View style={{ alignItems: 'center', alignSelf: 'stretch', width: 12 }}>
-        <View style={{ height: 44, justifyContent: 'center' }}>
-          <View
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 6,
-              borderWidth: 3,
-              borderColor: theme.colors.success,
-              backgroundColor: theme.colors.card,
-            }}
+      <LocationRow
+        label="Pickup Location"
+        value={pickupText}
+        onChangeText={(text) => onChangeText('pickup', text)}
+        onFocus={() => onFocusField('pickup')}
+        onBlur={() => onBlurField('pickup')}
+        inputRef={pickupInputRef}
+        returnKeyType="next"
+        onSubmitEditing={() => dropInputRef.current?.focus()}
+        marker={<PickupMarker />}
+        trailing={
+          <MiMapButton
+            icon="locate"
+            size={40}
+            iconSize={24}
+            disabled={locating}
+            onPress={onLocate}
+            accessibilityLabel="Use my current location as pickup"
           />
-        </View>
-        <View
-          style={{
-            flex: 1,
-            width: 1,
-            borderLeftWidth: 1,
-            borderStyle: 'dashed',
-            borderColor: theme.colors.borderStrong,
-          }}
-        />
-        <View style={{ height: 44, justifyContent: 'center' }}>
-          <View
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 6,
-              borderWidth: 3,
-              borderColor: theme.colors.error,
-              backgroundColor: theme.colors.card,
-            }}
+        }
+      />
+
+      {/* Divider 289:2218: 1px border/subtle, left padding 40 */}
+      <View
+        style={{
+          height: 1,
+          marginLeft: MARKER + ROW_GAP,
+          backgroundColor: mitowColors.borderSubtle,
+        }}
+      />
+
+      <LocationRow
+        label="Drop Location"
+        value={dropText}
+        placeholder="Where should we tow it?"
+        onChangeText={(text) => onChangeText('drop', text)}
+        onFocus={() => onFocusField('drop')}
+        onBlur={() => onBlurField('drop')}
+        inputRef={dropInputRef}
+        returnKeyType="done"
+        marker={<MiLineIcon name="map-pin" size={MARKER} />}
+        trailing={
+          <MiMapButton
+            colorIcon="swap"
+            size={40}
+            iconSize={24}
+            onPress={onSwap}
+            accessibilityLabel="Swap pickup and drop"
           />
-        </View>
-      </View>
+        }
+      />
 
-      {/* Two inputs, hairline-divided */}
-      <View style={{ flex: 1 }}>
-        <TextInput
-          value={pickupAddress}
-          onChangeText={setPickupAddress}
-          onFocus={() => onFocusField?.('pickup')}
-          placeholder="Pickup location"
-          placeholderTextColor={theme.colors.textTertiary}
-          style={inputStyle}
-          autoCorrect={false}
-          returnKeyType="next"
-          accessibilityLabel="Pickup location"
-        />
-        <View style={{ height: 1, backgroundColor: theme.colors.border }} />
-        <TextInput
-          value={dropAddress}
-          onChangeText={setDropAddress}
-          onFocus={() => onFocusField?.('drop')}
-          placeholder="Drop location"
-          placeholderTextColor={theme.colors.textTertiary}
-          style={inputStyle}
-          autoCorrect={false}
-          returnKeyType="done"
-          accessibilityLabel="Drop location"
-        />
-      </View>
-
-      {/* Swap */}
-      <Pressable
-        onPress={swapAddresses}
-        accessibilityRole="button"
-        accessibilityLabel="Swap pickup and drop locations"
-        hitSlop={6}
-        style={() => ({
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          backgroundColor: theme.colors.surface1,
-          alignItems: 'center',
-          justifyContent: 'center',
-        })}
+      {/*
+        Connector 289:2226: a 2×48 box at card (26, 43) from the OUTER edge;
+        absolute children are placed inside the border, hence the -1.2. A dashed
+        1.5 #CCD2DA line from y 1 to 47, dash 3 / gap 3, round caps. Last child,
+        so it draws above the markers as in Figma.
+      */}
+      <Svg
+        pointerEvents="none"
+        width={2}
+        height={48}
+        style={{ position: 'absolute', left: 26 - CARD_BORDER, top: 43 - CARD_BORDER }}
       >
-        <ArrowUpDown size={15} color={theme.colors.textSecondary} />
-      </Pressable>
+        <Line
+          x1={1}
+          y1={1}
+          x2={1}
+          y2={47}
+          stroke={mitowColors.borderHandle}
+          strokeWidth={1.5}
+          strokeDasharray="3 3"
+          strokeLinecap="round"
+        />
+      </Svg>
     </View>
   );
 }

@@ -1,102 +1,114 @@
 import React from 'react';
-import { Modal, View } from 'react-native';
-import { Bell } from '@/icons';
-import { Button, Text } from '@towing/ui';
-import { useTheme } from '@towing/theme';
+import { View } from 'react-native';
+import { mitowColors, mitowRadii, MiButton, MiColorIcon, MiSheet, MiText } from '@/design';
 import { track } from '@/lib/analytics/analytics';
 import { storage } from '@/lib/storage/storage';
-import { getPermission, pushAvailability, requestPermission } from '../push/pushClient';
+import {
+  canRequestPermission,
+  getPermission,
+  getPushToken,
+  requestOsPermission,
+} from '../push/pushClient';
 import { registerRotatedToken } from '../push/usePushRegistration';
-import { getPushToken } from '../push/pushClient';
 
 const PRIMED_KEY = 'push.primed';
 
 /**
- * A one-time explanation shown BEFORE the OS permission prompt.
+ * Whether Figma 07 should slide over Home.
  *
- * The OS prompt can only be answered once per install: a user who declines it
- * has to be walked into Settings to change their mind, and most never do. So
- * the prompt is spent on people who already know what it is for.
- *
- * Deliberately a sibling of the existing `ConsentCaptureOverlay` pattern rather
- * than a step inside it. Consent is a legal gate that blocks the app; this is
- * not — declining leaves everything working and simply means the customer
- * learns their driver has arrived by opening the app.
+ * Gated on whether the OS can be ASKED (`canRequestPermission`), not on whether
+ * a push token can be minted: the sheet is part of the designed flow, so it
+ * shows in Expo Go and on emulators too, where only the token is unavailable.
  */
 export function shouldPrimePush(): boolean {
-  if (!pushAvailability().available) return false;
+  if (!canRequestPermission()) return false;
   return storage.getString(PRIMED_KEY) !== 'true';
 }
 
+/**
+ * Figma 07 · Turn On Notifications (`287:2083`): a one-time explanation shown
+ * BEFORE the OS permission prompt ("Ask before the system prompt").
+ *
+ * The OS prompt can only be answered once per install, so it is spent on people
+ * who already know what it is for. Marked primed on every exit ("Not now",
+ * Android back, or after the OS answers), so it is asked once. RootNavigator
+ * decides when it mounts (over Home, after consent).
+ *
+ * Sheet (MiSheet defaults = the design): Dim surface/inverse 45%, padding
+ * 14 / 21 / 34, gap 16, 36 x 5 handle. The buttons are drawn plain: no spinner,
+ * no dimmed state, so none is rendered; a ref blocks a double tap instead.
+ */
 export function PushPrimingSheet({ onDone }: { onDone: () => void }) {
-  const theme = useTheme();
-  const [busy, setBusy] = React.useState(false);
+  const done = React.useRef(false);
+  const busy = React.useRef(false);
 
   const finish = React.useCallback(() => {
-    // Marked primed on EITHER answer. The whole point is to ask once.
-    storage.set(PRIMED_KEY, 'true');
-    onDone();
+    if (done.current) return;
+    done.current = true;
+    try {
+      // Marked primed on EITHER answer. The whole point is to ask once.
+      storage.set(PRIMED_KEY, 'true');
+    } finally {
+      onDone();
+    }
   }, [onDone]);
 
   const allow = React.useCallback(async () => {
-    setBusy(true);
+    if (busy.current || done.current) return;
+    busy.current = true;
     try {
-      const status = await requestPermission();
+      const status = await requestOsPermission();
       track(status === 'granted' ? 'push_permission_granted' : 'push_permission_denied');
       if (status === 'granted') {
         // Re-register immediately: the device row already exists with a null
         // token from sign-in, and this is the moment it can carry a real one.
+        // getPushToken returns null in Expo Go and on a simulator without
+        // touching expo-notifications there.
         const token = await getPushToken();
         if (token) await registerRotatedToken(token);
       }
+    } catch {
+      // A failed ask must never surface an error or trap the customer here.
     } finally {
-      setBusy(false);
+      busy.current = false;
       finish();
     }
   }, [finish]);
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={finish}>
+    <MiSheet visible onClose={finish} accessibilityLabel="Turn on notifications">
+      {/* 2. Icon circle 287:2086: 64, brand/yellow-soft, icon/color/bell 40. */}
       <View
         style={{
-          flex: 1,
-          justifyContent: 'flex-end',
-          backgroundColor: 'rgba(0,0,0,0.45)',
+          width: 64,
+          height: 64,
+          borderRadius: mitowRadii.pill,
+          backgroundColor: mitowColors.brandYellowSoft,
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
-        <View
-          style={{
-            backgroundColor: theme.colors.surface0,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            padding: 24,
-            gap: 16,
-          }}
-        >
-          <View
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 24,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: theme.colors.brandTint,
-            }}
-          >
-            <Bell size={24} color={theme.colors.brand} />
-          </View>
-
-          <Text variant="title">Know when your driver arrives</Text>
-          <Text variant="body" color="secondary">
-            We will let you know when a driver accepts your booking, when they are close, and when
-            your payment goes through. Nothing else.
-          </Text>
-
-          <Button label="Turn on notifications" onPress={allow} loading={busy} />
-          <Button label="Not now" variant="ghost" onPress={finish} disabled={busy} />
-        </View>
+        <MiColorIcon name="bell" size={40} />
       </View>
-    </Modal>
+
+      {/* 3. Heading group 287:2088: gap 6. */}
+      <View style={{ gap: 6 }}>
+        <MiText variant="title23" accessibilityRole="header">
+          Know when your driver arrives
+        </MiText>
+        <MiText variant="bodyL155" color="secondary">
+          {
+            'We will let you know when a driver accepts your booking, when they are close, and when your payment goes through.'
+          }
+        </MiText>
+      </View>
+
+      {/* 4. Actions 287:2116: gap 10, both 54 tall, no icons. */}
+      <View style={{ gap: 10 }}>
+        <MiButton label="Turn on notifications" onPress={allow} />
+        <MiButton label="Not now" tone="quiet" onPress={finish} />
+      </View>
+    </MiSheet>
   );
 }
 

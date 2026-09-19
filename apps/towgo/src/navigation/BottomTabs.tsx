@@ -1,37 +1,51 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import type { RootTabParamList } from './types';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList, RootTabParamList } from './types';
 import { TabBar } from './TabBar';
 import { BookingsStack } from './BookingsStack';
 import { HomeScreen } from '@/screens/home/HomeScreen';
-import { ServicesScreen } from '@/screens/services/ServicesScreen';
+import { SupportScreen } from '@/screens/support/SupportScreen';
 import { ProfileScreen } from '@/screens/profile/ProfileScreen';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
 /**
- * Tab scenes swap instantly — `animation` is left unset, which is v7's `'none'`.
+ * Tabs as Figma draws them: Home, Bookings, Support, Profile.
  *
- * A cross-dissolve was tried and removed. Bottom-tabs keeps every visited scene
- * mounted, so fading one out while fading the next in leaves two (or three)
- * semi-transparent screens stacked for the duration: you could read the Services
- * headings straight through the Bookings list, and the blended whites showed up
- * as a grey wash. That is inherent to dissolving between mounted, non-opaque
- * scenes, not something a different curve or duration fixes.
+ * Tab scenes swap instantly (`animation` unset = v7's `'none'`): bottom-tabs
+ * keeps visited scenes mounted, so a cross-dissolve stacks semi-transparent
+ * screens for its whole duration.
  *
- * All the motion for a tab change lives in the pill in `TabBar.tsx`, which sits
- * outside the scenes and so can never blend with them.
+ * SUPPORT HAS NO TAB SCENE. Figma 58 is drawn as a pushed screen (back chevron,
+ * no tab bar) and no screen ever draws the Support tab active, so pressing it is
+ * intercepted and the ROOT route `Support` is pushed instead. The `component`
+ * below only exists because a tab must have one; it is never focused through
+ * the tab bar.
+ *
+ * The tab route is named `SupportTab`, NOT `Support`: a `navigate('Support')`
+ * from inside a tab scene (Home's Help chip) is offered to this navigator
+ * first, and TabRouter handles NAVIGATE for any route name it owns, so a tab
+ * called `Support` would swallow it and focus this placeholder scene with the
+ * tab bar still up instead of pushing root 58.
  */
 export function BottomTabs() {
   return (
-    <Tab.Navigator
-      tabBar={(props) => <TabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
+    <Tab.Navigator tabBar={(props) => <TabBar {...props} />} screenOptions={{ headerShown: false }}>
       <Tab.Screen name="Home" component={HomeScreen} />
-      {/* popToTopOnBlur so leaving the tab returns you to the list, not a stale detail. */}
-      <Tab.Screen name="Bookings" component={BookingsStack} options={{ popToTopOnBlur: true }} />
-      <Tab.Screen name="Services" component={ServicesScreen} />
+      <Tab.Screen name="Bookings" component={BookingsStack} />
+      <Tab.Screen
+        name="SupportTab"
+        component={SupportScreen}
+        listeners={({ navigation }) => ({
+          tabPress: (event) => {
+            event.preventDefault();
+            navigation
+              .getParent<NativeStackNavigationProp<RootStackParamList>>()
+              ?.navigate('Support');
+          },
+        })}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

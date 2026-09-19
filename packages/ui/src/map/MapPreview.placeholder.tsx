@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useImperativeHandle } from 'react';
 import { Pressable, View } from 'react-native';
 import { useTheme } from '@towing/theme';
 import { Text } from '../Text';
@@ -19,9 +19,25 @@ export function MapPreviewPlaceholder({
   userLocationLabel = 'You are here',
   userMarkerTop,
   label = 'MAP',
+  controllerRef,
   style,
 }: MapPreviewProps) {
   const theme = useTheme();
+
+  // No camera here: every controller call is a no-op, so the screen-drawn map
+  // buttons behave identically (and harmlessly) on this path. `overlays`,
+  // `mapPadding`, `customMapStyle` and `onMapReady` are ignored: there are no
+  // coordinates to anchor anything to.
+  useImperativeHandle(
+    controllerRef,
+    () => ({
+      animateToRegion: () => {},
+      animateToCoordinate: () => {},
+      fitToCoordinates: () => {},
+      fitToContent: () => {},
+    }),
+    [],
+  );
 
   const markerPositionStyle =
     userMarkerTop === undefined
@@ -51,15 +67,36 @@ export function MapPreviewPlaceholder({
       {/* Faint grid to imply a map surface */}
       <View
         pointerEvents="none"
-        style={{ position: 'absolute', top: 0, bottom: 0, left: '33%', width: 1, backgroundColor: theme.colors.border }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: '33%',
+          width: 1,
+          backgroundColor: theme.colors.border,
+        }}
       />
       <View
         pointerEvents="none"
-        style={{ position: 'absolute', top: 0, bottom: 0, left: '66%', width: 1, backgroundColor: theme.colors.border }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: '66%',
+          width: 1,
+          backgroundColor: theme.colors.border,
+        }}
       />
       <View
         pointerEvents="none"
-        style={{ position: 'absolute', left: 0, right: 0, top: '50%', height: 1, backgroundColor: theme.colors.border }}
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '50%',
+          height: 1,
+          backgroundColor: theme.colors.border,
+        }}
       />
 
       {showUserLocation ? (

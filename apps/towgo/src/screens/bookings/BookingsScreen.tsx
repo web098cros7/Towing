@@ -13,14 +13,14 @@ import { useBookings } from '@/features/bookings/api/bookings.queries';
 import { isActiveBooking } from '@/features/bookings/types';
 import { ActiveTripCard } from '@/features/bookings/components/ActiveTripCard';
 import { BookingCard, BookingCardSkeleton } from '@/features/bookings/components/BookingCard';
-import type { BookingsStackParamList } from '@/navigation/types';
+import type { RootStackParamList } from '@/navigation/types';
 
 export function BookingsScreen() {
   const theme = useTheme();
   const tabBarSpace = useTabBarSpace();
   const { scrollY, screenProps } = useCollapsingHeader();
   const online = useOnlineStatus();
-  const navigation = useNavigation<NativeStackNavigationProp<BookingsStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { items, isPending, isError, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useBookings();
   const active = items.find(isActiveBooking) ?? null;

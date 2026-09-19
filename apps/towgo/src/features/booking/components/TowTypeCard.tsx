@@ -1,92 +1,114 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '@towing/theme';
-import { Text } from '@towing/ui';
-import { Info, Check } from '@/icons';
+import { usePressablePrimitive } from '@towing/ui';
+import { mitowColors, mitowRadii, MiColorIcon, MiText } from '@/design';
 import type { TowType } from '../types';
-import { Pressable } from '@/motion';
 
-// Figma 31:67. That frame is a 430 design squashed into a 390 artboard (every
-// number is an exact x0.907 multiple), so the raw values render ~9%25 small.
-// These are the un-squashed intent, snapped to the grid: 145x176, r16.
+/**
+ * Figma 14 card height: SUV `259:1553` / Bike `259:1559` are fixed at 131, and
+ * the selected Car `259:1544` hugs to 8 + 52 + 8 + 55 + 8 = 131. A minimum (the
+ * row stretches all three to the tallest) keeps a two-line sub line from being
+ * clipped where the device type scale runs above 1.
+ */
+const CARD_MIN_HEIGHT = 131;
+
+/**
+ * One vehicle tile in Figma 14's "Select Vehicle" row.
+ *
+ * Selected (Car `259:1544`): brand/yellow-soft fill, 1.5 brand/yellow stroke and
+ * the 20×20 selected indicator (yellow disc, 8×8 text/primary dot) 8 in from
+ * the card's outer top and right edges. Unselected (SUV `259:1553`, Bike
+ * `259:1559`): surface/page, 1.2 border/subtle stroke. Both: radius 14, padding
+ * 8 / 6, gap 8, 52 colour icon, name Strong 15.5 and sub Label 13 centred with
+ * a 2 gap.
+ *
+ * Figma strokes take no layout space, so the stroke is an overlay here too:
+ * every card is 131 tall in either state, the content column is 98.3 wide, and
+ * nothing moves when the selection changes the stroke from 1.2 to 1.5.
+ */
 export function TowTypeCard({
   towType,
   selected,
   onPress,
+  style,
 }: {
   towType: TowType;
   selected: boolean;
   onPress: () => void;
+  style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
+  const Pressable = usePressablePrimitive();
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={towType.disabled}
-      accessibilityRole="button"
-      accessibilityState={{ selected, disabled: towType.disabled }}
+      pressScale={theme.motion.pressScale.card}
+      haptic="selection"
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
       accessibilityLabel={`${towType.name}, ${towType.categories}`}
-      style={() => ({
-        width: 145,
-        height: 176,
-        borderRadius: 16,
-        paddingHorizontal: 15,
-        paddingVertical: 13,
-        backgroundColor: selected ? theme.colors.brandTint : theme.colors.card,
-        borderWidth: 1,
-        borderColor: selected ? theme.colors.brand : theme.colors.border,
-        justifyContent: 'space-between',
-        // Alpha and elevation are mutually exclusive on one node: on Android the
-        // elevation shadow is drawn outside the view's own alpha, so a faded
-        // card shows its shadow through itself. A disabled card should not read
-        // as raised anyway, so it trades the shadow for the fade.
-        ...(towType.disabled ? { opacity: 0.6 } : theme.shadows.card),
-      })}
+      style={[
+        {
+          minHeight: CARD_MIN_HEIGHT,
+          borderRadius: mitowRadii.cardSm,
+          paddingHorizontal: 6,
+          paddingVertical: 8,
+          alignItems: 'center',
+          gap: 8,
+          backgroundColor: selected ? mitowColors.brandYellowSoft : mitowColors.surfacePage,
+        },
+        style,
+      ]}
     >
-      <Image
-        source={towType.image}
-        resizeMode="contain"
-        style={{ width: 115, height: 56, marginTop: 9 }}
-      />
+      <MiColorIcon name={towType.icon} size={52} />
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-        <Text weight="semibold" numberOfLines={1} style={{ fontSize: 14, lineHeight: 21 }}>
+      <View style={{ alignSelf: 'stretch', alignItems: 'center', gap: 2, overflow: 'hidden' }}>
+        <MiText variant="strong155" align="center">
           {towType.name}
-        </Text>
-        {!towType.disabled ? <Info size={14} color={theme.colors.textTertiary} /> : null}
+        </MiText>
+        <MiText variant="label13" color="secondary" align="center">
+          {towType.categories}
+        </MiText>
       </View>
 
-      <Text color="secondary" numberOfLines={1} style={{ fontSize: 11, lineHeight: 17, marginBottom: 7 }}>
-        {towType.categories}
-      </Text>
-
-      {/*
-        THE PER-CARD PRICE IS GONE (Phase 14).
-
-        It was a hardcoded rupee number with a struck-through "compare at" beside
-        it, and §7 cannot reproduce either: a fare depends on the distance and
-        the zone, so four cards cannot each carry one, and there is no discount
-        for a compare-price to represent. §9.1.5 puts the fare at step 3 — the
-        bottom bar and the breakdown sheet — while step 1 is service and vehicle.
-        The card now sells the CLASS, which is the choice being made here.
-      */}
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            borderRadius: mitowRadii.cardSm,
+            borderWidth: selected ? 1.5 : 1.2,
+            borderColor: selected ? mitowColors.brandYellow : mitowColors.borderSubtle,
+          },
+        ]}
+      />
 
       {selected ? (
         <View
+          pointerEvents="none"
           style={{
             position: 'absolute',
+            // Figma's 6.5 / 6.5 inside the 1.5 stroke = 8 from the outer edges.
             top: 8,
             right: 8,
-            width: 22,
-            height: 22,
-            borderRadius: 11,
-            backgroundColor: theme.colors.brand,
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            backgroundColor: mitowColors.brandYellow,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Check size={12} color={theme.colors.onBrand} strokeWidth={3} />
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: mitowColors.textPrimary,
+            }}
+          />
         </View>
       ) : null}
     </Pressable>

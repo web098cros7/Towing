@@ -1,51 +1,20 @@
 import React, { useCallback, useState } from 'react';
 import { View } from 'react-native';
-import { useTheme } from '@towing/theme';
-import { Text, type IconComponent } from '@towing/ui';
-import { Clock, User, ChevronDown } from '@/icons';
+import { MiPill } from '@/design';
 import { useBookingStore } from '../store/bookingStore';
-import { formatBookingDate, formatBookingTime } from '@/utils/format';
 import { SchedulePickerSheet } from './SchedulePickerSheet';
 import { ContactSheet } from './BookingExtrasSheets';
-import { Pressable } from '@/motion';
+import { formatClock, formatShortDay } from './enter-location/format';
 
-function Pill({
-  icon: Icon,
-  label,
-  onPress,
-}: {
-  icon: IconComponent;
-  label: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={() => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        backgroundColor: theme.colors.card,
-        borderRadius: theme.radii.pill,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        ...theme.shadows.card,
-      })}
-    >
-      <Icon size={15} color={theme.colors.textPrimary} strokeWidth={2} />
-      <Text weight="medium" style={{ fontSize: 13, lineHeight: 17 }}>
-        {label}
-      </Text>
-      <ChevronDown size={13} color={theme.colors.textSecondary} strokeWidth={2.2} />
-    </Pressable>
-  );
-}
-
+/**
+ * Figma 10 Pills row (289:2196): "Pickup now" and "For me", gap 8. They open
+ * sheet 11 (Schedule a Tow) and sheet 12 (Who's the Tow For).
+ *
+ * The labels are the drawn copy and do not change after a choice: the design
+ * draws no label for a scheduled time or another contact. The current choice is
+ * still announced to screen readers through the hint, and each sheet shows it
+ * as its selected row.
+ */
 export function BookingPills() {
   const scheduledAt = useBookingStore((s) => s.scheduledAt);
   const setScheduledAt = useBookingStore((s) => s.setScheduledAt);
@@ -59,27 +28,20 @@ export function BookingPills() {
   const openContact = useCallback(() => setContactOpen(true), []);
   const closeContact = useCallback(() => setContactOpen(false), []);
 
+  const scheduledHint = scheduledAt
+    ? `Scheduled for ${formatShortDay(new Date(scheduledAt))}, ${formatClock(new Date(scheduledAt))}`
+    : undefined;
+  const contactHint = contact ? `Booked for ${contact.name}` : undefined;
+
   return (
-    <View style={{ flexDirection: 'row', gap: 10 }}>
-      <Pill
-        icon={Clock}
-        label={
-          scheduledAt
-            ? `${formatBookingDate(scheduledAt)}, ${formatBookingTime(scheduledAt)}`
-            : 'Pickup now'
-        }
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <MiPill
+        icon="clock"
+        label="Pickup now"
         onPress={openSchedule}
+        accessibilityHint={scheduledHint}
       />
-      {/*
-        This pill used to TOGGLE a label and nothing else — `bookingFor` reached
-        no request, so "for someone else" was a word on a screen. It now opens
-        the sheet that captures who the driver will actually meet.
-      */}
-      <Pill
-        icon={User}
-        label={contact ? contact.name : 'For me'}
-        onPress={openContact}
-      />
+      <MiPill icon="user" label="For me" onPress={openContact} accessibilityHint={contactHint} />
 
       <SchedulePickerSheet
         visible={scheduleOpen}

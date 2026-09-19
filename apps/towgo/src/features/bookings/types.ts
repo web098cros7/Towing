@@ -1,5 +1,5 @@
 import type { ImageSourcePropType } from 'react-native';
-import type { JobStatus } from '@towing/api-contracts';
+import type { GeoPoint, JobStatus } from '@towing/api-contracts';
 
 /**
  * The §5.1 statuses, exactly the ten the server can return.
@@ -22,6 +22,14 @@ export type Booking = {
   reference: string;
   originLabel: string;
   destinationLabel: string;
+  /**
+   * Where the two labels are on the map: the contract's `pickup` / `drop`. No
+   * screen draws them; 10's recent places reuse them to put a past trip's
+   * addresses back on the map. Optional because the mock fixtures carry none;
+   * `dropPoint` is also null for a roadside job with no drop.
+   */
+  pickupPoint?: GeoPoint | null;
+  dropPoint?: GeoPoint | null;
   /**
    * ISO 8601, not the pre-formatted `date`/`time` pair this used to carry.
    * Phase 12 corrected the contract this way and deferred the booking feature's

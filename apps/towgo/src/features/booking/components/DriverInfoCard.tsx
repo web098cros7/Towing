@@ -1,190 +1,120 @@
 import React from 'react';
 import { Image, View } from 'react-native';
-import { useTheme } from '@towing/theme';
-import { Text, type IconComponent } from '@towing/ui';
-import { Star, Truck, Phone, MessageCircle } from '@/icons';
-import { Pressable } from '@/motion';
+import { MiLineIcon, MiMapButton, MiText, mitowColors, mitowRadii } from '@/design';
+import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 
 /**
- * What the card renders.
- *
- * SHAPED AFTER THE API, NOT AFTER THE MOCK IT USED TO TAKE (Phase 18). Two of
- * these were non-nullable because the frozen fixture always had them:
- *
- *  · `photoUrl` replaced an `ImageSourcePropType`. The server returns a URL or
- *    null; a bundled asset was only ever the placeholder.
- *  · `rating` is nullable. A driver nobody has rated has NO rating, and
- *    defaulting to 5.0 advertises one that does not exist — the same call
- *    `jobOfferSchema` makes for `customerRating`. §6.2 will not have a real
- *    writer for it until Phase 19 either way.
+ * What the row renders. Shaped after the API: `photoUrl` is nullable because the
+ * server returns null for a driver with no photo yet.
  */
 export type DriverCardInfo = {
   name: string;
   photoUrl: string | null;
-  rating: number | null;
-  trips: number;
-  vehiclePlate: string | null;
 };
 
-function ActionCircle({
-  icon: Icon,
-  bg,
-  color,
-  label,
-  caption,
-  onPress,
-}: {
-  icon: IconComponent;
-  bg: string;
-  color: string;
-  /** Screen-reader label — stays explicit so VoiceOver doesn't read "Call, Call". */
-  label: string;
-  /** Visible text under the circle. */
-  caption: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
+/** Figma text box widths: name "Rakesh Kumar" 107, rating "4.8 (500+ trips)" 101. */
+const NAME_BOX_WIDTH = 107;
+const RATING_BOX_WIDTH = 101;
+const PHOTO_SIZE = 73;
 
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={() => ({
-        alignItems: 'center',
-        gap: theme.spacing.xs,
-      })}
-    >
-      <View
-        style={{
-          width: theme.sizes.control.tapTarget,
-          height: theme.sizes.control.tapTarget,
-          borderRadius: theme.sizes.control.tapTarget / 2,
-          backgroundColor: bg,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon size={theme.sizes.icon.md + 2} color={color} strokeWidth={2} />
-      </View>
-      <Text variant="micro" color="secondary">
-        {caption}
-      </Text>
-    </Pressable>
-  );
-}
-
+/**
+ * Figma Driver Row (`234:308`), instance `234:315` on 18 · Driver En Route.
+ *
+ * Not a card: no fill, border or shadow. Row 77 tall, padding left 0.7 / top 4,
+ * gap 11.7, items centred. Photo 73 circle; info column gap 3.5 with the name
+ * (Strong 16) over the rating row (icon/star 16.3 brand/yellow, gap 5.1, Body S
+ * 14 secondary). Actions: two Icon Button (Outline) 55 circles, gap 5, aligned to
+ * the top with 4 bottom padding. Call = icon/phone, Message = icon/message.
+ *
+ * Every drawn element is always rendered. A slot whose value is not known yet
+ * (first read) or not provided (no photo, unrated driver) keeps its drawn size:
+ * the photo circle stays as an empty surface/muted circle, text slots show a
+ * placeholder bar. No fallback art and no invented copy.
+ */
 export function DriverInfoCard({
   driver,
-  vehicleLabel,
+  ratingText,
   onCall,
   onMessage,
 }: {
-  driver: DriverCardInfo;
-  vehicleLabel: string;
+  driver: DriverCardInfo | null;
+  /** The rating line as drawn, e.g. "4.8 (500+ trips)"; `null` holds the slot. */
+  ratingText: string | null;
   onCall: () => void;
-  /**
-   * OPTIONAL, and omitted by the tracking screen (Phase 18). In-app chat is
-   * deferred to Phase 20 — §17 has no messages table — and a button that opens
-   * nothing is worse than a button that is not there. The masked call satisfies
-   * §9.1.7 contact requirement on its own.
-   */
-  onMessage?: () => void;
+  onMessage: () => void;
 }) {
-  const theme = useTheme();
-
   return (
     <View
       style={{
-        backgroundColor: theme.colors.card,
-        borderRadius: theme.radii.sheet,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        padding: theme.spacing.lg,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: theme.spacing.lg,
-        ...theme.shadows.card,
+        height: 77,
+        paddingLeft: 0.7,
+        paddingTop: 4,
+        gap: 11.7,
+        overflow: 'hidden',
       }}
     >
-      <Image
-        // A null URL renders the tinted circle alone rather than a broken-image
-        // glyph: most drivers have no photo, so the empty state is the common one.
-        source={driver.photoUrl ? { uri: driver.photoUrl } : undefined}
+      <View
         style={{
-          width: theme.sizes.avatar.lg,
-          height: theme.sizes.avatar.lg,
-          borderRadius: theme.sizes.avatar.lg / 2,
-          backgroundColor: theme.colors.brandTint,
+          width: PHOTO_SIZE,
+          height: PHOTO_SIZE,
+          borderRadius: mitowRadii.pill,
+          backgroundColor: mitowColors.surfaceMuted,
+          overflow: 'hidden',
         }}
-        accessibilityLabel={`${driver.name}'s photo`}
-      />
-
-      <View style={{ flex: 1, gap: 6 }}>
-        <Text variant="subtitle" weight="bold" numberOfLines={1}>
-          {driver.name}
-        </Text>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {/*
-            A driver with no rating gets NO pill rather than a 5.0 one — see
-            `DriverCardInfo`. Phase 19 writes the first real values.
-          */}
-          {driver.rating !== null ? (
-          <View
-            accessible
-            accessibilityLabel={`Rated ${driver.rating.toFixed(1)} out of 5`}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: theme.spacing.xs,
-              backgroundColor: theme.colors.brandTint,
-              borderRadius: theme.radii.pill,
-              paddingHorizontal: theme.spacing.sm,
-              paddingVertical: 3,
-            }}
-          >
-            <Star size={theme.sizes.icon.xs} color={theme.colors.star} fill={theme.colors.star} />
-            <Text variant="caption" weight="bold" tabular>
-              {driver.rating.toFixed(1)}
-            </Text>
-          </View>
-          ) : null}
-          <Text variant="caption" color="secondary">
-            ({driver.trips} trips)
-          </Text>
-        </View>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Truck size={theme.sizes.icon.sm} color={theme.colors.textSecondary} strokeWidth={2} />
-          <Text variant="body" weight="semibold" numberOfLines={1}>
-            {driver.vehiclePlate ?? "Vehicle details to follow"}
-          </Text>
-        </View>
-        <Text variant="caption" color="secondary" numberOfLines={1}>
-          {vehicleLabel}
-        </Text>
-      </View>
-
-      <View style={{ gap: theme.spacing.lg }}>
-        <ActionCircle
-          icon={Phone}
-          bg={theme.colors.successSoftBg}
-          color={theme.colors.success}
-          label="Call driver"
-          caption="Call"
-          onPress={onCall}
-        />
-        {onMessage ? (
-          <ActionCircle
-            icon={MessageCircle}
-            bg={theme.colors.infoSoftBg}
-            color={theme.colors.info}
-            label="Message driver"
-            caption="Message"
-            onPress={onMessage}
+      >
+        {driver?.photoUrl ? (
+          <Image
+            source={{ uri: driver.photoUrl }}
+            resizeMode="cover"
+            style={{ width: PHOTO_SIZE, height: PHOTO_SIZE }}
+            accessibilityLabel={`${driver.name}'s photo`}
           />
         ) : null}
+      </View>
+
+      <View style={{ flex: 1, gap: 3.5, overflow: 'hidden' }}>
+        {driver ? (
+          <MiText variant="strong16" numberOfLines={1} ellipsizeMode="clip">
+            {driver.name}
+          </MiText>
+        ) : (
+          <SlotPlaceholder variant="strong16" width={NAME_BOX_WIDTH} />
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5.1 }}>
+          <MiLineIcon name="star" size={16.3} color={mitowColors.brandYellow} />
+          {ratingText ? (
+            <MiText
+              variant="bodyS14"
+              color="secondary"
+              numberOfLines={1}
+              ellipsizeMode="clip"
+              style={{ flexShrink: 1 }}
+            >
+              {ratingText}
+            </MiText>
+          ) : (
+            <View style={{ flexShrink: 1 }}>
+              <SlotPlaceholder variant="bodyS14" width={RATING_BOX_WIDTH} />
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5, paddingBottom: 4 }}>
+        <MiMapButton
+          variant="outline"
+          icon="phone"
+          accessibilityLabel="Call driver"
+          onPress={onCall}
+        />
+        <MiMapButton
+          variant="outline"
+          icon="message"
+          accessibilityLabel="Message driver"
+          onPress={onMessage}
+        />
       </View>
     </View>
   );

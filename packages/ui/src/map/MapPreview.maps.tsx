@@ -1,9 +1,23 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
-import MapView, { Circle, Marker, Polyline, PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, {
+  Circle,
+  Marker,
+  Polyline,
+  PROVIDER_DEFAULT,
+  PROVIDER_GOOGLE,
+} from 'react-native-maps';
 import { useTheme } from '@towing/theme';
 import { Text } from '../Text';
-import type { MapMarker, MapPreviewProps, MapRegion } from './types';
+import type {
+  MapCoordinate,
+  MapFitPadding,
+  MapMarker,
+  MapOverlay,
+  MapPolyline,
+  MapPreviewProps,
+  MapRegion,
+} from './types';
 
 /**
  * The real map (Phase 16), behind the `MapPreviewProps` seam the placeholder
@@ -50,6 +64,11 @@ export function MapPreviewMaps({
   onRegionChange,
   onRegionChangeComplete,
   interactive = true,
+  overlays,
+  controllerRef,
+  mapPadding,
+  customMapStyle,
+  onMapReady: onMapReadyProp,
 }: MapPreviewProps) {
   const theme = useTheme();
   const mapRef = useRef<MapView | null>(null);
@@ -103,21 +122,13 @@ export function MapPreviewMaps({
     if (followMode === 'paused') return;
     if (!followMode && hasFitted.current) return;
 
-    const coordinates = [
-      ...(markers ?? []).map((marker) => marker.coordinate),
-      ...(polylines ?? []).flatMap((line) => line.coordinates),
-    ];
+    const coordinates = contentCoordinates(markers, polylines, overlays);
     if (coordinates.length === 0) return;
 
     hasFitted.current = true;
     animating.current = true;
     mapRef.current?.fitToCoordinates(coordinates, {
-      edgePadding: {
-        top: fitPadding?.top ?? 64,
-        right: fitPadding?.right ?? 64,
-        bottom: fitPadding?.bottom ?? 64,
-        left: fitPadding?.left ?? 64,
-      },
+      edgePadding: edgePadding(fitPadding),
       animated: true,
     });
     // Cleared a beat after the animation would have settled. `fitToCoordinates`
@@ -128,9 +139,58 @@ export function MapPreviewMaps({
       animating.current = false;
     }, 700);
     return () => clearTimeout(timer);
-  }, [fitToMarkers, followMode, fitPadding, markers, polylines, ready]);
+  }, [fitToMarkers, followMode, fitPadding, markers, polylines, overlays, ready]);
 
-  const onMapReady = useCallback(() => setReady(true), []);
+  const onMapReady = useCallback(() => {
+    setReady(true);
+    onMapReadyProp?.();
+  }, [onMapReadyProp]);
+
+  /**
+   * The camera handle for screen-drawn map buttons (MiTow redesign). Each move
+   * sets `animating` like the auto-fit does, so a Recenter tap is never
+   * mistaken for a user pan by `onUserPan`.
+   */
+  const markAnimating = useCallback(() => {
+    animating.current = true;
+    setTimeout(() => {
+      animating.current = false;
+    }, 700);
+  }, []);
+
+  useImperativeHandle(
+    controllerRef,
+    () => ({
+      animateToRegion: (next, durationMs = 350) => {
+        if (!ready) return;
+        markAnimating();
+        mapRef.current?.animateToRegion(next, durationMs);
+      },
+      animateToCoordinate: (coordinate, durationMs = 350) => {
+        if (!ready) return;
+        markAnimating();
+        mapRef.current?.animateCamera({ center: coordinate }, { duration: durationMs });
+      },
+      fitToCoordinates: (coordinates, options) => {
+        if (!ready || coordinates.length === 0) return;
+        markAnimating();
+        mapRef.current?.fitToCoordinates(coordinates, {
+          edgePadding: edgePadding(options?.padding ?? fitPadding),
+          animated: options?.animated ?? true,
+        });
+      },
+      fitToContent: (options) => {
+        const coordinates = contentCoordinates(markers, polylines, overlays);
+        if (!ready || coordinates.length === 0) return;
+        markAnimating();
+        mapRef.current?.fitToCoordinates(coordinates, {
+          edgePadding: edgePadding(fitPadding),
+          animated: options?.animated ?? true,
+        });
+      },
+    }),
+    [ready, markAnimating, fitPadding, markers, polylines, overlays],
+  );
 
   /**
    * §11.4's pan-pause trigger.
@@ -187,6 +247,19 @@ export function MapPreviewMaps({
         // without this Android draws the map over the rounded corners.
         loadingEnabled
         loadingBackgroundColor={theme.colors.mapBg}
+        // Both undefined unless a caller passes them, which is the library's own
+        // default, so existing callers render exactly as before.
+        mapPadding={
+          mapPadding
+            ? {
+                top: mapPadding.top ?? 0,
+                right: mapPadding.right ?? 0,
+                bottom: mapPadding.bottom ?? 0,
+                left: mapPadding.left ?? 0,
+              }
+            : undefined
+        }
+        customMapStyle={customMapStyle}
       >
         {/*
           Lines BEFORE markers: `react-native-maps` draws children in order, so
@@ -197,8 +270,10 @@ export function MapPreviewMaps({
           <Polyline
             key={line.key}
             coordinates={line.coordinates}
-            strokeWidth={line.tone === 'route' ? 5 : 3}
-            strokeColor={line.tone === 'route' ? theme.colors.brand : theme.colors.textTertiary}
+            strokeWidth={line.width ?? (line.tone === 'route' ? 5 : 3)}
+            strokeColor={
+              line.color ?? (line.tone === 'route' ? theme.colors.brand : theme.colors.textTertiary)
+            }
             // §11.4's honesty rule, and the Phase 5 fleet map's: a straight
             // fallback leg is DASHED so it cannot be read as a driven route.
             lineDashPattern={line.tone === 'direct' ? [6, 6] : undefined}
@@ -209,6 +284,9 @@ export function MapPreviewMaps({
         ))}
         {(markers ?? []).map((marker) => (
           <MarkerPin key={marker.key} marker={marker} />
+        ))}
+        {(overlays ?? []).map((overlay) => (
+          <OverlayMarker key={overlay.key} overlay={overlay} />
         ))}
       </MapView>
 
@@ -223,7 +301,10 @@ export function MapPreviewMaps({
               ...theme.shadows.fab,
             }}
           >
-            <Text weight="medium" style={{ fontSize: 12, lineHeight: 16, color: theme.colors.info }}>
+            <Text
+              weight="medium"
+              style={{ fontSize: 12, lineHeight: 16, color: theme.colors.info }}
+            >
               {userLocationLabel}
             </Text>
           </View>
@@ -354,6 +435,69 @@ function MarkerPin({ marker }: { marker: MapMarker }) {
       </Marker>
     </>
   );
+}
+
+/**
+ * How long a custom overlay keeps re-snapshotting after mount or a content
+ * change. Long enough for a local image or an SVG to decode and paint; after
+ * it, the marker costs nothing per render.
+ */
+const OVERLAY_SETTLE_MS = 1500;
+
+/**
+ * A caller-drawn view on a coordinate (MiTow redesign). See `MapOverlay` for
+ * the snapshot rules this follows.
+ */
+function OverlayMarker({ overlay }: { overlay: MapOverlay }) {
+  const [settling, setSettling] = useState(true);
+
+  useEffect(() => {
+    if (overlay.tracksViewChanges !== undefined) return;
+    setSettling(true);
+    const timer = setTimeout(() => setSettling(false), OVERLAY_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [overlay.contentKey, overlay.tracksViewChanges]);
+
+  const hasBearing = overlay.bearingDeg !== undefined && overlay.bearingDeg !== null;
+
+  return (
+    <Marker
+      coordinate={overlay.coordinate}
+      anchor={overlay.anchor ?? { x: 0.5, y: 0.5 }}
+      zIndex={overlay.zIndex}
+      tracksViewChanges={overlay.tracksViewChanges ?? settling}
+      rotation={hasBearing ? overlay.bearingDeg : undefined}
+      flat={hasBearing}
+      accessibilityLabel={overlay.accessibilityLabel}
+      // Overlays are drawings, not buttons: a tap must reach the map.
+      tappable={false}
+    >
+      {overlay.view}
+    </Marker>
+  );
+}
+
+function edgePadding(padding: MapFitPadding | undefined) {
+  return {
+    top: padding?.top ?? 64,
+    right: padding?.right ?? 64,
+    bottom: padding?.bottom ?? 64,
+    left: padding?.left ?? 64,
+  };
+}
+
+function contentCoordinates(
+  markers: MapMarker[] | undefined,
+  polylines: MapPolyline[] | undefined,
+  overlays: MapOverlay[] | undefined,
+): MapCoordinate[] {
+  return [
+    ...(markers ?? []).map((marker) => marker.coordinate),
+    ...(polylines ?? []).flatMap((line) => line.coordinates),
+    ...(overlays ?? [])
+      .filter((overlay) => overlay.includeInFit !== false)
+      .map((overlay) => overlay.coordinate),
+  ];
 }
 
 const styles = StyleSheet.create({

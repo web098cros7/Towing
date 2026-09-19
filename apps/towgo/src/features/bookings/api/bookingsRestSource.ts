@@ -1,12 +1,97 @@
-import type { BookingCancelResponse, BookingCreate, BookingOtpResponse } from '@towing/api-contracts';
+import type {
+  Booking as ApiBooking,
+  BookingCancelResponse,
+  BookingCreate,
+  BookingDetail as ApiBookingDetail,
+  BookingListResponse,
+  BookingOtpResponse,
+} from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import { ApiClientError } from '@/lib/api/errors';
-import type { BookingDetail } from '../types';
+import type { Booking, BookingDetail } from '../types';
 import type { BookingsDataSource, BookingsPage } from './bookingsDataSource';
 
+/**
+ * The app's label for an address the server does not have: a roadside job with no
+ * drop, or an old row with no pickup label. The same dash the mock source uses.
+ */
+const NO_ADDRESS = '—';
+
+/**
+ * `bookingSchema` → the app's `Booking`.
+ *
+ * THE WIRE SHAPE IS NOT THE APP SHAPE, and until 20 Booking Details was rebuilt
+ * nothing mapped between them: every REST read was cast straight to the app type,
+ * so on the live API `originLabel` / `destinationLabel` / `farePaise` read
+ * `undefined` (the contract calls them `pickupAddress`, `dropAddress` and
+ * `breakdown.totalPaise`). Only the mock source filled the app shape.
+ *
+ * The two points travel as `pickupPoint` / `dropPoint`: nothing draws them, but
+ * 10's recent places read a past trip's addresses back from this list.
+ *
+ * The contract has NO driver fields on a booking (the driver, plate, rating and
+ * photo live on `GET /bookings/:id/tracking`), so those map to `null` here and
+ * the screens that draw a driver read the tracking payload instead.
+ */
+function toBooking(api: ApiBooking): Booking {
+  return {
+    id: api.id,
+    reference: api.reference,
+    originLabel: api.pickupAddress ?? NO_ADDRESS,
+    destinationLabel: api.dropAddress ?? NO_ADDRESS,
+    pickupPoint: api.pickup,
+    dropPoint: api.drop,
+    createdAt: api.createdAt,
+    scheduledAt: api.scheduledAt,
+    status: api.status,
+    farePaise: api.breakdown.totalPaise,
+    routeTone: api.status === 'completed' || api.status === 'paid' ? 'success' : 'info',
+    truckImage: null,
+    vehiclePlate: null,
+    driverName: null,
+    driverRating: null,
+  };
+}
+
+/**
+ * `bookingDetailSchema` → the app's `BookingDetail`. Fields the contract does not
+ * carry (payment method, the driver's photo and trip count, the trip duration) are
+ * `null`, which every screen already treats as "not known".
+ */
+function toBookingDetail(api: ApiBookingDetail): BookingDetail {
+  return {
+    ...toBooking(api),
+    distanceKm: api.distanceKm,
+    breakdown: {
+      basePaise: api.breakdown.basePaise,
+      nightPaise: api.breakdown.nightPaise,
+      highwayPaise: api.breakdown.highwayPaise,
+      accidentPaise: api.breakdown.accidentPaise,
+      surgePaise: api.breakdown.surgePaise,
+      discountPaise: api.breakdown.discountPaise,
+      totalPaise: api.breakdown.totalPaise,
+    },
+    note: api.note,
+    contactName: api.contactName,
+    contactMobile: api.contactMobile,
+    cancellationReason: api.cancellationReason,
+    cancellationFeePaise: api.cancellationFeePaise,
+    otpAvailable: api.otpAvailable,
+    search: api.search,
+    paymentMethod: null,
+    driverPhoto: null,
+    driverTrips: null,
+    durationMinutes: null,
+  };
+}
+
 export const bookingsRestSource: BookingsDataSource = {
-  getBookings: (cursor?: string): Promise<BookingsPage> =>
-    apiFetch<BookingsPage>(`bookings${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  async getBookings(cursor?: string): Promise<BookingsPage> {
+    const page = await apiFetch<BookingListResponse>(
+      `bookings${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+    );
+    return { items: page.items.map(toBooking), nextCursor: page.nextCursor };
+  },
 
   /**
    * A 404 is "no such booking", not a failure — the interface says so, and the
@@ -15,15 +100,15 @@ export const bookingsRestSource: BookingsDataSource = {
    */
   async getBooking(bookingId: string): Promise<BookingDetail | null> {
     try {
-      return await apiFetch<BookingDetail>(`bookings/${bookingId}`);
+      return toBookingDetail(await apiFetch<ApiBookingDetail>(`bookings/${bookingId}`));
     } catch (error) {
       if (error instanceof ApiClientError && error.status === 404) return null;
       throw error;
     }
   },
 
-  createBooking: (input: BookingCreate, idempotencyKey: string): Promise<BookingDetail> =>
-    apiFetch<BookingDetail>('bookings', {
+  async createBooking(input: BookingCreate, idempotencyKey: string): Promise<BookingDetail> {
+    const created = await apiFetch<ApiBookingDetail>('bookings', {
       method: 'POST',
       body: JSON.stringify(input),
       // The key is passed EXPLICITLY rather than via `idempotent: true`, because
@@ -32,7 +117,9 @@ export const bookingsRestSource: BookingsDataSource = {
       // the original key, and a fresh one per attempt would create a second
       // fare-locked booking.
       headers: { 'Idempotency-Key': idempotencyKey },
-    }),
+    });
+    return toBookingDetail(created);
+  },
 
   cancelBooking: (bookingId: string, reason?: string): Promise<BookingCancelResponse> =>
     apiFetch<BookingCancelResponse>(`bookings/${bookingId}/cancel`, {
@@ -44,12 +131,14 @@ export const bookingsRestSource: BookingsDataSource = {
   getOtp: (bookingId: string): Promise<BookingOtpResponse> =>
     apiFetch<BookingOtpResponse>(`bookings/${bookingId}/otp`),
 
-  retrySearch: (bookingId: string): Promise<BookingDetail> =>
-    apiFetch<BookingDetail>(`bookings/${bookingId}/retry-search`, {
+  async retrySearch(bookingId: string): Promise<BookingDetail> {
+    const retried = await apiFetch<ApiBookingDetail>(`bookings/${bookingId}/retry-search`, {
       method: 'POST',
       // A retry is a fresh intent each time the customer taps it, not a replay —
       // so `idempotent: true` mints a new key per attempt rather than replaying
       // the previous search's response.
       idempotent: true,
-    }),
+    });
+    return toBookingDetail(retried);
+  },
 };

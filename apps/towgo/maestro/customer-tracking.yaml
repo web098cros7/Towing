@@ -1,29 +1,44 @@
 # Track B Phase 18 — live tracking, the share link, and the honest states.
 #
 # Runs against `trackingMockSource` (no backend), the hermetic CI path Phase 12
-# established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
+# established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`, and
+# `EXPO_PUBLIC_MOCK_TRACKING_STATE` unset (its `error` state never reports a
+# status, so the trip could not move on).
 #
 # WHY THE MOCK MOVES. `trackingMockSource` walks the driver along a fixed
-# approach path, one step per read, and reports a bearing between each pair of
-# points. A static fixture would make §11.4's interpolation, the bearing marker,
-# the pan-pause and the ETA countdown all unreachable without a device and a real
-# driver — which, given no dev-client build exists, means unreachable full stop.
+# approach path and reports a bearing between each pair of points. A static
+# fixture would make §11.4's interpolation, the bearing marker, the pan-pause
+# and the ETA countdown all unreachable without a device and a real driver —
+# which, given no dev-client build exists, means unreachable full stop.
+#
+# THE MOCK TRIP CLOCK. Once the mock driver accepts, one shared clock
+# (`mockTripClock.ts`) moves the trip on, and the booking and the tracking
+# mocks both read it:
+#   about 15 s `assigned`  → 18 Driver En Route
+#   about 45 s `en_route`  → 19 Driver Arriving (the truck walks to the pickup)
+#   then `arrived`, held   → 23 Driver Arrived → Confirm Pickup → 24 Collection Code
 #
 # What it proves — everything the Phase 12 screen faked:
 #   the tracking screen shows a REAL driver (it showed `assignedDriverMock` —
 #   the same "Ramesh Kumar / KA 03 AB 1234" for every trip) → an ETA that counts
-#   down → the collection OTP, from a hook that existed unused since Phase 15 →
-#   §11.7's share link → a cancel that quotes §3.5's fee BEFORE confirming
-#   (the old button called `navigation.popToTop()` and cancelled nothing).
+#   down → the trip moving through 18, 19 and 23 on its own → the collection
+#   OTP on 24, from `useBookingOtp` → Back from 24 landing on 23, not Home.
+#
+# Share, the full timeline and cancel are no longer on these screens: the MiTow
+# redesign moved them to 20 Booking Details (the vehicle card). See "Moved off
+# these screens" below.
 #
 # WHAT IT CANNOT PROVE, and why the map assertions below are absent: the map is
 # `react-native-maps`, a native module. Under mocks-on with no Google key the
 # facade renders `MapPreviewPlaceholder`, so there is no marker to assert on and
 # asserting the placeholder would test the fallback rather than the feature.
-# The interpolation and the pan-pause are covered by the shared maths' unit
-# tests; the drawing is not covered at all.
+# That includes every map callout and chip ("Your tow truck / is on the way",
+# "On the way to / your location", "Driver has arrived", "Your location",
+# "Rakesh is here"). The interpolation and the pan-pause are covered by the
+# shared maths' unit tests; the drawing is not covered at all.
 #
-# Matches on visible copy and accessibilityLabel only — no testID convention.
+# Matches on visible copy and accessibilityLabel only — no testID convention
+# (see customer-login.yaml, which also explains the `.*`).
 #
 # ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
 # Maestro flow in this repo has ever run. Reviewed against the screens as
@@ -33,63 +48,109 @@ appId: in.mitow.customer
 - runFlow: customer-login.yaml
 
 # ── Reach a trip that is in flight ──────────────────────────────────────────
-# The booking flow leaves a booking in SEARCHING and the active-trip card is the
-# recoverable way back to it (Phase 15). In mocks-on the tracking source reports
-# `en_route` regardless, which is what puts this screen into its live state.
-- runFlow: customer-booking.yaml
-- tapOn: 'Current trip'
+# The old route here (`customer-booking.yaml`, then the active-trip card) no
+# longer reaches this screen: that card opens Booking Details. In mock mode the
+# way onto 18 is the mock search timeline (see `bookingsMockSource.ts`): a new
+# search reads back as No Drivers Found (17) after 30 s, Try Again restarts it,
+# and the retried search is accepted 12 s later, which hands off to 18. The
+# search screen polls every 10 s, so each wait allows for a missed poll.
+#
+# The booking steps are the minimum from `customer-booking.yaml` (see there for
+# why each selector is what it is).
+- tapOn: 'Book a Tow'
+- assertVisible: 'Enter Location'
+- tapOn: 'Drop Location'
+- hideKeyboard
+- tapOn: 'HSR Layout. Sector 2, HSR Layout, Bengaluru'
+- tapOn: 'Continue'
+- assertVisible: 'Select Vehicle'
+- tapOn: 'Confirm Booking'
+- extendedWaitUntil:
+    visible: 'Searching for Tow'
+    timeout: 15000
+- extendedWaitUntil:
+    visible: 'No drivers found'
+    timeout: 60000
+- tapOn: 'Try Again'
+- extendedWaitUntil:
+    visible: 'Rakesh Kumar'
+    timeout: 45000
 
-# ── §9.1.7: a REAL driver, not the frozen fixture ───────────────────────────
-# The name comes from `trackingMockSource`, which is a different person from the
-# deleted `assignedDriverMock` on purpose: if this assertion ever passes against
-# "Ramesh Kumar" again, the mock driver has come back.
-- assertVisible: 'Anita Sharma'
-- assertVisible: 'KA 05 MJ 8842'
+# ── 18 Driver En Route (`assigned`, about 15 s) ─────────────────────────────
+# §9.1.7: a REAL driver, not the frozen fixture. The driver comes from
+# `trackingMockSource` (Figma 18's example driver). The deleted
+# `assignedDriverMock` was "Ramesh Kumar": if this screen ever shows that name
+# again, the frozen fixture has come back.
+#
+# 18 is on screen for only about 15 s after the match, so the checks here are
+# the few that tell 18 apart; the driver row and vehicle card are checked on 19.
+#
+# §11.4's ETA: Figma 18 makes it the heading ("Arriving in 5 mins") over the
+# state. The heading block is one accessible element labelled
+# "<title>. <subtitle>", hence the `.*`.
+- assertVisible: 'Arriving in \d+ mins.*'
+- assertVisible: '.*Your driver is on the way to your location'
 - assertNotVisible: 'Ramesh Kumar'
 
-# ── §11.4's ETA chip ────────────────────────────────────────────────────────
-- assertVisible: 'Driver is on the way'
-- assertVisible: 'Arriving in'
-# The mock has no Directions result, so the estimate is honestly labelled.
-- assertVisible: 'Estimated — live route unavailable'
-
-# ── §9.1.7's status timeline ────────────────────────────────────────────────
-- assertVisible: 'Driver assigned'
-- assertVisible: 'On the way'
-- assertVisible: 'Arrived at pickup'
-
-# ── §9.1.7's collection OTP ─────────────────────────────────────────────────
-# The card is gated on `booking.otpAvailable`, which the bookings mock reports
-# once a driver exists. `useBookingOtp` has been wired to a real endpoint since
-# Phase 15 and had no caller until now.
-- assertVisible: 'Your collection code'
-- assertVisible: '482913'
-
-# ── §11.7's share trip ──────────────────────────────────────────────────────
-- assertVisible: 'Share trip'
-- tapOn:
-    id: 'Share this trip'
-# The OS share sheet is outside the app; Maestro cannot assert inside it. What
-# CAN be asserted is that the link was minted and the app now offers to revoke
-# it — which is the state the server's `shared` flag drives.
-- pressKey: back
-- assertVisible: 'Stop sharing'
-
-# ── §9.1.7's policy-aware cancel ────────────────────────────────────────────
-# The fee is quoted BEFORE the customer commits. The old screen had no sheet at
-# all: "Cancel Request" called `popToTop()` and the booking stayed live.
-- tapOn:
-    id: 'Cancel this trip'
-- assertVisible: 'Cancel this trip?'
-- assertVisible: 'Your driver is already on the way'
-- assertVisible: 'Cancellation fee ₹1,200'
-# PHASE 19 SHIPPED COLLECTION, so the "We cannot take this fee yet" line this
-# flow used to assert is gone — `CancelTripSheet` drops it whenever the quote
-# says `chargeable`, which is now every tier. The confirm button opens the fee
-# payment sheet instead of being disabled.
-- assertVisible: 'Yes, cancel trip'
-- tapOn:
-    id: 'Keep my trip'
+# ── 19 Driver Arriving (`en_route`, about 45 s) ─────────────────────────────
+# The heading is static copy, one accessible element "<title>. <subtitle>".
+- extendedWaitUntil:
+    visible: 'Trip in Progress\. Your tow truck is on the way to your location'
+    timeout: 30000
+- assertVisible: 'Rakesh Kumar'
+- assertVisible: '4.8 \(500\+ trips\)'
+# Plate and model sit inside the vehicle card, one accessible element labelled
+# "Tow truck, <plate>, <model>. View booking details".
+- assertVisible: '.*KA 01 AB 1234.*'
+- assertVisible: '.*Tata 407 \(Flatbed\).*'
+# The arrival timeline: each row is one accessible element, "<title>, <time>,
+# <state> step". The times are clock times, so they are matched by shape.
+- assertVisible: 'Driver on the way, \d{1,2}:\d{2} (AM|PM), current step'
+- assertVisible: 'Arriving at your location, Est\. \d{1,2}:\d{2} (AM|PM), upcoming step'
+- assertVisible: 'Call driver'
+- assertVisible: 'Message driver'
+- assertVisible: "You're in safe hands"
+- assertVisible: 'All our drivers are verified and insured.'
 
 # ── The trip is still there ─────────────────────────────────────────────────
-- assertVisible: 'Anita Sharma'
+# Help opens 58 Support over the trip (its banner is one accessible element,
+# "We're here to help! <subtitle>"). Backing out must land on the same live
+# trip, not on Home.
+- tapOn: 'Help'
+- assertVisible: "We're here to help!.*"
+- tapOn: 'Go back'
+- assertVisible: 'Rakesh Kumar'
+
+# ── 23 Driver Arrived (`arrived`, held) ─────────────────────────────────────
+- extendedWaitUntil:
+    visible: 'Driver has arrived\. Your driver is at the pickup location'
+    timeout: 70000
+- assertVisible: 'Verified Driver & Vehicle'
+- assertVisible: 'All our drivers are background verified.'
+- assertVisible: '.*KA 01 AB 1234.*'
+- assertNotVisible: 'Your collection code.*'
+
+# ── 24 Collection Code ──────────────────────────────────────────────────────
+# Confirm Pickup calls no API; it opens 24 on the same screen. The code card is
+# one accessible element, "Your collection code is <digits spaced>. <note>";
+# the mock code is Figma 24's example, 4 8 2 7 1 9.
+- tapOn: 'Confirm Pickup'
+- assertVisible: '.*Share this code so Rakesh can start your tow\.'
+- extendedWaitUntil:
+    visible: 'Your collection code is 4 8 2 7 1 9\..*'
+    timeout: 10000
+- assertNotVisible: 'Confirm Pickup'
+
+# Back on 24 returns to 23 (the in-screen step), not out of the trip.
+- tapOn: 'Go back'
+- assertVisible: 'Driver has arrived\. Your driver is at the pickup location'
+- assertVisible: 'Confirm Pickup'
+
+# ── Moved off these screens: full timeline, share, cancel ───────────────────
+# Figma 18, 19, 23 and 24 draw none of them; they are on 20 Booking Details,
+# opened by the vehicle card. The app keeps them on the pre-redesign sheet for
+# `in_progress` and later until 25 onwards are rebuilt, and the mock trip clock
+# holds at `arrived`, so none of them can render here in mock mode. Their steps
+# (the "Driver assigned / On the way / Arrived at pickup" timeline, "Share trip"
+# → "Stop sharing", and the cancel fee quote with "Keep my trip") belong to the
+# Booking Details flow.

@@ -6,7 +6,12 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /** Fixed challenge id + code — the "hermetic Maestro flow" the B0 canonical block requires with no backend at all. */
 export const MOCK_CHALLENGE_ID = '00000000-0000-4000-8000-000000000099';
-export const MOCK_OTP = '123456';
+/**
+ * TEMPORARY — six zeros, not the old `123456`, so the flow can be walked without
+ * a real SMS provider. Six because the OTP screen has six boxes and auto-submits
+ * on the sixth digit; a five-digit code would never submit itself.
+ */
+export const MOCK_OTP = '000000';
 
 let mockMobile = '';
 
@@ -29,7 +34,11 @@ export const authMockSource: AuthDataSource = {
     return {
       accessToken: 'mock-access-token',
       refreshToken: 'mock-refresh-token',
-      customer: { id: 'mock-customer-1', mobile: mockMobile, name: 'Rahul Sharma', isNew: false },
+      // TEMPORARY `isNew: true` — the redesigned Profile Setup screen only mounts
+      // for a new customer, so with `false` it is unreachable and cannot be
+      // reviewed. Submitting the name flips it to false, which then lets the
+      // consent gate open, so one mock login walks the whole 01–06 flow.
+      customer: { id: 'mock-customer-1', mobile: mockMobile, name: '', isNew: true },
     };
   },
 

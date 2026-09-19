@@ -14,25 +14,33 @@ appId: in.mitow.customer
 ---
 - runFlow: customer-login.yaml
 
-# The bell lives in `AppHeader` on Home/Bookings/Services. Its accessibility
-# label switches to "Notifications, unread" when the dot is showing, which is
-# the mock fixture's default state (2 of 3 rows unread).
-- assertVisible:
-    id: "Notifications, unread"
-- tapOn:
-    id: "Notifications, unread"
+# The bell lives in `AppHeader`, which the REDESIGNED Home NO LONGER RENDERS —
+# Figma 08 replaced that shell with a full-bleed map and a fixed sheet, and the
+# design puts no bell on Home. The Support tab that replaced Services pushes 58
+# Support, which has no bell either, and Profile hides it, so Bookings is the
+# tab the centre is reached from.
+- tapOn: 'Bookings'
+- assertVisible: 'My Bookings'
+
+# Its accessibility label switches to "Notifications, unread" when the dot is
+# showing, which is the mock fixture's default state (2 of 3 rows unread).
+- assertVisible: "Notifications, unread"
+- tapOn: "Notifications, unread"
 
 - assertVisible: "Notifications"
-- assertVisible: "Your driver is verified"
-- assertVisible: "Payment received"
+# Each row is one accessible element labelled "[Unread. ]<title>. <body>", so
+# the titles are matched with `.*` (see customer-login.yaml).
+- assertVisible: '.*Your driver is verified.*'
+- assertVisible: '.*Payment received.*'
 
-- tapOn: "Mark all read"
+# The visible "Mark all read" carries the accessibilityLabel below.
+- tapOn: "Mark all notifications as read"
 
 # The affordance disappears with the last unread row — the same condition that
 # hides the bell's dot.
-- assertNotVisible: "Mark all read"
+- assertNotVisible: "Mark all notifications as read"
 
-- tapOn:
-    id: "Back"
-- assertVisible:
-    id: "Notifications"
+- tapOn: "Go back"
+- assertVisible: 'My Bookings'
+# Back on Bookings, the bell is labelled plain "Notifications" again.
+- assertVisible: "Notifications"

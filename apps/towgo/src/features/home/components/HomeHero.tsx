@@ -11,8 +11,8 @@ import { Text } from '@towing/ui';
  * a grey skyline held at 52% opacity and offset 20px right / 10px down, so the
  * city reads as depth behind the truck rather than as part of it.
  *
- * The composite is still used by `ServicesHero` and the driver app's
- * `OnlineStatusCard`, so it stays in the tree — it is not dead.
+ * The composite is still used by the driver app's `OnlineStatusCard`, so it
+ * stays in the tree — it is not dead.
  */
 const truckImage = require('@/assets/illustrations/hero-truck.png');
 const skylineImage = require('@/assets/illustrations/hero-skyline.png');

@@ -1,168 +1,251 @@
-import React from 'react';
-import { Modal, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { PricingEstimateResponse } from '@towing/api-contracts';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Modal, PanResponder, StyleSheet, View } from 'react-native';
+import Animated, {
+  SlideInDown,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useTheme } from '@towing/theme';
-import { Button, StatusBadge, Text } from '@towing/ui';
-import { DetailRow, RowDivider } from '@/components/DetailRow';
-import { TrendingUp } from '@/icons';
+import { MiButton, MiCard, MiColorIcon, MiSheetPanel, MiText, mitowColors } from '@/design';
 import { formatPaise } from '@/utils/format';
-import { FareBreakdownSkeleton } from './FareBreakdownSkeleton';
+import { towMethodLabelFor } from '../data/towTypes.data';
+import type { FareEstimate } from '../types';
+import { fareSubtitleText, formatKm, type RouteFacts } from './book-a-tow/routeCopy';
+
+/** A drag past this many points, or a downward fling, dismisses the sheet. */
+const DISMISS_DISTANCE = 96;
+const DISMISS_VELOCITY = 0.9;
 
 /**
- * §9.1.5 step 3 — "transparent breakdown (base, night, highway, accident,
- * surge, est. total) + ETA".
+ * Figma 15 · Fare Breakdown, sheet `292:2793`, modal over 14.
  *
- * A REACT-NATIVE `Modal`, NOT THE APP'S OWN `BottomSheet`. `@/motion`'s sheet
- * says in its own header that it is hand-rolled precisely because "both sheets
- * in this app are non-modal, always visible and in-screen: no backdrop, no
- * portal". This one is the opposite of all three — it sits above the booking
- * sheet, dims what is behind it and is dismissed. Reusing the in-screen sheet
- * would have meant adding a backdrop and a portal to a component whose whole
- * justification is not having them. `PushPrimingSheet` set this pattern.
+ * Dim (surface/inverse 45 %) + sheet (padding 14 / 21 / 34, gap 16): handle,
+ * heading block (gap 4), breakdown card (padding 16, gap 14, radius 16, 1.2
+ * border/subtle, Elevation/Card), note row (gap 10, top-aligned) and the dark
+ * "Got It" button. No close button, no second CTA.
  *
- * ROWS ONLY EXIST WHEN THEY ARE NON-ZERO. A breakdown listing "Night charge ₹0"
- * and "Highway ₹0" reads as a list of things we might yet charge for. §7.6's
- * promise is transparency about what the customer IS paying.
+ * Every drawn part renders on every open. The values come from the quote on
+ * screen; if the query drops it while the sheet is open, the sheet keeps the
+ * last one it showed.
+ *
+ * `MiSheet` has no drag gesture, so the modal is assembled here from the same
+ * parts (RN Modal, the Dim, `MiSheetPanel`, the same slide-in) plus the drawn
+ * handle's drag-down-to-dismiss. Tap outside does nothing: the design does not
+ * specify it.
  */
 export function FareBreakdownSheet({
   visible,
   onClose,
   estimate,
-  loading,
+  vehicleName,
+  vehicleClass,
+  route,
 }: {
   visible: boolean;
   onClose: () => void;
-  estimate: PricingEstimateResponse | undefined;
-  loading: boolean;
+  estimate: FareEstimate | undefined;
+  /** The selected 14 vehicle tile's name ("Car"), for "Tow a Car · …". */
+  vehicleName: string;
+  /** The class the selected tile bills, for the tow method until a quote names one. */
+  vehicleClass: 'wheel_lift' | 'flatbed';
+  /** Distance and ETA for the subtitle and the distance row. */
+  route: RouteFacts;
 }) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+
+  const lastEstimate = useRef<FareEstimate | undefined>(estimate);
+  if (estimate) lastEstimate.current = estimate;
+  const shown = estimate ?? lastEstimate.current;
+
+  // --- drag to dismiss -----------------------------------------------------
+
+  const translateY = useSharedValue(0);
+  const panelHeight = useRef(0);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (visible) translateY.value = 0;
+  }, [visible, translateY]);
+
+  const panResponder = useMemo(() => {
+    const close = () => onCloseRef.current();
+    const settle = () => {
+      translateY.value = withSpring(0, theme.motion.spring.press);
+    };
+    return PanResponder.create({
+      // Vertical drags only, and only downward: the Got It press keeps its own touch.
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 4 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_, g) => {
+        translateY.value = Math.max(0, g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > DISMISS_DISTANCE || g.vy > DISMISS_VELOCITY) {
+          translateY.value = withTiming(panelHeight.current || 480, { duration: 180 }, (done) => {
+            if (done) runOnJS(close)();
+          });
+        } else {
+          settle();
+        }
+      },
+      onPanResponderTerminate: settle,
+    });
+  }, [theme.motion.spring.press, translateY]);
+
+  const dragStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: theme.colors.overlay }}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <View
-          style={{
-            backgroundColor: theme.colors.surface0,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            paddingTop: theme.spacing.xxl,
-            paddingBottom: Math.max(insets.bottom, theme.spacing.xxl),
-            maxHeight: '80%',
-          }}
-        >
-          <View
-            style={{
-              paddingHorizontal: theme.spacing.xxl,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: theme.spacing.sm,
+          style={[StyleSheet.absoluteFill, { backgroundColor: mitowColors.dim }]}
+          accessible={false}
+          importantForAccessibility="no"
+        />
+        <Animated.View entering={SlideInDown.duration(280)}>
+          <Animated.View
+            style={dragStyle}
+            accessibilityViewIsModal
+            accessibilityLabel="Fare breakdown"
+            onLayout={(event) => {
+              panelHeight.current = event.nativeEvent.layout.height;
             }}
+            {...panResponder.panHandlers}
           >
-            <Text weight="semibold" style={{ fontSize: 18, flex: 1 }}>
-              Fare breakdown
-            </Text>
-            {estimate?.surgeActive ? (
-              <StatusBadge label="Surge" tone="warning" pill icon={TrendingUp} />
-            ) : null}
-          </View>
-
-          <ScrollView
-            style={{ marginTop: theme.spacing.lg }}
-            contentContainerStyle={{ paddingHorizontal: theme.spacing.xxl }}
-          >
-            {loading || !estimate ? (
-              <FareBreakdownSkeleton />
-            ) : (
-              <>
-                <DetailRow label="Base fare" value={formatPaise(estimate.breakdown.basePaise)} tabular />
-                {estimate.breakdown.nightPaise > 0 ? (
-                  <>
-                    <RowDivider />
-                    <DetailRow
-                      label="Night charge"
-                      description="Tows between 10 pm and 6 am"
-                      value={formatPaise(estimate.breakdown.nightPaise)}
-                      tabular
-                    />
-                  </>
-                ) : null}
-                {estimate.breakdown.highwayPaise > 0 ? (
-                  <>
-                    <RowDivider />
-                    <DetailRow
-                      label="Highway pickup"
-                      description={estimate.zone.name}
-                      value={formatPaise(estimate.breakdown.highwayPaise)}
-                      tabular
-                    />
-                  </>
-                ) : null}
-                {estimate.breakdown.accidentPaise > 0 ? (
-                  <>
-                    <RowDivider />
-                    <DetailRow
-                      label="Accident recovery"
-                      description="Specialist equipment and handling"
-                      value={formatPaise(estimate.breakdown.accidentPaise)}
-                      tabular
-                    />
-                  </>
-                ) : null}
-                {estimate.breakdown.surgePaise > 0 ? (
-                  <>
-                    <RowDivider />
-                    <DetailRow
-                      label="Surge"
-                      description="High demand in this area right now"
-                      value={formatPaise(estimate.breakdown.surgePaise)}
-                      tabular
-                    />
-                  </>
-                ) : null}
-                {estimate.breakdown.discountPaise > 0 ? (
-                  <>
-                    <RowDivider />
-                    <DetailRow
-                      label="Discount"
-                      value={`-${formatPaise(estimate.breakdown.discountPaise)}`}
-                      tabular
-                    />
-                  </>
-                ) : null}
-
-                <RowDivider />
-                <DetailRow
-                  label="Total estimate"
-                  value={formatPaise(estimate.breakdown.totalPaise)}
-                  strong
-                  tabular
-                />
-
-                <View style={{ marginTop: theme.spacing.lg, gap: 4 }}>
-                  {estimate.distanceKm > 0 ? (
-                    <Text color="secondary" style={{ fontSize: 12, lineHeight: 18 }}>
-                      {estimate.distanceKm.toFixed(1)} km
-                      {estimate.etaMinutes !== null ? ` · about ${estimate.etaMinutes} min` : ''}
-                      {/* §19.2 made visible. A straight-line number quoted as a
-                          routed one is the dishonest version of this fallback. */}
-                      {estimate.distanceSource === 'haversine' ? ' · estimated distance' : ''}
-                    </Text>
-                  ) : null}
-                  <Text color="secondary" style={{ fontSize: 12, lineHeight: 18 }}>
-                    Fare locks when you confirm; it may change with demand until then.
-                  </Text>
-                </View>
-              </>
-            )}
-          </ScrollView>
-
-          <View style={{ paddingHorizontal: theme.spacing.xxl, marginTop: theme.spacing.xl }}>
-            <Button label="Got it" onPress={onClose} fullWidth />
-          </View>
-        </View>
+            <MiSheetPanel>
+              <FareBreakdownBody
+                estimate={shown}
+                vehicleName={vehicleName}
+                vehicleClass={vehicleClass}
+                route={route}
+              />
+              <MiButton label="Got It" onPress={onClose} />
+            </MiSheetPanel>
+          </Animated.View>
+        </Animated.View>
       </View>
     </Modal>
+  );
+}
+
+function FareBreakdownBody({
+  estimate,
+  vehicleName,
+  vehicleClass,
+  route,
+}: {
+  estimate: FareEstimate | undefined;
+  vehicleName: string;
+  vehicleClass: 'wheel_lift' | 'flatbed';
+  route: RouteFacts;
+}) {
+  const breakdown = estimate?.breakdown;
+  const money = (paise: number | undefined) => (paise === undefined ? '' : formatPaise(paise));
+
+  const distancePaise = breakdown ? (breakdown.distancePaise ?? 0) : undefined;
+  /**
+   * The four drawn lines must add up to "Total estimate". The quote also carries
+   * charges the design draws no row for (highway pickup, accident recovery,
+   * waiting, surge), and the live API folds distance into base. The Base fare
+   * line therefore carries everything that is not drawn on a line of its own:
+   * total − distance − night + discount.
+   */
+  const basePaise = breakdown
+    ? Math.max(
+        0,
+        breakdown.totalPaise -
+          (distancePaise ?? 0) -
+          breakdown.nightPaise +
+          breakdown.discountPaise,
+      )
+    : undefined;
+
+  return (
+    <>
+      <View style={{ gap: 4 }}>
+        <MiText variant="title23">Fare breakdown</MiText>
+        <MiText variant="bodyM15" color="secondary" numberOfLines={1}>
+          {fareSubtitleText(
+            route,
+            vehicleName,
+            towMethodLabelFor(estimate?.vehicleClass ?? vehicleClass),
+          )}
+        </MiText>
+      </View>
+
+      <MiCard radius={16} padding={16} gap={14} borderWidth={1.2} elevation="card">
+        <LineItem label="Base fare" value={money(basePaise)} />
+        <LineItem
+          label={`Distance charge (${formatKm(route.distanceKm)} km)`}
+          value={money(distancePaise)}
+        />
+        <LineItem label="Night charge" value={money(breakdown?.nightPaise)} />
+        <LineItem
+          label={estimate?.couponCode ? `Discount (${estimate.couponCode})` : 'Discount'}
+          // U+2212 MINUS SIGN, then ₹ and the amount, as drawn.
+          value={breakdown ? `−${formatPaise(breakdown.discountPaise)}` : ''}
+          credit
+        />
+
+        <View style={{ height: 1, backgroundColor: mitowColors.borderSubtle }} />
+
+        <View
+          style={{
+            height: 26,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <MiText variant="strong16">Total estimate</MiText>
+          <MiText variant="title20">{money(breakdown?.totalPaise)}</MiText>
+        </View>
+      </MiCard>
+
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+        <MiColorIcon name="info" size={20} />
+        <MiText variant="bodyS14" color="secondary" style={{ flex: 1 }}>
+          Fare locks when you confirm. Until then it may change with demand, tolls or waiting time.
+        </MiText>
+      </View>
+    </>
+  );
+}
+
+/**
+ * A line item row `292:2800`…`292:2809`: exactly 20 tall, space-between, items
+ * centred, nothing between label and value. Body M 15 secondary label, Strong 15
+ * value (status/success-text for the credit).
+ */
+function LineItem({ label, value, credit }: { label: string; value: string; credit?: boolean }) {
+  return (
+    <View
+      style={{
+        height: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      {/* Single line, as the drawn nowrap label; it yields before the value does. */}
+      <MiText variant="bodyM15" color="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
+        {label}
+      </MiText>
+      <MiText variant="strong15" color={credit ? 'success' : 'primary'} align="right">
+        {value}
+      </MiText>
+    </View>
   );
 }

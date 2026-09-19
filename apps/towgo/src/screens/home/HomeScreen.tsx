@@ -1,63 +1,361 @@
-import React, { useCallback } from 'react';
-import { View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { View, type LayoutChangeEvent } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@towing/theme';
-import { Screen, OfflineBanner } from '@towing/ui';
-import { AppHeader } from '@/components/AppHeader';
-import { useCollapsingHeader } from '@/motion';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useTabBarSpace } from '@/navigation/TabBar';
+import { usePressablePrimitive } from '@towing/ui';
+import {
+  mitowColors,
+  mitowRadii,
+  MiButton,
+  MiHelpChip,
+  MiInfoBanner,
+  MiLineIcon,
+  MiMapButton,
+  MiServiceTile,
+  MiSheetPanel,
+  MiText,
+  type MiColorIconName,
+} from '@/design';
 import { useLocationStore } from '@/features/location/locationStore';
-import { HomeHero } from '@/features/home/components/HomeHero';
-import { PickupMapCard } from '@/features/home/components/PickupMapCard';
-import { QuickActionsGrid } from '@/features/home/components/QuickActionsGrid';
-import { SafetyPromiseBanner } from '@/features/home/components/SafetyPromiseBanner';
-import type { QuickActionId } from '@/features/home/types';
+import { useNearestPartner } from '@/features/home/api/home.queries';
+import { useBookingStore } from '@/features/booking/store/bookingStore';
+import { track } from '@/lib/analytics/analytics';
 import type { RootStackParamList } from '@/navigation/types';
+import { HomeMap, type HomeMapHandle } from './components/HomeMap';
+
+/**
+ * Figma 08 · Home (`225:69`), with screen 07's map (`287:2017`) on a real
+ * Google map (product owner decision). Built from spec 07-08-home.md.
+ *
+ * Geometry is the 393 × 852 frame. The status bar there is 50 tall, so top
+ * chrome y positions are `insets.top + (y − 50)`. The sheet is anchored to the
+ * bottom of the screen area; the navigator's tab bar (Home variant: no border,
+ * white) continues it as one white surface, so the sheet's bottom padding is
+ * the drawn 12.1 between the banner and the tab bar.
+ *
+ * The push-priming sheet (07) is mounted by RootNavigator over this screen.
+ *
+ * ⚠ "Fast Towing," is asserted by Maestro flows to detect Home.
+ */
+
+/** Design frame. */
+const FRAME_W = 393;
+const STATUS_BAR_H = 50;
+/** Home sheet 226:177 top on the frame; map 287:2017 runs 30 below it. */
+const SHEET_TOP_Y = 370;
+const SHEET_OVERLAP = 30;
+/** Home sheet 226:177 height above the tab bar: tab bar sits at sheet y 397.9. */
+const SHEET_H_DRAWN = 397.9;
+
+/** Where 07 draws the customer's dot and the route's end at the truck. */
+const DESIGN_USER = { x: 108.3, y: 329.3 };
+/** Hero 228:265 top on the frame, and its drawn height (bottom at 255.5). */
+const HERO_TOP_Y = 130.4;
+const HERO_H_DRAWN = 125.1;
+/** M8 "Your location" chip top (283.8) sits 45.5 above the dot and 28.3 below the Hero. */
+const CHIP_ABOVE_DOT = DESIGN_USER.y - 283.8;
+const CHIP_BELOW_HERO = 283.8 - (HERO_TOP_Y + HERO_H_DRAWN);
+/** The dot never sits closer to the sheet than this (the map's framing room below it). */
+const DOT_MIN_ABOVE_SHEET = 12;
+const DESIGN_PARTNER = { x: 276.0, y: 243.5 };
+
+/** 5.5 Services row: fill width 349.7, four 68 tiles at fixed gap 24.45 (4.35 left over on the right). */
+const SERVICES_ROW_W = 349.7;
+const SERVICES_ROW_SLACK = 4.35;
+
+type ServiceTile = {
+  slug: string;
+  label: string;
+  icon: MiColorIconName;
+  iconSize: number;
+};
+
+/** 5.5a–d, labels verbatim with their hard breaks. */
+const SERVICE_TILES: ServiceTile[] = [
+  { slug: 'car_tow', label: 'Tow a Car', icon: 'tow-truck', iconSize: 56 },
+  { slug: 'battery', label: 'Battery\nJump Start', icon: 'battery', iconSize: 50 },
+  { slug: 'flat_tyre', label: 'Flat Tyre\nSupport', icon: 'tyre', iconSize: 50 },
+  { slug: 'fuel', label: 'Out of\nFuel', icon: 'jerry-can', iconSize: 50 },
+];
 
 export function HomeScreen() {
-  const theme = useTheme();
-  const tabBarSpace = useTabBarSpace();
-  const { scrollY, screenProps } = useCollapsingHeader();
-  const online = useOnlineStatus();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
 
-  const status = useLocationStore((s) => s.status);
+  const pickup = useLocationStore((s) => s.pickup);
   const useCurrentLocation = useLocationStore((s) => s.useCurrentLocation);
+  const setServiceSlug = useBookingStore((s) => s.setServiceSlug);
 
-  // Notifications / schedule / roadside / support land on screens not built yet.
-  const notReady = useCallback(() => {}, []);
+  // Always a partner once the pickup is known: the design never drops the group.
+  const { partner } = useNearestPartner(pickup.coords);
+
+  const [screenW, setScreenW] = useState(FRAME_W);
+  const [sheetH, setSheetH] = useState(SHEET_H_DRAWN);
+  const [containerH, setContainerH] = useState(SHEET_TOP_Y + SHEET_H_DRAWN);
+  const [heroH, setHeroH] = useState(HERO_H_DRAWN);
+
+  const map = useRef<HomeMapHandle>(null);
+
+  const chromeTop = insets.top - STATUS_BAR_H;
+  const sheetTop = containerH - sheetH;
+  const mapHeight = Math.max(0, sheetTop + SHEET_OVERLAP);
+
+  /*
+   * Where the map puts 07's two points on this device, keeping each tied to the
+   * chrome it sits beside in the design (identical to the frame on a 393 × 852
+   * screen with a 50 pt status bar):
+   * - the customer's dot stays 40.7 above the sheet, like Recenter, and 108.3
+   *   from the left, like Menu and Hero; on a screen too short for that, it
+   *   moves down (to no closer than 12 above the sheet) so the "Your location"
+   *   chip keeps its drawn 28.3 below the Hero instead of sliding under it;
+   * - the truck stays where the top chrome puts it (so the callout keeps its
+   *   45.3 below the Help chip) and 117 from the right, like Help and Recenter,
+   *   but never at a flatter angle from the dot than the design's 85.8 : 167.7
+   *   (on a short screen it rises instead of sliding left under the Hero).
+   */
+  const heroBottom = chromeTop + HERO_TOP_Y + heroH;
+  const customerAt = {
+    x: DESIGN_USER.x,
+    y: Math.min(
+      sheetTop - DOT_MIN_ABOVE_SHEET,
+      Math.max(
+        sheetTop - (SHEET_TOP_Y - DESIGN_USER.y),
+        heroBottom + CHIP_BELOW_HERO + CHIP_ABOVE_DOT,
+      ),
+    ),
+  };
+  const partnerX = screenW - (FRAME_W - DESIGN_PARTNER.x);
+  const designRise =
+    ((partnerX - customerAt.x) * (DESIGN_USER.y - DESIGN_PARTNER.y)) /
+    (DESIGN_PARTNER.x - DESIGN_USER.x);
+  const partnerAt = {
+    x: partnerX,
+    y: Math.min(chromeTop + DESIGN_PARTNER.y, customerAt.y - designRise),
+  };
+  const mapRoom = { west: customerAt.x - 21, south: Math.max(0, sheetTop - 12 - customerAt.y) };
+
   const openBooking = useCallback(() => navigation.navigate('BookLocation'), [navigation]);
-  const onQuickAction = useCallback(
-    (id: QuickActionId) => {
-      if (id === 'book') navigation.navigate('BookLocation');
+
+  const useMyLocation = useCallback(() => {
+    // Resolves the device fix as pickup (permission prompt included) while
+    // step 10 opens; the location store feeds that screen's Pickup field.
+    void useCurrentLocation();
+    navigation.navigate('BookLocation');
+  }, [navigation, useCurrentLocation]);
+
+  const recenter = useCallback(() => {
+    void useCurrentLocation();
+    map.current?.frame(true);
+  }, [useCurrentLocation]);
+
+  const openService = useCallback(
+    (slug: string) => {
+      setServiceSlug(slug);
+      track('service_selected', { slug });
+      navigation.navigate('BookLocation');
     },
-    [navigation],
+    [navigation, setServiceSlug],
   );
 
-  return (
-    <Screen
-      scroll
-      edges={['top']}
-      banner={<OfflineBanner visible={!online} />}
-      header={<AppHeader showMenu={false} scrollY={scrollY} />}
-      contentContainerStyle={{ paddingBottom: tabBarSpace }}
-      {...screenProps}
-    >
-      <HomeHero />
+  const onContainerLayout = (e: LayoutChangeEvent) => {
+    setContainerH(e.nativeEvent.layout.height);
+    setScreenW(e.nativeEvent.layout.width);
+  };
+  const onSheetLayout = (e: LayoutChangeEvent) => setSheetH(e.nativeEvent.layout.height);
+  const onHeroLayout = (e: LayoutChangeEvent) => setHeroH(e.nativeEvent.layout.height);
 
-      <View style={{ paddingHorizontal: theme.spacing.xl, gap: theme.spacing.xl }}>
-        <PickupMapCard
-          onBook={openBooking}
-          onUseCurrentLocation={useCurrentLocation}
-          locating={status === 'locating'}
-          locationDenied={status === 'denied'}
-          isOnline={online}
-        />
-        <QuickActionsGrid onAction={onQuickAction} />
-        <SafetyPromiseBanner onPress={notReady} />
+  return (
+    <View
+      style={{ flex: 1, backgroundColor: mitowColors.surfacePage }}
+      onLayout={onContainerLayout}
+    >
+      <StatusBar style="dark" />
+
+      {/* Map 287:2017: from the top of the screen, the sheet covers its bottom 30. */}
+      <HomeMap
+        ref={map}
+        style={{ position: 'absolute', top: 0, left: 0 }}
+        width={screenW}
+        height={mapHeight}
+        coveredBottom={SHEET_OVERLAP}
+        customer={pickup.coords}
+        partner={partner}
+        customerAt={customerAt}
+        partnerAt={partnerAt}
+        room={mapRoom}
+      />
+
+      {/* 1. Menu 228:255: bare icon/menu 25 at (21.3, 58.5). No destination yet. */}
+      <MenuButton style={{ position: 'absolute', left: 21.3, top: chromeTop + 58.5 }} />
+
+      {/* 2. Help chip 228:257 at (283.7, 48.5), right inset 14.3. */}
+      <MiHelpChip
+        onPress={() => navigation.navigate('Support')}
+        // Root 58. The tab navigator's placeholder route is `SupportTab`, so
+        // this bubbles past the tabs to the root stack (see BottomTabs).
+        style={{ position: 'absolute', right: 14.3, top: chromeTop + 48.5 }}
+      />
+
+      {/* 3. Hero 228:265 at (24.1, 130.4), gap 3.1. */}
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', left: 24.1, top: chromeTop + HERO_TOP_Y, gap: 3.1 }}
+        onLayout={onHeroLayout}
+      >
+        <MiText variant="display34" accessibilityRole="header">
+          {'Fast Towing,\nAnytime'}
+        </MiText>
+        <MiText variant="bodyL155" color="secondary">
+          {'Reliable roadside assistance\nwhen you need it most.'}
+        </MiText>
       </View>
-    </Screen>
+
+      {/* 4. Recenter 228:268: 55 circle, 12.5 above the sheet, right inset 18.2. */}
+      <MiMapButton
+        icon="navigation"
+        size={55}
+        iconSize={24}
+        accessibilityLabel="Recenter map"
+        onPress={recenter}
+        style={{ position: 'absolute', right: 18.2, bottom: sheetH + 12.5 }}
+      />
+
+      {/* 5. Home bottom sheet 226:177 (the tab bar below continues it). */}
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }} onLayout={onSheetLayout}>
+        <MiSheetPanel
+          showHandle={false}
+          paddingTop={10.3}
+          paddingLeft={22.4}
+          paddingRight={20.9}
+          paddingBottom={12.1}
+          addSafeArea={false}
+          gap={12}
+        >
+          {/* 5.1 Handle 226:178: grabber 49.5 × 5. */}
+          <View style={{ alignItems: 'center' }}>
+            <View
+              style={{
+                width: 49.5,
+                height: 5,
+                borderRadius: 2.5,
+                backgroundColor: mitowColors.borderHandle,
+              }}
+            />
+          </View>
+
+          {/* 5.2 Heading 226:180. */}
+          <MiText variant="title20">Where do you need a tow?</MiText>
+
+          {/* 5.3 Location input 226:181. */}
+          <LocationInput onPress={useMyLocation} />
+
+          {/* 5.4 Book a Tow 226:187: 50 tall, padding 21 / 16. */}
+          <MiButton
+            label="Book a Tow"
+            trailingIcon="arrow-right"
+            height={50}
+            paddingLeft={21}
+            paddingRight={16}
+            onPress={openBooking}
+          />
+
+          {/*
+            5.5 Services row 226:191: padding 4.6 / 3.3. At the design's 349.7
+            width the tiles sit at the fixed gap 24.45 with 4.35 left over on the
+            right; wider sheets keep that (the row stops at 349.7, left aligned),
+            narrower ones close the gaps so no tile passes the sheet's padding.
+          */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              maxWidth: SERVICES_ROW_W,
+              paddingRight: SERVICES_ROW_SLACK,
+              paddingTop: 4.6,
+              paddingBottom: 3.3,
+            }}
+          >
+            {SERVICE_TILES.map((tile) => (
+              <MiServiceTile
+                key={tile.slug}
+                width={68}
+                icon={tile.icon}
+                iconSize={tile.iconSize}
+                label={tile.label}
+                onPress={() => openService(tile.slug)}
+              />
+            ))}
+          </View>
+
+          {/* 5.6 24/7 banner 226:261 → 09 Roadside Assistance. */}
+          <MiInfoBanner
+            icon="verified"
+            iconSize={49}
+            title="24/7 Roadside Assistance"
+            subtitle="We're here so you can keep moving"
+            showChevron
+            onPress={() => navigation.navigate('RoadsideAssistance')}
+          />
+        </MiSheetPanel>
+      </View>
+    </View>
+  );
+}
+
+/** Menu 228:255: the glyph only (no container). Opens nothing yet: no menu screen exists. */
+function MenuButton({ style }: { style: React.ComponentProps<typeof View>['style'] }) {
+  const theme = useTheme();
+  const Pressable = usePressablePrimitive();
+  return (
+    <Pressable
+      onPress={() => {}}
+      pressScale={theme.motion.pressScale.chip}
+      haptic="light"
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel="Menu"
+      style={style}
+    >
+      <MiLineIcon name="menu" size={25} />
+    </Pressable>
+  );
+}
+
+/**
+ * 5.3 Location input 226:181: surface/muted, radius 14, 54.6 tall, gap 19.3,
+ * padding left 12.3 / right 10, clips. Filled map-pin 29, static copy, chevron 24.
+ */
+function LocationInput({ onPress }: { onPress: () => void }) {
+  const theme = useTheme();
+  const Pressable = usePressablePrimitive();
+  return (
+    <Pressable
+      onPress={onPress}
+      pressScale={theme.motion.pressScale.row}
+      haptic="light"
+      accessibilityRole="button"
+      accessibilityLabel="Use my current location"
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 19.3,
+        height: 54.6,
+        paddingLeft: 12.3,
+        paddingRight: 10,
+        borderRadius: mitowRadii.input,
+        backgroundColor: mitowColors.surfaceMuted,
+        overflow: 'hidden',
+      }}
+    >
+      <MiLineIcon name="map-pin" size={29} />
+      <MiText variant="bodyL155" numberOfLines={1} style={{ flex: 1 }}>
+        Use my current location
+      </MiText>
+      <MiLineIcon name="chevron-right" size={24} />
+    </Pressable>
   );
 }

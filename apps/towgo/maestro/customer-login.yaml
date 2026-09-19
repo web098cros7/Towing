@@ -3,9 +3,10 @@
 # Runs entirely against `authMockSource`/the account mock sources (no backend,
 # no network) — the "mocks-on Maestro flows retained as hermetic CI path"
 # requirement. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true` (the app
-# default) when this build was produced. `123456` is the fixed dev OTP shared
-# by both apps' mock auth sources, matching the convention already used by
-# `apps/towfleet-web`'s Playwright specs (see `e2e/smoke.spec.ts`).
+# default) when this build was produced. The customer mock OTP is TEMPORARILY
+# `000000` (see `authMockSource.ts`); the driver app's mock source and
+# `apps/towfleet-web`'s Playwright specs (see `e2e/smoke.spec.ts`) still use
+# `123456`.
 #
 # No `testID` convention exists in this codebase yet (see ToBeDoneEhsan.md),
 # so every step below matches visible copy or `accessibilityLabel` text
@@ -13,37 +14,61 @@
 # against the screens as written; not run against a device/emulator — this
 # environment has neither (see the phase's plan doc, "Explicitly out of
 # scope").
+#
+# Maestro matches a text selector as a FULL regex, not a substring. A marker
+# that is only the first line of a multi-line text node is therefore written
+# as that line plus `.*`.
 appId: in.mitow.customer
 ---
 - launchApp:
     clearState: true
 
-# Splash is a brief hydration flicker (MMKV read); the Login screen is the
-# first screen that actually holds still while unauthenticated. Since the
-# Figma 38:2 redesign, phone entry and OTP entry are two animated STEPS of one
-# LoginScreen rather than two stack screens — "Welcome" is its header.
-- assertVisible: "Welcome"
+# Splash (01) is a brief hydration hold (MMKV read); Welcome (02) is the first
+# screen that holds still while unauthenticated.
+#
+# Asserted by its tagline. "Welcome" is no longer drawn anywhere on 02, and the
+# tagline is ONE text node over two lines ("Reliable Towing.\nAnytime.
+# Anywhere."), so it is matched by its first line plus `.*`.
+- assertVisible: 'Reliable Towing.*'
+- tapOn: "Log In"
 
-- tapOn: "Enter mobile number"
+# Phone entry (03). Welcome's "Log In" and "Sign Up" both land here —
+# signing up and logging in are the same phone-OTP action. The input is tapped
+# by its placeholder: its accessibilityLabel "Mobile number" differs only in
+# letter case from the "Mobile Number" segment and field label above it.
+- assertVisible: "Welcome Back!"
+- tapOn: "Enter your mobile number"
 - inputText: "9876543210"
-- tapOn: "Send OTP"
+- tapOn: "Continue"
 
-# The OTP step slides in in-place (shared-axis, ~320ms). "Enter the code" is
-# its field label; "One-time code" is the accessibilityLabel of the single
-# hidden input behind the six digit boxes (see OtpInput.tsx — one input, not
-# six, so paste and SMS autofill keep working).
+# OTP entry is its own stack screen again as of the MiTow redesign (04),
+# rather than an animated second step of LoginScreen. "Enter the code" is its
+# headline; "One-time code" is the accessibilityLabel of the single hidden input
+# behind the six digit cells (see MiOtpCells.tsx — one input, not six, so paste
+# and SMS autofill keep working).
 - assertVisible: "Enter the code"
 - tapOn: "One-time code"
-- inputText: "123456"
-# LoginScreen auto-submits at 6 digits — no explicit "Verify" tap needed.
+- inputText: "000000"
+# VerifyOtpScreen auto-submits at 6 digits — no explicit "Verify" tap needed.
 
-# Fresh install → the DPDP first-run consent overlay is shown before Home.
+# Profile Setup (05). The mock identity is TEMPORARILY `isNew: true` (see
+# `authMockSource.ts`), so every mock login now passes through it before
+# consent. Its heading is one two-line text node ("What should we\ncall you?").
+# Continue is pinned to the bottom of the screen, under the keyboard.
+- assertVisible: 'What should we.*'
+- tapOn: "Enter your full name"
+- inputText: "Rahul Sharma"
+- hideKeyboard
+- tapOn: "Continue"
+
+# Fresh install → the DPDP first-run consent overlay (06) is shown before Home.
 - assertVisible: "Before you continue"
 - tapOn: "I Agree"
 
-# Phase 13: the push-priming sheet mounts once, after consent. Conditional
-# because it is skipped entirely where no token could be minted (Expo Go, a
-# simulator) — so this flow passes on a dev-client build and on a device.
+# Phase 13: the push-priming sheet (07) mounts once, OVER HOME, a moment after
+# the consent overlay closes. It is gated on whether the OS can be ASKED, not on
+# whether a push token can be minted, so it shows in Expo Go and on emulators
+# too; it stays conditional for a build without the notifications module.
 # Declining here is deliberate: `allow-notifications.yaml` is the flow that
 # accepts, and the OS prompt can only be answered once per install.
 - runFlow:
@@ -52,7 +77,7 @@ appId: in.mitow.customer
     commands:
       - tapOn: "Not now"
 
-# Home renders — `HomeHero`'s heading is the most stable marker of the
-# authenticated tab bar having mounted.
-
-- assertVisible: "Fast Towing,"
+# Home (08) renders. Its hero heading is the most stable marker of the
+# authenticated tab bar having mounted; it is one text node over two lines
+# ("Fast Towing,\nAnytime"), matched by its first line plus `.*`.
+- assertVisible: 'Fast Towing,.*'

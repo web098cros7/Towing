@@ -1,4 +1,6 @@
+import type { ReactNode, Ref } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
+import type { MapStyleElement } from 'react-native-maps';
 import type { IconComponent } from '../types';
 
 /** A WGS-84 point, in the shape both apps already use for coordinates. */
@@ -79,7 +81,99 @@ export type MapPolyline = {
    * direction.
    */
   tone: 'route' | 'direct';
+
+  // --- MiTow redesign: design-exact strokes (additive) ---------------------
+
+  /**
+   * Stroke colour override. Omit to keep the tone's theme colour. The MiTow
+   * designs draw route strokes no tone matches: Home 07/08 `map/route` #858E9E,
+   * Driver En Route 18 text/primary #0B0C0E.
+   */
+  color?: string;
+  /** Stroke width override in dp. Omit to keep the tone's width (route 5, direct 3). */
+  width?: number;
 };
+
+/**
+ * A custom React view pinned to a map coordinate (MiTow redesign).
+ *
+ * This is how a screen draws what the design draws ON the map without this
+ * package knowing the app's design system: the app builds the view (a black
+ * `icon/map-pin`, the glowing truck, a `MiMapChip`, a `MiMapCallout`) and the
+ * map keeps it on its coordinate while the customer pans and zooms.
+ *
+ * Rendered as a `react-native-maps` `<Marker>` with the view as its child. On
+ * Google Maps a custom marker is a SNAPSHOT of the view, so:
+ *
+ * 1. It is not interactive and never receives touches.
+ * 2. It is re-snapshotted only while `tracksViewChanges` is on. By default that
+ *    is a short settle window after mount (so images and SVGs finish drawing)
+ *    and again after every `contentKey` change, then off.
+ * 3. Anything drawn outside the view's own bounds is clipped, shadows included.
+ *    Wrap a shadowed view (MiMapChip) in a transparent padded View and compute
+ *    the anchor against the padded box.
+ *
+ * Markers always draw above polylines on Google Maps.
+ */
+export type MapOverlay = {
+  key: string;
+  coordinate: MapCoordinate;
+  /** The view to draw. Sized by its own layout. */
+  view: ReactNode;
+  /**
+   * The point of the view that sits ON the coordinate, as fractions of the
+   * view's width and height. Default `{ x: 0.5, y: 0.5 }` (centre).
+   * Pin tip: `{ x: 0.5, y: 1 }`. A callout's tail tip: `{ x: tipX / width, y: 1 }`.
+   */
+  anchor?: { x: number; y: number };
+  /** Stacking among markers and overlays; higher draws on top. */
+  zIndex?: number;
+  /**
+   * Snapshot policy. Omit for the default (track during a settle window after
+   * mount and after each `contentKey` change). `true` tracks always (only for a
+   * view that animates); `false` never re-snapshots after the first frame.
+   */
+  tracksViewChanges?: boolean;
+  /**
+   * Changing this re-enables snapshotting for a settle window, so a view whose
+   * content changed (an ETA callout going from "4 mins away" to "3 mins away")
+   * redraws. Pass the dynamic text, for example.
+   */
+  contentKey?: string | number;
+  /**
+   * Degrees clockwise from north. When set, the view rotates WITH the map
+   * (`flat`). Omit when unknown, exactly as for `MapMarker.bearingDeg`.
+   */
+  bearingDeg?: number;
+  /** Include this coordinate in `fitToMarkers` and `controller.fitToContent()`. Default true. */
+  includeInFit?: boolean;
+  /** Screen-reader label for the marker. */
+  accessibilityLabel?: string;
+};
+
+/**
+ * Imperative camera handle (MiTow redesign) for the map buttons a screen draws
+ * itself: Home's Recenter, 13's Locate me, 14's Recenter, 18's Locate me and
+ * Recenter.
+ *
+ * Every method is a no-op until the native map is ready, and always a no-op on
+ * the placeholder implementation.
+ */
+export type MapPreviewController = {
+  /** Animate to a region (centre + span). */
+  animateToRegion: (region: MapRegion, durationMs?: number) => void;
+  /** Animate the centre to a coordinate, keeping the current zoom. */
+  animateToCoordinate: (coordinate: MapCoordinate, durationMs?: number) => void;
+  /** Frame a set of coordinates. `padding` falls back to `fitPadding`, then 64 per side. */
+  fitToCoordinates: (
+    coordinates: MapCoordinate[],
+    options?: { padding?: MapFitPadding; animated?: boolean },
+  ) => void;
+  /** Frame every marker, polyline point and overlay (`includeInFit`), using `fitPadding`. */
+  fitToContent: (options?: { animated?: boolean }) => void;
+};
+
+export type MapFitPadding = { top?: number; right?: number; bottom?: number; left?: number };
 
 export type MapRegion = MapCoordinate & {
   latitudeDelta: number;
@@ -171,4 +265,26 @@ export type MapPreviewProps = {
   onRegionChangeComplete?: (region: MapRegion) => void;
   /** Disables pan/zoom for the decorative cards that are not meant to be driven. */
   interactive?: boolean;
+
+  // --- MiTow redesign (all optional; every existing default is unchanged) --
+  // The placeholder ignores these, except `controllerRef`, which it fills with
+  // no-ops so a screen's button handlers work the same on both paths.
+
+  /**
+   * Custom views anchored to coordinates: pins, the truck and its glow, map
+   * chips and dark callouts. See `MapOverlay`. Drawn after `markers`.
+   */
+  overlays?: MapOverlay[];
+  /** Receives the camera controller. Pass `useRef<MapPreviewController>(null)`. */
+  controllerRef?: Ref<MapPreviewController>;
+  /**
+   * Insets the map's logical viewport, in dp. The Google logo and legal text
+   * move inside it and the camera centre shifts with it. Use it to keep the
+   * logo above a bottom sheet that covers the map's lower edge.
+   */
+  mapPadding?: MapFitPadding;
+  /** Google Maps style JSON (Google provider only; Apple Maps ignores it). */
+  customMapStyle?: MapStyleElement[];
+  /** Fires once when the native map has finished its first layout. */
+  onMapReady?: () => void;
 };
