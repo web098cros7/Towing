@@ -4,10 +4,15 @@ import { AdminDriversModule } from '../admin-drivers/admin-drivers.module';
 import { AdminFleetsModule } from '../admin-fleets/admin-fleets.module';
 import { AuthModule } from '../auth/auth.module';
 import { BookingsModule } from '../bookings/bookings.module';
+import { DriversModule } from '../drivers/drivers.module';
+import { MoneyModule } from '../money/money.module';
+import { TrucksModule } from '../trucks/trucks.module';
 import { AccountSuspensionService } from './account-suspension.service';
 import { AdminDirectoryController } from './admin-directory.controller';
 import { AdminDirectoryRepo } from './admin-directory.repo';
 import { AdminDirectoryService } from './admin-directory.service';
+import { AdminDriversDirectoryController } from './admin-drivers-directory.controller';
+import { AdminFleetsDirectoryController } from './admin-fleets-directory.controller';
 
 /**
  * W6's directory: user search/detail/trips, the suspension request flow, and
@@ -19,13 +24,29 @@ import { AdminDirectoryService } from './admin-directory.service';
  * - `AdminAuthModule` for `AdminAuditService` (the sole writer of admin_actions);
  * - `AuthModule` for `TokenService` (refresh-family revocation);
  * - `AdminDriversModule`/`AdminFleetsModule` for the two delegation targets;
+ * - `TrucksModule`/`DriversModule`/`MoneyModule` for the fleet directory's
+ *   trucks/drivers/earnings reads — the same services the fleet console calls,
+ *   handed an admin-chosen fleet id instead of the session's;
  * - `BookingsModule` for the state machine the searching-booking cancels run
  *   through — never `BookingsService.cancel`, which is the customer path.
  * `NotificationsModule` (DeviceRegistryService) and the queue are `@Global()`.
  */
 @Module({
-  imports: [AuthModule, AdminAuthModule, AdminDriversModule, AdminFleetsModule, BookingsModule],
-  controllers: [AdminDirectoryController],
+  imports: [
+    AuthModule,
+    AdminAuthModule,
+    AdminDriversModule,
+    AdminFleetsModule,
+    BookingsModule,
+    TrucksModule,
+    DriversModule,
+    MoneyModule,
+  ],
+  controllers: [
+    AdminDirectoryController,
+    AdminDriversDirectoryController,
+    AdminFleetsDirectoryController,
+  ],
   providers: [AdminDirectoryRepo, AdminDirectoryService, AccountSuspensionService],
   exports: [AccountSuspensionService],
 })

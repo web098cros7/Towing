@@ -35,6 +35,13 @@ import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
  */
 
 /**
+ * Why an offer died before it was decided. W6 adds `fleet_suspended` (A15):
+ * a suspended fleet's live offers are revoked with a reason that names the
+ * real cause — the driver did nothing wrong and the client can say so.
+ */
+type RevokeReason = 'cancelled' | 'paused' | 'fleet_suspended';
+
+/**
  * Grace added to the offer TTL when locking a driver.
  *
  * The lock must outlive the offer, not match it: an expiry job that runs a
@@ -178,7 +185,7 @@ export class OfferService {
    * moves still-`offered` rows), so a racing accept, expiry or second revoke
    * simply wins or loses without corrupting either path.
    */
-  async revokeAll(bookingId: string, reason: 'cancelled' | 'paused'): Promise<string[]> {
+  async revokeAll(bookingId: string, reason: RevokeReason): Promise<string[]> {
     const revoked = await this.revokeDrivers(bookingId, await this.repo.pendingOffers(bookingId), reason);
     if (revoked.length > 0) {
       this.logger.debug(`revoked ${revoked.length} offers on ${bookingId} (${reason})`);
@@ -195,7 +202,7 @@ export class OfferService {
   async revokeDrivers(
     bookingId: string,
     driverIds: readonly string[],
-    reason: 'cancelled' | 'paused',
+    reason: RevokeReason,
   ): Promise<string[]> {
     const wanted = new Set(driverIds);
     if (wanted.size === 0) return [];

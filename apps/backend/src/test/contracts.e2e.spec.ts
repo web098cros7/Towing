@@ -6,7 +6,9 @@ import {
   adminDirectoryUsersResponseSchema,
   adminDispatchConfigSchema,
   adminDispatchInspectorListResponseSchema,
+  adminDriversDirectoryResponseSchema,
   adminFinanceConfigSchema,
+  adminFleetsResponseSchema,
   adminIdentitySchema,
   adminNotesResponseSchema,
   adminOpsActivityResponseSchema,
@@ -127,6 +129,8 @@ describe('response contracts', () => {
     // A1 — the admin console's eight, plus W2's admins list and W1's session
     // list. Super-admin satisfies every role set, so one token covers them all.
     { path: '/v1/admin/drivers/pending', schema: adminPendingDriversResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/drivers', schema: adminDriversDirectoryResponseSchema, realm: 'admin' },
+    { path: '/v1/admin/fleets', schema: adminFleetsResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/payouts', schema: adminPayoutsListResponseSchema, realm: 'admin' },
     { path: '/v1/admin/finance/config', schema: adminFinanceConfigSchema, realm: 'admin' },
     { path: '/v1/admin/pricing', schema: adminPricingConfigSchema, realm: 'admin' },
@@ -454,6 +458,20 @@ const EXCLUDED = new Set([
   // `admin-directory-users.e2e.spec.ts`, which owns a real user.
   '/v1/admin/users/:id',
   '/v1/admin/users/:id/bookings',
+  // W6 — the drivers directory's parameterised routes, asserted with
+  // `expectMatchesContract` against `adminDriverDirectoryDetailSchema` and
+  // `adminDriverBookingsResponseSchema` in `admin-drivers-directory.e2e.spec.ts`,
+  // which owns a real driver. `GET /admin/drivers/pending` is walked above
+  // because the KYC module registers first; `:id` must never shadow it.
+  '/v1/admin/drivers/:id',
+  '/v1/admin/drivers/:id/bookings',
+  // W6 — the fleets directory's parameterised routes: detail asserted against
+  // `adminFleetDetailSchema`, the sub-reads against the FLEET console's own
+  // schemas, all in `admin-fleets-directory.e2e.spec.ts`.
+  '/v1/admin/fleets/:id',
+  '/v1/admin/fleets/:id/trucks',
+  '/v1/admin/fleets/:id/drivers',
+  '/v1/admin/fleets/:id/earnings',
 ]);
 
 /** Express 5 keeps the registered layers on `router.stack`. */

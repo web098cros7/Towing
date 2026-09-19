@@ -117,6 +117,14 @@ export class AdminDriversService implements OnModuleInit {
         rejectionReason: ['reject', 'request_info'].includes(body.decision)
           ? (body.reason ?? null)
           : null,
+        // W6: the suspension trio (migration 0024) mirrors the operational
+        // state — `kyc_status` is the gate, these three are the who/why/when
+        // the directory renders. Any non-suspend decision ENDS the suspension
+        // state, so they clear here; only `suspend` and
+        // `applyPendingSuspension` write them.
+        suspendedAt: null,
+        suspendedBy: null,
+        suspensionReason: null,
         // A14: reinstating clears a shelved suspension, or the next completed
         // job would suspend a driver an admin just cleared.
         ...(body.decision === 'reactivate'
@@ -356,6 +364,11 @@ export class AdminDriversService implements OnModuleInit {
           pendingSuspensionReason: null,
           pendingSuspensionBy: null,
           pendingSuspensionAt: null,
+          // W6: the applied suspension's who/why/when (0024's trio) — the
+          // shelf uses `pendingSuspension*` until this branch applies it.
+          suspendedAt: now,
+          suspendedBy: adminId,
+          suspensionReason: body.reason ?? null,
           updatedAt: now,
         })
         .where(eq(drivers.id, driverId))
@@ -467,6 +480,11 @@ export class AdminDriversService implements OnModuleInit {
             pendingSuspensionReason: null,
             pendingSuspensionBy: null,
             pendingSuspensionAt: null,
+            // W6: the shelf becomes an applied suspension — move who/why/when
+            // from `pendingSuspension*` into the 0024 trio the directory reads.
+            suspendedAt: now,
+            suspendedBy: pending.by,
+            suspensionReason: pending.reason,
             updatedAt: now,
           })
           .where(eq(drivers.id, driverId));

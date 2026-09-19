@@ -83,6 +83,7 @@ import { ReportsService } from './reports.service';
   // `DevPayoutAdapter` is exported alongside the token — the `QueueModule`
   // pattern — so specs can reach the concrete adapter without widening the port.
   exports: [
+    EarningsService,
     EarningsProjectorService,
     PayoutsService,
     PayoutsRepo,

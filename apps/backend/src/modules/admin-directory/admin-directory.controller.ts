@@ -80,6 +80,7 @@ export class AdminDirectoryController {
     if (!adminCan(auth.sub_role, 'user.suspend')) {
       return this.directory.refuseAndFileRequest(
         auth.sub,
+        'user',
         userId,
         body,
         sessionContextFrom(request),

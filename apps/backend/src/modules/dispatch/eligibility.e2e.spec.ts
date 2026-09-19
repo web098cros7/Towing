@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, fleets, fleetTrucks } from '../../db/schema';
+import { drivers, driverZoneRestrictions, fleets, fleetTrucks } from '../../db/schema';
 import { createTestApp } from '../../test/app';
 import {
   seedCustomer,
@@ -145,6 +145,27 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       const driverId = await seedOnlineDriver(db, { zoneId, longDistance: true });
 
       expect((await selectFor(longHaul)).candidates.map((c) => c.driverId)).toEqual([driverId]);
+    });
+
+    it('excludes a driver blocked from the booking zone (W6 §6.10)', async () => {
+      // Restrictions are a DENYLIST: a row for (driver, zone) is "no offers in
+      // this zone". The driver is otherwise fully eligible — this filter is the
+      // only place the block bites, and the live map keeps drawing them.
+      const driverId = await seedOnlineDriver(db, { zoneId });
+      await db.insert(driverZoneRestrictions).values({ driverId, zoneId });
+
+      expect((await selectFor(bookingId)).candidates).toEqual([]);
+      expect((await selectFor(bookingId)).excluded.zone_restricted?.count).toBe(1);
+    });
+
+    it('offers that same driver a booking in a zone they are not blocked from', async () => {
+      // The block is scoped to its zone, not to the driver: a row for another
+      // zone must not leak into this booking's decision.
+      const driverId = await seedOnlineDriver(db, { zoneId });
+      const otherZone = await seedZone(db);
+      await db.insert(driverZoneRestrictions).values({ driverId, zoneId: otherZone });
+
+      expect((await selectFor(bookingId)).candidates.map((c) => c.driverId)).toEqual([driverId]);
     });
 
     it('excludes a driver whose truck is non_compliant', async () => {

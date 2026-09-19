@@ -130,9 +130,11 @@ export const jobRevokedSchema = z.object({
   /**
    * Why, so the client can say something true. `taken` is by far the most
    * common and is the one worth naming — "someone got there first" is a
-   * different feeling from "you were too slow".
+   * different feeling from "you were too slow". `fleet_suspended` (W6) is
+   * A15's: the fleet was suspended while the offer was still live, and the
+   * frame reaching the driver beats the offer timing out against their rate.
    */
-  reason: z.enum(['taken', 'expired', 'cancelled', 'paused']),
+  reason: z.enum(['taken', 'expired', 'cancelled', 'paused', 'fleet_suspended']),
   at: z.iso.datetime(),
 });
 export type JobRevokedEvent = z.infer<typeof jobRevokedSchema>;

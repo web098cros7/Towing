@@ -50,6 +50,13 @@ export interface DriverEligibilityRow {
    * for the driver themself.
    */
   fleetStatus: string | null;
+  /**
+   * W6 (§6.10): true when an admin has blocked this driver FROM the booking's
+   * zone. Restrictions are a denylist: a row (driver, zone) means "no offers
+   * in this zone", and no rows means the driver may work everywhere. A booking
+   * with no zone cannot match a restriction row, so it never restricts.
+   */
+  zoneRestricted: boolean;
   /** 0–5. Still a seeded default until Phase 19 writes it (§6.2 gives it 15 %). */
   rating: number | null;
   /** 0–100, written by this phase on every offer resolution. */
@@ -176,7 +183,10 @@ export class DispatchRepo {
    * independent driver has no `assigned_truck_id` and must pass the compliance
    * filter, not fail it for having nothing to check.
    */
-  async eligibility(driverIds: string[]): Promise<Map<string, DriverEligibilityRow>> {
+  async eligibility(
+    driverIds: string[],
+    zoneId: string | null,
+  ): Promise<Map<string, DriverEligibilityRow>> {
     if (driverIds.length === 0) return new Map();
 
     const rows = await this.db
@@ -198,6 +208,15 @@ export class DispatchRepo {
         // A15: one more LEFT join on the wave's batched query. Nullable by
         // construction — independents have no fleet row, and must pass.
         fleetStatus: fleets.status,
+        // W6 (§6.10): zone restrictions, as one correlated EXISTS — a row for
+        // (driver, booking zone) is a block in that zone. A booking with no
+        // zone matches nothing and never restricts. Still one query for the
+        // whole wave.
+        zoneRestricted: sql<boolean>`exists (
+          select 1 from driver_zone_restrictions r
+          where r.driver_id = ${drivers.id}
+            and r.zone_id = ${zoneId}::uuid
+        )`,
         // A correlated EXISTS rather than a join: a driver has at most one
         // active booking (migration 0014 makes that a unique index), so a join
         // would multiply nothing and an EXISTS stops at the first row.

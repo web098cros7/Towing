@@ -22,6 +22,15 @@ export const SUSPENSION_REQUEST_STATUSES = ['open', 'approved', 'rejected'] as c
 export const suspensionRequestStatusSchema = z.enum(SUSPENSION_REQUEST_STATUSES);
 export type SuspensionRequestStatus = z.infer<typeof suspensionRequestStatusSchema>;
 
+/**
+ * Directory filters that are booleans on the wire. Query strings are strings;
+ * anything but the literal `true`/`false` is a 400 rather than a guess.
+ */
+export const adminDirectoryBooleanQuerySchema = z
+  .enum(['true', 'false'])
+  .transform((value) => value === 'true');
+export type AdminDirectoryBooleanQuery = z.infer<typeof adminDirectoryBooleanQuerySchema>;
+
 // ---------------------------------------------------------------------------
 // Users directory (§9.4.4)
 // ---------------------------------------------------------------------------
@@ -116,6 +125,61 @@ export const adminSuspensionRequestsResponseSchema = z.object({
   items: z.array(adminSuspensionRequestSchema),
 });
 export type AdminSuspensionRequestsResponse = z.infer<typeof adminSuspensionRequestsResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// W6: fleets directory (§9.4.5)
+// ---------------------------------------------------------------------------
+
+/** `fleet_status` — pending (never activated) is different from suspended. */
+export const adminFleetStatusSchema = z.enum(['pending', 'active', 'suspended']);
+
+export const adminFleetsQuerySchema = pageQuerySchema.extend({
+  q: z.string().trim().min(1).optional(),
+  status: adminFleetStatusSchema.optional(),
+});
+export type AdminFleetsQuery = z.infer<typeof adminFleetsQuerySchema>;
+
+export const adminFleetItemSchema = z.object({
+  id: z.uuid(),
+  businessName: z.string(),
+  status: adminFleetStatusSchema,
+  gstin: z.string().nullable(),
+  ownerId: z.uuid(),
+  ownerName: z.string().nullable(),
+  ownerMobile: z.string(),
+  /** The dry-run numbers the suspend confirmation shows: what goes offline. */
+  driversCount: z.number().int().nonnegative(),
+  onlineDriversCount: z.number().int().nonnegative(),
+  trucksCount: z.number().int().nonnegative(),
+  suspendedAt: z.iso.datetime().nullable(),
+  suspensionReason: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type AdminFleetItem = z.infer<typeof adminFleetItemSchema>;
+
+export const adminFleetsResponseSchema = pageEnvelopeSchema(adminFleetItemSchema);
+export type AdminFleetsResponse = z.infer<typeof adminFleetsResponseSchema>;
+
+/**
+ * The detail IS the item — the counts are what the screen needs, and a
+ * separate shape under a second name would just be the same fields twice.
+ */
+export const adminFleetDetailSchema = adminFleetItemSchema;
+export type AdminFleetDetail = z.infer<typeof adminFleetDetailSchema>;
+
+/** A reason is required and the UI shows a typed-name confirmation. */
+export const adminFleetSuspendBodySchema = z.object({
+  reason: z.string().trim().min(4).max(500),
+});
+export type AdminFleetSuspendBody = z.infer<typeof adminFleetSuspendBodySchema>;
+
+export const adminFleetSuspensionResponseSchema = z.object({
+  fleetId: z.uuid(),
+  status: adminFleetStatusSchema,
+  /** Drivers affected — the confirmation's number, echoed back. */
+  driverCount: z.number().int().nonnegative(),
+});
+export type AdminFleetSuspensionResponse = z.infer<typeof adminFleetSuspensionResponseSchema>;
 
 export const adminSuspensionRequestsQuerySchema = z.object({
   status: suspensionRequestStatusSchema.optional(),

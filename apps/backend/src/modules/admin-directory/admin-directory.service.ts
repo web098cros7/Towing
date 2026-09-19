@@ -7,15 +7,40 @@ import type {
   AdminDirectoryUserDetail,
   AdminDirectoryUsersQuery,
   AdminDirectoryUsersResponse,
+  AdminDriverBookingsQuery,
+  AdminDriverBookingsResponse,
+  AdminDriverDecisionResponse,
+  AdminDriverDirectoryDetail,
+  AdminDriverSuspendBody,
+  AdminDriverZonesResponse,
+  AdminDriverZonesUpdate,
+  AdminDriversDirectoryQuery,
+  AdminDriversDirectoryResponse,
+  AdminFleetDetail,
+  AdminFleetSuspendBody,
+  AdminFleetSuspensionResponse,
+  AdminFleetsQuery,
+  AdminFleetsResponse,
   AdminSuspensionRequest,
   AdminSuspensionRequestCreateBody,
   AdminSuspensionRequestDecisionBody,
   AdminSuspensionRequestsQuery,
   AdminSuspensionRequestsResponse,
+  DriversListResponse,
+  EarningsQuery,
+  EarningsSummaryDto,
+  FleetId,
+  PageQuery,
+  SuspensionRequestSubjectType,
+  TrucksListQuery,
+  TrucksListResponse,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import type { SessionContext } from '../auth/token.service';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
+import { DriversService } from '../drivers/drivers.service';
+import { EarningsService } from '../money/earnings.service';
+import { TrucksService } from '../trucks/trucks.service';
 import { AccountSuspensionService } from './account-suspension.service';
 import { AdminDirectoryRepo } from './admin-directory.repo';
 
@@ -30,6 +55,9 @@ export class AdminDirectoryService {
     private readonly repo: AdminDirectoryRepo,
     private readonly suspension: AccountSuspensionService,
     private readonly audit: AdminAuditService,
+    private readonly trucks: TrucksService,
+    private readonly driversService: DriversService,
+    private readonly earnings: EarningsService,
   ) {}
 
   users(query: AdminDirectoryUsersQuery): Promise<AdminDirectoryUsersResponse> {
@@ -75,22 +103,185 @@ export class AdminDirectoryService {
     return this.suspension.reactivateUser(adminId, userId, context);
   }
 
+  // -------------------------------------------------------------------------
+  // W6: drivers directory (#9.4.4)
+  // -------------------------------------------------------------------------
+
+  drivers(query: AdminDriversDirectoryQuery): Promise<AdminDriversDirectoryResponse> {
+    return this.repo
+      .searchDrivers({
+        q: query.q,
+        kycStatus: query.kycStatus,
+        online: query.online,
+        longDistance: query.longDistance,
+        zoneId: query.zoneId,
+        fleetId: query.fleetId,
+        vehicleClass: query.vehicleClass,
+        minRating: query.minRating,
+        limit: query.limit,
+        offset: (query.page - 1) * query.limit,
+      })
+      .then((result) => ({ ...result, page: query.page, limit: query.limit }));
+  }
+
+  async driverDetail(driverId: string): Promise<AdminDriverDirectoryDetail> {
+    const detail = await this.repo.driverDetail(driverId);
+    if (!detail) throw ApiException.notFound('Driver not found');
+    return detail;
+  }
+
+  driverBookings(
+    driverId: string,
+    query: AdminDriverBookingsQuery,
+  ): Promise<AdminDriverBookingsResponse> {
+    return this.repo
+      .driverBookings({ driverId, limit: query.limit, offset: (query.page - 1) * query.limit })
+      .then((result) => ({ ...result, page: query.page, limit: query.limit }));
+  }
+
+  suspendDriver(
+    adminId: string,
+    driverId: string,
+    body: AdminDriverSuspendBody,
+    context: SessionContext,
+  ): Promise<AdminDriverDecisionResponse> {
+    return this.suspension.suspendDriver(adminId, driverId, body.reason, context, {
+      mode: body.mode,
+    });
+  }
+
+  reactivateDriver(
+    adminId: string,
+    driverId: string,
+    context: SessionContext,
+  ): Promise<AdminDriverDecisionResponse> {
+    return this.suspension.reactivateDriver(adminId, driverId, context);
+  }
+
+  /**
+   * §6.10's zone editor. A FULL REPLACEMENT — the editor saves the new set.
+   * Skipping the write AND the audit when the set is unchanged keeps a
+   * double-click from looking like a decision; the diff lives in the audit
+   * row's before/after.
+   */
+  async updateDriverZones(
+    adminId: string,
+    driverId: string,
+    body: AdminDriverZonesUpdate,
+    context: SessionContext,
+  ): Promise<AdminDriverZonesResponse> {
+    const before = await this.repo.driverZoneRefs(driverId);
+    if (!before) throw ApiException.notFound('Driver not found');
+
+    const wanted = new Set(body.zoneIds);
+    const missing = await this.repo.missingZoneIds(body.zoneIds);
+    if (missing.length > 0) {
+      throw ApiException.notFound(`Service zone ${missing[0]} not found`);
+    }
+
+    const currentIds = before.map((zone) => zone.zoneId);
+    const unchanged =
+      currentIds.length === wanted.size && currentIds.every((id) => wanted.has(id));
+    if (!unchanged) {
+      await this.repo.replaceDriverZoneRestrictions(driverId, body.zoneIds, adminId);
+      await this.audit.record({
+        adminId,
+        action: 'driver.zones.update',
+        subjectType: 'driver',
+        subjectId: driverId,
+        before: { zoneIds: currentIds },
+        after: { zoneIds: body.zoneIds },
+        reason: null,
+        ip: context.ip ?? null,
+        userAgent: context.userAgent ?? null,
+      });
+    }
+
+    const zoneRestrictions = (await this.repo.driverZoneRefs(driverId)) ?? [];
+    return { driverId, zoneRestrictions };
+  }
+
+  // -------------------------------------------------------------------------
+  // W6: fleets directory (#9.4.5)
+  // -------------------------------------------------------------------------
+
+  fleets(query: AdminFleetsQuery): Promise<AdminFleetsResponse> {
+    return this.repo
+      .searchFleets({
+        q: query.q,
+        status: query.status,
+        limit: query.limit,
+        offset: (query.page - 1) * query.limit,
+      })
+      .then((result) => ({ ...result, page: query.page, limit: query.limit }));
+  }
+
+  async fleetDetail(fleetId: string): Promise<AdminFleetDetail> {
+    const detail = await this.repo.fleetDetail(fleetId);
+    if (!detail) throw ApiException.notFound('Fleet not found');
+    return detail;
+  }
+
+  suspendFleet(
+    adminId: string,
+    fleetId: string,
+    body: AdminFleetSuspendBody,
+    context: SessionContext,
+  ): Promise<AdminFleetSuspensionResponse> {
+    return this.suspension.suspendFleet(adminId, fleetId, context, body.reason);
+  }
+
+  reactivateFleet(
+    adminId: string,
+    fleetId: string,
+    context: SessionContext,
+  ): Promise<AdminFleetSuspensionResponse> {
+    return this.suspension.reactivateFleet(adminId, fleetId, context);
+  }
+
+  /**
+   * The fleet console's own services, handed an ADMIN-CHOSEN fleet instead of
+   * the session's (the guide: "nearly free"). The `FleetId` brand exists so a
+   * fleet-realm caller cannot paste the wrong id by accident — here the admin
+   * deliberately names the tenant, so the cast states the intent exactly once.
+   */
+  async fleetTrucks(fleetId: string, query: TrucksListQuery): Promise<TrucksListResponse> {
+    await this.assertFleet(fleetId);
+    return this.trucks.list(fleetId as FleetId, query);
+  }
+
+  async fleetDrivers(fleetId: string, query: PageQuery): Promise<DriversListResponse> {
+    await this.assertFleet(fleetId);
+    return this.driversService.list(fleetId as FleetId, query);
+  }
+
+  async fleetEarnings(fleetId: string, query: EarningsQuery): Promise<EarningsSummaryDto> {
+    await this.assertFleet(fleetId);
+    return this.earnings.summary(fleetId as FleetId, query);
+  }
+
+  /** An unknown fleet must 404 on its sub-reads, not read as "empty". */
+  private async assertFleet(fleetId: string): Promise<void> {
+    if (!(await this.repo.fleetDetail(fleetId))) throw ApiException.notFound('Fleet not found');
+  }
+
   /**
    * §4.2's support branch, in the HANDLER rather than the guard: a guard 403
-   * fires before any code runs, and the acceptance for this route is "the
+   * fires before any code runs, and the acceptance for these routes is "the
    * attempt is refused **and** a request row exists". So the request is filed
    * first (audited as `suspension.request` — rule 5's refusal trail), then the
-   * 403 names it.
+   * 403 names it. Shared by the user, driver and fleet suspend routes.
    */
   async refuseAndFileRequest(
     adminId: string,
-    userId: string,
-    body: AdminDirectorySuspendBody,
+    subjectType: SuspensionRequestSubjectType,
+    subjectId: string,
+    body: { reason: string },
     context: SessionContext,
   ): Promise<never> {
     const request = await this.createRequest(
       adminId,
-      { subjectType: 'user', subjectId: userId, reason: body.reason },
+      { subjectType, subjectId, reason: body.reason },
       context,
     );
     throw ApiException.forbidden(

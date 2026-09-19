@@ -25,6 +25,7 @@ export type ExclusionReason =
   | 'offline'
   | 'wrong_vehicle_class'
   | 'no_long_distance'
+  | 'zone_restricted'
   | 'truck_non_compliant'
   | 'already_on_job'
   | 'already_offered'
@@ -186,7 +187,7 @@ export class CandidateSelectionService {
 
     const ids = inRange.map((candidate) => candidate.driverId);
     const [eligibility, alreadyOffered] = await Promise.all([
-      this.repo.eligibility(ids),
+      this.repo.eligibility(ids, booking.zoneId),
       this.repo.excludedDrivers(booking.id),
     ]);
 
@@ -239,6 +240,13 @@ export class CandidateSelectionService {
       // pricier plan.
       if (booking.longDistance && !row.longDistanceEnabled) {
         count('no_long_distance', row.driverId);
+        continue;
+      }
+      // W6 §6.10: "drivers can be restricted to zones" — an admin's per-zone
+      // block. A row for (driver, booking zone) excludes them HERE; the live
+      // map keeps drawing them, so an operator can see why supply vanished.
+      if (row.zoneRestricted) {
+        count('zone_restricted', row.driverId);
         continue;
       }
       // Phase 4's exclusion status. `null` is an independent driver with no

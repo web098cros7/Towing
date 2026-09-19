@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
+import { NotificationService } from '../../common/notifications/notification.service';
 import { DB, type Database } from '../../db/db.module';
 import { drivers, fleets } from '../../db/schema';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
@@ -44,15 +45,26 @@ export class FleetSuspensionService {
     private readonly presence: DriverPresenceService,
     private readonly store: PresenceStore,
     private readonly adminDrivers: AdminDriversService,
+    private readonly notifications: NotificationService,
   ) {}
 
+  /**
+   * `reason` is W6's addition (migration 0024's `suspension_reason` column and
+   * the audit row's reason); A15 shipped without one because the only caller
+   * was a test.
+   */
   async suspend(
     adminId: string,
     fleetId: string,
     context: SessionContext = {},
+    reason: string | null = null,
   ): Promise<FleetSuspensionResult> {
     const [fleet] = await this.db
-      .select({ id: fleets.id, status: fleets.status, businessName: fleets.businessName })
+      .select({
+        id: fleets.id,
+        status: fleets.status,
+        businessName: fleets.businessName,
+      })
       .from(fleets)
       .where(eq(fleets.id, fleetId))
       .limit(1);
@@ -73,8 +85,18 @@ export class FleetSuspensionService {
     // status is `suspended`, eligibility excludes the fleet's drivers, so a
     // concurrent wave cannot offer to them in the first place.
     const before = { status: fleet.status };
+    const now = new Date();
     await this.db.transaction(async (tx) => {
-      await tx.update(fleets).set({ status: 'suspended' }).where(eq(fleets.id, fleetId));
+      await tx
+        .update(fleets)
+        .set({
+          status: 'suspended',
+          // W6: the same who/why/when trio the users and drivers carry.
+          suspendedAt: now,
+          suspendedBy: adminId,
+          suspensionReason: reason,
+        })
+        .where(eq(fleets.id, fleetId));
       await this.audit.record(
         {
           adminId,
@@ -83,7 +105,7 @@ export class FleetSuspensionService {
           subjectId: fleetId,
           before,
           after: { status: 'suspended', driverCount: driverIds.length },
-          reason: null,
+          reason,
           ip: context.ip ?? null,
           userAgent: context.userAgent ?? null,
         },
@@ -93,7 +115,8 @@ export class FleetSuspensionService {
 
     // Outstanding offers die through the path that spares acceptance rates —
     // a suspended fleet's drivers must not time out of offers they can no
-    // longer take.
+    // longer take. W6: the frame now carries `fleet_suspended` rather than
+    // borrowing `cancelled`, so the driver app can say something true.
     await this.revokeFleetOffers(fleetId, driverIds);
 
     // Evict the jobless only. A driver mid-job keeps presence, session and
@@ -103,6 +126,21 @@ export class FleetSuspensionService {
       if (await this.adminDrivers.hasLiveBooking(driverId)) continue;
       await this.presence.evictRevoked(driverId);
       evicted += 1;
+    }
+
+    // G6 carry-forward: tell each driver their fleet was suspended. Best
+    // effort per driver — one failure (a driver with no push token, a vendor
+    // outage) must not abort the rest, and none may fail the decision itself.
+    for (const driverId of driverIds) {
+      try {
+        await this.notifications.emit('fleet.suspended', {
+          driverId,
+          fleetId,
+          businessName: fleet.businessName,
+        });
+      } catch (error) {
+        this.logger.warn(`fleet ${fleetId} suspend notify failed for ${driverId}: ${String(error)}`);
+      }
     }
 
     this.logger.log(`event=fleet_suspended fleet=${fleetId} drivers=${driverIds.length} evicted=${evicted}`);
@@ -127,7 +165,16 @@ export class FleetSuspensionService {
 
     const before = { status: fleet.status };
     await this.db.transaction(async (tx) => {
-      await tx.update(fleets).set({ status: 'active' }).where(eq(fleets.id, fleetId));
+      await tx
+        .update(fleets)
+        .set({
+          status: 'active',
+          // W6: reactivation ends the suspension state — clear the trio.
+          suspendedAt: null,
+          suspendedBy: null,
+          suspensionReason: null,
+        })
+        .where(eq(fleets.id, fleetId));
       await this.audit.record(
         {
           adminId,
@@ -164,7 +211,7 @@ export class FleetSuspensionService {
          and drivers.fleet_id = ${fleetId}::uuid
     `)) as unknown as Array<{ bookingId: string }>;
     for (const row of rows) {
-      await this.offers.revokeDrivers(row.bookingId, driverIds, 'cancelled');
+      await this.offers.revokeDrivers(row.bookingId, driverIds, 'fleet_suspended');
     }
   }
 

@@ -86,6 +86,13 @@ export interface DriverInvitePayload extends Record<string, unknown> {
   businessName: string;
 }
 
+/** A15 / G6: one of the suspended fleet's drivers, told why their offers stopped. */
+export interface FleetSuspendedPayload extends Record<string, unknown> {
+  driverId: string;
+  fleetId: string;
+  businessName: string;
+}
+
 export interface BookingConfirmedPayload extends Record<string, unknown> {
   bookingId: string;
   userId: string;
@@ -615,6 +622,27 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     alwaysOn: true,
     resolve: (p: DriverInvitePayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
     variables: (p: DriverInvitePayload) => ({ businessName: p.businessName }),
+  }),
+
+  defineTrigger({
+    /**
+     * A15's missing half (G6 carry-forward): a suspended fleet's drivers are
+     * told, instead of watching offers dry up with no explanation. One event
+     * per driver — each is the recipient, not the fleet.
+     *
+     * Push-only on purpose: SMS is the BLOCKED-EXTERNAL channel and the driver
+     * app is where the lost earning opportunity matters. No dedupe key per
+     * fleet: a re-suspend is idempotent at the service (no second emission),
+     * and a re-activated-then-suspended-again fleet SHOULD notify again.
+     */
+    event: 'fleet.suspended',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'fleet_suspended',
+    category: 'transactional',
+    alwaysOn: true,
+    resolve: (p: FleetSuspendedPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
+    variables: (p: FleetSuspendedPayload) => ({ businessName: p.businessName }),
   }),
 
   defineTrigger({

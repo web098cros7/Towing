@@ -86,6 +86,22 @@ export const TEMPLATES = {
   },
 
   /**
+   * A15 / G6: the fleet's drivers hear about a fleet suspension (push-only;
+   * the suspension itself is the operator's decision, this is the courtesy
+   * that stops it reading as a glitch).
+   */
+  fleet_suspended: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['businessName'],
+    render: (v) => ({
+      title: 'Fleet suspended',
+      body: `${v.businessName ?? 'Your fleet'} has been suspended by the platform, so new job offers are paused for its drivers. Talk to your fleet owner, or contact support.`,
+      subject: null,
+    }),
+  },
+
+  /**
    * §12.2 "Booking confirmed" → Customer, on push + SMS + WhatsApp.
    *
    * No `subject`: email is not a channel on this matrix row, and a non-null

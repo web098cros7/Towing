@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import type {
   AdminDirectorySuspendResponse,
+  AdminKycResult,
   SuspensionRequestSubjectType,
 } from '@towing/api-contracts';
 import { DeviceRegistryService } from '../../common/notifications/device-registry.service';
@@ -11,7 +12,10 @@ import { DB, type Database } from '../../db/db.module';
 import { bookings, users } from '../../db/schema';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
 import { AdminDriversService } from '../admin-drivers/admin-drivers.service';
-import { FleetSuspensionService } from '../admin-fleets/fleet-suspension.service';
+import {
+  FleetSuspensionService,
+  type FleetSuspensionResult,
+} from '../admin-fleets/fleet-suspension.service';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { TokenService, type SessionContext } from '../auth/token.service';
 
@@ -62,12 +66,7 @@ export class AccountSuspensionService {
       case 'user':
         return this.suspendUser(adminId, subjectId, reason, context);
       case 'driver': {
-        await this.adminDrivers.decide(
-          adminId,
-          subjectId,
-          { decision: 'suspend', reason },
-          context,
-        );
+        await this.suspendDriver(adminId, subjectId, reason, context);
         return {
           subjectId,
           subjectType,
@@ -76,7 +75,7 @@ export class AccountSuspensionService {
         };
       }
       case 'fleet': {
-        await this.fleetSuspension.suspend(adminId, subjectId, context);
+        await this.fleetSuspension.suspend(adminId, subjectId, context, reason);
         return {
           subjectId,
           subjectType,
@@ -85,6 +84,60 @@ export class AccountSuspensionService {
         };
       }
     }
+  }
+
+  /**
+   * The A14 driver branch as its own entry point: the dedicated W6 route wants
+   * the full `AdminKycResult` back (modes, `sessionsRevoked`, the shelf flag),
+   * not the directory envelope `suspendSubject` wraps it in.
+   */
+  async suspendDriver(
+    adminId: string,
+    driverId: string,
+    reason: string,
+    context: SessionContext = {},
+    options: { mode?: 'after_current_job' | 'immediate' } = {},
+  ): Promise<AdminKycResult> {
+    return this.adminDrivers.decide(
+      adminId,
+      driverId,
+      { decision: 'suspend', reason, ...(options.mode ? { mode: options.mode } : {}) },
+      context,
+    );
+  }
+
+  /**
+   * Reactivation returns the driver to `pending`, not `approved` — reinstating
+   * an account is not the same judgement as approving its documents (A14's
+   * documented rule; `AdminDriversService.NEXT_STATUS` owns it).
+   */
+  async reactivateDriver(
+    adminId: string,
+    driverId: string,
+    context: SessionContext = {},
+  ): Promise<AdminKycResult> {
+    return this.adminDrivers.decide(adminId, driverId, { decision: 'reactivate' }, context);
+  }
+
+  /**
+   * A15's fleet branch, with W6's reason threaded through to the audit row,
+   * the `suspension_reason` column and the drivers' notifications.
+   */
+  suspendFleet(
+    adminId: string,
+    fleetId: string,
+    context: SessionContext = {},
+    reason: string | null = null,
+  ): Promise<FleetSuspensionResult> {
+    return this.fleetSuspension.suspend(adminId, fleetId, context, reason);
+  }
+
+  reactivateFleet(
+    adminId: string,
+    fleetId: string,
+    context: SessionContext = {},
+  ): Promise<FleetSuspensionResult> {
+    return this.fleetSuspension.reactivate(adminId, fleetId, context);
   }
 
   async suspendUser(
