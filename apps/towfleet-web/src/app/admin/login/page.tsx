@@ -7,11 +7,19 @@ import { adminLoginRequestSchema } from '@towing/api-contracts';
 import { Button, Card, CardContent, Field, Input } from '@towing/web-ui';
 import { safeAdminNext } from '@/lib/adminNext';
 
-type Step = 'credentials' | 'otp';
+type Step = 'credentials' | 'otp' | 'change';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
   return body?.error?.message ?? fallback;
+}
+
+/** W2: the OTP step branches on the error CODE, so the body is read once. */
+async function readError(res: Response, fallback: string): Promise<{ code?: string; message: string }> {
+  const body = (await res.json().catch(() => null)) as {
+    error?: { code?: string; message?: string };
+  } | null;
+  return { code: body?.error?.code, message: body?.error?.message ?? fallback };
 }
 
 /**
@@ -46,6 +54,8 @@ function AdminLoginForm() {
   // authenticator code" and no SMS is ever sent. The same input accepts an
   // 8-character recovery code, so recovery needs no second screen.
   const [method, setMethod] = useState<'sms' | 'totp'>('sms');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -94,12 +104,50 @@ function AdminLoginForm() {
         body: JSON.stringify({ challengeId, otp }),
       });
       if (!res.ok) {
-        setError(await readErrorMessage(res, 'That code was not accepted.'));
+        const { code, message } = await readError(res, 'That code was not accepted.');
+        // W2: a temporary password from a reset never mints a session. The
+        // challenge stays live server-side, so the SAME page completes the
+        // change without a second login.
+        if (code === 'password_change_required') {
+          setStep('change');
+          return;
+        }
+        setError(message);
         return;
       }
       // M0-F2: drop any cached identity (the login page fires no identity
       // query, so a stale `null` — or the PREVIOUS admin's identity — would
       // otherwise survive this client-side navigation).
+      await queryClient.removeQueries({ queryKey: ['admin-identity'] });
+      router.replace(next);
+      router.refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError('The two passwords do not match.');
+      return;
+    }
+    if (!/^(?=.*[A-Z])(?=.*\d).{8,128}$/.test(newPassword)) {
+      setError('At least 8 characters, with an uppercase letter and a digit.');
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/admin-session/password/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId, newPassword }),
+      });
+      if (!res.ok) {
+        setError(await readErrorMessage(res, 'That password was not accepted.'));
+        return;
+      }
       await queryClient.removeQueries({ queryKey: ['admin-identity'] });
       router.replace(next);
       router.refresh();
@@ -118,7 +166,34 @@ function AdminLoginForm() {
 
         <Card>
           <CardContent className="p-6">
-            {step === 'credentials' ? (
+            {step === 'change' ? (
+              <form onSubmit={submitChange} className="flex flex-col gap-4">
+                <p className="text-sm text-text-secondary">
+                  Your password was reset. Choose a new one to finish signing in.
+                </p>
+                <Field label="New password" htmlFor="new-password" error={error ?? undefined}>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </Field>
+                <Field label="Confirm new password" htmlFor="confirm-password">
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </Field>
+                <Button type="submit" size="lg" disabled={submitting}>
+                  {submitting ? 'Saving…' : 'Set password and sign in'}
+                </Button>
+              </form>
+            ) : step === 'credentials' ? (
               <form onSubmit={submitCredentials} className="flex flex-col gap-4">
                 <Field label="Email" htmlFor="email" error={error ?? undefined}>
                   <Input
