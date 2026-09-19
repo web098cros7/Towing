@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { adminSecurityKeys } from './adminSecurity.keys';
 import { adminSecurityDataSource } from './adminSecurityDataSource';
 
 /**
@@ -34,4 +35,20 @@ export function useDisableTotp() {
 
 export function useRecoveryCodes() {
   return useMutation({ mutationFn: () => adminSecurityDataSource.recoveryCodes(), retry: false });
+}
+
+/**
+ * Revokes one of the caller's own sessions (W1 §3.6). `retry: false` like the
+ * other security writes — the request may already have applied, and the list
+ * refetch is the source of truth either way.
+ */
+export function useRevokeSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminSecurityDataSource.revokeSession(id),
+    retry: false,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: adminSecurityKeys.sessions() });
+    },
+  });
 }

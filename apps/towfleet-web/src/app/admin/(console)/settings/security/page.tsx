@@ -2,16 +2,29 @@
 
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input } from '@towing/web-ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  Input,
+  RelativeTime,
+  Skeleton,
+} from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
+import { useToast } from '@/components/admin/ToastProvider';
 import { ApiError } from '@/lib/apiClient';
 import {
   useConfirmTotp,
   useDisableTotp,
   useEnrollTotp,
   useRecoveryCodes,
+  useRevokeSession,
 } from '@/features/admin-security/api/adminSecurity.mutations';
+import { useAdminSessions } from '@/features/admin-security/api/adminSecurity.queries';
 
 /**
  * W2's two-factor settings (spec §9.4.1 "optional 2FA", G14 default).
@@ -26,10 +39,13 @@ import {
  */
 export default function AdminSecurityPage() {
   const { admin } = useAdminIdentity();
+  const toast = useToast();
   const enroll = useEnrollTotp();
   const confirm = useConfirmTotp();
   const disable = useDisableTotp();
   const recovery = useRecoveryCodes();
+  const sessions = useAdminSessions();
+  const revoke = useRevokeSession();
 
   const [uri, setUri] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -146,6 +162,68 @@ export default function AdminSecurityPage() {
             >
               Set up authenticator
             </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {/*
+        W1 §3.6 — the session list. The server windows (30 min idle, 12 h
+        absolute) are stated in the copy because that is what an operator
+        wants to know when deciding whether a row is suspicious.
+      */}
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Active sessions</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-text-secondary">
+            You are signed in on these devices. Sessions expire after 30 minutes idle and 12 hours
+            total. Revoke one if you do not recognise it.
+          </p>
+
+          {sessions.isError ? (
+            <p className="text-sm text-error">Could not load sessions.</p>
+          ) : sessions.isLoading || !sessions.data ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : sessions.data.sessions.length === 0 ? (
+            <p className="text-sm text-text-tertiary">No active sessions.</p>
+          ) : (
+            <ul className="flex flex-col gap-2" data-testid="sessions-list">
+              {sessions.data.sessions.map((session) => (
+                <li
+                  key={session.id}
+                  data-testid="session-item"
+                  className="flex items-start justify-between gap-3 rounded-card border border-border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm" title={session.userAgent ?? undefined}>
+                      {session.userAgent ?? 'Unknown device'}
+                    </p>
+                    <p className="mt-0.5 text-xs text-text-tertiary">
+                      {session.ip ?? '—'} · last used <RelativeTime at={session.lastUsedAt} /> · started{' '}
+                      <RelativeTime at={session.createdAt} />
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid={`session-revoke-${session.id}`}
+                    disabled={revoke.isPending}
+                    onClick={() =>
+                      revoke.mutate(session.id, {
+                        onSuccess: () => toast('Session revoked', 'success'),
+                        onError: (error) => toast((error as Error).message, 'error'),
+                      })
+                    }
+                  >
+                    Revoke
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
