@@ -18,9 +18,15 @@ The Towing Admin console's half of the API (spec §16.5, §9.4).
 | `support.ts`                                             | Support queue + thread, assign/status/message/note/link-booking (W15)                                    | 20    |
 | `content.ts`                                             | FAQ + legal editor — list and the by-slug upsert (W15)                                                   | 20    |
 | `impersonation.ts`                                       | Read-only app view sessions (G8)                                                                         | 20    |
+| `promotions.ts`                                          | Coupon manager + redemption ledger, banner carousel (W16)                                                | 20    |
+| `analytics.ts`                                           | Rollup views, demand grid, PII-free CSV exports (W17)                                                    | 20    |
+| `notifications.ts`                                       | Template catalogue, delivery log, guarded test-send (W18)                                                | 20    |
+| `privacy.ts`                                             | Deletion queue, erasure job log, retention editor, export/correct (W19)                                  | 20    |
+| `quotes.ts`                                              | Manual long-distance quote queue: price/reject/expire (W20)                                              | 20    |
 | `pricing.ts`                                             | `GET/PUT /admin/pricing` · `GET/PUT /admin/commission` + history                                         | 14    |
 | `finance.ts`                                             | Payout queue + finance config (Phase 11); refund primitives (W8); console reads land with W9             | 11/20 |
 | `permissions.ts`                                         | The 36 permission ids + `ROLE_PERMISSIONS` (§4.2)                                                        | 20    |
 
-Still unclaimed from the §16.5 table: `/admin/promos` (W16),
-`/admin/analytics` (W17).
+**EVERY §16.5 ROW IS NOW CLAIMED.** The table's last two unclaimed entries — `/admin/promos` and
+`/admin/analytics` — landed as W16/W17 (`/admin/promotions`, `/admin/analytics`), completing the
+admin-panel scope with M6 (W20).
