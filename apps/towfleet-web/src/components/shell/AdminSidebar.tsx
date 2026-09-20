@@ -8,6 +8,7 @@ import {
   Compass,
   CreditCard,
   FileSearch,
+  FileText,
   Gauge,
   LayoutDashboard,
   LifeBuoy,
@@ -149,6 +150,13 @@ const NAV_ITEMS: readonly AdminNavItem[] = [
     permission: 'ticket.handle',
   },
   { id: 'sos', href: '/admin/sos', label: 'SOS', icon: ShieldAlert, permission: 'sos.handle' },
+  {
+    id: 'content',
+    href: '/admin/content',
+    label: 'Content',
+    icon: FileText,
+    permission: 'content.edit',
+  },
   {
     id: 'analytics',
     href: '/admin/analytics',
