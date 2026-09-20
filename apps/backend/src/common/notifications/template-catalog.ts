@@ -464,6 +464,24 @@ export const TEMPLATES = {
       subject: `Ticket ${v.reference ?? ''} is resolved`,
     }),
   },
+
+  /**
+   * W17 — the weekly marketplace digest (ops mailbox, email only).
+   *
+   * The `summary` variable is the pre-formatted report the producer builds
+   * from the rollup rows; this template owns the framing, not the numbers.
+   * Plain text with newlines — the log/SES adapters send it as-is.
+   */
+  analytics_weekly_report: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['week', 'summary'],
+    render: (v) => ({
+      title: 'Weekly marketplace report',
+      body: `Marketplace report for ${v.week ?? 'last week'}\n\n${v.summary ?? ''}`,
+      subject: `Weekly marketplace report — ${v.week ?? 'last week'}`,
+    }),
+  },
 } as const satisfies Record<string, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof TEMPLATES;

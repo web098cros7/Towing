@@ -12,6 +12,7 @@ export * from './impersonation';
 export * from './pricing';
 export * from './finance';
 export * from './promotions';
+export * from './analytics';
 export * from './ops-kpis';
 export * from './ops';
 export * from './permissions';

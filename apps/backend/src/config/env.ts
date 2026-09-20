@@ -176,6 +176,21 @@ const EnvSchema = z.object({
   /** Where the drift alarm mails. */
   LEDGER_OPS_EMAIL: z.string().default('ops@towing.local'),
 
+  // ── W17: analytics (§9.4.13, §22.2) ────────────────────────────────────
+
+  /**
+   * 00:15 IST = 18:45 UTC — the IST day has just closed and the rollup must
+   * run after it; an hour ahead of `earnings.reconcile` so the two heavy
+   * sweeps do not overlap.
+   */
+  ANALYTICS_ROLLUP_CRON: z.string().default('45 18 * * *'),
+
+  /** Monday 08:00 IST — the marketplace week is closed and ops is at a desk. */
+  ANALYTICS_REPORT_CRON: z.string().default('30 2 * * 1'),
+
+  /** Where the weekly digest mails (the ops mailbox, like every ops alarm). */
+  ANALYTICS_REPORT_EMAIL: z.string().default('ops@towing.local'),
+
   // ── W14: SOS (§13) ─────────────────────────────────────────────────────
 
   /** Where the SOS ops alert mails when no admin is flagged on-call (G17). */

@@ -172,6 +172,25 @@ export interface JobPayloads {
    * what the queue-off suite calls directly.
    */
   'admin.apply-suspension': { driverId: string };
+
+  /**
+   * W17 — ABSOLUTE recompute of one IST day's rollups, then the 30-day
+   * `dispatch_wave_logs` purge (§22.2's retention half). Cron-triggered after
+   * the midnight IST boundary; the manual form exists so a failed night is
+   * re-runnable from the console without shell access.
+   *
+   * `day` omitted means yesterday — resolved by the worker at RUN time, not at
+   * enqueue time, so a job that sits in a queue across midnight still computes
+   * the day the cron meant.
+   */
+  'analytics.rollup': { reason: 'cron' | 'manual'; day?: string };
+
+  /**
+   * W17 — the weekly marketplace digest to the ops mailbox (§22.2's report).
+   * Deduped per week at the trigger (`analytics.report`), so a redelivery
+   * cannot mail the same week twice.
+   */
+  'analytics.report-email': { reason: 'cron' | 'manual'; week?: string };
 }
 
 export type JobName = keyof JobPayloads;

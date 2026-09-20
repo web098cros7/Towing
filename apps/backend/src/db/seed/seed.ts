@@ -185,6 +185,14 @@ export const APP_TABLES = [
   // W16: banners are FK-free against the graph above (`created_by` is a plain
   // reference to an admin, no cascade).
   'banners',
+  // W17: rollups + the §22.1 tracker. The rollup tables are rewritten
+  // absolutely every night and the tracker is append-only; none of them
+  // cascade from anything above, so the reset must name them.
+  'analytics_daily',
+  'analytics_zone_daily',
+  'analytics_band_daily',
+  'analytics_demand_grid',
+  'analytics_events',
   // FK-free or nearly so — a leftover row here outlives every CASCADE.
   'admin_notes',
   'service_zone_versions',

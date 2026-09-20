@@ -1,6 +1,10 @@
 import type { INestApplication } from '@nestjs/common';
 import {
   adminAdminsListResponseSchema,
+  analyticsDriverResponseSchema,
+  analyticsGeoResponseSchema,
+  analyticsRevenueResponseSchema,
+  analyticsSummaryResponseSchema,
   adminAuditListResponseSchema,
   adminBannersResponseSchema,
   adminBookingsResponseSchema,
@@ -301,6 +305,19 @@ describe('response contracts', () => {
       { path: '/v1/admin/coupons', schema: adminCouponsResponseSchema, realm: 'admin' },
       { path: '/v1/admin/banners', schema: adminBannersResponseSchema, realm: 'admin' },
       { path: '/v1/banners?audience=customer', schema: publicBannersResponseSchema, realm: 'customer' },
+      // W17 — the analytics envelopes. As ENVELOPE checks: the numbers come
+      // from the rollups and today's live compute, and the non-vacuous
+      // assertions (rollup matches a live query, bands/grid non-empty) live in
+      // `analytics.e2e.spec.ts` where a whole IST day is seeded by hand.
+      { path: '/v1/admin/analytics/summary', schema: analyticsSummaryResponseSchema, realm: 'admin' },
+      {
+        path: '/v1/admin/analytics/marketplace',
+        schema: analyticsSummaryResponseSchema,
+        realm: 'admin',
+      },
+      { path: '/v1/admin/analytics/revenue', schema: analyticsRevenueResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/analytics/drivers', schema: analyticsDriverResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/analytics/geo', schema: analyticsGeoResponseSchema, realm: 'admin' },
     ];
 
   beforeAll(async () => {
@@ -804,6 +821,9 @@ const EXCLUDED = new Set([
   // its header order and signed refund rows are asserted in
   // \`admin-finance-console.e2e.spec.ts\`.
   '/v1/admin/finance/reconciliation.csv',
+  // W17 — the analytics export is a byte stream; its header, its forbidden-PII
+  // columns and its rows are asserted in `analytics.e2e.spec.ts`.
+  '/v1/admin/analytics/export.csv',
   // W13 — parameterised zone reads. Asserted with `expectMatchesContract`
   // against `adminZoneSchema` and `adminZoneVersionSchema` in
   // `admin-zones.e2e.spec.ts`, which creates a real zone and edits it twice so

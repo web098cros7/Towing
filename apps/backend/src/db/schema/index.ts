@@ -29,3 +29,4 @@ export * from './promotions';
 export * from './ratings';
 export * from './sos';
 export * from './support';
+export * from './analytics';

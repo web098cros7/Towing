@@ -628,8 +628,10 @@ export class BookingsService {
       }
     }
 
-    this.logger.log(`event=booking_cancelled booking=${bookingId} tier=${outcome.tier}`);
-
+    // §22.1's `booking_cancelled` is tracked INSIDE `machine.transition` (W17),
+    // in the same transaction as the status write — every cancellation path
+    // (customer, admin, dispute-refund, suspension) goes through it, so there
+    // is nothing to emit here and a rolled-back cancel cannot leave an event.
     return {
       id: bookingId,
       status: 'cancelled',

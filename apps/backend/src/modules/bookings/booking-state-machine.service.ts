@@ -6,6 +6,7 @@ import { FleetEventsService } from '../../common/events/fleet-events.service';
 import { OpsEventsService } from '../../common/events/ops-events.service';
 import type { DatabaseExecutor } from '../../db/db.module';
 import { bookingStatusHistory, bookings } from '../../db/schema';
+import { trackEvent } from '../analytics/analytics-events';
 
 /**
  * §5.1's customer booking state machine — THE single place a booking's status
@@ -20,7 +21,8 @@ import { bookingStatusHistory, bookings } from '../../db/schema';
  *
  * Three things happen together or not at all: the guard, the status write, and
  * the `booking_status_history` row. A history row written outside this service
- * is a history that can lie.
+ * is a history that can lie. (W17 adds a fourth — §22.1's tracker row, in the
+ * same transaction; see the call at the end of `transition`.)
  */
 
 /**
@@ -280,6 +282,25 @@ export class BookingStateMachineService {
       actorId: params.actorId ?? null,
       note: params.note ?? null,
     });
+
+    // §22.1's tracker (W17/19vi), AT THE CHOKE POINT. Every completion and
+    // cancellation in the repo moves through this method, so each fact is
+    // recorded exactly once with no path able to bypass it — and in THIS
+    // transaction, so a rolled-back transition leaves no event behind and a
+    // redelivered one cannot double-write (the status guard runs first).
+    //
+    // `completed → paid` is `payment_success`: payments.service commits the
+    // ledger BEFORE this transition on purpose, so by the time this edge runs
+    // the money has landed — the ledger truth point, not the app's claim.
+    // (`disputed → paid` is excluded: it resolves a dispute, it does not take
+    // a payment.)
+    if (to === 'completed') {
+      await trackEvent(tx, { name: 'booking_completed', bookingId, props: { from } });
+    } else if (to === 'cancelled') {
+      await trackEvent(tx, { name: 'booking_cancelled', bookingId, props: { from } });
+    } else if (to === 'paid' && from === 'completed') {
+      await trackEvent(tx, { name: 'payment_success', bookingId, props: { from } });
+    }
 
     return {
       id: bookingId,

@@ -248,6 +248,18 @@ export interface SupportResolvedPayload extends Record<string, unknown> {
 }
 
 /**
+ * W17 — the weekly marketplace digest. `summary` is pre-formatted TEXT by the
+ * producer (`AnalyticsRollupService`): the numbers are computed there from the
+ * rollup rows, and the template stays a template.
+ */
+export interface AnalyticsReportPayload extends Record<string, unknown> {
+  /** `YYYY-MM-DD to YYYY-MM-DD` — the dedupe key, one digest per week. */
+  week: string;
+  reportEmail: string;
+  summary: string;
+}
+
+/**
  * The location link every SOS channel carries. Coordinates only — reverse
  * geocoding at 03:00 is a dependency this must not have.
  */
@@ -1199,6 +1211,39 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     resolve: (p: SupportResolvedPayload, ctx) =>
       ctx.resolver.resolveWalletOwner(p.requesterType, p.requesterId).then(one),
     variables: (p: SupportResolvedPayload) => ({ reference: p.reference }),
+  }),
+
+  defineTrigger({
+    /**
+     * W17 — the weekly marketplace digest (§22.2's report), emailed to the ops
+     * mailbox. Recipients are OPERATORS, not subjects: `ops` is the recipient
+     * kind, no inbox row exists for them, and email is the channel that can
+     * carry a table of numbers.
+     *
+     * DEDUPED PER WEEK — the one property that matters for a cron job whose
+     * delivery is at-least-once: a redelivered run cannot mail the week twice.
+     *
+     * The catalogue deliberately has NO template editor (§12.3's decision);
+     * this template is edited in code like every other.
+     */
+    event: 'analytics.report',
+    matrixRow: '',
+    channels: ['email'],
+    template: 'analytics_weekly_report',
+    category: 'compliance',
+    alwaysOn: true,
+    dedupeKey: (p: AnalyticsReportPayload) => p.week,
+    resolve: async (p: AnalyticsReportPayload): Promise<Recipient[]> => [
+      {
+        subjectType: 'ops',
+        subjectId: SOS_OPS_MAILBOX_ID,
+        mobile: null,
+        email: p.reportEmail,
+        pushTokens: [],
+        prefs: {},
+      },
+    ],
+    variables: (p: AnalyticsReportPayload) => ({ week: p.week, summary: p.summary }),
   }),
 ];
 

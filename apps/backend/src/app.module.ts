@@ -42,6 +42,7 @@ import { ContentModule } from './modules/content/content.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { BannersModule } from './modules/banners/banners.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthPublicModule } from './modules/auth-public/auth-public.module';
@@ -112,6 +113,7 @@ import { RedisModule } from './redis/redis.module';
     RatingsModule,
     CouponsModule,
     BannersModule,
+    AnalyticsModule,
     InvoicesModule,
     AdminConfigModule,
     AdminZonesModule,
