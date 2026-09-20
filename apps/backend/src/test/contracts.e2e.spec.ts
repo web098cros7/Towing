@@ -24,6 +24,8 @@ import {
   adminInvariantsResponseSchema,
   adminLedgerResponseSchema,
   adminNotesResponseSchema,
+  adminNotificationDeliveriesResponseSchema,
+  adminNotificationTemplatesResponseSchema,
   adminOpsActivityResponseSchema,
   adminOpsBadgesResponseSchema,
   adminOpsDashboardResponseSchema,
@@ -91,6 +93,8 @@ import {
   disputes,
   driverDocuments,
   drivers,
+  notificationDeliveries,
+  notificationEvents,
   payments,
   payouts,
   refunds,
@@ -318,6 +322,19 @@ describe('response contracts', () => {
       { path: '/v1/admin/analytics/revenue', schema: analyticsRevenueResponseSchema, realm: 'admin' },
       { path: '/v1/admin/analytics/drivers', schema: analyticsDriverResponseSchema, realm: 'admin' },
       { path: '/v1/admin/analytics/geo', schema: analyticsGeoResponseSchema, realm: 'admin' },
+      // W18 — the notification catalogue + delivery log. The delivery row is
+      // seeded below so the log read is not the vacuous kind this file warns
+      // about; the guarded test-send is a POST and lives in the module spec.
+      {
+        path: '/v1/admin/notifications/templates',
+        schema: adminNotificationTemplatesResponseSchema,
+        realm: 'admin',
+      },
+      {
+        path: '/v1/admin/notifications/deliveries',
+        schema: adminNotificationDeliveriesResponseSchema,
+        realm: 'admin',
+      },
     ];
 
   beforeAll(async () => {
@@ -614,6 +631,23 @@ describe('response contracts', () => {
         sortOrder: 2,
       },
     ]);
+
+    // W18 — one delivery so the log row above is non-empty. Destination is the
+    // MASKED form because that is the only form the table ever stores.
+    const [contractEvent] = await db
+      .insert(notificationEvents)
+      .values({ event: 'contract.notification', payload: {} })
+      .returning({ id: notificationEvents.id });
+    await db.insert(notificationDeliveries).values({
+      eventId: contractEvent!.id,
+      recipientKey: `user:${contractCustomer}`,
+      channel: 'email',
+      destination: 'c***@example.com',
+      status: 'sent',
+      vendor: 'log',
+      attempts: 1,
+      sentAt: new Date(),
+    });
   });
 
   afterAll(async () => {
