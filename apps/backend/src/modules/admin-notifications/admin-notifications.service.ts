@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 import {
   type AdminNotificationDeliveriesQuery,
   type AdminNotificationDeliveriesResponse,
@@ -10,7 +9,7 @@ import {
 } from '@towing/api-contracts';
 import { eq, sql, type SQL } from 'drizzle-orm';
 import { maskDestination } from '../../common/notifications/channels/log-channel.adapter';
-import { NOTIFICATIONS, type NotificationPort } from '../../common/notifications/notification.port';
+import { NotificationService } from '../../common/notifications/notification.service';
 import {
   TEMPLATES,
   renderTemplate,
@@ -42,7 +41,12 @@ import { AdminAuditService } from '../admin-auth/admin-audit.service';
  *
  * THE TEST-SEND CANNOT TARGET ANYONE BUT THE CALLER: no destination field
  * exists in the body (`admin/notifications.ts` argues why), and the address is
- * read from the caller's own admin row.
+ * read from the caller's own admin row. It goes through
+ * `NotificationService.sendPreview` rather than injecting the transport: the
+ * port token may not leave `common/notifications` (`notification-port-usage.spec.ts`,
+ * invariant 69, which is a source-text scan with no comment stripping — so this
+ * paragraph may not spell it either), and the seam is where that exemption is
+ * argued once rather than reopened per module.
  */
 @Injectable()
 export class AdminNotificationsService {
@@ -54,13 +58,7 @@ export class AdminNotificationsService {
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(QUEUE) private readonly queue: QueuePort,
-    /**
-     * The PORT, not the router: `NotificationRouterAdapter` is module-private
-     * in `NotificationsModule` (only `NOTIFICATIONS` is exported), and the
-     * test-send has no business reaching past the same seam every other
-     * sender uses.
-     */
-    @Inject(NOTIFICATIONS) private readonly notifications: NotificationPort,
+    private readonly notifications: NotificationService,
     private readonly audit: AdminAuditService,
   ) {}
 
@@ -170,18 +168,13 @@ export class AdminNotificationsService {
       );
     }
 
-    const result = await this.notifications.notify(body.channel, {
+    const result = await this.notifications.sendPreview({
+      channel: body.channel,
       to: destination,
       rendered: renderTemplate(key, {}),
       templateKey: key,
       dltTemplateId: definition.dltTemplateId,
       waTemplateName: definition.waTemplateName,
-      variables: {},
-      priority: 'normal',
-      data: {},
-      // A synthetic correlation id: a test-send has no delivery row (it never
-      // enters the fan-out), and inventing one would put a fiction in the log.
-      deliveryId: `test-send:${randomUUID()}`,
     });
 
     const masked = maskDestination(destination);
