@@ -13,16 +13,21 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTheme, motion } from '@towing/theme';
 import { Text } from '@towing/ui';
-import { Search, ChevronDown, Headphones } from '@/icons';
+import { Search, ChevronDown, Headphones, ClipboardList } from '@/icons';
 import { SubScreen } from '@/components/SubScreen';
 import { SettingsList } from '@/components/SettingsList';
 import { SettingsRow } from '@/components/SettingsRow';
 import { TextField } from '@/components/TextField';
 import { faqs } from '@/features/account/data/faqs.data';
+import { useContentPages } from '@/features/content/api/content.queries';
 import type { RootStackParamList } from '@/navigation/types';
 import { Pressable } from '@/motion';
 
-type Faq = (typeof faqs)[number];
+interface Faq {
+  id: string;
+  question: string;
+  answer: string;
+}
 
 /**
  * One FAQ card.
@@ -99,13 +104,23 @@ export function HelpCenterScreen() {
   const [query, setQuery] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
 
+  // W15: the answers are content the console can edit; until they arrive (or
+  // if they cannot), the bundled copy answers — Help that is unreachable
+  // offline is worse than Help that is a release behind.
+  const content = useContentPages('faq');
+  const items: Faq[] = useMemo(() => {
+    const pages = content.data?.items ?? [];
+    if (pages.length === 0) return faqs;
+    return pages.map((page) => ({ id: page.slug, question: page.title, answer: page.bodyMd }));
+  }, [content.data]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return faqs;
-    return faqs.filter(
+    if (!q) return items;
+    return items.filter(
       (f) => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q),
     );
-  }, [query]);
+  }, [items, query]);
 
   return (
     <SubScreen title="Help Center">
@@ -129,6 +144,13 @@ export function HelpCenterScreen() {
       </View>
 
       <SettingsList>
+        <SettingsRow
+          icon={ClipboardList}
+          title="My tickets"
+          subtitle="What you have raised and our replies"
+          trailing="chevron"
+          onPress={() => navigation.navigate('MyTickets')}
+        />
         <SettingsRow
           icon={Headphones}
           title="Still need help?"

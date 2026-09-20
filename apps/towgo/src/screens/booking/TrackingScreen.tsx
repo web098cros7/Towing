@@ -216,10 +216,10 @@ export function TrackingScreen() {
     );
   }, [bookingId, cancelBooking, goHome]);
 
-  /** §11.6's support shortcut. Phase 20 owns the ticket; this is the honest stop-gap. */
+  /** §11.6's support shortcut — W15 files the ticket with THIS trip attached. */
   const onGetHelp = useCallback(() => {
-    navigation.navigate('ContactUs');
-  }, [navigation]);
+    navigation.navigate('ContactUs', { bookingId });
+  }, [bookingId, navigation]);
 
   const sheetInset = screenHeight * PEEK_RATIO;
 

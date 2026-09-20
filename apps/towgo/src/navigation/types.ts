@@ -55,7 +55,11 @@ export type RootStackParamList = {
   /** The in-app notification centre — what the AppHeader bell opens (Phase 13). */
   Notifications: undefined;
   HelpCenter: undefined;
-  ContactUs: undefined;
+  /** W15: the message form files a ticket; a booking id attaches the trip (§6.6). */
+  ContactUs: { bookingId?: string } | undefined;
+  /** W15: the requester's own ticket list and one ticket's thread. */
+  MyTickets: undefined;
+  TicketThread: { ticketId: string };
   Settings: undefined;
   EmergencyContacts: undefined;
   AddEmergencyContact: undefined;

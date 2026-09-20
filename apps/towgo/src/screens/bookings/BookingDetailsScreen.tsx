@@ -58,7 +58,11 @@ export function BookingDetailsScreen() {
   const { data, isPending, isError, refetch } = useBooking(bookingId);
 
   const goBack = useCallback(() => navigation.goBack(), [navigation]);
-  const openSupport = useCallback(() => navigation.navigate('ContactUs'), [navigation]);
+  // §6.6: "Get help" about THIS trip — the ticket is filed with it attached.
+  const openSupport = useCallback(
+    () => navigation.navigate('ContactUs', { bookingId }),
+    [bookingId, navigation],
+  );
 
   const [rateOpen, setRateOpen] = useState(false);
   const invoice = useInvoiceLink();

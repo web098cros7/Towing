@@ -42,9 +42,7 @@ export const env = {
    * `PRESENCE_OFFLINE_MS` (the support banner), `error` fails the request.
    */
   mockTrackingState: (process.env.EXPO_PUBLIC_MOCK_TRACKING_STATE ?? '') as
-    | MockState
-    | 'stale'
-    | 'offline',
+    MockState | 'stale' | 'offline',
   /**
    * Dev-only (Phase 19): forces §19.2's `COMPLETED (unpaid)` branch, which a
    * mock gateway cannot reach on its own — a fake capture never fails. Without
@@ -56,6 +54,10 @@ export const env = {
   mockWalletState: (process.env.EXPO_PUBLIC_MOCK_WALLET_STATE ?? '') as MockState,
   /** Dev-only: force §9.4.11's coupon check into error. */
   mockCouponState: (process.env.EXPO_PUBLIC_MOCK_COUPON_STATE ?? '') as MockState,
+  /** Dev-only: force W15's ticket list into empty/error. */
+  mockSupportState: (process.env.EXPO_PUBLIC_MOCK_SUPPORT_STATE ?? '') as MockState,
+  /** Dev-only: force W15's FAQ/legal read into empty/error (screens then show their bundled copy). */
+  mockContentState: (process.env.EXPO_PUBLIC_MOCK_CONTENT_STATE ?? '') as MockState,
 
   /**
    * Google Maps SDK key for ANDROID (Phase 16).

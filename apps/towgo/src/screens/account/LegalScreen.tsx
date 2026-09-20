@@ -11,6 +11,7 @@ import { SettingsList } from '@/components/SettingsList';
 import { SettingsRow } from '@/components/SettingsRow';
 import { ApiClientError } from '@/lib/api/errors';
 import { useDeleteAccount, useExportData } from '@/features/account/api/privacy.queries';
+import { useContentPages } from '@/features/content/api/content.queries';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { POLICY_VERSION } from '@/lib/legal/policyVersion';
 import { Pressable } from '@/motion';
@@ -37,8 +38,12 @@ function LegalSection({ title, body }: { title: string; body: string }) {
 }
 
 /**
- * Placeholder legal copy — not the focus of this phase, only that the screen
- * exists and the DPDP action rows below are wired to the real `/me` endpoints.
+ * Placeholder legal copy — the FALLBACK now (W15): the canonical text lives in
+ * `content_pages` and is editable from the admin console, and this copy answers
+ * only when that read fails, so Legal is never a blank screen.
+ *
+ * The DPDP action rows below are unaffected either way: they hit the real
+ * `/me/privacy/*` endpoints.
  */
 const PRIVACY_SECTIONS = [
   {
@@ -78,6 +83,13 @@ export function LegalScreen() {
   const exportData = useExportData();
   const deleteAccount = useDeleteAccount();
   const [exportResult, setExportResult] = useState<string | null>(null);
+
+  // The published legal pages, when they can be read. Empty (offline, or an
+  // operator unpublished everything by mistake) falls through to the bundled
+  // sections below rather than to an empty screen — a user being asked to
+  // accept terms must be able to read them.
+  const legal = useContentPages('legal');
+  const legalPages = legal.data?.items ?? [];
 
   const onDownloadData = useCallback(() => {
     exportData.mutate(undefined, {
@@ -130,17 +142,30 @@ export function LegalScreen() {
 
   return (
     <SubScreen title="Legal" gap={20}>
-      <LegalHeading title="Privacy Policy" />
-      {PRIVACY_SECTIONS.map((s) => (
-        <LegalSection key={s.title} title={s.title} body={s.body} />
-      ))}
+      {legalPages.length > 0 ? (
+        legalPages.map((page) => (
+          <View key={page.slug} style={{ gap: 6 }}>
+            <LegalHeading title={page.title} />
+            <Text color="secondary" style={{ fontSize: 13, lineHeight: 19 }} selectable>
+              {page.bodyMd}
+            </Text>
+          </View>
+        ))
+      ) : (
+        <>
+          <LegalHeading title="Privacy Policy" />
+          {PRIVACY_SECTIONS.map((s) => (
+            <LegalSection key={s.title} title={s.title} body={s.body} />
+          ))}
 
-      <View style={{ height: 1, backgroundColor: theme.colors.border }} />
+          <View style={{ height: 1, backgroundColor: theme.colors.border }} />
 
-      <LegalHeading title="Terms of Service" />
-      {TERMS_SECTIONS.map((s) => (
-        <LegalSection key={s.title} title={s.title} body={s.body} />
-      ))}
+          <LegalHeading title="Terms of Service" />
+          {TERMS_SECTIONS.map((s) => (
+            <LegalSection key={s.title} title={s.title} body={s.body} />
+          ))}
+        </>
+      )}
 
       <Text variant="caption" color="tertiary">
         Policy version {POLICY_VERSION}
