@@ -9,6 +9,7 @@ import {
   CarFront,
   MapPin,
   CreditCard,
+  FileText,
   Settings,
   CircleHelp,
   Headphones,
@@ -179,6 +180,9 @@ export function ProfileScreen() {
         <MenuGroup title="Account">
           <MenuRow icon={MapPin} label="Saved Locations" onPress={openLocations} />
           <MenuRow icon={LifeBuoy} label="Emergency Contacts" onPress={openEmergencyContacts} />
+          {/* W20 §7.3 — a quote is a price waiting on the customer, so it sits with
+              the account's own things rather than under Support. */}
+          <MenuRow icon={FileText} label="My Quotes" onPress={() => navigation.navigate('MyQuotes')} />
           <MenuRow icon={Settings} label="Settings" onPress={openSettings} />
         </MenuGroup>
 

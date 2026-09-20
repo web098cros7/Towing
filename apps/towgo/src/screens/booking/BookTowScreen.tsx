@@ -12,6 +12,9 @@ import { useLocationStore } from '@/features/location/locationStore';
 import { useBookingStore } from '@/features/booking/store/bookingStore';
 import { vehicleClassFor } from '@/features/booking/data/towTypes.data';
 import { useFareEstimate } from '@/features/booking/api/pricing.queries';
+import { ManualQuoteBar } from '@/features/quotes/components/ManualQuoteBar';
+import { RequestQuoteSheet } from '@/features/quotes/components/RequestQuoteSheet';
+import { useRequestQuote } from '@/features/quotes/api/quotes.queries';
 import { useServices } from '@/features/services/api/services.queries';
 import { FareBreakdownSheet } from '@/features/booking/components/FareBreakdownSheet';
 import { NoteEditorSheet } from '@/features/booking/components/BookingExtrasSheets';
@@ -82,6 +85,57 @@ export function BookTowScreen() {
 
   const estimate = useFareEstimate(estimateInput, requiresDrop);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+
+  /**
+   * W20 §7.3 — the >600 km refusal turned into the next step.
+   *
+   * Before this, a `manual_quote_required` 422 left the screen showing a fare
+   * skeleton forever: the mutation had an error handler, the QUERY did not. The
+   * refusal is a legitimate answer, not a failure, so it gets its own bar and
+   * its own route onward — request → My Quotes → accept → Searching, the same
+   * hand-off a normal booking makes.
+   */
+  const manualQuote =
+    estimate.error instanceof ApiClientError && estimate.error.code === 'manual_quote_required'
+      ? { distanceKm: readDistanceKm(estimate.error.details) }
+      : null;
+  const [quoteSheetOpen, setQuoteSheetOpen] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const requestQuote = useRequestQuote();
+
+  const submitQuoteRequest = useCallback(
+    (notes: string) => {
+      // The quote contract REQUIRES a drop — and so does §7.3: a roadside job
+      // never crosses 600 km, so this branch is never reachable without one.
+      // The guard is for the type checker's benefit, not the customer's.
+      if (!estimateInput?.drop) return;
+      setQuoteError(null);
+      requestQuote.mutate(
+        {
+          serviceSlug: estimateInput.serviceSlug,
+          vehicleClass: estimateInput.vehicleClass,
+          pickup: estimateInput.pickup,
+          ...(pickupAddress ? { pickupAddress } : {}),
+          drop: estimateInput.drop,
+          ...(dropAddress ? { dropAddress } : {}),
+          ...(notes ? { notes } : {}),
+        },
+        {
+          onSuccess: () => {
+            setQuoteSheetOpen(false);
+            navigation.navigate('MyQuotes');
+          },
+          onError: (error) =>
+            setQuoteError(
+              error instanceof ApiClientError
+                ? error.message
+                : 'We could not file the request. Please try again.',
+            ),
+        },
+      );
+    },
+    [estimateInput, pickupAddress, dropAddress, requestQuote, navigation],
+  );
 
   // §22.1. Emitted when a fare actually lands, not when the screen mounts —
   // an `estimate_viewed` fired on an empty skeleton would inflate the funnel
@@ -260,7 +314,19 @@ export function BookTowScreen() {
         // Inside the sheet but below the scroller, so the CTA can never be
         // dragged off-screen. BookingBottomBar already carries its own bottom
         // inset and top border, so it needs no changes.
-        footer={<BookingBottomBar
+        footer={
+          manualQuote ? (
+            <ManualQuoteBar
+              distanceKm={manualQuote.distanceKm}
+              submitting={requestQuote.isPending}
+              errorMessage={quoteError}
+              onRequest={() => {
+                setQuoteError(null);
+                setQuoteSheetOpen(true);
+              }}
+            />
+          ) : (
+            <BookingBottomBar
               farePaise={estimate.data?.breakdown.totalPaise}
               loading={estimate.isFetching}
               surgeActive={estimate.data?.surgeActive ?? false}
@@ -274,7 +340,9 @@ export function BookTowScreen() {
               confirmDisabled={!estimate.data || createBooking.isPending}
               confirming={createBooking.isPending}
               errorMessage={confirmError}
-            />}
+            />
+          )
+        }
       >
         <TowTypeCarousel />
 
@@ -308,8 +376,26 @@ export function BookTowScreen() {
         loading={estimate.isFetching}
       />
       <NoteEditorSheet visible={noteOpen} note={note} onSave={setNote} onClose={closeNote} />
+      <RequestQuoteSheet
+        visible={quoteSheetOpen}
+        submitting={requestQuote.isPending}
+        onClose={() => setQuoteSheetOpen(false)}
+        onSubmit={submitQuoteRequest}
+      />
     </View>
   );
+}
+
+/**
+ * The refusal's `details.distanceKm`, when it is there. `details` is typed
+ * `unknown` on the error (it is whatever the backend sent), so this is the one
+ * place the shape is asserted — and a missing number degrades to the copy that
+ * does not need one rather than rendering `undefined km`.
+ */
+function readDistanceKm(details: unknown): number | undefined {
+  if (typeof details !== 'object' || details === null) return undefined;
+  const value = (details as { distanceKm?: unknown }).distanceKm;
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 /**

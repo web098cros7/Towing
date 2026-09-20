@@ -31,6 +31,7 @@ import { useNotificationListeners } from '@/features/notifications/push/useNotif
 import { usePushRegistration } from '@/features/notifications/push/usePushRegistration';
 import { HelpCenterScreen } from '@/screens/account/HelpCenterScreen';
 import { ContactUsScreen } from '@/screens/account/ContactUsScreen';
+import { MyQuotesScreen } from '@/screens/account/MyQuotesScreen';
 import { MyTicketsScreen } from '@/screens/account/MyTicketsScreen';
 import { TicketThreadScreen } from '@/screens/account/TicketThreadScreen';
 import { SettingsScreen } from '@/screens/account/SettingsScreen';
@@ -153,6 +154,7 @@ export function RootNavigator() {
               <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />
               <Stack.Screen name="ContactUs" component={ContactUsScreen} />
               <Stack.Screen name="MyTickets" component={MyTicketsScreen} />
+              <Stack.Screen name="MyQuotes" component={MyQuotesScreen} />
               <Stack.Screen name="TicketThread" component={TicketThreadScreen} />
               <Stack.Screen name="Settings" component={SettingsScreen} />
               <Stack.Screen name="EmergencyContacts" component={EmergencyContactsScreen} />

@@ -26,11 +26,15 @@ export const env = {
   /** Dev-only: force the service catalogue mock into empty/error. */
   mockServicesState: (process.env.EXPO_PUBLIC_MOCK_SERVICES_STATE ?? '') as MockState,
   /**
-   * Dev-only: force the fare estimate into error, or into a SURGING zone —
-   * §9.1.5's surge badge is otherwise unreachable in mock mode, since no seeded
-   * mock zone surges.
+   * Dev-only: force the fare estimate into error, into a SURGING zone, or into
+   * §7.3's >600 km manual-quote refusal — none of which the seeded mock zones
+   * can reach on their own, and the last of which is the entire entry point to
+   * W20's quote flow.
    */
-  mockPricingState: (process.env.EXPO_PUBLIC_MOCK_PRICING_STATE ?? '') as MockState | 'surge',
+  mockPricingState: (process.env.EXPO_PUBLIC_MOCK_PRICING_STATE ?? '') as
+    | MockState
+    | 'surge'
+    | 'manual_quote',
   /** Dev-only: force address search into empty/error (Phase 16). */
   mockPlacesState: (process.env.EXPO_PUBLIC_MOCK_PLACES_STATE ?? '') as MockState,
   /** Dev-only: force the nearby-driver supply read into empty/error. */
@@ -56,6 +60,8 @@ export const env = {
   mockCouponState: (process.env.EXPO_PUBLIC_MOCK_COUPON_STATE ?? '') as MockState,
   /** Dev-only: force W15's ticket list into empty/error. */
   mockSupportState: (process.env.EXPO_PUBLIC_MOCK_SUPPORT_STATE ?? '') as MockState,
+  /** Dev-only: force W20's quote list into empty/error. */
+  mockQuotesState: (process.env.EXPO_PUBLIC_MOCK_QUOTES_STATE ?? '') as MockState,
   /** Dev-only: force W15's FAQ/legal read into empty/error (screens then show their bundled copy). */
   mockContentState: (process.env.EXPO_PUBLIC_MOCK_CONTENT_STATE ?? '') as MockState,
 

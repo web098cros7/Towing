@@ -60,6 +60,8 @@ export type RootStackParamList = {
   /** W15: the requester's own ticket list and one ticket's thread. */
   MyTickets: undefined;
   TicketThread: { ticketId: string };
+  /** W20 §7.3: long-distance trips the engine will not price. */
+  MyQuotes: undefined;
   Settings: undefined;
   EmergencyContacts: undefined;
   AddEmergencyContact: undefined;

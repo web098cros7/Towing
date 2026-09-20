@@ -1,4 +1,5 @@
 import type { PricingEstimateRequest, PricingEstimateResponse } from '@towing/api-contracts';
+import { ApiClientError } from '@/lib/api/errors';
 import { env } from '@/lib/env';
 import type { PricingDataSource } from './pricingDataSource';
 
@@ -43,6 +44,17 @@ export const pricingMockSource: PricingDataSource = {
     // instant mock.
     await delay(650);
     if (env.mockPricingState === 'error') throw new Error('Mock pricing error');
+    // W20 §7.3 — the >600 km refusal, with the same code and details the
+    // server sends, so the quote flow is reachable in mock mode. Without this
+    // the flow's entry point would be a state no developer could ever see.
+    if (env.mockPricingState === 'manual_quote') {
+      throw new ApiClientError(
+        422,
+        'manual_quote_required',
+        'This trip is long enough to need a manual quote',
+        { distanceKm: 812.4 },
+      );
+    }
 
     const surging = env.mockPricingState === 'surge';
     const serviceType = ROADSIDE[input.serviceSlug] !== undefined ? input.serviceSlug : 'tow';
