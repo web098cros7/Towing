@@ -43,11 +43,18 @@ export const env = {
   /** W10's rate-card editor (M4). */
   mockAdminPricingState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PRICING_STATE ?? '') as MockState,
   /** W11's commission editor (M4). */
-  mockAdminCommissionState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_COMMISSION_STATE ?? '') as MockState,
+  mockAdminCommissionState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_COMMISSION_STATE ??
+    '') as MockState,
   /** W12's dispatch + app config screen (M4). */
   mockAdminDispatchState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_DISPATCH_STATE ?? '') as MockState,
   /** W13's service-zone editor (M4). */
   mockAdminZonesState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_ZONES_STATE ?? '') as MockState,
+  /** W14's SOS console (M5). */
+  mockAdminSosState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_SOS_STATE ?? '') as MockState,
+  /** W15's support console (M5). */
+  mockAdminSupportState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_SUPPORT_STATE ?? '') as MockState,
+  /** W15's content editor (M5). */
+  mockAdminContentState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_CONTENT_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless

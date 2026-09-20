@@ -27,6 +27,7 @@ export interface AdminDispatchDataSource {
     pausedZoneIds?: string[];
     longDistanceDisabled?: boolean;
     forcePolling?: boolean;
+    sosStandaloneDisabled?: boolean;
   }): Promise<AdminDispatchConfig>;
   appConfig(): Promise<AppConfig>;
   updateAppConfig(patch: AdminAppConfigUpdate): Promise<AppConfig>;

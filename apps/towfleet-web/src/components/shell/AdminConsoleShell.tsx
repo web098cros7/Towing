@@ -2,7 +2,11 @@
 
 import type { ReactNode } from 'react';
 import type { AdminOpsBadges } from '@towing/api-contracts';
-import { AdminRealtimeProvider, useAdminRealtime } from '@/features/admin-realtime/AdminRealtimeProvider';
+import {
+  AdminRealtimeProvider,
+  useAdminRealtime,
+} from '@/features/admin-realtime/AdminRealtimeProvider';
+import { SosBanner } from '@/features/admin-sos/components/SosBanner';
 import { ToastProvider } from '@/components/admin/ToastProvider';
 import { useAdminCan } from '@/components/admin/Can';
 import { useAdminIdleLogout } from '@/components/admin/useAdminIdleLogout';
@@ -19,19 +23,24 @@ import { AdminTopbar } from './AdminTopbar';
  * the layout above it stays a server component so the route tree keeps its
  * server boundary.
  *
+ * `ToastProvider` WRAPS THE REALTIME PROVIDER since W14: the socket handler
+ * raises an SOS toast (and the chime) the instant the frame lands, and that is
+ * the one alert in the console that must not wait for a query to refetch.
+ *
  * W3 wires the sidebar badges: `ops:badges` frames patch the cached badge
  * query inside `ConsoleFrame`, which is a child of the realtime provider for
  * exactly that reason — the badge count and the socket share one connection.
+ * W14 adds the persistent SOS banner between the topbar and the page.
  */
 export function AdminConsoleShell({ children }: { children: ReactNode }): ReactNode {
   useAdminIdleLogout();
 
   return (
-    <AdminRealtimeProvider>
-      <ToastProvider>
+    <ToastProvider>
+      <AdminRealtimeProvider>
         <ConsoleFrame>{children}</ConsoleFrame>
-      </ToastProvider>
-    </AdminRealtimeProvider>
+      </AdminRealtimeProvider>
+    </ToastProvider>
   );
 }
 
@@ -45,6 +54,7 @@ function ConsoleFrame({ children }: { children: ReactNode }): ReactNode {
       <AdminSidebar badges={badges.data ? navBadges(badges.data.badges) : undefined} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminTopbar />
+        <SosBanner />
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>

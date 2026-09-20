@@ -40,12 +40,14 @@ export const adminOpsKpisMock: AdminOpsKpis = {
   completedUnpaid: 1,
   timeToMatchP50Seconds: 42,
   timeToMatchP90Seconds: 128,
+  // W14: two open incidents, a response time that is real enough to render.
+  sos: { open: 2, ackP50Seconds: 18, ackP95Seconds: 74 },
 };
 
 export const adminOpsBadgesMock: AdminOpsBadges = {
   pendingKyc: 4,
   pendingPayouts: 2,
-  openSos: 0,
+  openSos: 2,
   openDisputes: 0,
   openTickets: 0,
   suspensionRequests: 0,
@@ -60,6 +62,7 @@ export const adminOpsActivityMock: AdminActivityItem[] = [
     bookingId: '00000000-0000-4000-8000-0000000000a1',
     zoneId: '00000000-0000-4000-8000-0000000000e1',
     status: 'searching',
+    sosStatus: null,
     scheduledAt: null,
     action: null,
     subjectType: null,
@@ -73,6 +76,7 @@ export const adminOpsActivityMock: AdminActivityItem[] = [
     bookingId: '00000000-0000-4000-8000-0000000000a2',
     zoneId: '00000000-0000-4000-8000-0000000000e1',
     status: 'assigned',
+    sosStatus: null,
     scheduledAt: null,
     action: null,
     subjectType: null,
@@ -86,11 +90,26 @@ export const adminOpsActivityMock: AdminActivityItem[] = [
     bookingId: null,
     zoneId: null,
     status: null,
+    sosStatus: null,
     scheduledAt: null,
     action: 'driver.kyc.approve',
     subjectType: 'driver',
     subjectId: '00000000-0000-4000-8000-0000000000d1',
     adminId: '00000000-0000-4000-8000-000000000001',
+  },
+  {
+    id: 'sos_alert:00000000-0000-4000-8000-0000000000f1',
+    kind: 'sos_alert',
+    at: minutesAgo(3),
+    bookingId: null,
+    zoneId: null,
+    status: null,
+    sosStatus: 'triggered',
+    scheduledAt: null,
+    action: 'sos.triggered',
+    subjectType: 'user',
+    subjectId: '00000000-0000-4000-8000-0000000000c1',
+    adminId: null,
   },
 ];
 

@@ -34,9 +34,7 @@ export function AdminOpsHome(): React.ReactNode {
         <div className="flex flex-col gap-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {dashboard.isLoading || !dashboard.data ? (
-              Array.from({ length: 8 }, (_, index) => (
-                <Skeleton key={index} className="h-28" />
-              ))
+              Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-28" />)
             ) : (
               <KpiTiles kpis={dashboard.data.kpis} />
             )}
@@ -103,6 +101,15 @@ function KpiTiles({ kpis }: { kpis: AdminOpsKpis }): React.ReactNode {
         label="Needs attention"
         value={String(kpis.completedUnpaid)}
         hint={`${kpis.cancelledToday} cancelled today`}
+      />
+      <KpiCard
+        label="SOS"
+        value={String(kpis.sos.open)}
+        hint={
+          kpis.sos.ackP50Seconds === null
+            ? 'Ack time: — (none acknowledged)'
+            : `Ack p50 ${kpis.sos.ackP50Seconds}s · p95 ${kpis.sos.ackP95Seconds ?? '—'}s`
+        }
       />
     </>
   );

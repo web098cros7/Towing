@@ -29,10 +29,13 @@ test('renders every KPI tile from the mock day', async ({ page }) => {
 test('renders the live activity feed with a row per source kind', async ({ page }) => {
   await adminLogin(page);
 
-  await expect(page.getByTestId('admin-activity-item')).toHaveCount(3);
+  // Four since W14: the feed carries SOS alerts alongside bookings and admin
+  // actions, because an incident is exactly what this list is for.
+  await expect(page.getByTestId('admin-activity-item')).toHaveCount(4);
   await expect(page.getByText(/New booking 00000000/)).toBeVisible();
   await expect(page.getByText(/Booking 00000000 → assigned/)).toBeVisible();
   await expect(page.getByText('driver.kyc.approve (driver)')).toBeVisible();
+  await expect(page.getByText('sos.triggered (user)')).toBeVisible();
 });
 
 test('carries ops badge counts into the sidebar', async ({ page }) => {

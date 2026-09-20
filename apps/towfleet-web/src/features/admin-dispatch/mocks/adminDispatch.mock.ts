@@ -50,6 +50,8 @@ export const adminDispatchConfigMock: AdminDispatchConfig = {
     pausedZoneIds: [],
     longDistanceDisabled: false,
     forcePolling: false,
+    // W14 (G11): standalone SOS is ON unless an operator turns it off.
+    sosStandaloneDisabled: false,
   },
 };
 

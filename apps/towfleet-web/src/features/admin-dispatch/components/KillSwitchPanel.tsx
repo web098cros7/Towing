@@ -25,7 +25,12 @@ export function KillSwitchPanel({ config }: { config: AdminDispatchConfig }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const apply = async (
-    patch: { pausedZoneIds?: string[]; longDistanceDisabled?: boolean; forcePolling?: boolean },
+    patch: {
+      pausedZoneIds?: string[];
+      longDistanceDisabled?: boolean;
+      forcePolling?: boolean;
+      sosStandaloneDisabled?: boolean;
+    },
     message: string,
   ) => {
     setErrorMessage(null);
@@ -184,6 +189,52 @@ export function KillSwitchPanel({ config }: { config: AdminDispatchConfig }) {
                 variant="destructive"
                 onClick={() => void apply({ forcePolling: true }, 'Polling forced platform-wide')}
                 data-testid="confirm-force-polling"
+              >
+                Confirm
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>
+                Cancel
+              </Button>
+            </div>
+          ) : null}
+
+          <div
+            className="flex items-center justify-between gap-3 rounded-card border border-border px-3 py-2"
+            data-testid="kill-sos-standalone"
+          >
+            <div>
+              <span className="text-sm font-semibold">Disable standalone SOS</span>
+              <p className="text-xs text-text-secondary">
+                Refuses SOS from users with NO active booking. In-booking SOS keeps working, and
+                §13's safety story depends on this staying ON.
+              </p>
+            </div>
+            <Switch
+              checked={config.killSwitches.sosStandaloneDisabled}
+              disabled={update.isPending}
+              labelledBy="kill-sos-standalone-label"
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  setConfirming('sos-standalone');
+                  return;
+                }
+                void apply({ sosStandaloneDisabled: false }, 'Standalone SOS re-enabled');
+              }}
+            />
+          </div>
+
+          {confirming === 'sos-standalone' ? (
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-xs text-text-secondary">
+                A customer with no booking will not be able to call for help. Continue?
+              </span>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() =>
+                  void apply({ sosStandaloneDisabled: true }, 'Standalone SOS disabled')
+                }
+                data-testid="confirm-sos-standalone"
               >
                 Confirm
               </Button>

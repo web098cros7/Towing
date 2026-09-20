@@ -54,6 +54,7 @@ const emptyDashboard: AdminOpsDashboardResponse = {
     completedUnpaid: 0,
     timeToMatchP50Seconds: null,
     timeToMatchP90Seconds: null,
+    sos: { open: 0, ackP50Seconds: null, ackP95Seconds: null },
   },
   at: new Date().toISOString(),
   degraded: true,

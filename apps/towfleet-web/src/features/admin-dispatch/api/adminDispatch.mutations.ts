@@ -47,6 +47,7 @@ export function useUpdateKillSwitches() {
       pausedZoneIds?: string[];
       longDistanceDisabled?: boolean;
       forcePolling?: boolean;
+      sosStandaloneDisabled?: boolean;
     }) => adminDispatchDataSource.updateKillSwitches(patch),
     retry: false,
     onSuccess: (config) => {

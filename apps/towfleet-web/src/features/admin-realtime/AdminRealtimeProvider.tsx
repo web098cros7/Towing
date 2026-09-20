@@ -5,7 +5,10 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { AdminOpsBadgesResponse, AdminOpsLiveResponse } from '@towing/api-contracts';
 import { adminOpsKeys } from '@/features/admin-ops/api/adminOps.keys';
 import { dashboardFromMetrics } from '@/features/admin-ops/lib/dashboardFromMetrics';
+import { adminSosKeys } from '@/features/admin-sos/api/adminSos.keys';
+import { playSosChime } from '@/features/admin-sos/lib/sosChime';
 import type { RealtimeMode } from '@/features/realtime/types';
+import { useToast } from '@/components/admin/ToastProvider';
 import { env } from '@/lib/env';
 import { adminRealtimeConnection } from './lib/socket';
 
@@ -54,11 +57,17 @@ function AdminRealtimeMockProvider({ children }: { children: React.ReactNode }) 
 
 function AdminRealtimeLiveProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [mode, setMode] = useState<RealtimeMode>('connecting');
   const [lastEventAt, setLastEventAt] = useState<number | null>(null);
 
   const queryClientRef = useRef(queryClient);
   queryClientRef.current = queryClient;
+  // The socket effect must not re-run when the toast identity changes; the
+  // callback is stable for the life of the provider in practice, but a ref
+  // keeps the dependency list honest.
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const activityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -153,6 +162,30 @@ function AdminRealtimeLiveProvider({ children }: { children: React.ReactNode }) 
       onOpsBadges: (event) => {
         client.setQueryData<AdminOpsBadgesResponse>(adminOpsKeys.badges(), (previous) =>
           previous ? { ...previous, badges: event.badges, at: event.at } : previous,
+        );
+      },
+
+      onSosAlert: (event) => {
+        setLastEventAt(Date.now());
+        // Invalidate rather than patch: the frame carries the ids and the
+        // position, and the queue's rows carry names, ack latencies and the
+        // subject join — a patched row would be a second, thinner shape the
+        // table would have to render. `sosKeys.all` covers the queue, the
+        // banner's open list and any open detail. The badge refresh makes the
+        // sidebar agree even before the broadcaster's next tick.
+        void client.invalidateQueries({ queryKey: adminSosKeys.all });
+        void client.invalidateQueries({ queryKey: adminOpsKeys.badges() });
+
+        // §13's ops alerting: an audible chime and a toast the moment the
+        // frame lands, in addition to the persistent banner — the banner is
+        // driven by DATA (it survives reload and polling mode), the sound and
+        // the toast cannot be, because nothing else knows the instant.
+        playSosChime();
+        toastRef.current(
+          event.duplicate
+            ? `SOS repeated — same incident (${event.subjectType})`
+            : 'SOS alert — open the SOS console',
+          'error',
         );
       },
     });
