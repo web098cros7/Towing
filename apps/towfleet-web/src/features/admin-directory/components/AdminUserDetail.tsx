@@ -5,19 +5,33 @@ import { useState } from 'react';
 import { Badge, Button, Card, DataTable, Tabs, type ColumnDef } from '@towing/web-ui';
 import type { AdminDirectoryBooking } from '@towing/api-contracts';
 import { useAdminCan } from '@/components/admin/Can';
+import { useToast } from '@/components/admin/ToastProvider';
 import { ApiError } from '@/lib/apiClient';
 import { NotesPanel } from '@/features/admin-notes/components/NotesPanel';
-import { useAdminDirectoryUser, useAdminDirectoryUserBookings } from '../api/adminDirectory.queries';
+import { useCorrectUser, useExportUser } from '@/features/admin-privacy/api/adminPrivacy.queries';
+import {
+  useAdminDirectoryUser,
+  useAdminDirectoryUserBookings,
+} from '../api/adminDirectory.queries';
 import {
   useReactivateUser,
   useStartImpersonation,
   useSuspendUser,
 } from '../api/adminDirectory.mutations';
+import { CorrectUserDialog } from './CorrectUserDialog';
 import { SuspendSubjectDialog } from './SuspendSubjectDialog';
 
 const bookingColumns: ColumnDef<AdminDirectoryBooking, unknown>[] = [
-  { accessorKey: 'id', header: 'Booking', cell: ({ row }) => <span className="font-mono text-xs">{row.original.id.slice(0, 8)}</span> },
-  { accessorKey: 'status', header: 'Status', cell: ({ row }) => <Badge variant="neutral">{row.original.status}</Badge> },
+  {
+    accessorKey: 'id',
+    header: 'Booking',
+    cell: ({ row }) => <span className="font-mono text-xs">{row.original.id.slice(0, 8)}</span>,
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ row }) => <Badge variant="neutral">{row.original.status}</Badge>,
+  },
   { accessorKey: 'serviceType', header: 'Service' },
   {
     accessorKey: 'totalPaise',
@@ -38,14 +52,20 @@ const bookingColumns: ColumnDef<AdminDirectoryBooking, unknown>[] = [
 export function AdminUserDetail({ userId }: { userId: string }) {
   const router = useRouter();
   const can = useAdminCan();
+  const toast = useToast();
   const canSuspend = can('user.suspend');
   const canImpersonate = can('impersonate.read');
+  // W19: DPDP access and correction are served here, on the subject's own
+  // detail, by whoever holds `privacy.handle`.
+  const canPrivacy = can('privacy.handle');
 
   const user = useAdminDirectoryUser(userId);
   const bookings = useAdminDirectoryUserBookings(userId, 1);
   const suspend = useSuspendUser();
   const reactivate = useReactivateUser();
   const impersonate = useStartImpersonation();
+  const exportUser = useExportUser();
+  const correctUser = useCorrectUser();
 
   const [tab, setTab] = useState<'profile' | 'trips' | 'notes'>('profile');
   const [suspending, setSuspending] = useState(false);
@@ -53,6 +73,26 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [reactivating, setReactivating] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
   const [impersonateError, setImpersonateError] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState(false);
+
+  const downloadExport = async () => {
+    try {
+      const bundle = await exportUser.mutateAsync(userId);
+      // A client-side download of the JSON the API returned: the export is a
+      // legal artefact, so it leaves the browser as the exact bytes the server
+      // produced rather than a re-rendered copy.
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `user-export-${userId}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast('Export generated — the read is on the audit trail.', 'success');
+    } catch (error) {
+      toast(error instanceof ApiError ? error.message : 'Export failed.', 'error');
+    }
+  };
 
   if (user.isLoading) {
     return <Card className="p-6">Loading customer…</Card>;
@@ -91,6 +131,25 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {canPrivacy ? (
+              <>
+                <Button
+                  variant="outline"
+                  data-testid="admin-user-export"
+                  disabled={exportUser.isPending}
+                  onClick={() => void downloadExport()}
+                >
+                  Export data
+                </Button>
+                <Button
+                  variant="outline"
+                  data-testid="admin-user-correct"
+                  onClick={() => setCorrecting(true)}
+                >
+                  Correct details
+                </Button>
+              </>
+            ) : null}
             {canImpersonate ? (
               <Button
                 variant="outline"
@@ -210,8 +269,21 @@ export function AdminUserDetail({ userId }: { userId: string }) {
             const { session } = await impersonate.mutateAsync({ userId, reason });
             router.push(`/admin/users/${userId}/app-view?session=${session.id}`);
           } catch (error) {
-            setImpersonateError(error instanceof ApiError ? error.message : 'Could not start the session.');
+            setImpersonateError(
+              error instanceof ApiError ? error.message : 'Could not start the session.',
+            );
           }
+        }}
+      />
+
+      <CorrectUserDialog
+        open={correcting}
+        onClose={() => setCorrecting(false)}
+        initial={{ name: row.name, email: row.email, mobile: row.mobile }}
+        onSubmit={async (body) => {
+          await correctUser.mutateAsync({ userId, body });
+          setCorrecting(false);
+          toast('Details corrected — the before/after is on the audit trail.', 'success');
         }}
       />
     </div>

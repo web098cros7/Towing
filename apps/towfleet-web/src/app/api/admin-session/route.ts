@@ -40,13 +40,27 @@ export async function DELETE() {
  */
 export async function GET() {
   if (env.useMocks) {
+    /**
+     * The mock identity is `operations` by default — the sub-role most screens
+     * are written against. A hermetic spec that needs a DIFFERENT sub-role
+     * (W19's privacy queue is super_admin/support only, and no ops admin may
+     * see it) sets the `mock_sub_role` cookie before loading the console; in
+     * production the branch below reads the real session instead, so this
+     * seam cannot exist outside mocks-on.
+     */
+    const cookieStore = await cookies();
+    const requested = cookieStore.get('mock_sub_role')?.value;
+    const subRole = (['super_admin', 'operations', 'support', 'finance'] as const).find(
+      (role) => role === requested,
+    ) ?? 'operations';
+
     return NextResponse.json({
       admin: {
         // Fixed UUID — see the note on the mock in `verify/route.ts`.
         id: '00000000-0000-4000-8000-000000000001',
         email: 'ops@towing.local',
         name: 'Mock Admin',
-        subRole: 'operations',
+        subRole,
         twofaEnabled: false,
       },
     });

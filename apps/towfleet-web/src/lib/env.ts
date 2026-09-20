@@ -62,6 +62,8 @@ export const env = {
   /** W18's notification console (M6). */
   mockAdminNotificationsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_NOTIFICATIONS_STATE ??
     '') as MockState,
+  /** W19's privacy console (M6). */
+  mockAdminPrivacyState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PRIVACY_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
