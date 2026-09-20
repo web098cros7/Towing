@@ -232,6 +232,13 @@
       "when": 1789986500001,
       "tag": "0032_analytics_rollups",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789986500002,
+      "tag": "0033_privacy_retention",
+      "breakpoints": true
     }
   ]
 }

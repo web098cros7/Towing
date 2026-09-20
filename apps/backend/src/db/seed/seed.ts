@@ -3,9 +3,14 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { NOTIFICATION_PREF_DEFAULTS, COMMISSION_PCT_CAP, COMMISSION_PCT_FLOOR } from '@towing/api-contracts';
+import {
+  NOTIFICATION_PREF_DEFAULTS,
+  COMMISSION_PCT_CAP,
+  COMMISSION_PCT_FLOOR,
+} from '@towing/api-contracts';
 import { loadEnv } from '../../config/env';
 import { runComplianceSweep } from '../../modules/compliance/compliance-sweep';
+import { RETENTION_POLICY_DEFAULTS } from '../../modules/privacy/retention';
 import { rebuildEarnings } from '../../modules/money/earnings-projector';
 import { hashPassword } from '../../modules/auth/password';
 import { digest } from '../../modules/auth/otp.util';
@@ -35,6 +40,7 @@ import {
   payoutAccounts,
   payouts,
   pricingRules,
+  retentionPolicies,
   serviceZones,
   services,
   users,
@@ -124,7 +130,13 @@ export const APP_TABLES = [
   // and deletion rows behind, so a re-seeded database still believed the old
   // users had consented.
   'consent_records',
+  // Before `deletion_requests`: an erasure job references the request it ran.
+  'erasure_jobs',
   'deletion_requests',
+  // W19 policy rows are re-seeded by migration 0033, so wiping them on reset
+  // is safe — the migration only runs on a fresh database, though, which is
+  // why `db:seed` re-inserts the defaults itself (see `seedRetentionPolicies`).
+  'retention_policies',
   'truck_imports',
   'webhook_events',
   'earnings_daily',
@@ -399,6 +411,22 @@ export async function runSeed(
   const adminIdBySubRole = new Map<AdminFixture['subRole'], string>();
 
   await db.transaction(async (tx) => {
+    // ── W19 retention policy rows ────────────────────────────────────────────
+    // Migration 0033 seeds these for a fresh database; `db:reset` truncates
+    // them and the migration does not re-run, so the seed re-inserts the same
+    // defaults idempotently (unique on `policy_key`). Without this the sweep
+    // has nothing to read after the first reset.
+    await tx
+      .insert(retentionPolicies)
+      .values(
+        RETENTION_POLICY_DEFAULTS.map((policy) => ({
+          policyKey: policy.policyKey,
+          retentionDays: policy.retentionDays,
+          description: policy.description,
+        })),
+      )
+      .onConflictDoNothing({ target: retentionPolicies.policyKey });
+
     // ── Admin operators (§9.4) ───────────────────────────────────────────────
     // One per RBAC sub-role, so the §3.1 approval gate is operable the moment a
     // developer runs `pnpm db:seed` — without an admin nobody can move a driver

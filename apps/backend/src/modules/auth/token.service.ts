@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { and, eq, gt, inArray, isNull, notInArray, or, type SQL } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { ENV, type Env } from '../../config/env';
-import { DB, type Database } from '../../db/db.module';
+import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
 import { refreshTokens } from '../../db/schema';
 import { isActorRole, type AccessClaims, type AuthedRequest, type Realm } from './auth.types';
 import { RealmPolicyRegistry, type RealmSessionLimits } from './realm.policy';
@@ -237,11 +237,22 @@ export class TokenService {
    * leave their current access token valid for the rest of its 900-second life.
    * Phase 11's suspend/reject actions call this; `RealmPolicy.resolve` covers
    * the same ground from the other direction, one refresh later.
+   *
+   * A15/W19: `options.tx` runs the UPDATE inside the caller's transaction. The
+   * account-deletion request uses it so the request row, the suspension and the
+   * revocation commit together — half a deletion request (row filed, sessions
+   * still live) is the one state the subject must never observe.
    */
-  async revokeSubject(subjectId: string, realm: Realm, reason: string): Promise<number> {
+  async revokeSubject(
+    subjectId: string,
+    realm: Realm,
+    reason: string,
+    options: { tx?: DatabaseExecutor } = {},
+  ): Promise<number> {
+    const db = options.tx ?? this.db;
     const now = new Date();
 
-    const revoked = await this.db
+    const revoked = await db
       .update(refreshTokens)
       .set({ revokedAt: now, revokedReason: reason, updatedAt: now })
       .where(

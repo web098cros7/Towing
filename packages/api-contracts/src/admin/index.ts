@@ -14,6 +14,7 @@ export * from './finance';
 export * from './promotions';
 export * from './analytics';
 export * from './notifications';
+export * from './privacy';
 export * from './ops-kpis';
 export * from './ops';
 export * from './permissions';

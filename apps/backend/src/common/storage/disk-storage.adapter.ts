@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { ENV, type Env } from '../../config/env';
@@ -75,5 +75,21 @@ export class DiskStorageAdapter implements StoragePort {
       key,
       expiresAt: new Date(exp * 1000).toISOString(),
     };
+  }
+
+  /**
+   * The S3 equivalent is a `DeleteObjectCommand`. `force: true` so a missing
+   * file is success — the port documents idempotence as part of the contract,
+   * and the erasure runner depends on it (a second pass over an already-erased
+   * subject must not fail on the objects the first pass removed).
+   *
+   * Same traversal guard as `get`: the key comes out of a database column.
+   */
+  async delete(key: string): Promise<void> {
+    const path = resolve(this.root, key);
+    if (!path.startsWith(this.root)) {
+      throw new Error(`Refusing to delete outside the uploads root: ${key}`);
+    }
+    await rm(path, { force: true });
   }
 }

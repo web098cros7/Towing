@@ -53,6 +53,13 @@ export const SUBJECT_READ_PERMISSION: Record<string, AdminPermission> = {
    */
   coupon: 'promo.manage',
   banner: 'promo.manage',
+  /**
+   * W19 retention edits. No single subject row to point at — the audit row's
+   * subject id is null and the policy key travels in before/after — but the
+   * subject TYPE is what the console's audit feed filters on, so the mapping
+   * has to exist for anyone to read these rows back.
+   */
+  privacy_retention: 'privacy.handle',
 };
 
 export function canReadSubject(subRole: AdminSubRole, subjectType: string): boolean {

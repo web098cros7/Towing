@@ -9,15 +9,9 @@ import { ApiException } from '../../common/errors/api-exception';
 import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { DeviceRegistryService } from '../../common/notifications/device-registry.service';
 import { DB, type Database } from '../../db/db.module';
-import {
-  addresses,
-  consentRecords,
-  deletionRequests,
-  drivers,
-  emergencyContacts,
-  savedVehicles,
-  users,
-} from '../../db/schema';
+import { consentRecords, deletionRequests, drivers, users } from '../../db/schema';
+import { TokenService } from '../auth/token.service';
+import { buildSubjectExport } from '../privacy/subject-export';
 
 export type PrivacySubjectType = 'user' | 'driver';
 
@@ -31,34 +25,87 @@ export class AccountPrivacyService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly devices: DeviceRegistryService,
+    private readonly tokens: TokenService,
   ) {}
 
+  /**
+   * A16 (W19): the request row, the suspension and the revocation commit
+   * TOGETHER. Before this, a customer could file a deletion request and keep a
+   * working refresh token for the rest of its 30 days — the row said "marked
+   * for deletion" while the account carried on booking.
+   *
+   * `users.status` / `drivers.kyc_status` is the suspension the whole REST of
+   * the system already honours: booking creation checks the account status and
+   * the realm policy checks the driver's standing at refresh, so no new gate
+   * had to be invented for this phase.
+   */
   async requestDeletion(
     subjectType: PrivacySubjectType,
     subjectId: string,
     reason?: string,
   ): Promise<AccountDeletionResponse> {
+    let row: { id: string; requestedAt: Date } | undefined;
+
     try {
-      const [row] = await this.db
-        .insert(deletionRequests)
-        .values({ subjectType, subjectId, reason })
-        .returning({ id: deletionRequests.id, requestedAt: deletionRequests.requestedAt });
+      row = await this.db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(deletionRequests)
+          .values({ subjectType, subjectId, reason })
+          .returning({ id: deletionRequests.id, requestedAt: deletionRequests.requestedAt });
 
-      // Invariant 73: a push token is device-scoped state and must be revoked
-      // when the account it belongs to ends, not merely orphaned. Phase 20's
-      // erasure worker runs much later; between now and then every notification
-      // for this subject would otherwise keep rendering on their lock screen —
-      // including on a handset they may have already sold or returned.
-      await this.devices.revokeAllForSubject(subjectType, subjectId, 'account_deletion_requested');
+        if (subjectType === 'driver') {
+          await tx
+            .update(drivers)
+            .set({
+              kycStatus: 'suspended',
+              isOnline: false,
+              pendingSuspensionReason: 'account_deletion_requested',
+              updatedAt: new Date(),
+            })
+            .where(eq(drivers.id, subjectId));
+        } else {
+          await tx
+            .update(users)
+            .set({
+              status: 'suspended',
+              suspendedAt: new Date(),
+              suspensionReason: 'account_deletion_requested',
+              updatedAt: new Date(),
+            })
+            .where(eq(users.id, subjectId));
+        }
 
-      return { requestId: row!.id, status: 'requested', requestedAt: row!.requestedAt.toISOString() };
+        // A15's transactional form: the session dies in the same commit as the
+        // request that says why.
+        await this.tokens.revokeSubject(
+          subjectId,
+          subjectType === 'driver' ? 'driver' : 'customer',
+          'account_deletion_requested',
+          { tx },
+        );
+
+        return inserted;
+      });
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
       // `uq_deletion_requests_one_open_per_subject` — a second request while
       // one is still open is a no-op from the subject's point of view, not a
-      // new fact worth a second row for Phase 20's erasure worker to race on.
+      // new fact worth a second row for W19's erasure worker to race on.
       throw ApiException.conflict('An account deletion request is already open');
     }
+
+    // Invariant 73: a push token is device-scoped state and must be revoked
+    // when the account it belongs to ends, not merely orphaned. W19's erasure
+    // worker runs much later (a human approves first); between now and then
+    // every notification for this subject would otherwise keep rendering on
+    // their lock screen — including on a handset they may have already sold.
+    await this.devices.revokeAllForSubject(subjectType, subjectId, 'account_deletion_requested');
+
+    return {
+      requestId: row!.id,
+      status: 'requested',
+      requestedAt: row!.requestedAt.toISOString(),
+    };
   }
 
   async recordConsent(
@@ -74,82 +121,16 @@ export class AccountPrivacyService {
     });
   }
 
+  /**
+   * Delegates to the shared builder (`modules/privacy/subject-export.ts`) — the
+   * admin lane serves the same bundle for the same subject, and two
+   * implementations of a legal response is how the two versions drift. The
+   * driver-scope note that used to live here moved with the code.
+   */
   async exportData(
     subjectType: PrivacySubjectType,
     subjectId: string,
   ): Promise<AccountExportResponse> {
-    const consents = await this.db
-      .select({
-        policyType: consentRecords.policyType,
-        policyVersion: consentRecords.policyVersion,
-        consentedAt: consentRecords.consentedAt,
-      })
-      .from(consentRecords)
-      .where(and(eq(consentRecords.subjectType, subjectType), eq(consentRecords.subjectId, subjectId)));
-
-    const consentRows = consents.map((c) => ({
-      policyType: c.policyType,
-      policyVersion: c.policyVersion,
-      consentedAt: c.consentedAt.toISOString(),
-    })) as AccountExportResponse['consents'];
-
-    if (subjectType === 'driver') {
-      // Nothing else exists to export for a driver yet beyond KYC documents,
-      // which stay out of the export bundle for now — a DPDP §20.4 scoping
-      // question, decided rather than assumed: the export returns the
-      // driver's own identity and consent records, not the identity images
-      // themselves. Shipping the images would mean minting signed GETs for
-      // government-ID scans into a self-service response, and DPDP's access
-      // right is over personal *data*, not over copies of the verification
-      // artefacts. Reversible (add the rows here + presigned GETs) if the
-      // legal read comes back the other way — recorded in ToBeDoneEhsan.md
-      // under "New in Phase 12".
-      const [driver] = await this.db
-        .select({
-          id: drivers.id,
-          mobile: drivers.mobile,
-          name: drivers.name,
-          email: drivers.email,
-          kycStatus: drivers.kycStatus,
-        })
-        .from(drivers)
-        .where(eq(drivers.id, subjectId))
-        .limit(1);
-
-      return { profile: driver ?? null, consents: consentRows };
-    }
-
-    const [profile, vehicles, addressRows, contacts] = await Promise.all([
-      this.db
-        .select({
-          id: users.id,
-          mobile: users.mobile,
-          name: users.name,
-          email: users.email,
-        })
-        .from(users)
-        .where(eq(users.id, subjectId))
-        .limit(1),
-      this.db
-        .select({ id: savedVehicles.id, type: savedVehicles.type, plate: savedVehicles.plate })
-        .from(savedVehicles)
-        .where(eq(savedVehicles.userId, subjectId)),
-      this.db
-        .select({ id: addresses.id, fullAddress: addresses.fullAddress })
-        .from(addresses)
-        .where(eq(addresses.userId, subjectId)),
-      this.db
-        .select({ id: emergencyContacts.id, name: emergencyContacts.name, phone: emergencyContacts.phone })
-        .from(emergencyContacts)
-        .where(eq(emergencyContacts.userId, subjectId)),
-    ]);
-
-    return {
-      profile: profile[0] ?? null,
-      vehicles,
-      addresses: addressRows,
-      emergencyContacts: contacts,
-      consents: consentRows,
-    };
+    return buildSubjectExport(this.db, subjectType, subjectId);
   }
 }

@@ -191,6 +191,22 @@ export interface JobPayloads {
    * cannot mail the same week twice.
    */
   'analytics.report-email': { reason: 'cron' | 'manual'; week?: string };
+
+  /**
+   * W19 — execute one approved deletion request (§20.4). By id, not by payload
+   * copy: the worker re-reads the row, so an admin who approves a request and
+   * an admin who presses "execute" cannot be acting on two different ideas of
+   * what the subject asked for. Idempotent end to end — a `completed` request
+   * is a no-op, and a half-done run is finished by the next delivery.
+   */
+  'privacy.erasure': { requestId: string };
+
+  /**
+   * W19 — the nightly retention sweep (§20.4). Deletes by the rows in
+   * `retention_policies`, so an operator's edit takes effect on the next pass
+   * without a deploy.
+   */
+  'privacy.sweep': { reason: 'cron' | 'manual' };
 }
 
 export type JobName = keyof JobPayloads;

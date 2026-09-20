@@ -191,6 +191,16 @@ const EnvSchema = z.object({
   /** Where the weekly digest mails (the ops mailbox, like every ops alarm). */
   ANALYTICS_REPORT_EMAIL: z.string().default('ops@towing.local'),
 
+  // ── W19: retention & erasure (§20.4 DPDP) ──────────────────────────────
+
+  /**
+   * 00:45 IST = 19:15 UTC — half an hour after the analytics rollup's 00:15,
+   * which is deliberate: that job purges the 30-day wave logs, and two heavy
+   * DELETEs starting on the same minute is how a nightly job finds its own
+   * table locked.
+   */
+  PRIVACY_SWEEP_CRON: z.string().default('15 19 * * *'),
+
   // ── W14: SOS (§13) ─────────────────────────────────────────────────────
 
   /** Where the SOS ops alert mails when no admin is flagged on-call (G17). */

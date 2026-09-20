@@ -263,10 +263,16 @@ export class AdminOpsRepo {
     return rows[0]?.n ?? 0;
   }
 
-  /** The deletion badge's source — `deletion_requests` has existed since 0009. */
+  /**
+   * The deletion badge's source — `deletion_requests` has existed since 0009;
+   * W19 widened what "open" means. The predicate matches
+   * `uq_deletion_requests_one_open_per_subject`'s, so the badge and the
+   * one-open-request rule agree on the word by construction.
+   */
   async deletionRequests(): Promise<number> {
     const rows = (await this.db.execute(sql`
-      select count(*)::int as n from deletion_requests where status = 'requested'
+      select count(*)::int as n from deletion_requests
+       where status in ('requested', 'on_hold', 'approved', 'executing')
     `)) as unknown as Array<{ n: number }>;
     return rows[0]?.n ?? 0;
   }

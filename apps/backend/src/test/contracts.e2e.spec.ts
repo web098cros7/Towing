@@ -12,6 +12,7 @@ import {
   adminCommissionImpactSchema,
   adminCommissionProposalSchema,
   adminCouponsResponseSchema,
+  adminDeletionRequestsResponseSchema,
   adminDirectoryUsersResponseSchema,
   adminDirectoryZonesResponseSchema,
   adminDisputesResponseSchema,
@@ -34,6 +35,7 @@ import {
   adminPayoutSlaResponseSchema,
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
+  adminRetentionPoliciesResponseSchema,
   adminPricingHistoryEntrySchema,
   adminRefundsResponseSchema,
   adminSosResponseSchema,
@@ -90,6 +92,7 @@ import {
   commissionGuardrail,
   commissionProposals,
   coupons,
+  deletionRequests,
   disputes,
   driverDocuments,
   drivers,
@@ -98,6 +101,7 @@ import {
   payments,
   payouts,
   refunds,
+  retentionPolicies,
   serviceZones,
   sosAlerts,
   supportTicketMessages,
@@ -114,6 +118,7 @@ import {
 import { closeTestRedis, testRedis } from '../test/redis';
 import { expectMatchesContract } from './contracts';
 import { seedPricingFixtures } from '../modules/pricing/pricing.e2e.spec';
+import { RETENTION_POLICY_DEFAULTS } from '../modules/privacy/retention';
 import { TokenService } from '../modules/auth/token.service';
 import { driverGeoKey } from '../redis/redis.constants';
 import { eq } from 'drizzle-orm';
@@ -333,6 +338,20 @@ describe('response contracts', () => {
       {
         path: '/v1/admin/notifications/deliveries',
         schema: adminNotificationDeliveriesResponseSchema,
+        realm: 'admin',
+      },
+      // W19 — the privacy queue and the retention schedule. One request is
+      // seeded below and the policy rows migration 0033 ships are re-inserted
+      // (this spec truncates every table). The parameterised detail is EXCLUDED
+      // and contract-asserted in `privacy-erasure.e2e.spec.ts`.
+      {
+        path: '/v1/admin/privacy/deletion-requests',
+        schema: adminDeletionRequestsResponseSchema,
+        realm: 'admin',
+      },
+      {
+        path: '/v1/admin/privacy/retention',
+        schema: adminRetentionPoliciesResponseSchema,
         realm: 'admin',
       },
     ];
@@ -648,6 +667,26 @@ describe('response contracts', () => {
       attempts: 1,
       sentAt: new Date(),
     });
+
+    // W19 — one open deletion request (the queue row above would be an empty
+    // array otherwise) and the G16 policy rows. Migration 0033 seeds the
+    // policies for a fresh database, but this spec truncates every table
+    // first, so the defaults are re-inserted exactly as `db:seed` does.
+    await db.insert(deletionRequests).values({
+      subjectType: 'user',
+      subjectId: contractCustomer,
+      reason: 'contract coverage request',
+    });
+    await db
+      .insert(retentionPolicies)
+      .values(
+        RETENTION_POLICY_DEFAULTS.map((policy) => ({
+          policyKey: policy.policyKey,
+          retentionDays: policy.retentionDays,
+          description: policy.description,
+        })),
+      )
+      .onConflictDoNothing({ target: retentionPolicies.policyKey });
   });
 
   afterAll(async () => {
@@ -846,6 +885,15 @@ const EXCLUDED = new Set([
   // with `expectMatchesContract` against `adminCouponRedemptionsResponseSchema`
   // in `promotions-admin.e2e.spec.ts`, which claims a real redemption first.
   '/v1/admin/coupons/:id/redemptions',
+  // W19 — the privacy queue's parameterised detail, plus the operator-served
+  // access export. Both are contract-asserted with `expectMatchesContract`
+  // (`adminDeletionRequestSchema`, `adminSubjectExportResponseSchema`) in
+  // `privacy-erasure.e2e.spec.ts`, which owns a real request and a real user;
+  // the four decision/execute POSTs are asserted there too. They cannot sit in
+  // this table because every one of them needs a row this static walk cannot
+  // create.
+  '/v1/admin/privacy/deletion-requests/:id',
+  '/v1/admin/users/:id/export',
   // W15 — the public content read is parameterised by KIND, and `kind` has two
   // legal values; the static `/v1/content/faq` row above walks that envelope
   // (the `/v1/content/legal` twin is the same handler and the same schema), so
