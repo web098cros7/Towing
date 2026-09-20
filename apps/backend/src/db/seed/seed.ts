@@ -133,6 +133,8 @@ export const APP_TABLES = [
   // Before `deletion_requests`: an erasure job references the request it ran.
   'erasure_jobs',
   'deletion_requests',
+  // W20 manual quotes reference `bookings`, so they go before it in the reset.
+  'quotes',
   // W19 policy rows are re-seeded by migration 0033, so wiping them on reset
   // is safe — the migration only runs on a fresh database, though, which is
   // why `db:seed` re-inserts the defaults itself (see `seedRetentionPolicies`).

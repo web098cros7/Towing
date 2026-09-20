@@ -26,6 +26,7 @@ export * from './notifications';
 export * from './pricing';
 export * from './app-config';
 export * from './promotions';
+export * from './quotes';
 export * from './ratings';
 export * from './sos';
 export * from './support';

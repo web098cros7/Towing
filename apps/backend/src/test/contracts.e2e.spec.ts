@@ -35,6 +35,7 @@ import {
   adminPayoutSlaResponseSchema,
   adminPayoutsListResponseSchema,
   adminPricingConfigSchema,
+  adminQuotesResponseSchema,
   adminRetentionPoliciesResponseSchema,
   adminPricingHistoryEntrySchema,
   adminRefundsResponseSchema,
@@ -60,6 +61,7 @@ import {
   payoutsListResponseSchema,
   positionsSnapshotSchema,
   publicBannersResponseSchema,
+  quotesResponseSchema,
   reportResponseSchema,
   splitsListResponseSchema,
   trucksListResponseSchema,
@@ -100,6 +102,7 @@ import {
   notificationEvents,
   payments,
   payouts,
+  quotes,
   refunds,
   retentionPolicies,
   serviceZones,
@@ -354,6 +357,12 @@ describe('response contracts', () => {
         schema: adminRetentionPoliciesResponseSchema,
         realm: 'admin',
       },
+      // W20 — the manual-quote lane on both sides of the counter. One quoted
+      // row is seeded below (with its amounts, which the CHECK requires for a
+      // quoted row). The parameterised admin detail is EXCLUDED and
+      // contract-asserted in `quotes.e2e.spec.ts`.
+      { path: '/v1/quotes', schema: quotesResponseSchema, realm: 'customer' },
+      { path: '/v1/admin/quotes', schema: adminQuotesResponseSchema, realm: 'admin' },
     ];
 
   beforeAll(async () => {
@@ -687,6 +696,31 @@ describe('response contracts', () => {
         })),
       )
       .onConflictDoNothing({ target: retentionPolicies.policyKey });
+
+    // W20 — one QUOTED row with its amounts, so both quote envelopes above are
+    // real lists rather than vacuous ones. The CHECK requires a total and a
+    // commission pct on a quoted row, exactly as the operator flow writes.
+    await db.insert(quotes).values({
+      userId: contractCustomer,
+      status: 'quoted',
+      serviceSlug: 'car_tow',
+      vehicleClass: 'flatbed',
+      pickupLat: 12.9716,
+      pickupLng: 77.5946,
+      pickupAddress: 'Contract pickup',
+      dropLat: 19.076,
+      dropLng: 72.8777,
+      dropAddress: 'Contract drop',
+      distanceKm: '842.10',
+      notes: 'contract coverage quote',
+      totalPaise: 5_000_000,
+      breakdown: { source: 'manual', note: 'contract coverage' },
+      commissionPct: '10.00',
+      commissionPaise: 500_000,
+      driverPayoutPaise: 4_500_000,
+      validUntil: new Date(Date.now() + 86_400_000),
+      quotedAt: new Date(),
+    });
   });
 
   afterAll(async () => {
@@ -751,6 +785,8 @@ const COVERED_PREFIXES = [
   '/v1/content',
   // W16: the public carousel read.
   '/v1/banners',
+  // W20: the customer's own manual quotes.
+  '/v1/quotes',
 ];
 
 /**
@@ -894,6 +930,10 @@ const EXCLUDED = new Set([
   // create.
   '/v1/admin/privacy/deletion-requests/:id',
   '/v1/admin/users/:id/export',
+  // W20 — the manual-quote detail, parameterised by quote id; asserted with
+  // `expectMatchesContract` against `adminQuoteSchema` in
+  // `quotes.e2e.spec.ts`, which files a real request first.
+  '/v1/admin/quotes/:id',
   // W15 — the public content read is parameterised by KIND, and `kind` has two
   // legal values; the static `/v1/content/faq` row above walks that envelope
   // (the `/v1/content/legal` twin is the same handler and the same schema), so

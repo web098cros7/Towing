@@ -60,6 +60,13 @@ export const SUBJECT_READ_PERMISSION: Record<string, AdminPermission> = {
    * has to exist for anyone to read these rows back.
    */
   privacy_retention: 'privacy.handle',
+  /**
+   * W20 manual quotes. Operators write and read these rows, so the subject map
+   * grants every `quote.manage` holder visibility of the others' pricing — the
+   * feed is how a second operator sees why a customer was offered what they
+   * were.
+   */
+  quote: 'quote.manage',
 };
 
 export function canReadSubject(subRole: AdminSubRole, subjectType: string): boolean {

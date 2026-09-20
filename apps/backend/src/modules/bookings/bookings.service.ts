@@ -22,7 +22,7 @@ import { ENV, type Env } from '../../config/env';
 import { DB, type Database } from '../../db/db.module';
 import { WsTicketService } from '../../realtime/ws-ticket.service';
 import { bookingStatusHistory, bookings, users } from '../../db/schema';
-import { PricingService } from '../pricing/pricing.service';
+import { PricingService, type LockedFare } from '../pricing/pricing.service';
 import { BookingOtpService } from './booking-otp.service';
 import { BookingStateMachineService } from './booking-state-machine.service';
 import { BookingsRepo, isOtpAvailable } from './bookings.repo';
@@ -69,7 +69,7 @@ export class BookingsService {
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  async create(userId: string, body: BookingCreate): Promise<BookingDetail> {
+  async create(userId: string, body: BookingCreate, options: { locked?: LockedFare } = {}): Promise<BookingDetail> {
     const guards = await this.config.load();
 
     // ── §3.7 / §3.8 guards, cheapest first ────────────────────────────────
@@ -122,14 +122,24 @@ export class BookingsService {
       });
     }
 
-    // ── The fare lock (§3.4) ──────────────────────────────────────────────
-    const locked = await this.pricing.lock({
-      serviceSlug: body.serviceSlug,
-      vehicleClass: body.vehicleClass,
-      pickup: body.pickup,
-      drop: body.drop,
-      scheduledAt: body.scheduledAt,
-    });
+    // ── The fare lock (§3.4) ────────────────────────────────────────
+    //
+    // W20: a manual quote has already been priced, by a human, and that price
+    // is what the customer accepted. It arrives here as `options.locked` and
+    // the engine is not consulted at all — re-pricing a 900 km job would throw
+    // `manual_quote_required` back in the customer's face at the moment they
+    // pressed Accept. Everything downstream (snapshot columns, commission
+    // arithmetic, tax, kill switches) is IDENTICAL, which is what keeps the
+    // locked-at-confirm invariant true for both origins.
+    const locked =
+      options.locked ??
+      (await this.pricing.lock({
+        serviceSlug: body.serviceSlug,
+        vehicleClass: body.vehicleClass,
+        pickup: body.pickup,
+        drop: body.drop,
+        scheduledAt: body.scheduledAt,
+      }));
 
     // ── §19.8 kill switches, after the fare lock (A11) ─────────────────────
     // The zone and band only exist once the fare is locked, and the refusal
