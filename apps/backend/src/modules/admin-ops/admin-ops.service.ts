@@ -82,17 +82,27 @@ export class AdminOpsService {
   async computeDashboard(): Promise<AdminOpsDashboardResponse> {
     const dayStart = istDayStart().toISOString();
 
-    const [counts, resolutions, revenue, timeToMatch, online, approvals, unpaid, dispatchable] =
-      await Promise.all([
-        this.repo.activeAndSearching(),
-        this.repo.todayResolutions(dayStart),
-        this.repo.todayRevenue(dayStart),
-        this.repo.timeToMatch(dayStart),
-        this.repo.onlineDrivers(),
-        this.repo.approvalCounts(),
-        this.repo.completedUnpaid(),
-        this.dispatchableNow(),
-      ]);
+    const [
+      counts,
+      resolutions,
+      revenue,
+      timeToMatch,
+      online,
+      approvals,
+      unpaid,
+      dispatchable,
+      sos,
+    ] = await Promise.all([
+      this.repo.activeAndSearching(),
+      this.repo.todayResolutions(dayStart),
+      this.repo.todayRevenue(dayStart),
+      this.repo.timeToMatch(dayStart),
+      this.repo.onlineDrivers(),
+      this.repo.approvalCounts(),
+      this.repo.completedUnpaid(),
+      this.dispatchableNow(),
+      this.repo.sosAcknowledgement(),
+    ]);
 
     // Fill rate: matched ÷ (matched + no_drivers_found + cancelled-while-searching).
     // Still-searching bookings count on Neither side — dividing by "created
@@ -117,6 +127,13 @@ export class AdminOpsService {
       completedUnpaid: unpaid,
       timeToMatchP50Seconds: timeToMatch.p50 === null ? null : Math.round(timeToMatch.p50),
       timeToMatchP90Seconds: timeToMatch.p90 === null ? null : Math.round(timeToMatch.p90),
+      // W14: §22.2's response time. Null percentiles when nothing has been
+      // acknowledged in the window — never 0, which would read as "instant".
+      sos: {
+        open: sos.open,
+        ackP50Seconds: sos.p50 === null ? null : Math.round(sos.p50),
+        ackP95Seconds: sos.p95 === null ? null : Math.round(sos.p95),
+      },
     };
 
     return { kpis, at: new Date().toISOString(), degraded: dispatchable.degraded };
@@ -160,24 +177,22 @@ export class AdminOpsService {
   }
 
   async computeBadges(): Promise<AdminOpsBadgesResponse> {
-    const [approvals, deletions, suspensionRequests, openDisputes] = await Promise.all([
-      this.repo.approvalCounts(),
-      this.repo.deletionRequests(),
-      this.repo.suspensionRequests(),
-      this.repo.openDisputes(),
-    ]);
+    const [approvals, deletions, suspensionRequests, openDisputes, openSos, openTickets] =
+      await Promise.all([
+        this.repo.approvalCounts(),
+        this.repo.deletionRequests(),
+        this.repo.suspensionRequests(),
+        this.repo.openDisputes(),
+        this.repo.openSosAlerts(),
+        this.repo.openSupportTickets(),
+      ]);
 
     const badges: AdminOpsBadges = {
       pendingKyc: approvals.pendingKyc,
       pendingPayouts: approvals.pendingPayouts,
-      // `sos` (W14) and tickets (W15) stay structurally zero until their
-      // workstreams create their tables — the keys exist now so the wire shape
-      // never changes. The disputes row left this group with W8's migration
-      // 0025 and is real from here on, the same way suspension requests did
-      // with W6's 0024.
-      openSos: 0,
+      openSos,
       openDisputes,
-      openTickets: 0,
+      openTickets,
       suspensionRequests,
       deletionRequests: deletions,
     };
@@ -220,16 +235,17 @@ export class AdminOpsService {
   }
 
   /**
-   * DB backfill: `booking_status_history` + `admin_actions`, newest 50.
-   * `sos_alerts` joins this union in W14 when its table exists. The backfill
-   * cannot know creations that predate the feed's own writes any differently
-   * than history does — a booking's opening row is `searching` (A18), and that
-   * is what marks it as a creation here.
+   * DB backfill: `booking_status_history` + `admin_actions` + `sos_alerts`,
+   * newest 50 — the third source joined the union in W14. The backfill cannot
+   * know creations that predate the feed's own writes any differently than
+   * history does — a booking's opening row is `searching` (A18), and that is
+   * what marks it as a creation here.
    */
   private async backfillActivity(): Promise<AdminActivityItem[]> {
-    const [history, actions] = await Promise.all([
+    const [history, actions, sosAlerts] = await Promise.all([
       this.repo.activityHistory(ACTIVITY_LENGTH),
       this.repo.activityAdminActions(ACTIVITY_LENGTH),
+      this.repo.activitySosAlerts(ACTIVITY_LENGTH),
     ]);
 
     const items: AdminActivityItem[] = [
@@ -243,6 +259,7 @@ export class AdminOpsService {
           zoneId: row.zoneId,
           // The DB enum is the CHECK-constrained source of this union.
           status: row.status as JobStatus,
+          sosStatus: null,
           scheduledAt: null,
           action: null,
           subjectType: null,
@@ -250,21 +267,34 @@ export class AdminOpsService {
           adminId: null,
         };
       }),
-      ...actions.map(
-        (row): AdminActivityItem => ({
-          id: `admin_action:${row.id}`,
-          kind: 'admin_action',
-          at: row.at,
-          bookingId: null,
-          zoneId: null,
-          status: null,
-          scheduledAt: null,
-          action: row.action,
-          subjectType: row.subjectType,
-          subjectId: row.subjectId,
-          adminId: row.adminId,
-        }),
-      ),
+      ...actions.map((row): AdminActivityItem => ({
+        id: `admin_action:${row.id}`,
+        kind: 'admin_action',
+        at: row.at,
+        bookingId: null,
+        zoneId: null,
+        status: null,
+        sosStatus: null,
+        scheduledAt: null,
+        action: row.action,
+        subjectType: row.subjectType,
+        subjectId: row.subjectId,
+        adminId: row.adminId,
+      })),
+      ...sosAlerts.map((row): AdminActivityItem => ({
+        id: `sos_alert:${row.id}`,
+        kind: 'sos_alert',
+        at: row.at,
+        bookingId: row.bookingId,
+        zoneId: null,
+        status: null,
+        sosStatus: row.status as AdminActivityItem['sosStatus'],
+        scheduledAt: null,
+        action: 'sos.triggered',
+        subjectType: row.subjectType,
+        subjectId: row.subjectId,
+        adminId: null,
+      })),
     ];
 
     items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));

@@ -1,12 +1,17 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
-import type { OpsBookingCreatedEvent, OpsBookingStatusEvent } from '@towing/api-contracts';
+import type {
+  OpsBookingCreatedEvent,
+  OpsBookingStatusEvent,
+  OpsSosAlertEvent,
+} from '@towing/api-contracts';
 import { OPS_EVENTS_CHANNEL, REDIS } from '../../redis/redis.constants';
 
-/** Either ops event without its timestamp — the service stamps `at`. */
+/** Any ops event without its timestamp — the service stamps `at`. */
 type PublishableOpsEvent =
   | Omit<OpsBookingStatusEvent, 'at'>
-  | Omit<OpsBookingCreatedEvent, 'at'>;
+  | Omit<OpsBookingCreatedEvent, 'at'>
+  | Omit<OpsSosAlertEvent, 'at'>;
 
 /**
  * The platform-wide half of the event fan-out (A18).

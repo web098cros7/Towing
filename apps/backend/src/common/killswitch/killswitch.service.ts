@@ -4,6 +4,7 @@ import {
   KILLSWITCH_FORCE_POLLING,
   KILLSWITCH_LONG_DISTANCE,
   KILLSWITCH_PAUSED_ZONES,
+  KILLSWITCH_SOS_STANDALONE_DISABLED,
   REDIS,
 } from '../../redis/redis.constants';
 
@@ -93,6 +94,23 @@ export class KillSwitchService {
 
   async setPollingForced(forced: boolean): Promise<void> {
     await this.setFlag(KILLSWITCH_FORCE_POLLING, forced);
+  }
+
+  /**
+   * W14 (G11): may an SOS be raised with NO active booking?
+   *
+   * Enabled by default, and the storage is INVERTED for that reason: the key
+   * holds the DISABLED bit, so an unreadable Redis (where `flag()` answers
+   * `false`) leaves standalone SOS working — the one switch whose safe answer
+   * is "on". Disabling it still leaves in-booking SOS untouched; only the
+   * standalone path 422s, and the console says why.
+   */
+  async isSosStandaloneEnabled(): Promise<boolean> {
+    return !(await this.flag(KILLSWITCH_SOS_STANDALONE_DISABLED));
+  }
+
+  async setSosStandaloneDisabled(disabled: boolean): Promise<void> {
+    await this.setFlag(KILLSWITCH_SOS_STANDALONE_DISABLED, disabled);
   }
 
   private async flag(key: string): Promise<boolean> {

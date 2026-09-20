@@ -94,6 +94,7 @@ export class AdminBridgeService implements OnModuleInit {
           bookingId: event.bookingId,
           zoneId: event.zoneId,
           status: event.to,
+          sosStatus: null,
           scheduledAt: null,
           action: null,
           subjectType: null,
@@ -111,6 +112,7 @@ export class AdminBridgeService implements OnModuleInit {
           bookingId: event.bookingId,
           zoneId: event.zoneId,
           status: 'searching',
+          sosStatus: null,
           scheduledAt: event.scheduledAt,
           action: null,
           subjectType: null,
@@ -130,6 +132,36 @@ export class AdminBridgeService implements OnModuleInit {
         this.gateway.emitOps(ADMIN_REALTIME_EVENT.OPS_BADGES, {
           badges: event.badges,
           at: event.at,
+        });
+        break;
+      }
+      case 'sos_alert': {
+        // To EVERY admin socket, not a zone-filtered room: a person in
+        // trouble outranks whatever map filter an operator has open.
+        this.gateway.emitOps(ADMIN_REALTIME_EVENT.SOS_ALERT, {
+          alertId: event.alertId,
+          subjectType: event.subjectType,
+          subjectId: event.subjectId,
+          bookingId: event.bookingId,
+          lat: event.lat,
+          lng: event.lng,
+          status: event.status,
+          at: event.at,
+          duplicate: event.duplicate,
+        });
+        void this.appendActivity({
+          id: `sos_alert:${event.alertId}:${event.at}`,
+          kind: 'sos_alert',
+          at: event.at,
+          bookingId: event.bookingId,
+          zoneId: null,
+          status: null,
+          sosStatus: event.status,
+          scheduledAt: null,
+          action: 'sos.triggered',
+          subjectType: event.subjectType,
+          subjectId: event.subjectId,
+          adminId: null,
         });
         break;
       }

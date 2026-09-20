@@ -13,8 +13,24 @@ import type { NotificationSubjectType } from '../../../db/schema/notifications';
  * fixed (invariant 69).
  */
 
+/**
+ * Every addressable recipient kind: the three DB-backed inbox subjects, plus
+ * the two W14 introduced.
+ *
+ * `contact` is one row of `sos_alert_contacts` — the trigger-time snapshot of
+ * an emergency contact, which is deliberately NOT a database subject (the
+ * person may have no account at all). `ops` is an on-call admin (or the ops
+ * mailbox) reached by email/SMS because admins have no push devices.
+ *
+ * Neither writes an inbox row — `NotificationService.writeEvent` admits only
+ * the three database-backed types — and both dedupe correctly anyway, because
+ * the delivery key is derived from this pair (`contact:<id>`, `ops:<id>`), so
+ * re-resolution at delivery time finds exactly the same recipient.
+ */
+export type RecipientSubjectType = NotificationSubjectType | 'contact' | 'ops';
+
 export interface Recipient {
-  subjectType: NotificationSubjectType;
+  subjectType: RecipientSubjectType;
   subjectId: string;
   /** E.164, or null when this subject has no phone on file. */
   mobile: string | null;
@@ -44,6 +60,8 @@ export interface RecipientResolver {
   resolveUser(userId: string): Promise<Recipient | null>;
   resolveDriver(driverId: string): Promise<Recipient | null>;
   resolveFleet(fleetId: string): Promise<Recipient | null>;
+  /** Batch variant — §13's G12 broadcast reaches several drivers in one call. */
+  resolveManyDrivers(driverIds: string[]): Promise<Recipient[]>;
   resolveWalletOwner(
     ownerType: 'user' | 'driver' | 'fleet',
     ownerId: string,
@@ -80,7 +98,7 @@ export interface RegisteredTrigger<P = Record<string, unknown>> {
   /**
    * §12.3 "transactional/safety always on". An always-on trigger bypasses
    * `PreferenceService` entirely — a user opt-out must never be able to
-   * suppress a KYC rejection, a payout failure or (from Phase 20) an SOS.
+   * suppress a KYC rejection, a payout failure or (W14) an SOS.
    */
   alwaysOn: boolean;
   /** §12.3 high-priority delivery — batching bypass + the dedicated Android channel. */

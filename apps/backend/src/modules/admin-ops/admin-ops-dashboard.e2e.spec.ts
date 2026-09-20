@@ -19,11 +19,9 @@ import {
   drivers,
   payouts,
   serviceZones,
+  sosAlerts,
 } from '../../db/schema';
-import {
-  adminOpsActivityKey,
-  driverGeoKey,
-} from '../../redis/redis.constants';
+import { adminOpsActivityKey, driverGeoKey } from '../../redis/redis.constants';
 import { AdminOpsBroadcasterService } from '../../realtime/admin-ops-broadcaster.service';
 import { adminAuthHeaderFor, authHeaderFor } from '../../test/app';
 import {
@@ -272,11 +270,14 @@ describe('admin ops dashboard (W3)', () => {
       await request(app.getHttpServer()).get(path).set('Authorization', fleetToken).expect(403);
       await request(app.getHttpServer()).get(path).set('Authorization', financeToken).expect(403);
       await request(app.getHttpServer()).get(path).set('Authorization', supportToken).expect(200);
-      await request(app.getHttpServer()).get(path).set('Authorization', operationsToken).expect(200);
+      await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', operationsToken)
+        .expect(200);
     }
   });
 
-  it('reports badge counts from every source that exists, zeros for the rest', async () => {
+  it('reports badge counts from every source that exists, zero only where no table does', async () => {
     const admin = await seedAdmin(db, { subRole: 'operations' });
     const token = await adminAuthHeaderFor(app, { adminId: admin.id, subRole: 'operations' });
 
@@ -295,20 +296,87 @@ describe('admin ops dashboard (W3)', () => {
       subjectType: 'user',
       status: 'requested',
     });
+    await db.insert(sosAlerts).values({
+      subjectType: 'user',
+      subjectId: await seedCustomer(db, 'Badge SOS'),
+      lat: 12.97,
+      lng: 77.59,
+      source: 'app',
+      status: 'triggered',
+    });
 
     const body = await get('/v1/admin/ops/badges', token);
     expect(adminOpsBadgesResponseSchema.parse(body)).toMatchObject({
       badges: {
         pendingKyc: 1,
         pendingPayouts: 1,
-        // The four whose tables do not exist until W6/W8/W14/W15.
-        openSos: 0,
+        // W14's SOS badge is real now; W15's tickets are the last tableless
+        // count, and this line is where that changes when tickets land.
+        openSos: 1,
         openDisputes: 0,
         openTickets: 0,
         suspensionRequests: 0,
         deletionRequests: 1,
       },
     });
+  });
+
+  it('counts open SOS alerts and reports the acknowledge percentiles (W14)', async () => {
+    const admin = await seedAdmin(db, { subRole: 'operations' });
+    const token = await adminAuthHeaderFor(app, { adminId: admin.id, subRole: 'operations' });
+    const customerId = await seedCustomer(db);
+
+    const createdAt = new Date(Date.now() - 60 * 60_000);
+    const ackedAt = (seconds: number) => new Date(createdAt.getTime() + seconds * 1_000);
+
+    await db.insert(sosAlerts).values([
+      // Two acknowledged samples: 10 s and 30 s → p50 exactly 20 s.
+      {
+        subjectType: 'user',
+        subjectId: customerId,
+        lat: 12.97,
+        lng: 77.59,
+        source: 'app',
+        status: 'acknowledged',
+        acknowledgedBy: admin.id,
+        acknowledgedAt: ackedAt(10),
+        createdAt,
+      },
+      {
+        subjectType: 'user',
+        subjectId: await seedCustomer(db, 'Second'),
+        lat: 12.97,
+        lng: 77.59,
+        source: 'ops',
+        status: 'acknowledged',
+        acknowledgedBy: admin.id,
+        acknowledgedAt: ackedAt(30),
+        createdAt,
+      },
+      // One still open — the badge, the KPI's `open`, and none of the samples.
+      {
+        subjectType: 'driver',
+        subjectId: await seedDriver(db),
+        lat: 12.97,
+        lng: 77.59,
+        source: 'app',
+        status: 'triggered',
+        createdAt,
+      },
+    ]);
+
+    const body = await get('/v1/admin/ops/dashboard', token);
+    const parsed = adminOpsDashboardResponseSchema.parse(body);
+    // "Open" is triggered + acknowledged — an acknowledged incident is still
+    // an incident until somebody resolves it, which is the same set the
+    // `openSos` badge and the console's default tab show.
+    expect(parsed.kpis.sos.open).toBe(3);
+    // percentile_cont(0.5) of {10, 30} = 20; percentile_cont(0.95) = 29.
+    expect(parsed.kpis.sos.ackP50Seconds).toBe(20);
+    expect(parsed.kpis.sos.ackP95Seconds).toBe(29);
+
+    const badges = await get('/v1/admin/ops/badges', token);
+    expect(adminOpsBadgesResponseSchema.parse(badges).badges.openSos).toBe(3);
   });
 
   it('serves the live activity list when it has entries and backfills from history otherwise', async () => {
@@ -337,7 +405,9 @@ describe('admin ops dashboard (W3)', () => {
     const kinds = backfilled.items.map((item) => item.kind).sort();
     expect(kinds).toEqual(['admin_action', 'booking_created', 'booking_status']);
 
-    // Once the live list exists (as the bridge writes it), it wins.
+    // Once the live list exists (as the bridge writes it), it wins. The probe
+    // carries `sosStatus` because the bridge does since W14 — the reader
+    // parses the list strictly, so a hand-rolled row must match the writer.
     await testRedis().lpush(
       adminOpsActivityKey,
       JSON.stringify({
@@ -347,6 +417,7 @@ describe('admin ops dashboard (W3)', () => {
         bookingId: randomUUID(),
         zoneId: null,
         status: 'assigned',
+        sosStatus: null,
         scheduledAt: null,
         action: null,
         subjectType: null,

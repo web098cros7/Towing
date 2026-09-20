@@ -44,6 +44,16 @@ export interface ActivityAdminActionRow {
   at: string;
 }
 
+/** W14 — `/sos_alerts` rows for the feed's backfill union. */
+export interface ActivitySosAlertRow {
+  id: string;
+  subjectType: string;
+  subjectId: string;
+  bookingId: string | null;
+  status: string;
+  at: string;
+}
+
 export interface LiveDriverRow {
   driverId: string;
   name: string | null;
@@ -279,6 +289,74 @@ export class AdminOpsRepo {
       select count(*)::int as n from disputes where status <> 'resolved'
     `)) as unknown as Array<{ n: number }>;
     return rows[0]?.n ?? 0;
+  }
+
+  /** W14: open SOS alerts (`triggered` + `acknowledged`) — the `openSos` badge. */
+  async openSosAlerts(): Promise<number> {
+    const rows = (await this.db.execute(sql`
+      select count(*)::int as n from sos_alerts where status in ('triggered', 'acknowledged')
+    `)) as unknown as Array<{ n: number }>;
+    return rows[0]?.n ?? 0;
+  }
+
+  /** W15: tickets not yet resolved/closed — the `openTickets` badge. */
+  async openSupportTickets(): Promise<number> {
+    const rows = (await this.db.execute(sql`
+      select count(*)::int as n from support_tickets where status not in ('resolved', 'closed')
+    `)) as unknown as Array<{ n: number }>;
+    return rows[0]?.n ?? 0;
+  }
+
+  /**
+   * W14: §22.2's SOS response time — p50/p95 of `acknowledged_at − created_at`
+   * over the last 30 days, plus the open count for the same tile.
+   *
+   * Percentiles stay NULL when nothing has been acknowledged: 0 seconds would
+   * claim a response time nobody measured, the same trap `fillRatePct`
+   * documents. `::float8` because `percentile_cont` over `numeric` comes back
+   * as a string, and a KPI that is a string is a KPI that renders wrong.
+   */
+  async sosAcknowledgement(): Promise<{ open: number; p50: number | null; p95: number | null }> {
+    const rows = (await this.db.execute(sql`
+      select
+        (select count(*) from sos_alerts where status in ('triggered', 'acknowledged'))::int as open,
+        (percentile_cont(0.5) within group (
+          order by extract(epoch from (acknowledged_at - created_at))
+        ))::float8 as p50,
+        (percentile_cont(0.95) within group (
+          order by extract(epoch from (acknowledged_at - created_at))
+        ))::float8 as p95
+      from sos_alerts
+      where acknowledged_at is not null
+        and acknowledged_at >= now() - interval '30 days'
+    `)) as unknown as Array<{ open: number; p50: number | null; p95: number | null }>;
+    const row = rows[0];
+    return { open: row?.open ?? 0, p50: row?.p50 ?? null, p95: row?.p95 ?? null };
+  }
+
+  /** W14: SOS rows for the activity feed's DB backfill. */
+  async activitySosAlerts(limit: number): Promise<ActivitySosAlertRow[]> {
+    const rows = (await this.db.execute(sql`
+      select id, subject_type, subject_id, booking_id, status, created_at
+      from sos_alerts
+      order by created_at desc
+      limit ${limit}
+    `)) as unknown as Array<{
+      id: string;
+      subject_type: string;
+      subject_id: string;
+      booking_id: string | null;
+      status: string;
+      created_at: Date | string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      subjectType: row.subject_type,
+      subjectId: row.subject_id,
+      bookingId: row.booking_id,
+      status: row.status,
+      at: toIso(row.created_at),
+    }));
   }
 
   /**

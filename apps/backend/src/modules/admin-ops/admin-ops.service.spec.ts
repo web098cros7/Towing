@@ -47,6 +47,10 @@ function serviceWith(overrides: {
     onlineDrivers: async () => 0,
     approvalCounts: async () => ({ pendingKyc: 0, pendingPayouts: 0 }),
     completedUnpaid: async () => 0,
+    // W14/W15: the SOS response KPI and the two open-count badges.
+    sosAcknowledgement: async () => ({ open: 0, p50: null, p95: null }),
+    openSosAlerts: async () => 0,
+    openSupportTickets: async () => 0,
     ...overrides.repo,
   } as unknown as AdminOpsRepo;
 

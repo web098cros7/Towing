@@ -4,6 +4,7 @@ import type {
   AdminOpsBadgesEvent,
   AdminOpsMetricsEvent,
   AdminReadyEvent,
+  AdminSosAlertEvent,
   AdminSubRole,
   BookingStatusEvent,
   CustomerBookingStatusEvent,
@@ -203,10 +204,11 @@ export interface AdminClientToServerEvents {
 
 /**
  * Only the events that have producers TODAY are declared. W3 added
- * `ops:metrics` / `ops:badges` in the commit that emits them (the broadcaster +
- * bridge); `sos:alert`, `dispatch:wave` and `ops:banner` remain named in the
- * contracts enum for their consumers but stay out of this type until each has a
- * producer — adding one earlier would compile the fiction that it arrives.
+ * `ops:metrics` / `ops:badges` with the broadcaster + bridge, and W14 added
+ * `sos:alert` with `SosService` as the producer; `dispatch:wave` and
+ * `ops:banner` remain named in the contracts enum for their consumers but stay
+ * out of this type until each has a producer — adding one earlier would
+ * compile the fiction that it arrives.
  */
 export interface AdminServerToClientEvents {
   'realtime:ready': (payload: AdminReadyEvent) => void;
@@ -214,6 +216,7 @@ export interface AdminServerToClientEvents {
   'location:update': (payload: AdminLocationUpdateEvent) => void;
   'ops:metrics': (payload: AdminOpsMetricsEvent) => void;
   'ops:badges': (payload: AdminOpsBadgesEvent) => void;
+  'sos:alert': (payload: AdminSosAlertEvent) => void;
 }
 
 /** Attached at handshake; the only source of a socket's admin. */

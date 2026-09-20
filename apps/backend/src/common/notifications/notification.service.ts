@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DB, type Database } from '../../db/db.module';
-import { notificationEvents, notifications } from '../../db/schema/notifications';
+import {
+  isInboxSubjectType,
+  notificationEvents,
+  notifications,
+  type NotificationSubjectType,
+} from '../../db/schema/notifications';
 import { isUniqueViolation } from '../errors/pg-errors';
 import { QUEUE, type QueuePort } from '../queue/queue.port';
 import { RecipientResolverService } from './recipient-resolver.service';
@@ -110,37 +115,40 @@ export class NotificationService {
         resolver: this.resolver,
       });
 
-      const inboxRows = recipients
-        .filter((recipient) => recipient.subjectId !== OPS_PSEUDO_SUBJECT)
-        .map((recipient) => {
-          // The id is generated HERE rather than by `gen_random_uuid()`, so the
-          // push payload can carry `notificationId` in the same insert. A tap
-          // needs to mark exactly this row read, and a second UPDATE pass to
-          // stamp it would be one more thing to get wrong.
-          const id = randomUUID();
-          const variables = asVariables(trigger)(payload, recipient);
-          const rendered = renderTemplate(trigger.template as TemplateKey, variables);
+      // AN EXPLICIT ALLOWLIST, not "everything except the ops pseudo-subject".
+      // Since W14 the recipient union also carries `contact` (a snapshot row)
+      // and `ops` (an on-call admin) — neither is a subject the `notifications`
+      // table admits, and neither has a bell to ring. The pseudo-subject check
+      // stays too: that one is a `fleet`-typed placeholder with no row behind it.
+      const inboxRows = recipients.filter(isInboxRecipient).map((recipient) => {
+        // The id is generated HERE rather than by `gen_random_uuid()`, so the
+        // push payload can carry `notificationId` in the same insert. A tap
+        // needs to mark exactly this row read, and a second UPDATE pass to
+        // stamp it would be one more thing to get wrong.
+        const id = randomUUID();
+        const variables = asVariables(trigger)(payload, recipient);
+        const rendered = renderTemplate(trigger.template as TemplateKey, variables);
 
-          const data: Record<string, string> = {
-            event,
-            notificationId: id,
-            action: trigger.push?.action ?? 'open',
-          };
-          if (trigger.push?.invalidate) data.invalidate = trigger.push.invalidate;
-          if (trigger.push?.route) data.route = trigger.push.route;
+        const data: Record<string, string> = {
+          event,
+          notificationId: id,
+          action: trigger.push?.action ?? 'open',
+        };
+        if (trigger.push?.invalidate) data.invalidate = trigger.push.invalidate;
+        if (trigger.push?.route) data.route = trigger.push.route;
 
-          return {
-            id,
-            subjectId: recipient.subjectId,
-            subjectType: recipient.subjectType,
-            eventId: row.id,
-            event,
-            category: trigger.category,
-            title: rendered.title ?? rendered.subject ?? event,
-            body: rendered.body,
-            data,
-          };
-        });
+        return {
+          id,
+          subjectId: recipient.subjectId,
+          subjectType: recipient.subjectType,
+          eventId: row.id,
+          event,
+          category: trigger.category,
+          title: rendered.title ?? rendered.subject ?? event,
+          body: rendered.body,
+          data,
+        };
+      });
 
       if (inboxRows.length > 0) {
         await tx.insert(notifications).values(inboxRows);
@@ -172,4 +180,16 @@ function asVariables(trigger: RegisteredTrigger<never>) {
     payload: Record<string, unknown>,
     recipient: Recipient,
   ) => Record<string, string>;
+}
+
+/**
+ * An inbox recipient: one of the three database-backed subject types (migration
+ * 0010's CHECK) that is not the synthetic ops placeholder. Everything else —
+ * `contact`, `ops` — is delivery-only: a snapshot row or an on-call admin has
+ * no in-app centre to write to.
+ */
+function isInboxRecipient(
+  recipient: Recipient,
+): recipient is Recipient & { subjectType: NotificationSubjectType } {
+  return isInboxSubjectType(recipient.subjectType) && recipient.subjectId !== OPS_PSEUDO_SUBJECT;
 }

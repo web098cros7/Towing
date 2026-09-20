@@ -4,6 +4,7 @@ import type { NotificationChannel } from '@towing/api-contracts';
 import { DB, type Database } from '../../db/db.module';
 import { devices } from '../../db/schema/devices';
 import {
+  isInboxSubjectType,
   notificationDeliveries,
   notificationEvents,
   notifications,
@@ -286,19 +287,24 @@ export class NotificationDispatcherService implements OnModuleInit {
     // `notificationId` must be the INBOX row's id, not this delivery's — a tap
     // marks exactly that row read, and one inbox row fans out to several
     // deliveries (three channels, two devices). `emit()` wrote it in the same
-    // transaction as the event, so it is always there for a real subject; the
-    // ops pseudo-subject has no bell and therefore no row.
-    const [inbox] = await this.db
-      .select({ id: notifications.id })
-      .from(notifications)
-      .where(
-        and(
-          eq(notifications.eventId, event.id),
-          eq(notifications.subjectType, recipient.subjectType),
-          eq(notifications.subjectId, recipient.subjectId),
-        ),
-      )
-      .limit(1);
+    // transaction as the event, so it is always there for a real subject.
+    // `contact`/`ops` recipients (since W14) and the ops pseudo-subject have no
+    // bell and therefore no row — the lookup is skipped rather than attempted.
+    const inbox = isInboxSubjectType(recipient.subjectType)
+      ? (
+          await this.db
+            .select({ id: notifications.id })
+            .from(notifications)
+            .where(
+              and(
+                eq(notifications.eventId, event.id),
+                eq(notifications.subjectType, recipient.subjectType),
+                eq(notifications.subjectId, recipient.subjectId),
+              ),
+            )
+            .limit(1)
+        )[0]
+      : undefined;
 
     // §12.2's attachment, resolved HERE rather than in the registry: the
     // registry is pure data and has no storage port, and it must not carry a

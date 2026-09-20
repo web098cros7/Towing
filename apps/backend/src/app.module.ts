@@ -36,6 +36,9 @@ import { AdminDirectoryModule } from './modules/admin-directory/admin-directory.
 import { AdminBookingsModule } from './modules/admin-bookings/admin-bookings.module';
 import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
 import { AdminOpsModule } from './modules/admin-ops/admin-ops.module';
+import { SosModule } from './modules/sos/sos.module';
+import { SupportModule } from './modules/support/support.module';
+import { ContentModule } from './modules/content/content.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
@@ -102,6 +105,9 @@ import { RedisModule } from './redis/redis.module';
     AdminBookingsModule,
     AdminFinanceModule,
     AdminOpsModule,
+    SosModule,
+    SupportModule,
+    ContentModule,
     RatingsModule,
     CouponsModule,
     InvoicesModule,

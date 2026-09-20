@@ -176,6 +176,26 @@ const EnvSchema = z.object({
   /** Where the drift alarm mails. */
   LEDGER_OPS_EMAIL: z.string().default('ops@towing.local'),
 
+  // ── W14: SOS (§13) ─────────────────────────────────────────────────────
+
+  /** Where the SOS ops alert mails when no admin is flagged on-call (G17). */
+  SOS_OPS_EMAIL: z.string().default('ops@towing.local'),
+
+  /**
+   * The 5-second undo is the app's; this is the SERVER's grace on top of it —
+   * a cancel accepted this long after the trigger. Past it the alert is live
+   * work for an operator, and "never mind" stops being a valid transition.
+   */
+  SOS_CANCEL_GRACE_SECONDS: z.coerce.number().int().positive().default(30),
+
+  /**
+   * G12's broadcast reach. Small on purpose: the action reveals a location to
+   * drivers who are not on the job, and the value of a response decays fast
+   * with distance. An operator can narrow it per call; these are the defaults.
+   */
+  SOS_BROADCAST_RADIUS_KM: z.coerce.number().positive().default(3),
+  SOS_BROADCAST_LIMIT: z.coerce.number().int().min(1).max(50).default(10),
+
   /**
    * §14.4's "min threshold". The spec requires one and names no number.
    * ₹1,000: Route/IMPS fees are ₹2–5 per transfer, so below roughly this the

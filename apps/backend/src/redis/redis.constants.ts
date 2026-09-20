@@ -154,6 +154,15 @@ export const paymentCaptureLockKey = (bookingId: string): string => `payment:loc
 export const KILLSWITCH_PAUSED_ZONES = 'dispatch:killswitch:paused-zones';
 export const KILLSWITCH_LONG_DISTANCE = 'dispatch:killswitch:long-distance-disabled';
 export const KILLSWITCH_FORCE_POLLING = 'dispatch:killswitch:force-polling';
+/**
+ * W14's standalone-SOS switch (G11), stored as the DISABLED flag.
+ *
+ * Inverted on purpose: `flag()` answers `false` when Redis is unreachable, and
+ * for every other switch that means "not paused" — the safe answer. Standalone
+ * SOS's safe answer is ENABLED, so the stored bit is the exception, not the
+ * rule: an outage leaves §13's safety path working.
+ */
+export const KILLSWITCH_SOS_STANDALONE_DISABLED = 'safety:killswitch:sos-standalone-disabled';
 
 /** Single-use WebSocket handshake ticket (§16.6 handshake auth). */
 export const wsTicketKey = (ticket: string): string => `ws:ticket:${ticket}`;

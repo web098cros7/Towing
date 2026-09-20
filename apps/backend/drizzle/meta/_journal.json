@@ -204,6 +204,20 @@
       "when": 1789900000002,
       "tag": "0028_zone_editor",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789986400000,
+      "tag": "0029_sos",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789986400001,
+      "tag": "0030_support_and_content",
+      "breakpoints": true
     }
   ]
 }
