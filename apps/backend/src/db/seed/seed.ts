@@ -182,6 +182,9 @@ export const APP_TABLES = [
   'admin_recovery_codes',
   'coupons',
   'coupon_redemptions',
+  // W16: banners are FK-free against the graph above (`created_by` is a plain
+  // reference to an admin, no cascade).
+  'banners',
   // FK-free or nearly so — a leftover row here outlives every CASCADE.
   'admin_notes',
   'service_zone_versions',

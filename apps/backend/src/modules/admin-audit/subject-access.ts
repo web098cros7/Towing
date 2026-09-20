@@ -46,6 +46,13 @@ export const SUBJECT_READ_PERMISSION: Record<string, AdminPermission> = {
   commission_config: 'commission.edit',
   dispatch_config: 'dispatch.config',
   app_config: 'dispatch.config',
+  /**
+   * W16 promotions. The rows are written by `promo.manage` holders and read
+   * back by the same pair — the subject map is what lets one operator see the
+   * other's coupon/banner change on the audit feed.
+   */
+  coupon: 'promo.manage',
+  banner: 'promo.manage',
 };
 
 export function canReadSubject(subRole: AdminSubRole, subjectType: string): boolean {

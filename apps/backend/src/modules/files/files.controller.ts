@@ -24,9 +24,15 @@ const CONTENT_TYPE_BY_EXT: Record<string, string> = {
  * writes, same reasoning as the traversal guard (a valid signature proves the
  * URL wasn't tampered with, not that the key is safe to write). Extend this
  * list alongside any new `PresignedUploadService` key prefix — Phase 12 added
- * `customer-vehicles/` for RC photo uploads.
+ * `customer-vehicles/` for RC photo uploads, W16 added `banner-images/` for
+ * the promotions carousel.
  */
-const PUT_ALLOWED_PREFIXES = ['driver-documents/', 'customer-vehicles/', 'dispute-evidence/'];
+const PUT_ALLOWED_PREFIXES = [
+  'driver-documents/',
+  'customer-vehicles/',
+  'dispute-evidence/',
+  'banner-images/',
+];
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 

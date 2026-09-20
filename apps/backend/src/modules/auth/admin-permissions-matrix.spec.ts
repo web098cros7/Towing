@@ -206,4 +206,20 @@ describe('admin permissions (§4.2 matrix)', () => {
     expect(holds('operations', 'privacy.handle')).toBe(false);
     expect(holds('finance', 'privacy.handle')).toBe(false);
   });
+
+  it('W17/W18: analytics.view is all-four (the ops.live ∪ finance.read union), notification.view Ops+support; test-send stays admin.manage', () => {
+    // The guide's Part 6 reads "viewing needs ops.live or finance.read" — the
+    // guard is AND-only, so the union is its own permission. Every sub-role
+    // holds it; export stays separate on analytics.export.
+    for (const subRole of SUB_ROLES) {
+      expect(holds(subRole, 'analytics.view')).toBe(true);
+    }
+    for (const subRole of ['super_admin', 'operations', 'support'] as const) {
+      expect(holds(subRole, 'notification.view')).toBe(true);
+    }
+    expect(holds('finance', 'notification.view')).toBe(false);
+    // W18's test-send is super-admin only; admin.manage already expresses that.
+    expect(holds('operations', 'admin.manage')).toBe(false);
+    expect(holds('super_admin', 'admin.manage')).toBe(true);
+  });
 });

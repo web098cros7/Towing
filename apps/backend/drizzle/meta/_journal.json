@@ -218,6 +218,13 @@
       "when": 1789986400001,
       "tag": "0030_support_and_content",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789986500000,
+      "tag": "0031_promotions_banners",
+      "breakpoints": true
     }
   ]
 }

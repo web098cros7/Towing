@@ -2,10 +2,12 @@ import type { INestApplication } from '@nestjs/common';
 import {
   adminAdminsListResponseSchema,
   adminAuditListResponseSchema,
+  adminBannersResponseSchema,
   adminBookingsResponseSchema,
   adminCommissionConfigSchema,
   adminCommissionImpactSchema,
   adminCommissionProposalSchema,
+  adminCouponsResponseSchema,
   adminDirectoryUsersResponseSchema,
   adminDirectoryZonesResponseSchema,
   adminDisputesResponseSchema,
@@ -49,6 +51,7 @@ import {
   jobsListResponseSchema,
   payoutsListResponseSchema,
   positionsSnapshotSchema,
+  publicBannersResponseSchema,
   reportResponseSchema,
   splitsListResponseSchema,
   trucksListResponseSchema,
@@ -75,10 +78,12 @@ import {
 import {
   adminActions,
   adminNotes,
+  banners,
   bookingStatusHistory,
   commissionConfigHistory,
   commissionGuardrail,
   commissionProposals,
+  coupons,
   disputes,
   driverDocuments,
   drivers,
@@ -288,6 +293,14 @@ describe('response contracts', () => {
       },
       { path: '/v1/content/faq', schema: contentPagesResponseSchema, realm: 'customer' },
       { path: '/v1/admin/content', schema: adminContentPagesResponseSchema, realm: 'admin' },
+      // W16 — the promotions surface. One coupon and two live banners are
+      // seeded below; the public carousel read is `@Public()` and the token
+      // rides along for the same reason as the content row above. The
+      // parameterised `/admin/coupons/:id/redemptions` is EXCLUDED and
+      // asserted in `promotions-admin.e2e.spec.ts`.
+      { path: '/v1/admin/coupons', schema: adminCouponsResponseSchema, realm: 'admin' },
+      { path: '/v1/admin/banners', schema: adminBannersResponseSchema, realm: 'admin' },
+      { path: '/v1/banners?audience=customer', schema: publicBannersResponseSchema, realm: 'customer' },
     ];
 
   beforeAll(async () => {
@@ -558,6 +571,32 @@ describe('response contracts', () => {
         isPublished: true,
       },
     ]);
+
+    // W16 — a coupon and two live customer banners. Two banners rather than
+    // one so the carousel row above proves it is an ORDERED array (a one-row
+    // response would match the schema with the ordering code deleted); the
+    // image keys are minted-shape strings — the admin read presigns them, and
+    // no file needs to exist for a signature.
+    await db.insert(coupons).values({
+      code: 'CONTRACT20',
+      kind: 'percent',
+      value: '20.00',
+      minOrder: '0',
+    });
+    await db.insert(banners).values([
+      {
+        title: 'Contract banner one',
+        imageKey: `banner-images/00000000-0000-4000-8000-000000000001/banner-11111111-1111-4111-8111-111111111111.jpg`,
+        audience: 'customer',
+        sortOrder: 1,
+      },
+      {
+        title: 'Contract banner two',
+        imageKey: `banner-images/00000000-0000-4000-8000-000000000002/banner-22222222-2222-4222-8222-222222222222.png`,
+        audience: 'customer',
+        sortOrder: 2,
+      },
+    ]);
   });
 
   afterAll(async () => {
@@ -620,6 +659,8 @@ const COVERED_PREFIXES = [
   // W15: the requester's own reads and the public FAQ/legal pages.
   '/v1/support',
   '/v1/content',
+  // W16: the public carousel read.
+  '/v1/banners',
 ];
 
 /**
@@ -750,6 +791,10 @@ const EXCLUDED = new Set([
   // W15 — the content editor's per-slug read, parameterised; asserted against
   // `adminContentPageSchema` in `content.e2e.spec.ts`.
   '/v1/admin/content/:slug',
+  // W16 — the coupon redemption ledger, parameterised by coupon id; asserted
+  // with `expectMatchesContract` against `adminCouponRedemptionsResponseSchema`
+  // in `promotions-admin.e2e.spec.ts`, which claims a real redemption first.
+  '/v1/admin/coupons/:id/redemptions',
   // W15 — the public content read is parameterised by KIND, and `kind` has two
   // legal values; the static `/v1/content/faq` row above walks that envelope
   // (the `/v1/content/legal` twin is the same handler and the same schema), so
