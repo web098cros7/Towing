@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { adminSubRoleSchema } from '../common/enums';
+import { sosStatusSchema, sosSubjectTypeSchema } from '../common/sos';
 import { jobStatusSchema } from '../fleet/jobs';
 import { adminOpsBadgesSchema, adminOpsKpisSchema } from './ops-kpis';
 
@@ -166,10 +167,38 @@ export const opsAdminBadgesEventSchema = z.object({
 });
 export type OpsAdminBadgesEvent = z.infer<typeof opsAdminBadgesEventSchema>;
 
+/**
+ * An SOS alert fired or was re-triggered (W14, §13) — the producer that makes
+ * `sos:alert` real. The frame carries ids and the position, never the incident
+ * state: the console invalidates its queue and badge queries on receipt, so a
+ * missed frame costs a refetch rather than a wrong picture, and the 2-second
+ * ops budget is met by the socket round trip, not by shipping the whole row.
+ */
+export const opsSosAlertEventSchema = z.object({
+  kind: z.literal('sos_alert'),
+  alertId: z.uuid(),
+  subjectType: sosSubjectTypeSchema,
+  subjectId: z.uuid(),
+  bookingId: z.uuid().nullable(),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  /** The incident's status at publish time — `triggered`, or `acknowledged` on a repeat tap. */
+  status: sosStatusSchema,
+  at: z.iso.datetime(),
+  /** True when the subject tapped again while the alert was open. */
+  duplicate: z.boolean(),
+});
+export type OpsSosAlertEvent = z.infer<typeof opsSosAlertEventSchema>;
+
+/** The `sos:alert` socket frame — the envelope without `kind`, like `ops:metrics`. */
+export const adminSosAlertEventSchema = opsSosAlertEventSchema.omit({ kind: true });
+export type AdminSosAlertEvent = z.infer<typeof adminSosAlertEventSchema>;
+
 export const opsEventSchema = z.discriminatedUnion('kind', [
   opsBookingStatusEventSchema,
   opsBookingCreatedEventSchema,
   opsAdminMetricsEventSchema,
   opsAdminBadgesEventSchema,
+  opsSosAlertEventSchema,
 ]);
 export type OpsEvent = z.infer<typeof opsEventSchema>;

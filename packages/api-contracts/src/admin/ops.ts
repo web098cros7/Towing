@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { scorerWeightsSchema } from '../common/dispatch-config';
 import { unsignedPaiseSchema } from '../common/money';
+import { sosStatusSchema } from '../common/sos';
 import { jobStatusSchema } from '../fleet/jobs';
 import { latLngSchema } from '../fleet/trucks';
 import { fleetZoneSchema } from '../realtime/positions';
@@ -68,12 +69,14 @@ export type AdminOpsBadgesResponse = z.infer<typeof adminOpsBadgesResponseSchema
 export const adminActivityItemSchema = z.object({
   /** Stable dedupe key — `{kind}:{subject}:{at}`; lets the client merge REST + frames. */
   id: z.string().min(1),
-  kind: z.enum(['booking_status', 'booking_created', 'admin_action']),
+  kind: z.enum(['booking_status', 'booking_created', 'admin_action', 'sos_alert']),
   at: z.iso.datetime(),
   bookingId: z.uuid().nullable(),
   zoneId: z.uuid().nullable(),
   /** Booking kinds: the status entered (creation enters `searching`). */
   status: jobStatusSchema.nullable(),
+  /** SOS rows (W14): the incident's status, so the feed can say "acknowledged". */
+  sosStatus: sosStatusSchema.nullable(),
   /** Creation only — set for a scheduled booking, which sits dormant in `searching`. */
   scheduledAt: z.iso.datetime().nullable(),
   /** Admin actions: the dotted verb, e.g. `driver.kyc.approve`. */
@@ -88,10 +91,11 @@ export const adminOpsActivityResponseSchema = z.object({
   items: z.array(adminActivityItemSchema),
   /**
    * True when the live Redis list was empty or unreachable and the rows were
-   * reconstructed from `booking_status_history` + `admin_actions` (W14 adds
-   * `sos_alerts` to that union). The DB cannot show creations that announced
-   * nothing, so a backfilled feed is newer-history-poorer by exactly that much —
-   * which is why the flag is on the payload rather than silent.
+   * reconstructed from `booking_status_history` + `admin_actions` +
+   * `sos_alerts` (the last joined the union in W14). The DB cannot show
+   * creations that announced nothing, so a backfilled feed is
+   * newer-history-poorer by exactly that much — which is why the flag is on
+   * the payload rather than silent.
    */
   backfilled: z.boolean(),
 });

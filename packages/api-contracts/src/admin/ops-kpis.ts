@@ -45,6 +45,17 @@ export const adminOpsKpisSchema = z.object({
   /** p50/p90 of (first accepted attempt − booking created_at), today's creations. */
   timeToMatchP50Seconds: z.number().int().min(0).nullable(),
   timeToMatchP90Seconds: z.number().int().min(0).nullable(),
+  /**
+   * §13/§22.2's safety numbers (W14). `ackP50/P95` are null when nothing has
+   * been acknowledged in the window — 0 would claim a response time nobody
+   * measured. `open` counts triggered + acknowledged alerts, the same set the
+   * `openSos` badge and the console's default tab show.
+   */
+  sos: z.object({
+    open: z.number().int().min(0),
+    ackP50Seconds: z.number().int().min(0).nullable(),
+    ackP95Seconds: z.number().int().min(0).nullable(),
+  }),
 });
 export type AdminOpsKpis = z.infer<typeof adminOpsKpisSchema>;
 
@@ -52,18 +63,18 @@ export type AdminOpsKpis = z.infer<typeof adminOpsKpisSchema>;
  * Sidebar badge counts (§3.2), pushed as `ops:badges` and seeded by
  * `GET /v1/admin/ops/badges`.
  *
- * FOUR OF THE SEVEN ARE STRUCTURALLY ZERO until their owning workstream ships
- * the table they count — `sos_alerts` (W14), `disputes` (W8), tickets (W15),
- * `suspension_requests` (W6). Zero is the truthful answer today (the feature
- * does not exist, so nothing is open), and the keys exist now so the wire
- * shape never changes when each source lands. The three computed today are
- * pending KYC reviews, pending payout approvals and open deletion requests.
+ * Every count is real from W15 on: KYC reviews, payout approvals, open SOS
+ * alerts (W14), open disputes (W8), open tickets (W15), suspension requests
+ * (W6) and deletion requests (Phase 12). The keys predate their tables on
+ * purpose — the wire shape never had to change as each source landed.
  */
 export const adminOpsBadgesSchema = z.object({
   pendingKyc: z.number().int().min(0),
   pendingPayouts: z.number().int().min(0),
+  /** W14: `triggered` + `acknowledged` alerts. */
   openSos: z.number().int().min(0),
   openDisputes: z.number().int().min(0),
+  /** W15: tickets not yet `resolved`/`closed`. */
   openTickets: z.number().int().min(0),
   suspensionRequests: z.number().int().min(0),
   deletionRequests: z.number().int().min(0),

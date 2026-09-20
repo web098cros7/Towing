@@ -83,6 +83,12 @@ export const adminDispatchConfigSchema = z.object({
     longDistanceDisabled: z.boolean(),
     /** Force both apps onto §19.2 REST polling by refusing socket tickets. */
     forcePolling: z.boolean(),
+    /**
+     * W14 (G11): refuse STANDALONE SOS (no booking attached). Stored inverted
+     * in Redis so an outage leaves SOS working — §13's safety story does not
+     * depend on a cache being up. Disabling it is a deliberate, warned action.
+     */
+    sosStandaloneDisabled: z.boolean(),
   }),
 });
 export type AdminDispatchConfig = z.infer<typeof adminDispatchConfigSchema>;
@@ -126,6 +132,7 @@ export const adminDispatchConfigUpdateSchema = z
         pausedZoneIds: z.array(z.uuid()).optional(),
         longDistanceDisabled: z.boolean().optional(),
         forcePolling: z.boolean().optional(),
+        sosStandaloneDisabled: z.boolean().optional(),
       })
       .optional(),
     /** Audited to `admin_actions` alongside the diff. §6.7 edits move money. */
