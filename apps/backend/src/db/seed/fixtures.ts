@@ -548,6 +548,86 @@ export const SERVICE_MIX: ReadonlyArray<
   ['accident_recovery', 10],
 ];
 
+/**
+ * W15 — the FAQ and legal pages the apps fetch (`GET /v1/content/:kind`).
+ *
+ * These replace the customer app's hardcoded help copy and its dead legal
+ * links. Kept deliberately plain: the console can edit every word without a
+ * release, which is the point, and the seed only has to be plausible.
+ */
+export const CONTENT_PAGES: ReadonlyArray<{
+  slug: string;
+  kind: 'faq' | 'legal';
+  title: string;
+  bodyMd: string;
+  sortOrder: number;
+}> = [
+  {
+    slug: 'booking-a-tow',
+    kind: 'faq',
+    title: 'How do I book a tow?',
+    bodyMd:
+      'Open the app, drop a pin where your vehicle is, and confirm the vehicle class. We price the trip before you book, then find the nearest available driver. You will see the driver and the truck once one accepts.',
+    sortOrder: 1,
+  },
+  {
+    slug: 'fare-calculation',
+    kind: 'faq',
+    title: 'How is the fare calculated?',
+    bodyMd:
+      'The fare is a base charge plus a distance charge for your vehicle class, with a night surcharge where it applies. The app shows the full breakdown before you confirm, and the driver cannot change it afterwards.',
+    sortOrder: 2,
+  },
+  {
+    slug: 'cancel-booking',
+    kind: 'faq',
+    title: 'Can I cancel a booking?',
+    bodyMd:
+      'Yes, any time before the job starts. If a driver is already on the way, a cancellation fee may apply and the app shows it before you confirm the cancellation.',
+    sortOrder: 3,
+  },
+  {
+    slug: 'payments',
+    kind: 'faq',
+    title: 'How do I pay?',
+    bodyMd:
+      'Pay in the app by UPI or card after the trip completes. The receipt appears under Bookings, and the invoice can be downloaded for expense claims.',
+    sortOrder: 4,
+  },
+  {
+    slug: 'track-driver',
+    kind: 'faq',
+    title: 'Where is my driver?',
+    bodyMd:
+      'The tracking screen follows the driver live once a job is assigned, with an ETA that updates along the route. Share the trip from that screen if somebody is waiting with the vehicle.',
+    sortOrder: 5,
+  },
+  {
+    slug: 'emergency-help',
+    kind: 'faq',
+    title: 'What if I need urgent help?',
+    bodyMd:
+      'Use the SOS button in the app — it alerts our operations desk and your emergency contacts with your location. Add emergency contacts in Account → Emergency contacts before you need them.',
+    sortOrder: 6,
+  },
+  {
+    slug: 'privacy-policy',
+    kind: 'legal',
+    title: 'Privacy Policy',
+    bodyMd:
+      "We collect what a recovery job needs: your account details, the pickup and drop locations, and the driver's progress. Location is shared with the assigned driver only while the job is active. You can export or delete your data from Account → Privacy. This is the seeded copy — replace it with the reviewed policy before launch.",
+    sortOrder: 1,
+  },
+  {
+    slug: 'terms-of-service',
+    kind: 'legal',
+    title: 'Terms of Service',
+    bodyMd:
+      'By booking a recovery you confirm the vehicle is yours or that you are authorised to move it, and that the details you gave us are accurate. Fares, cancellation fees and the service limitations are described in the app before you confirm. This is the seeded copy — replace it with the reviewed terms before launch.',
+    sortOrder: 2,
+  },
+];
+
 export function centroid(areas: FleetFixture['areas']): LatLng {
   const lat = areas.reduce((s, a) => s + a[1], 0) / areas.length;
   const lng = areas.reduce((s, a) => s + a[2], 0) / areas.length;

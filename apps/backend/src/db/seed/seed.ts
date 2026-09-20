@@ -22,9 +22,11 @@ import {
   commissionConfigHistory,
   commissionGuardrail,
   complianceDocuments,
+  contentPages,
   dispatchConfig,
   driverDocuments,
   drivers,
+  emergencyContacts,
   fleetDriverShares,
   fleetOwnerCredentials,
   fleetTrucks,
@@ -41,6 +43,7 @@ import {
 } from '../schema';
 import {
   ADMIN_FIXTURES,
+  CONTENT_PAGES,
   CUSTOMER_NAMES,
   FLEETS,
   FLEET_DRIVERS,
@@ -185,6 +188,19 @@ export const APP_TABLES = [
   'commission_proposals',
   'commission_guardrail',
   'app_config',
+  // W14 (SOS) and W15 (tickets/content). The two children cascade from
+  // `sos_alerts` but are named anyway — the reset list stays explicit. The
+  // alerts themselves reference `bookings`/`users` by id only, so no CASCADE
+  // above reaches them; named last for the same reason as the group they join.
+  'sos_alerts',
+  'sos_alert_contacts',
+  'sos_alert_events',
+  // W15: tickets and the FAQ/legal pages — both FK-free against the graph
+  // above except `booking_id`, which is SET NULL rather than cascade.
+  'support_tickets',
+  'support_ticket_messages',
+  'support_ticket_events',
+  'content_pages',
 ] as const;
 
 type HistoricalStatus = 'paid' | 'completed' | 'cancelled' | 'no_drivers_found' | 'disputed';
@@ -386,6 +402,11 @@ export async function runSeed(
           name: admin.name,
           passwordHash,
           subRole: admin.subRole,
+          // W14 / G17: the operations admin is the seeded on-call recipient.
+          // Without a flagged admin, `sos.ops_alert` reaches only the mailbox
+          // (the log adapter locally), and the console's "ops alerted" story
+          // would look wired-but-silent on a fresh seed.
+          receivesOpsAlerts: admin.subRole === 'operations',
         })
         .returning({ id: adminUsers.id });
       adminIdBySubRole.set(admin.subRole, row!.id);
@@ -756,6 +777,40 @@ export async function runSeed(
       .returning({ id: users.id });
     summary.customers = customerRows.length;
 
+    // ── W14: SOS demo data ──────────────────────────────────────────────────
+    // The FIRST customer gets emergency contacts. `POST /v1/sos` fans out to
+    // the SNAPSHOT of these rows, so the live look can raise an alert as this
+    // customer and see the whole §13 chain (snapshot → ops alert → console).
+    // A customer with none is a real state too — the alert still reaches ops.
+    await tx.insert(emergencyContacts).values([
+      {
+        userId: customerRows[0]!.id,
+        name: 'Anjali (spouse)',
+        phone: '+919845029901',
+        relation: 'spouse',
+      },
+      {
+        userId: customerRows[0]!.id,
+        name: 'Ravi (brother)',
+        phone: '+919845029902',
+        relation: 'brother',
+      },
+    ]);
+
+    // ── W15: FAQ + legal content ───────────────────────────────────────────
+    // The customer app fetches these instead of shipping hardcoded FAQs and
+    // dead legal links; a fresh seed must be able to serve Help and Legal.
+    await tx.insert(contentPages).values(
+      CONTENT_PAGES.map((page) => ({
+        slug: page.slug,
+        kind: page.kind,
+        title: page.title,
+        bodyMd: page.bodyMd,
+        sortOrder: page.sortOrder,
+        isPublished: true,
+      })),
+    );
+
     // ── Wallets ─────────────────────────────────────────────────────────────
     const fleetWallets = new Map<FleetFixture['key'], string>();
     for (const [key, fleet] of fleetByKey) {
@@ -964,7 +1019,11 @@ export async function runSeed(
         completedAt: settled || status === 'completed' ? (paidAt ?? createdAt) : null,
         cancelledBy: status === 'cancelled' ? (cancelledByDriver ? 'driver' : 'customer') : null,
         cancellationReason:
-          status === 'cancelled' ? (cancelledByDriver ? 'Vehicle issue' : 'Customer cancelled') : null,
+          status === 'cancelled'
+            ? cancelledByDriver
+              ? 'Vehicle issue'
+              : 'Customer cancelled'
+            : null,
         cancellationFee: toRupees(cancellationFeePaise),
         paymentMethod: settled
           ? (weighted(rng, [

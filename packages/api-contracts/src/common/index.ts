@@ -11,3 +11,6 @@ export * from './notifications';
 export * from './pagination';
 export * from './pricing';
 export * from './ratings';
+export * from './sos';
+export * from './support';
+export * from './content';

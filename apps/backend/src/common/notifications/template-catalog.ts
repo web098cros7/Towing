@@ -397,6 +397,73 @@ export const TEMPLATES = {
       subject: null,
     }),
   },
+
+  /**
+   * W14 — §13's SOS fan-out to the emergency contacts (SMS + WhatsApp).
+   *
+   * SMS is the channel that exists in principle and cannot send until the DLT
+   * registration lands (ImplementNow #6): the adapter refuses a null
+   * `dltTemplateId`, and the console renders that degradation next to the
+   * snapshot rather than implying the contact was reached.
+   */
+  sos_triggered: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['name', 'link'],
+    render: (v) => ({
+      title: 'SOS alert',
+      body: `${v.name ?? 'Someone you know'} may need help right now. Their location: ${v.link ?? ''}`,
+      subject: null,
+    }),
+  },
+
+  /** W14 — the ops alert (email/SMS to the on-call pool; the socket frame is the fast half). */
+  sos_ops_alert: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['subject', 'link', 'alertRef'],
+    render: (v) => ({
+      title: `SOS alert — ${v.subject ?? 'a user'}`,
+      body: `${v.subject ?? 'A user'} triggered an SOS (alert ${v.alertRef ?? '—'}). Location: ${v.link ?? ''}. Open the SOS console to acknowledge.`,
+      subject: `SOS: ${v.subject ?? 'a user'} needs help (${v.alertRef ?? '—'})`,
+    }),
+  },
+
+  /** W14 / G12 — the explicit nearest-driver broadcast. Push only, deliberate every time. */
+  sos_broadcast: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['link'],
+    render: (v) => ({
+      title: 'Someone nearby needs help',
+      body: `A person near you raised an SOS. Tap to see their location: ${v.link ?? ''}`,
+      subject: null,
+    }),
+  },
+
+  /** W15 — a public reply on a ticket. */
+  support_reply: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'Support replied',
+      body: `Our team answered ticket ${v.reference ?? ''}. Open the app to continue the conversation.`,
+      subject: `Support replied on ticket ${v.reference ?? ''}`,
+    }),
+  },
+
+  /** W15 — the ticket was resolved. */
+  support_resolved: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'Ticket resolved',
+      body: `Ticket ${v.reference ?? ''} is resolved. If anything else comes up, reply in the app or raise a new ticket.`,
+      subject: `Ticket ${v.reference ?? ''} is resolved`,
+    }),
+  },
 } as const satisfies Record<string, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof TEMPLATES;

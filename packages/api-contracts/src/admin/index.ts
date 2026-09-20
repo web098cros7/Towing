@@ -15,4 +15,7 @@ export * from './ops-kpis';
 export * from './ops';
 export * from './permissions';
 export * from './realtime';
+export * from './sos';
+export * from './support';
+export * from './content';
 export * from './zones';

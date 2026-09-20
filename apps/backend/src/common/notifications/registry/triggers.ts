@@ -1,4 +1,12 @@
-import type { DeferredTrigger, Recipient, RegisteredTrigger, TriggerContext } from './trigger.types';
+import { and, eq, inArray } from 'drizzle-orm';
+import { adminUsers } from '../../../db/schema/admin';
+import { sosAlertContacts } from '../../../db/schema/sos';
+import type {
+  DeferredTrigger,
+  Recipient,
+  RegisteredTrigger,
+  TriggerContext,
+} from './trigger.types';
 
 /**
  * THE §12.2 REGISTRY — the durable half of Phase 13.
@@ -171,6 +179,86 @@ export interface PaymentReminderPayload extends Record<string, unknown> {
   /** `bookingId:IST-day` — one reminder per booking per day. */
   reminderKey: string;
 }
+
+/**
+ * W14 — §13's SOS fan-out to the emergency contacts. The payload carries
+ * SNAPSHOT IDS AND NAMES, never phone numbers: the resolver re-reads the
+ * `sos_alert_contacts` row, so the address is the one taken at trigger time —
+ * deterministic across fan-out and every delivery retry (invariant 69).
+ */
+export interface SosTriggeredPayload extends Record<string, unknown> {
+  alertId: string;
+  subjectType: 'user' | 'driver';
+  subjectId: string;
+  /** Rows written in the trigger transaction: `{ id, name }` each. */
+  contacts: Array<{ id: string; name: string }>;
+  lat: number;
+  lng: number;
+}
+
+/**
+ * W14 — the ops alert (G17): the on-call admins plus the ops mailbox. Admins
+ * have no push devices, so the delivery surface is email/SMS and the console's
+ * socket frame — the frame is what meets the 2-second budget.
+ */
+export interface SosOpsAlertPayload extends Record<string, unknown> {
+  alertId: string;
+  subjectType: 'user' | 'driver';
+  /** Resolved display label ("Ramesh K") — a name, not an address. */
+  subjectLabel: string;
+  lat: number;
+  lng: number;
+  opsEmail: string;
+}
+
+/**
+ * W14 — G12's nearest-driver broadcast. Only the explicit ops action emits
+ * this; nothing broadcast automatically, ever.
+ */
+export interface SosBroadcastPayload extends Record<string, unknown> {
+  alertId: string;
+  driverIds: string[];
+  lat: number;
+  lng: number;
+  radiusKm: number;
+}
+
+/**
+ * W15 — a public reply on a support ticket. The requester is `user` or
+ * `driver` or `fleet`; `resolveWalletOwner` is the resolver that already
+ * speaks all three.
+ */
+export interface SupportReplyPayload extends Record<string, unknown> {
+  ticketId: string;
+  reference: string;
+  requesterType: 'user' | 'driver' | 'fleet';
+  requesterId: string;
+  /** The `support_ticket_messages` row — the collapse key. */
+  messageId: string;
+}
+
+/** W15 — the ticket moved to `resolved`. */
+export interface SupportResolvedPayload extends Record<string, unknown> {
+  ticketId: string;
+  reference: string;
+  requesterType: 'user' | 'driver' | 'fleet';
+  requesterId: string;
+  /** ISO instant of the resolution — makes the dedupe key per-occurrence. */
+  resolvedAt: string;
+}
+
+/**
+ * The location link every SOS channel carries. Coordinates only — reverse
+ * geocoding at 03:00 is a dependency this must not have.
+ */
+const mapsLink = (lat: number, lng: number): string => `https://maps.google.com/?q=${lat},${lng}`;
+
+/**
+ * The synthetic ops-mailbox recipient id, the same trick `ops.ledger_drift`
+ * uses. Type `ops` rather than `fleet` since W14 widened the union — the two
+ * shapes are no longer conflated.
+ */
+const SOS_OPS_MAILBOX_ID = '00000000-0000-0000-0000-000000000000';
 
 // ---------------------------------------------------------------------------
 // Registered
@@ -946,20 +1034,184 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
       weekLabel: p.weekLabel,
     }),
   }),
+  // ── W14: safety (§13) ──────────────────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * §12.2 row *SOS triggered* → the emergency contacts.
+     *
+     * SMS + WhatsApp only (the row's channels less the ops push, which has no
+     * device to land on). `alwaysOn` because `category: 'safety'` forces it —
+     * §12.3 says a preference must never suppress an SOS, and the contacts are
+     * snapshot rows with no preferences at all. The WhatsApp attempt is the
+     * DESIGNED degradation while template approval is pending: the catalog has
+     * no `waTemplateName`, so the attempt fails loudly in
+     * `notification_deliveries.last_error` and the console says so.
+     *
+     * Deduped on the alert id: a second panic tap re-pings the console but
+     * must not message the contacts twice.
+     */
+    event: 'sos.triggered',
+    matrixRow: 'sos',
+    channels: ['sms', 'whatsapp'],
+    template: 'sos_triggered',
+    category: 'safety',
+    alwaysOn: true,
+    priority: 'high',
+    dedupeKey: (p: SosTriggeredPayload) => p.alertId,
+    resolve: async (p: SosTriggeredPayload, ctx) => {
+      if (p.contacts.length === 0) return [];
+      // RE-READ the snapshot rows, never the live `emergency_contacts` table:
+      // a contact edited mid-incident must still be reached at the number the
+      // snapshot recorded, and re-resolution at delivery time must find exactly
+      // the same recipient (the delivery key is `contact:<rowId>`).
+      const rows = await ctx.db
+        .select({ id: sosAlertContacts.id, phone: sosAlertContacts.phone })
+        .from(sosAlertContacts)
+        .where(
+          inArray(
+            sosAlertContacts.id,
+            p.contacts.map((contact) => contact.id),
+          ),
+        );
+      return rows.map((row): Recipient => ({
+        subjectType: 'contact',
+        subjectId: row.id,
+        mobile: row.phone,
+        email: null,
+        pushTokens: [],
+        prefs: {},
+      }));
+    },
+    variables: (p: SosTriggeredPayload, recipient) => ({
+      name: p.contacts.find((contact) => contact.id === recipient.subjectId)?.name ?? 'there',
+      link: mapsLink(p.lat, p.lng),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * The ops alert — operational, not a §12.2 product row (no `matrixRow`).
+     *
+     * Recipients are the on-call pool (G17): every active admin flagged
+     * `receives_ops_alerts`, plus the ops mailbox. No inbox rows are written —
+     * `ops` is not a database subject — and the realtime `sos:alert` frame is
+     * what satisfies the phase's 2-second acceptance criterion; email/SMS are
+     * the "somebody is definitely told" half.
+     */
+    event: 'sos.ops_alert',
+    matrixRow: '',
+    channels: ['email', 'sms'],
+    template: 'sos_ops_alert',
+    category: 'safety',
+    alwaysOn: true,
+    priority: 'high',
+    dedupeKey: (p: SosOpsAlertPayload) => p.alertId,
+    resolve: async (p: SosOpsAlertPayload, ctx) => {
+      const admins = await ctx.db
+        .select({ id: adminUsers.id, mobile: adminUsers.mobile, email: adminUsers.email })
+        .from(adminUsers)
+        .where(and(eq(adminUsers.receivesOpsAlerts, true), eq(adminUsers.status, 'active')));
+
+      return [
+        ...admins.map((admin): Recipient => ({
+          subjectType: 'ops',
+          subjectId: admin.id,
+          mobile: admin.mobile,
+          email: admin.email,
+          pushTokens: [],
+          prefs: {},
+        })),
+        // The mailbox — a screen nobody is watching at 03:00 is not an alert
+        // path (G17). The synthetic id never collides with a real admin.
+        {
+          subjectType: 'ops',
+          subjectId: SOS_OPS_MAILBOX_ID,
+          mobile: null,
+          email: p.opsEmail,
+          pushTokens: [],
+          prefs: {},
+        },
+      ];
+    },
+    variables: (p: SosOpsAlertPayload) => ({
+      subject: p.subjectLabel,
+      link: mapsLink(p.lat, p.lng),
+      alertRef: p.alertId.slice(0, 8).toUpperCase(),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * G12's broadcast — an explicit ops action, never automatic. Push-only, to
+     * the online drivers the service selected by radius; `driverIds` is the
+     * decision the operator made, and the resolver keeps it stable per retry.
+     */
+    event: 'sos.broadcast',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'sos_broadcast',
+    category: 'safety',
+    alwaysOn: true,
+    priority: 'high',
+    resolve: (p: SosBroadcastPayload, ctx) => ctx.resolver.resolveManyDrivers(p.driverIds),
+    variables: (p: SosBroadcastPayload) => ({ link: mapsLink(p.lat, p.lng) }),
+  }),
+
+  // ── W15: support (§9.4.12) ─────────────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * A PUBLIC reply on a ticket — operational, not a §12.2 product row (the
+     * matrix has no ticket rows; `fleet.driver_invited` is the precedent).
+     *
+     * Deduped on the message id: a double-submitted reply collapses, and the
+     * next reply is a new message and notifies again. Email is the channel
+     * that works for a fleet (no push devices); customers and drivers get both.
+     */
+    event: 'support.reply',
+    matrixRow: '',
+    channels: ['push', 'email'],
+    template: 'support_reply',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'open' },
+    dedupeKey: (p: SupportReplyPayload) => p.messageId,
+    resolve: (p: SupportReplyPayload, ctx) =>
+      ctx.resolver.resolveWalletOwner(p.requesterType, p.requesterId).then(one),
+    variables: (p: SupportReplyPayload) => ({ reference: p.reference }),
+  }),
+
+  defineTrigger({
+    /**
+     * The ticket was resolved. Keyed on the RESOLUTION INSTANT, not the ticket:
+     * a reopened ticket that resolves again must notify again, and the
+     * transition check already stops a double resolve from emitting twice.
+     */
+    event: 'support.resolved',
+    matrixRow: '',
+    channels: ['push', 'email'],
+    template: 'support_resolved',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'open' },
+    dedupeKey: (p: SupportResolvedPayload) => `${p.ticketId}:resolved:${p.resolvedAt}`,
+    resolve: (p: SupportResolvedPayload, ctx) =>
+      ctx.resolver.resolveWalletOwner(p.requesterType, p.requesterId).then(one),
+    variables: (p: SupportResolvedPayload) => ({ reference: p.reference }),
+  }),
 ];
 
 // ---------------------------------------------------------------------------
 // Deferred — declared, not forgotten
 // ---------------------------------------------------------------------------
 
-export const DEFERRED_TRIGGERS: DeferredTrigger[] = [
-  {
-    matrixRow: 'sos',
-    unregisteredUntilPhase: 20,
-    reason:
-      '`sos_alerts`, `POST /v1/sos` and the emergency-contact fan-out are Phase 20. The WhatsApp adapter and the always-on `safety` category ship here so Phase 20 invents nothing.',
-  },
-];
+/**
+ * Every §12.2 row is registered as of W14 — `sos` was the last deferral. The
+ * array stays, and `registry.spec.ts` keeps reading it, because a later phase
+ * that ships a producer without a trigger must have somewhere honest to say so.
+ */
+export const DEFERRED_TRIGGERS: DeferredTrigger[] = [];
 
 /** Registered triggers indexed by event, built once. */
 export const TRIGGERS_BY_EVENT = new Map<string, RegisteredTrigger<never>>(

@@ -28,7 +28,12 @@ import {
   adminPricingConfigSchema,
   adminPricingHistoryEntrySchema,
   adminRefundsResponseSchema,
+  adminSosResponseSchema,
+  adminSupportTicketsResponseSchema,
   adminTransactionsResponseSchema,
+  contentPagesResponseSchema,
+  adminContentPagesResponseSchema,
+  supportTicketsResponseSchema,
   adminSessionsResponseSchema,
   adminSuspensionRequestsResponseSchema,
   adminZonesResponseSchema,
@@ -81,6 +86,10 @@ import {
   payouts,
   refunds,
   serviceZones,
+  sosAlerts,
+  supportTicketMessages,
+  supportTickets,
+  contentPages,
   suspensionRequests,
 } from '../db/schema';
 import {
@@ -264,6 +273,21 @@ describe('response contracts', () => {
       // with real rows: a booking that settled, and an open dispute on it.
       { path: '/v1/admin/bookings', schema: adminBookingsResponseSchema, realm: 'admin' },
       { path: '/v1/admin/disputes', schema: adminDisputesResponseSchema, realm: 'admin' },
+      // W14 — the SOS queue, seeded below with one open alert. The
+      // parameterised detail is EXCLUDED and asserted with
+      // `expectMatchesContract(adminSosDetailSchema)` in `sos.e2e.spec.ts`.
+      { path: '/v1/admin/sos', schema: adminSosResponseSchema, realm: 'admin' },
+      // W15 — tickets + content, all seeded below. The public content read is
+      // `@Public()`; the token rides along simply because this table always
+      // sends one, and the route ignoring it is itself pinned here.
+      { path: '/v1/support/tickets', schema: supportTicketsResponseSchema, realm: 'customer' },
+      {
+        path: '/v1/admin/support/tickets',
+        schema: adminSupportTicketsResponseSchema,
+        realm: 'admin',
+      },
+      { path: '/v1/content/faq', schema: contentPagesResponseSchema, realm: 'customer' },
+      { path: '/v1/admin/content', schema: adminContentPagesResponseSchema, realm: 'admin' },
     ];
 
   beforeAll(async () => {
@@ -479,6 +503,61 @@ describe('response contracts', () => {
     await seedWalletWithLedger(db, { ownerId: pendingDriverId, ownerType: 'driver' }, [
       { type: 'adjustment', amount: '250.00', refId: contractPaidBookingId },
     ]);
+
+    // W14 — one open SOS alert so the queue row above is non-empty. Subject is
+    // the contract customer, so the joined name/mobile resolve rather than
+    // coming back null on a route whose whole job is showing who is in trouble.
+    await db.insert(sosAlerts).values({
+      subjectType: 'user',
+      subjectId: contractCustomer,
+      lat: 12.9716,
+      lng: 77.5946,
+      accuracyM: 9,
+      source: 'app',
+      status: 'triggered',
+    });
+
+    // W15 — one ticket (with its opening message) and two content pages. The
+    // ticket belongs to the contract customer so the requester-scoped row
+    // above is a real list, and the pages make the public content read
+    // non-empty (an empty array matches almost any schema).
+    const [contractTicket] = await db
+      .insert(supportTickets)
+      .values({
+        reference: 'TKT-CONTRACT1',
+        requesterType: 'user',
+        requesterId: contractCustomer,
+        category: 'booking',
+        subject: 'Contract coverage ticket',
+        status: 'open',
+        priority: 'normal',
+      })
+      .returning({ id: supportTickets.id });
+    await db.insert(supportTicketMessages).values({
+      ticketId: contractTicket!.id,
+      authorType: 'requester',
+      authorId: contractCustomer,
+      body: 'The contract table needs a real ticket to read.',
+      visibility: 'public',
+    });
+    await db.insert(contentPages).values([
+      {
+        slug: 'contract-faq',
+        kind: 'faq',
+        title: 'Contract question',
+        bodyMd: 'Contract answer.',
+        sortOrder: 1,
+        isPublished: true,
+      },
+      {
+        slug: 'contract-terms',
+        kind: 'legal',
+        title: 'Contract Terms',
+        bodyMd: 'Contract legal copy.',
+        sortOrder: 1,
+        isPublished: true,
+      },
+    ]);
   });
 
   afterAll(async () => {
@@ -532,7 +611,16 @@ describe('response contracts', () => {
 });
 
 /** Realms whose GET routes this table is responsible for. */
-const COVERED_PREFIXES = ['/v1/fleet', '/v1/services', '/v1/me', '/v1/bookings', '/v1/admin'];
+const COVERED_PREFIXES = [
+  '/v1/fleet',
+  '/v1/services',
+  '/v1/me',
+  '/v1/bookings',
+  '/v1/admin',
+  // W15: the requester's own reads and the public FAQ/legal pages.
+  '/v1/support',
+  '/v1/content',
+];
 
 /**
  * Segment-aware, NOT `startsWith`. A bare prefix test matched `/v1/metrics`
@@ -650,6 +738,23 @@ const EXCLUDED = new Set([
   // `expectMatchesContract` against `adminDisputeDetailSchema` in
   // `admin-disputes.e2e.spec.ts`, which opens a real dispute.
   '/v1/admin/disputes/:id',
+  // W14 — the SOS detail (alert + contact snapshot + full timeline),
+  // parameterised; asserted with `expectMatchesContract` against
+  // `adminSosDetailSchema` in `sos.e2e.spec.ts`, which raises a real alert.
+  '/v1/admin/sos/:id',
+  // W15 — the requester's ticket detail and the console's, parameterised;
+  // asserted with `expectMatchesContract` against `supportTicketDetailSchema`
+  // and `adminSupportTicketDetailSchema` in `support.e2e.spec.ts`.
+  '/v1/support/tickets/:id',
+  '/v1/admin/support/tickets/:id',
+  // W15 — the content editor's per-slug read, parameterised; asserted against
+  // `adminContentPageSchema` in `content.e2e.spec.ts`.
+  '/v1/admin/content/:slug',
+  // W15 — the public content read is parameterised by KIND, and `kind` has two
+  // legal values; the static `/v1/content/faq` row above walks that envelope
+  // (the `/v1/content/legal` twin is the same handler and the same schema), so
+  // only the placeholder form needs excluding.
+  '/v1/content/:kind',
   // W9 — the reconciliation download is a byte stream like the fleet exports;
   // its header order and signed refund rows are asserted in
   // \`admin-finance-console.e2e.spec.ts\`.
