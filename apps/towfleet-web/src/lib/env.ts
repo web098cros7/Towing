@@ -64,6 +64,8 @@ export const env = {
     '') as MockState,
   /** W19's privacy console (M6). */
   mockAdminPrivacyState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PRIVACY_STATE ?? '') as MockState,
+  /** W20's manual-quote queue (M6). */
+  mockAdminQuotesState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_QUOTES_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
