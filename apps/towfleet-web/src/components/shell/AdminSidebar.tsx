@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   Briefcase,
+  Calculator,
   Car,
   Compass,
   CreditCard,
@@ -16,6 +17,7 @@ import {
   Megaphone,
   Percent,
   Scale,
+  Send,
   Settings,
   ShieldAlert,
   ShieldCheck,
@@ -143,6 +145,13 @@ const NAV_ITEMS: readonly AdminNavItem[] = [
     permission: 'promo.manage',
   },
   {
+    id: 'quotes',
+    href: '/admin/quotes',
+    label: 'Quotes',
+    icon: Calculator,
+    permission: 'quote.manage',
+  },
+  {
     id: 'support',
     href: '/admin/support',
     label: 'Support',
@@ -162,7 +171,9 @@ const NAV_ITEMS: readonly AdminNavItem[] = [
     href: '/admin/analytics',
     label: 'Analytics',
     icon: BarChart3,
-    permission: 'analytics.export',
+    // W17: reading is its own permission (all four roles); the export button
+    // inside the page stays behind `analytics.export`.
+    permission: 'analytics.view',
   },
   {
     id: 'privacy',
@@ -179,6 +190,13 @@ const NAV_ITEMS: readonly AdminNavItem[] = [
     permission: 'admin.manage',
   },
   { id: 'audit', href: '/admin/audit', label: 'Audit', icon: Bell, permission: 'audit.read' },
+  {
+    id: 'notifications',
+    href: '/admin/settings/notifications',
+    label: 'Notifications',
+    icon: Send,
+    permission: 'notification.view',
+  },
   // Self-service (2FA, sessions) — every admin, no permission gate.
   {
     id: 'settings',

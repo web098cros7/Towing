@@ -55,6 +55,8 @@ export const env = {
   mockAdminSupportState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_SUPPORT_STATE ?? '') as MockState,
   /** W15's content editor (M5). */
   mockAdminContentState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_CONTENT_STATE ?? '') as MockState,
+  /** W16's promotions console (M6). */
+  mockAdminPromotionsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PROMOTIONS_STATE ?? '') as MockState,
 
   /**
    * MapLibre style URL. Empty by default, which selects the built-in vendorless
