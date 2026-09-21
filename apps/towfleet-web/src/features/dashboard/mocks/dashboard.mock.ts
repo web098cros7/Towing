@@ -14,7 +14,7 @@ export const dashboardMock: DashboardSummary = {
       type: 'doc_expired',
       severity: 'error',
       message: 'Insurance expired for KA-01-AB-1234 — truck removed from dispatch',
-      href: '/trucks',
+      href: '/trucks?truck=tr-1',
       createdAt: new Date(Date.now() - 40 * 60_000).toISOString(),
     },
     {
@@ -22,7 +22,7 @@ export const dashboardMock: DashboardSummary = {
       type: 'doc_expiring',
       severity: 'warning',
       message: 'PUC for KA-05-MJ-7788 expires in 12 days',
-      href: '/trucks',
+      href: '/trucks?truck=tr-2',
       createdAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
     },
     {

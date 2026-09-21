@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Upload } from 'lucide-react';
 import { Badge, Button, DataTable, FilterBar, SearchInput, type ColumnDef } from '@towing/web-ui';
@@ -58,6 +58,13 @@ function TrucksList() {
   // stays local so the back button keeps working.
   const searchParams = useSearchParams();
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
+  // Alert deep-link (`/trucks?truck=<id>`) opens that truck's checklist. Keyed on the param, so
+  // closing the drawer does not reopen it, while a NEW link (the palette, another alert) does.
+  // An id that is not in the fleet simply opens nothing: `selected` below resolves to null.
+  const truckParam = searchParams.get('truck');
+  useEffect(() => {
+    if (truckParam) setSelectedId(truckParam);
+  }, [truckParam]);
 
   const selected = useMemo(
     () => data?.find((t) => t.id === selectedId) ?? null,

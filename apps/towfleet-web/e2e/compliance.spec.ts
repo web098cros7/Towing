@@ -38,6 +38,24 @@ test('alerts can be filtered by severity', async ({ page }) => {
   await expect(page.getByText('Insurance expired for KA-01-AB-1234')).toBeHidden();
 });
 
+test('an alert opens the checklist of the truck it is about', async ({ page }) => {
+  await login(page);
+  await page.goto('/alerts');
+
+  // The arrow beside the newest alert (KA-01-AB-1234) deep-links to that truck, not to the whole list.
+  await page.getByRole('link', { name: 'Open related record' }).first().click();
+  await expect(page).toHaveURL(/\/trucks\?truck=tr-1$/);
+  await expect(page.getByRole('heading', { name: 'Compliance checklist' })).toBeVisible();
+});
+
+test('a deep link to an unknown truck shows the list and opens nothing', async ({ page }) => {
+  await login(page);
+  await page.goto('/trucks?truck=does-not-exist');
+
+  await expect(page.getByRole('heading', { name: 'Trucks' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Compliance checklist' })).toHaveCount(0);
+});
+
 test('re-check reports what it changed', async ({ page }) => {
   await login(page);
   await page.goto('/alerts');
