@@ -48,6 +48,8 @@ function kindOf(position: FleetPosition): TruckFeatureProps['kind'] {
 export function matchesFilter(position: FleetPosition, filter: MapStatusFilter): boolean {
   if (filter === 'all') return true;
   if (filter === 'on_job') return position.activeBookingId !== null;
+  // The 'Idle' tab means active AND not on a job, matching how kindOf and the rail badge classify it.
+  if (filter === 'active') return position.status === 'active' && position.activeBookingId === null;
   return position.status === filter;
 }
 

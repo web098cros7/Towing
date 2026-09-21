@@ -99,6 +99,24 @@ test('status filter narrows the fleet rail', async ({ page }) => {
   await expect(page.getByText('KA-01-AB-1234')).toBeVisible();
 });
 
+test('the Idle tab lists only trucks that are not on a job', async ({ page }) => {
+  await login(page);
+  await page.goto('/map');
+
+  const heading = page.getByRole('heading', { name: /^Fleet \(\d+\)$/ });
+
+  await page
+    .getByRole('group', { name: 'Filter by status' })
+    .getByRole('button', { name: 'Idle' })
+    .click();
+
+  // The mock fleet has 8 trucks: tr-2, tr-3, tr-5 and tr-8 are active with no booking; tr-4 and tr-7 are active but on a job; tr-1 is non-compliant and tr-6 inactive.
+  await expect(heading).toHaveText('Fleet (4)');
+  await expect(page.getByText('KA-05-MJ-7788')).toBeVisible();
+  await expect(page.getByText('KA-51-GH-9902')).toHaveCount(0);
+  await expect(page.getByText('KA-09-WE-8899')).toHaveCount(0);
+});
+
 test('dashboard shows the live fleet mini-map', async ({ page }) => {
   await login(page);
 
