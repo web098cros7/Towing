@@ -41,7 +41,7 @@ test('a finance admin keeps the neutral quick links instead of a 403', async ({ 
 
   await page.goto('/admin/login');
   await page.getByLabel('Email').fill('finance@towing.local');
-  await page.getByLabel('Password').fill('AdminPass123!');
+  await page.getByLabel('Password', { exact: true }).fill('AdminPass123!');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();

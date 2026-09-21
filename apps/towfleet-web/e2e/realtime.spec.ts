@@ -12,7 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 async function login(page: Page) {
   await page.goto('/login');
   await page.getByLabel('Email').fill('lakshmi@recovery.in');
-  await page.getByLabel('Password').fill('password123');
+  await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();

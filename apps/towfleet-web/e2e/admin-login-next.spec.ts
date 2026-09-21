@@ -10,7 +10,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function mockLogin(page: Page) {
   await page.getByLabel('Email').fill('ops@towing.local');
-  await page.getByLabel('Password').fill('AdminPass123!');
+  await page.getByLabel('Password', { exact: true }).fill('AdminPass123!');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();

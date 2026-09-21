@@ -22,7 +22,7 @@ export async function liveLogin(
 ): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Email').fill(credentials.email);
-  await page.getByLabel('Password').fill(credentials.password);
+  await page.getByLabel('Password', { exact: true }).fill(credentials.password);
 
   const [loginResponse] = await Promise.all([
     page.waitForResponse((res) => res.url().includes('/api/session/login')),

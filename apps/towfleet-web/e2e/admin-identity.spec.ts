@@ -13,5 +13,8 @@ test('any admin screen knows who is signed in', async ({ page }) => {
   await adminLogin(page);
   await page.goto('/admin/drivers');
 
-  await expect(page.getByTestId('admin-identity')).toHaveText(/Mock Admin.*operations/);
+  // The top bar carries the name; the sub-role lives in the account menu.
+  await expect(page.getByTestId('admin-identity')).toHaveText('Mock Admin');
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await expect(page.getByRole('menu')).toContainText('operations');
 });

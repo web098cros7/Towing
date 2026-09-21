@@ -11,19 +11,21 @@ import { adminLogin } from './support/adminLogin';
  * `features/admin-ops/mocks/adminOps.mock.ts`.
  */
 
-test('renders every KPI tile from the mock day', async ({ page }) => {
+test('renders the live-now card and the range analytics from the mock day', async ({ page }) => {
   await adminLogin(page);
 
+  // Live now: rides, drivers, approvals and SOS come from the mock day's KPIs.
   await expect(page.getByText('Active rides')).toBeVisible();
-  await expect(page.getByText('2 searching now')).toBeVisible();
-  await expect(page.getByText('11 dispatchable now')).toBeVisible();
-  // 845000 paise → ₹8,450; 126750 → ₹1,267.50 (the formatter's two cases).
-  await expect(page.getByText('₹8,450')).toBeVisible();
-  await expect(page.getByText('₹1,267.50')).toBeVisible();
-  await expect(page.getByText('92.5%')).toBeVisible();
-  await expect(page.getByText('42s')).toBeVisible();
-  await expect(page.getByText('p90 128s')).toBeVisible();
+  await expect(page.getByText('2 searching')).toBeVisible();
+  await expect(page.getByText('11 dispatchable')).toBeVisible();
   await expect(page.getByText('KYC 4 · Payouts 2')).toBeVisible();
+  await expect(page.getByText('Ack p50 18s')).toBeVisible();
+
+  // The range analytics replaced the single-day tiles, which remain only as the
+  // fallback for an admin without analytics access.
+  await expect(page.getByText('GMV and commission across the range')).toBeVisible();
+  await expect(page.getByText('GMV share by distance band')).toBeVisible();
+  await expect(page.getByText('Fill rate')).toBeVisible();
 });
 
 test('renders the live activity feed with a row per source kind', async ({ page }) => {

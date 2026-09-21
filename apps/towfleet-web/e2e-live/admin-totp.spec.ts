@@ -61,7 +61,7 @@ async function waitPastStep(step: number): Promise<void> {
 async function submitCredentials(page: Page, email: string, password: string): Promise<void> {
   const loginResponse = page.waitForResponse((res) => res.url().includes('/api/admin-session/login'));
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Continue' }).click();
   await (await loginResponse).json();
 }
@@ -70,7 +70,7 @@ async function submitCredentials(page: Page, email: string, password: string): P
 async function smsSignIn(page: Page, email: string, password: string): Promise<void> {
   const loginResponse = page.waitForResponse((res) => res.url().includes('/api/admin-session/login'));
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Continue' }).click();
   const { challengeId } = (await (await loginResponse).json()) as { challengeId: string };
 

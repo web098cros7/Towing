@@ -42,5 +42,8 @@ test('the sidebar marks the current section, and the topbar carries identity', a
   await expect(page.getByTestId('admin-nav-verification')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('admin-nav-dashboard')).not.toHaveAttribute('aria-current', 'page');
 
-  await expect(page.getByTestId('admin-identity')).toContainText('operations');
+  // The top bar carries the name; the sub-role lives in the account menu.
+  await expect(page.getByTestId('admin-identity')).toContainText('Mock Admin');
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await expect(page.getByRole('menu')).toContainText('operations');
 });

@@ -16,7 +16,7 @@ const BACKEND_URL = process.env.LIVE_BACKEND_URL ?? 'http://localhost:4000';
 export async function adminLiveLogin(page: Page, email: string): Promise<void> {
   await page.goto('/admin/login');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('Password123!');
+  await page.getByLabel('Password', { exact: true }).fill('Password123!');
 
   const loginResponse = page.waitForResponse((res) =>
     res.url().includes('/api/admin-session/login'),
