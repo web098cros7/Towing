@@ -8,11 +8,17 @@ import { adminIdentitySchema, type AdminIdentity } from '@towing/api-contracts';
 interface AdminIdentityValue {
   admin: AdminIdentity | null;
   isLoading: boolean;
+  /** True only once the query failed AND its one retry also failed (the BFF or backend answered 5xx). A 401 is not an error: it redirects to login. */
+  isError: boolean;
+  /** Re-run the identity query. */
+  retry: () => void;
 }
 
 const AdminIdentityContext = createContext<AdminIdentityValue>({
   admin: null,
   isLoading: true,
+  isError: false,
+  retry: () => {},
 });
 
 async function fetchAdminIdentity(): Promise<AdminIdentity | null> {
@@ -61,7 +67,12 @@ export function AdminIdentityProvider({ children }: { children: ReactNode }) {
 
   return (
     <AdminIdentityContext.Provider
-      value={{ admin: query.data ?? null, isLoading: query.isLoading }}
+      value={{
+        admin: query.data ?? null,
+        isLoading: query.isLoading,
+        isError: query.isError,
+        retry: () => void query.refetch(),
+      }}
     >
       {children}
     </AdminIdentityContext.Provider>
