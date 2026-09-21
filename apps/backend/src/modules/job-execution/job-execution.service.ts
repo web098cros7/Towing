@@ -375,11 +375,7 @@ export class JobExecutionService {
    * §3.5: this NEVER charges the customer. Their vehicle is still broken and
    * they are further from help than they were twenty minutes ago.
    */
-  async unable(
-    bookingId: string,
-    driverId: string,
-    body: JobUnable,
-  ): Promise<JobUnableResponse> {
+  async unable(bookingId: string, driverId: string, body: JobUnable): Promise<JobUnableResponse> {
     await this.requireDriverJob(bookingId, driverId);
 
     const result = await this.db.transaction((tx) =>

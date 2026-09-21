@@ -71,7 +71,10 @@ const mockSource: AdminOpsDataSource = {
     resolveMock(
       env.mockAdminOpsState,
       { badges: adminOpsBadgesMock, at: new Date().toISOString() },
-      { badges: { ...adminOpsBadgesMock, pendingKyc: 0, pendingPayouts: 0, deletionRequests: 0 }, at: new Date().toISOString() },
+      {
+        badges: { ...adminOpsBadgesMock, pendingKyc: 0, pendingPayouts: 0, deletionRequests: 0 },
+        at: new Date().toISOString(),
+      },
     ),
   activity: () =>
     resolveMock(
@@ -112,8 +115,7 @@ const restSource: AdminOpsDataSource = {
     const qs = params.toString();
     return adminApiFetch<AdminOpsLiveResponse>(`ops/live${qs ? `?${qs}` : ''}`);
   },
-  dispatchSearches: () =>
-    adminApiFetch<AdminDispatchInspectorListResponse>('ops/dispatch'),
+  dispatchSearches: () => adminApiFetch<AdminDispatchInspectorListResponse>('ops/dispatch'),
   dispatchInspector: (bookingId) =>
     adminApiFetch<AdminDispatchInspectorResponse>(`ops/dispatch/${bookingId}`),
 };

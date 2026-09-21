@@ -106,7 +106,11 @@ export function PricingMatrices({
     if (typed === '' || !Number.isFinite(rupees(typed)) || rupees(typed) < 0) return true;
     if (rule.priceMaxPaise !== null) {
       const typedCeiling = ceilings[rule.id];
-      if (typedCeiling === undefined || typedCeiling === '' || !Number.isFinite(rupees(typedCeiling)))
+      if (
+        typedCeiling === undefined ||
+        typedCeiling === '' ||
+        !Number.isFinite(rupees(typedCeiling))
+      )
         return true;
       // A ceiling below the floor quotes a longer tow LESS than a shorter one.
       return toPaise(typedCeiling) < toPaise(typed);
@@ -138,7 +142,8 @@ export function PricingMatrices({
     }
     const duplicate = activeSlabs(vehicleClass, config).some((rule) => rule.maxKm === maxKm);
     if (duplicate) {
-      const label = CLASSES.find((entry) => entry.vehicleClass === vehicleClass)?.label ?? vehicleClass;
+      const label =
+        CLASSES.find((entry) => entry.vehicleClass === vehicleClass)?.label ?? vehicleClass;
       setErrorMessage(
         `${label} already prices up to ${maxKm} km — retire that band first, or pick another distance.`,
       );
@@ -158,7 +163,10 @@ export function PricingMatrices({
   const retire = async (rule: AdminPricingRule) => {
     setErrorMessage(null);
     try {
-      await deactivate.mutateAsync({ ruleId: rule.id, body: { reason: 'Retired from the console' } });
+      await deactivate.mutateAsync({
+        ruleId: rule.id,
+        body: { reason: 'Retired from the console' },
+      });
       setPendingRetire(null);
       toast(`Band retired: ${rule.maxKm} km`, 'success');
     } catch (error) {
@@ -235,9 +243,7 @@ export function PricingMatrices({
                   {retiredSlabs(vehicleClass, config).map((rule) => (
                     <tr key={rule.id} className="border-t border-border text-text-tertiary">
                       <td className="py-1.5 tabular-nums">{rule.maxKm} km</td>
-                      <td className="py-1.5">
-                        ₹{(rule.pricePaise / 100).toLocaleString('en-IN')}
-                      </td>
+                      <td className="py-1.5">₹{(rule.pricePaise / 100).toLocaleString('en-IN')}</td>
                       <td className="py-1.5 text-right">
                         <Badge>Retired</Badge>
                       </td>
@@ -403,7 +409,9 @@ export function PricingMatrices({
       <div className="mt-4">
         <Button
           onClick={() => void savePrices()}
-          disabled={!canEdit || update.isPending || changedRules.length === 0 || Boolean(invalidRow)}
+          disabled={
+            !canEdit || update.isPending || changedRules.length === 0 || Boolean(invalidRow)
+          }
           data-testid="pricing-save-rules"
         >
           {update.isPending ? 'Saving…' : 'Save fares'}
@@ -428,8 +436,7 @@ function activeSlabs(vehicleClass: VehicleClass, config: AdminPricingConfig): Ad
 function retiredSlabs(vehicleClass: VehicleClass, config: AdminPricingConfig): AdminPricingRule[] {
   return config.rules
     .filter(
-      (rule) =>
-        rule.ruleKind === 'slab' && rule.vehicleClass === vehicleClass && !rule.isActive,
+      (rule) => rule.ruleKind === 'slab' && rule.vehicleClass === vehicleClass && !rule.isActive,
     )
     .sort((a, b) => (a.maxKm ?? 0) - (b.maxKm ?? 0));
 }

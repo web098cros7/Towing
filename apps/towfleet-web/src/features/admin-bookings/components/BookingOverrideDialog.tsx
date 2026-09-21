@@ -11,7 +11,11 @@ import {
   Select,
   Textarea,
 } from '@towing/web-ui';
-import { ADMIN_TRANSITION_EDGES, type AdminBookingTransitionBody, type JobStatus } from '@towing/api-contracts';
+import {
+  ADMIN_TRANSITION_EDGES,
+  type AdminBookingTransitionBody,
+  type JobStatus,
+} from '@towing/api-contracts';
 
 /**
  * §9.4.7's manual override — the super-admin escape hatch, and deliberately
@@ -94,7 +98,9 @@ export function BookingOverrideDialog({
             onChange={(event) => setTo(event.target.value as JobStatus)}
             data-testid="booking-override-target"
           >
-            {targets.length === 0 ? <option value="">No legal override from this status</option> : null}
+            {targets.length === 0 ? (
+              <option value="">No legal override from this status</option>
+            ) : null}
             {targets.length > 1 ? <option value="">Choose a target…</option> : null}
             {targets.map((target) => (
               <option key={target} value={target}>

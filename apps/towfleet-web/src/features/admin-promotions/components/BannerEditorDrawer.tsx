@@ -15,7 +15,11 @@ import {
 } from '@towing/web-ui';
 import type { AdminBanner, BannerAudience } from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
-import { useCreateBanner, useUpdateBanner, useUploadBannerImage } from '../api/adminPromotions.mutations';
+import {
+  useCreateBanner,
+  useUpdateBanner,
+  useUploadBannerImage,
+} from '../api/adminPromotions.mutations';
 import { fromLocalInput, toLocalInput } from '../lib/promotionsMath';
 
 interface BannerDraft {
@@ -268,7 +272,9 @@ export function BannerEditorDrawer({
           <div className="flex items-center justify-between rounded-card border border-border p-3">
             <div>
               <div className="text-sm font-semibold">Active</div>
-              <div className="text-xs text-text-secondary">The off switch, independent of schedule.</div>
+              <div className="text-xs text-text-secondary">
+                The off switch, independent of schedule.
+              </div>
             </div>
             <Switch
               checked={draft.isActive}

@@ -87,9 +87,7 @@ describe('migration 0025 admin bookings and disputes', () => {
     );
     // Idempotent re-run shape + the cap itself.
     expect(sql).toContain('DROP CONSTRAINT IF EXISTS "ck_payments_refunded_within_amount"');
-    expect(sql).toContain(
-      `CHECK ("refunded_amount" >= 0 AND "refunded_amount" <= "amount")`,
-    );
+    expect(sql).toContain(`CHECK ("refunded_amount" >= 0 AND "refunded_amount" <= "amount")`);
   });
 
   it('adds refunds.dispute_id, refunds.kind, payment_id and liability with an idempotent CHECK swap', () => {

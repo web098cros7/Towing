@@ -90,7 +90,13 @@ export class AdminDisputesController {
     @Req() request: AuthedRequest,
   ) {
     const admin = requireAdmin(request);
-    return this.disputes.note(admin.id, admin.subRole, disputeId, body, sessionContextFrom(request));
+    return this.disputes.note(
+      admin.id,
+      admin.subRole,
+      disputeId,
+      body,
+      sessionContextFrom(request),
+    );
   }
 
   @Post('disputes/:id/evidence/presign')

@@ -301,7 +301,8 @@ export class AdminDriversService implements OnModuleInit {
   ): Promise<AdminKycResult> {
     const mode = body.mode ?? 'after_current_job';
 
-    const shelved: AdminKycResult | Pick<AdminKycResult, 'driverId' | 'kycStatus' | 'rejectionReason'> =
+    const shelved:
+      AdminKycResult | Pick<AdminKycResult, 'driverId' | 'kycStatus' | 'rejectionReason'> =
       await this.db.transaction(async (tx) => {
         // The lock both suspension branches and `applyPendingSuspension` take
         // before reading. `OfferService.accept` locks this same row before the
@@ -929,7 +930,10 @@ export class AdminDriversService implements OnModuleInit {
     context: SessionContext = {},
   ): Promise<AdminCapabilitiesResponse> {
     const [before] = await this.db
-      .select({ vehicleClass: drivers.vehicleClass, longDistanceEnabled: drivers.longDistanceEnabled })
+      .select({
+        vehicleClass: drivers.vehicleClass,
+        longDistanceEnabled: drivers.longDistanceEnabled,
+      })
       .from(drivers)
       .where(eq(drivers.id, driverId))
       .limit(1);
@@ -945,7 +949,10 @@ export class AdminDriversService implements OnModuleInit {
         updatedAt: new Date(),
       })
       .where(eq(drivers.id, driverId))
-      .returning({ vehicleClass: drivers.vehicleClass, longDistanceEnabled: drivers.longDistanceEnabled });
+      .returning({
+        vehicleClass: drivers.vehicleClass,
+        longDistanceEnabled: drivers.longDistanceEnabled,
+      });
 
     await this.audit.record({
       adminId,

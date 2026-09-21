@@ -106,7 +106,7 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       expect((await selectFor(bookingId)).excluded.offline?.count).toBe(1);
     });
 
-    it('excludes a suspended fleet\'s drivers, whatever they look like', async () => {
+    it("excludes a suspended fleet's drivers, whatever they look like", async () => {
       // A15: the fleet counterpart of `not_approved`. Approved, online, right
       // class — excluded on the fleet row alone.
       const fleet = await seedFleet(db, 'Suspended Fleet');

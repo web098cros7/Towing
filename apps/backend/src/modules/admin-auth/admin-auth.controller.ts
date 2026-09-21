@@ -1,4 +1,13 @@
-import { Controller, Delete, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
 import {
   adminCompletePasswordChangeSchema,
@@ -97,7 +106,7 @@ export class AdminAuthController {
    * bucket (5/min), same mechanics as `refresh` below.
    */
   @Get('me')
-  @ThrottleBucket('reads')  // Every authenticated admin may read their own identity — spelled out as
+  @ThrottleBucket('reads') // Every authenticated admin may read their own identity — spelled out as
   // all four sub-roles rather than left undecorated, so the route-walk spec
   // (every /v1/admin/* route carries a role or permission decorator) holds
   // without an exemption. Behaviour is identical: the guard passes any admin.
@@ -180,7 +189,10 @@ export class AdminAuthController {
   @Roles('super_admin', 'operations', 'support', 'finance')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
-  totpConfirm(@ZodBody(adminTotpConfirmSchema) body: AdminTotpConfirm, @Req() request: AuthedRequest) {
+  totpConfirm(
+    @ZodBody(adminTotpConfirmSchema) body: AdminTotpConfirm,
+    @Req() request: AuthedRequest,
+  ) {
     return this.auth.totpConfirm(adminId(request), body, sessionContextFrom(request));
   }
 
@@ -188,7 +200,10 @@ export class AdminAuthController {
   @Roles('super_admin', 'operations', 'support', 'finance')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
-  totpDisable(@ZodBody(adminTotpDisableSchema) body: AdminTotpDisable, @Req() request: AuthedRequest) {
+  totpDisable(
+    @ZodBody(adminTotpDisableSchema) body: AdminTotpDisable,
+    @Req() request: AuthedRequest,
+  ) {
     return this.auth.totpDisable(adminId(request), body.reason, sessionContextFrom(request));
   }
 

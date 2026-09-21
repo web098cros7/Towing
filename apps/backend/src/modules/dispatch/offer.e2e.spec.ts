@@ -60,9 +60,7 @@ async function outcomeOf(bookingId: string, driverId: string): Promise<string | 
   const [row] = await db
     .select({ outcome: dispatchAttempts.outcome })
     .from(dispatchAttempts)
-    .where(
-      and(eq(dispatchAttempts.bookingId, bookingId), eq(dispatchAttempts.driverId, driverId)),
-    );
+    .where(and(eq(dispatchAttempts.bookingId, bookingId), eq(dispatchAttempts.driverId, driverId)));
   return row?.outcome;
 }
 

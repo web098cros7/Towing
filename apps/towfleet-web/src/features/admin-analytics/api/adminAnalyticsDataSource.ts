@@ -9,7 +9,12 @@ import type {
 import { adminApiFetch } from '@/lib/adminApiClient';
 import { env } from '@/lib/env';
 import { mockDelay, resolveMock } from '@/lib/mockUtils';
-import { mockDriverAnalytics, mockGeo, mockRevenue, mockSummary } from '../mocks/adminAnalytics.mock';
+import {
+  mockDriverAnalytics,
+  mockGeo,
+  mockRevenue,
+  mockSummary,
+} from '../mocks/adminAnalytics.mock';
 import type { AnalyticsRange } from './adminAnalytics.keys';
 
 /**

@@ -24,7 +24,11 @@ const bookingColumns: ColumnDef<AdminDirectoryBooking, unknown>[] = [
     header: 'Booking',
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.id.slice(0, 8)}</span>,
   },
-  { accessorKey: 'status', header: 'Status', cell: ({ row }) => <Badge variant="neutral">{row.original.status}</Badge> },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ row }) => <Badge variant="neutral">{row.original.status}</Badge>,
+  },
   { accessorKey: 'serviceType', header: 'Service' },
   {
     accessorKey: 'totalPaise',
@@ -100,11 +104,15 @@ export function AdminDriverDetail({ driverId }: { driverId: string }) {
               {row.fleetName ? ` · ${row.fleetName}` : ' · Independent'}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-              <Badge variant={row.kycStatus === 'approved' ? 'success' : 'warning'}>{row.kycStatus}</Badge>
-              <Badge variant={row.isOnline ? 'success' : 'neutral'}>{row.isOnline ? 'Online' : 'Offline'}</Badge>
+              <Badge variant={row.kycStatus === 'approved' ? 'success' : 'warning'}>
+                {row.kycStatus}
+              </Badge>
+              <Badge variant={row.isOnline ? 'success' : 'neutral'}>
+                {row.isOnline ? 'Online' : 'Offline'}
+              </Badge>
               <span className="text-text-secondary">
-                {row.vehicleClass ?? 'No class'} · rating {row.rating === null ? '—' : row.rating.toFixed(1)} ·{' '}
-                {row.bookingsCount} trips
+                {row.vehicleClass ?? 'No class'} · rating{' '}
+                {row.rating === null ? '—' : row.rating.toFixed(1)} · {row.bookingsCount} trips
               </span>
             </div>
             {row.suspensionReason ? (
@@ -135,7 +143,9 @@ export function AdminDriverDetail({ driverId }: { driverId: string }) {
                   void reactivate
                     .mutateAsync({ driverId })
                     .catch((error: unknown) =>
-                      setSuspendError(error instanceof ApiError ? error.message : 'Reactivate failed'),
+                      setSuspendError(
+                        error instanceof ApiError ? error.message : 'Reactivate failed',
+                      ),
                     )
                 }
               >
@@ -237,7 +247,9 @@ export function AdminDriverDetail({ driverId }: { driverId: string }) {
                       setZonesError(null);
                     })
                     .catch((error: unknown) =>
-                      setZonesError(error instanceof ApiError ? error.message : 'Saving zones failed.'),
+                      setZonesError(
+                        error instanceof ApiError ? error.message : 'Saving zones failed.',
+                      ),
                     )
                 }
               >
@@ -250,9 +262,7 @@ export function AdminDriverDetail({ driverId }: { driverId: string }) {
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-text-tertiary">
-              Your role cannot edit zone restrictions.
-            </p>
+            <p className="text-sm text-text-tertiary">Your role cannot edit zone restrictions.</p>
           )}
         </Card>
       ) : null}

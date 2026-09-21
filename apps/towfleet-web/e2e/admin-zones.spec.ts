@@ -151,7 +151,9 @@ test('the history drawer lists every shape and marks the one in force', async ({
   await page.getByTestId('zone-row-bengaluru-metro').click();
 
   await page.getByTestId('zone-versions').click();
-  await expect(page.getByRole('heading', { name: /Bengaluru Metro — shape history/ })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: /Bengaluru Metro — shape history/ }),
+  ).toBeVisible();
 
   await expect(page.getByTestId('version-row-3')).toContainText('Split the southern edge');
   await expect(page.getByTestId('version-current')).toContainText('the shape in force');

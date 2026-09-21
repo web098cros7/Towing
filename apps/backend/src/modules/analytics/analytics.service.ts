@@ -116,7 +116,11 @@ export class AnalyticsService {
 
     const DATASETS: Record<string, { header: string[]; rows: string[][] }> = {};
 
-    if (query.dataset === 'summary' || query.dataset === 'marketplace' || query.dataset === 'drivers') {
+    if (
+      query.dataset === 'summary' ||
+      query.dataset === 'marketplace' ||
+      query.dataset === 'drivers'
+    ) {
       const days = await this.daysFor(from, to);
       DATASETS.summary = {
         header: [
@@ -148,7 +152,14 @@ export class AnalyticsService {
     } else if (query.dataset === 'revenue') {
       const bands = await this.revenue(query).then((result) => result.bands);
       DATASETS.revenue = {
-        header: ['day', 'band', 'bookings_paid', 'gmv_paise', 'commission_paise', 'driver_payout_paise'],
+        header: [
+          'day',
+          'band',
+          'bookings_paid',
+          'gmv_paise',
+          'commission_paise',
+          'driver_payout_paise',
+        ],
         rows: bands.map((band) => [
           band.day,
           band.band,
@@ -176,11 +187,15 @@ export class AnalyticsService {
 
     const dataset = DATASETS[query.dataset]!;
     let cursor = 0;
-    await streamCsv(res, { filename: `analytics-${query.dataset}-${from}-to-${to}.csv`, header: dataset.header }, async () => {
-      const batch = dataset.rows.slice(cursor, cursor + 500);
-      cursor += batch.length;
-      return batch;
-    });
+    await streamCsv(
+      res,
+      { filename: `analytics-${query.dataset}-${from}-to-${to}.csv`, header: dataset.header },
+      async () => {
+        const batch = dataset.rows.slice(cursor, cursor + 500);
+        cursor += batch.length;
+        return batch;
+      },
+    );
   }
 
   // ────────────────────────────────────────────────────────── internals ────
@@ -252,8 +267,7 @@ function totalsOf(days: AnalyticsDay[]): AnalyticsTotals {
     refundsPaise: sum((day) => day.refundsPaise),
     aovPaise: bookingsPaid > 0 ? Math.round(gmvPaise / bookingsPaid) : 0,
     takeRateBps: gmvPaise > 0 ? Math.round((commissionPaise / gmvPaise) * 10_000) : 0,
-    fillRateBps:
-      bookingsCreated > 0 ? Math.round((bookingsMatched / bookingsCreated) * 10_000) : 0,
+    fillRateBps: bookingsCreated > 0 ? Math.round((bookingsMatched / bookingsCreated) * 10_000) : 0,
     cancellationRateBps:
       bookingsCreated > 0 ? Math.round((bookingsCancelled / bookingsCreated) * 10_000) : 0,
     driverDays: sum((day) => day.activeDrivers),

@@ -194,8 +194,7 @@ export const adminOpsActivityKey = 'admin:ops:activity';
  * and the first to `SET NX` this short-lived marker is the one that pushes the
  * row — so the feed gets one copy, not one per task.
  */
-export const adminOpsActivitySeenKey = (hash: string): string =>
-  `admin:ops:activity:seen:${hash}`;
+export const adminOpsActivitySeenKey = (hash: string): string => `admin:ops:activity:seen:${hash}`;
 
 /**
  * W3's KPI and badge caches. Invalidated by the broadcaster, then re-filled by

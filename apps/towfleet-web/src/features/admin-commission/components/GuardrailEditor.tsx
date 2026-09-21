@@ -47,7 +47,11 @@ export function GuardrailEditor({ config }: { config: AdminCommissionConfig }) {
     if (!canSave) return;
     setErrorMessage(null);
     try {
-      await update.mutateAsync({ floorPct: floorValue, capPct: capValue, reason: reason || undefined });
+      await update.mutateAsync({
+        floorPct: floorValue,
+        capPct: capValue,
+        reason: reason || undefined,
+      });
       setReason('');
       toast('Guardrail updated', 'success');
     } catch (error) {
@@ -100,8 +104,8 @@ export function GuardrailEditor({ config }: { config: AdminCommissionConfig }) {
         ) : null}
         {boundsValid && stranded.length > 0 ? (
           <p className="mt-3 text-sm text-error" data-testid="guardrail-stranded-error">
-            Band {stranded.map((band) => band.band).join(', ')} would sit outside this window — re-rate
-            it first.
+            Band {stranded.map((band) => band.band).join(', ')} would sit outside this window —
+            re-rate it first.
           </p>
         ) : null}
         {errorMessage ? (

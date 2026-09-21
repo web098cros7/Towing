@@ -202,8 +202,12 @@ describe('admin dispatch config (§16.5)', () => {
         .where(eq(adminActions.action, 'dispatch_config.update'));
 
       expect(action).toMatchObject({ adminId, reason: 'Network incident' });
-      expect((action!.before as { global: { stalePingSeconds: number } }).global.stalePingSeconds).toBe(15);
-      expect((action!.after as { global: { stalePingSeconds: number } }).global.stalePingSeconds).toBe(30);
+      expect(
+        (action!.before as { global: { stalePingSeconds: number } }).global.stalePingSeconds,
+      ).toBe(15);
+      expect(
+        (action!.after as { global: { stalePingSeconds: number } }).global.stalePingSeconds,
+      ).toBe(30);
     });
   });
 
@@ -264,7 +268,10 @@ describe('admin dispatch config (§16.5)', () => {
       const finance = await seedAdmin(db, { subRole: 'finance' });
       await request(app.getHttpServer())
         .get('/v1/admin/dispatch-config')
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: finance.id, subRole: 'finance' }))
+        .set(
+          'Authorization',
+          await adminAuthHeaderFor(app, { adminId: finance.id, subRole: 'finance' }),
+        )
         .expect(403);
     });
 
@@ -272,7 +279,10 @@ describe('admin dispatch config (§16.5)', () => {
       const support = await seedAdmin(db, { subRole: 'support' });
       await request(app.getHttpServer())
         .put('/v1/admin/dispatch-config')
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }))
+        .set(
+          'Authorization',
+          await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }),
+        )
         .send({ stalePingSeconds: 60 })
         .expect(403);
     });

@@ -47,13 +47,21 @@ export function MarketplaceTab({ data }: { data: AnalyticsSummaryResponse | unde
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard label="Fill rate" value={percent(data.totals.fillRateBps)} hint="matched ÷ created" />
+        <KpiCard
+          label="Fill rate"
+          value={percent(data.totals.fillRateBps)}
+          hint="matched ÷ created"
+        />
         <KpiCard
           label="Cancellations"
           value={String(data.totals.bookingsCancelled)}
           hint={percent(data.totals.cancellationRateBps)}
         />
-        <KpiCard label="No drivers" value={String(data.totals.noDriversFound)} hint="searches that expired" />
+        <KpiCard
+          label="No drivers"
+          value={String(data.totals.noDriversFound)}
+          hint="searches that expired"
+        />
         <KpiCard label="Driver days" value={String(data.totals.driverDays)} hint="summed per day" />
       </div>
 

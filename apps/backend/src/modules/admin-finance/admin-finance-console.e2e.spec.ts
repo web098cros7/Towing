@@ -15,13 +15,7 @@ import {
   adminPayoutSlaResponseSchema,
   INVARIANT_KEYS,
 } from '@towing/api-contracts';
-import {
-  seedAdmin,
-  seedCustomer,
-  seedDriver,
-  setupTestDatabase,
-  truncateAll,
-} from '../../test/db';
+import { seedAdmin, seedCustomer, seedDriver, setupTestDatabase, truncateAll } from '../../test/db';
 import type { TestDatabase } from '../../test/db';
 import { seedBooking, seedWalletWithLedger } from '../../test/fixtures';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
@@ -293,7 +287,12 @@ describe('W9 — admin finance console (/v1/admin/finance)', () => {
       .post('/v1/admin/finance/refunds')
       .set('Authorization', adminAuth)
       .set('Idempotency-Key', 'w9-partial-1')
-      .send({ bookingId, amountPaise: 30_000, liability: 'driver', reason: 'Overcharge on distance' })
+      .send({
+        bookingId,
+        amountPaise: 30_000,
+        liability: 'driver',
+        reason: 'Overcharge on distance',
+      })
       .expect(200);
 
     expect(response.body.kind).toBe('partial');
@@ -415,9 +414,7 @@ describe('W9 — admin finance console (/v1/admin/finance)', () => {
 
     expect(response.headers['content-type']).toContain('text/csv');
     const lines = String(response.text).trim().split('\n');
-    expect(lines[0]).toBe(
-      'kind,ref,booking_code,amount_paise,status,method,gateway_ref,at,note',
-    );
+    expect(lines[0]).toBe('kind,ref,booking_code,amount_paise,status,method,gateway_ref,at,note');
 
     const paymentRow = lines.find((line) => line.startsWith('payment,'));
     expect(paymentRow).toBeDefined();

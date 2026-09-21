@@ -12,16 +12,10 @@ import {
   Tabs,
   type ColumnDef,
 } from '@towing/web-ui';
-import type {
-  AdminDirectoryUser,
-  AdminSuspensionRequest,
-} from '@towing/api-contracts';
+import type { AdminDirectoryUser, AdminSuspensionRequest } from '@towing/api-contracts';
 import { ApiError } from '@/lib/apiClient';
 import { useAdminCan } from '@/components/admin/Can';
-import {
-  useAdminDirectoryUsers,
-  useAdminSuspensionRequests,
-} from '../api/adminDirectory.queries';
+import { useAdminDirectoryUsers, useAdminSuspensionRequests } from '../api/adminDirectory.queries';
 import {
   useApproveSuspensionRequest,
   useRejectSuspensionRequest,
@@ -56,7 +50,8 @@ const userColumns: ColumnDef<AdminDirectoryUser, unknown>[] = [
   {
     accessorKey: 'suspensionReason',
     header: 'Suspension',
-    cell: ({ row }) => row.original.suspensionReason ?? <span className="text-text-tertiary">—</span>,
+    cell: ({ row }) =>
+      row.original.suspensionReason ?? <span className="text-text-tertiary">—</span>,
   },
   {
     accessorKey: 'createdAt',

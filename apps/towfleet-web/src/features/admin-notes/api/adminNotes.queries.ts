@@ -1,11 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type {
-  AdminCreateNote,
-  AdminNoteSubjectType,
-  AdminUpdateNote,
-} from '@towing/api-contracts';
+import type { AdminCreateNote, AdminNoteSubjectType, AdminUpdateNote } from '@towing/api-contracts';
 import { adminNotesKeys } from './adminNotes.keys';
 import { adminNotesDataSource } from './adminNotesDataSource';
 
@@ -29,7 +25,9 @@ export function useCreateNote(subjectType: AdminNoteSubjectType, subjectId: stri
     mutationFn: (input: Omit<AdminCreateNote, 'subjectType' | 'subjectId'>) =>
       adminNotesDataSource.create({ ...input, subjectType, subjectId }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: adminNotesKeys.subject(subjectType, subjectId) });
+      void queryClient.invalidateQueries({
+        queryKey: adminNotesKeys.subject(subjectType, subjectId),
+      });
     },
   });
 }
@@ -40,7 +38,9 @@ export function useUpdateNote(subjectType: AdminNoteSubjectType, subjectId: stri
     mutationFn: ({ id, input }: { id: string; input: AdminUpdateNote }) =>
       adminNotesDataSource.update(id, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: adminNotesKeys.subject(subjectType, subjectId) });
+      void queryClient.invalidateQueries({
+        queryKey: adminNotesKeys.subject(subjectType, subjectId),
+      });
     },
   });
 }
@@ -50,7 +50,9 @@ export function useDeleteNote(subjectType: AdminNoteSubjectType, subjectId: stri
   return useMutation({
     mutationFn: (id: string) => adminNotesDataSource.remove(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: adminNotesKeys.subject(subjectType, subjectId) });
+      void queryClient.invalidateQueries({
+        queryKey: adminNotesKeys.subject(subjectType, subjectId),
+      });
     },
   });
 }

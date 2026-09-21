@@ -5,7 +5,12 @@ import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { adminZoneSchema, adminZoneVersionSchema, adminZonesResponseSchema, type GeoJsonPolygon } from '@towing/api-contracts';
+import {
+  adminZoneSchema,
+  adminZoneVersionSchema,
+  adminZonesResponseSchema,
+  type GeoJsonPolygon,
+} from '@towing/api-contracts';
 import { adminActions, drivers, serviceZones } from '../../db/schema';
 import { adminAuthHeaderFor, createTestApp, customerAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
@@ -72,10 +77,7 @@ describe('admin zones (W13)', () => {
   });
 
   const createZone = (body: Record<string, unknown>) =>
-    request(app.getHttpServer())
-      .post('/v1/admin/zones')
-      .set('Authorization', auth)
-      .send(body);
+    request(app.getHttpServer()).post('/v1/admin/zones').set('Authorization', auth).send(body);
 
   it('lists zones with their code, GeoJSON and PostGIS area', async () => {
     await seedZone(db, { name: 'Bengaluru Metro' });
@@ -125,7 +127,10 @@ describe('admin zones (W13)', () => {
     expect(after.body.zone.name).toBe('Mumbai Metro');
     expect(after.body.zone.surgeBand).toBe('high');
 
-    const audits = await db.select().from(adminActions).where(eq(adminActions.action, 'zone.create'));
+    const audits = await db
+      .select()
+      .from(adminActions)
+      .where(eq(adminActions.action, 'zone.create'));
     expect(audits).toHaveLength(1);
     expect(audits[0]!.adminId).toBe(adminId);
   });
@@ -145,9 +150,11 @@ describe('admin zones (W13)', () => {
       ],
     };
 
-    const response = await createZone({ code: 'bad-shape', name: 'Bad Shape', area: bowtie }).expect(
-      422,
-    );
+    const response = await createZone({
+      code: 'bad-shape',
+      name: 'Bad Shape',
+      area: bowtie,
+    }).expect(422);
     expect(JSON.stringify(response.body)).toMatch(/crosses itself/i);
     expect(response.body.error.details.reason).toBeTruthy();
 
@@ -322,9 +329,7 @@ describe('migration 0028 zone editor', () => {
 
   it('rails the geometry with ST_IsValid — the editor’s backstop', () => {
     const sql = readFileSync(MIGRATION, 'utf8');
-    expect(sql).toContain(
-      `CHECK (ST_IsValid("area"::geometry))`,
-    );
+    expect(sql).toContain(`CHECK (ST_IsValid("area"::geometry))`);
   });
 
   it('creates service_zone_versions as an append-only history and backfills the seed', () => {

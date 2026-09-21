@@ -131,8 +131,11 @@ export type RefundReason = (typeof REFUND_REASONS)[number];
  * receive the first's payment. Exactly the trap `PayoutsService` already
  * guards with `po:v1:req:<fleetId>:<sha256>`.
  */
-export const paymentRowKey = (bookingId: string, purpose: string, hashedClientKey: string): string =>
-  `pay:v1:${bookingId}:${purpose}:${hashedClientKey}`;
+export const paymentRowKey = (
+  bookingId: string,
+  purpose: string,
+  hashedClientKey: string,
+): string => `pay:v1:${bookingId}:${purpose}:${hashedClientKey}`;
 
 /**
  * `payouts.idempotency_key`. **v2**, because Phase 19 widened payouts from
@@ -142,10 +145,7 @@ export const paymentRowKey = (bookingId: string, purpose: string, hashedClientKe
  * ("bump the version segment — never reuse it with different semantics"), the
  * shape changed, so the version did.
  */
-export const payoutRowKey = (
-  ownerType: string,
-  ownerId: string,
-  hashedClientKey: string,
-): string => `po:v2:req:${ownerType}:${ownerId}:${hashedClientKey}`;
+export const payoutRowKey = (ownerType: string, ownerId: string, hashedClientKey: string): string =>
+  `po:v2:req:${ownerType}:${ownerId}:${hashedClientKey}`;
 
 export type LedgerKeyBuilder = keyof typeof ledgerKeys;

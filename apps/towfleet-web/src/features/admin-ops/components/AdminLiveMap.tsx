@@ -9,7 +9,7 @@ import type { AdminLiveMapCanvasProps } from './AdminLiveMapCanvas';
  * MapLibre touches `window` at import time, so the canvas is client-only and
  * the loading state is a skeleton, never a flash of an empty rectangle.
  */
-export const AdminLiveMap = dynamic<AdminLiveMapCanvasProps>(
-  () => import('./AdminLiveMapCanvas'),
-  { ssr: false, loading: () => <Skeleton className="h-full w-full" /> },
-);
+export const AdminLiveMap = dynamic<AdminLiveMapCanvasProps>(() => import('./AdminLiveMapCanvas'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-full w-full" />,
+});

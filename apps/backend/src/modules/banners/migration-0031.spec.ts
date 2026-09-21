@@ -49,22 +49,20 @@ describe('migration 0031 promotions banners', () => {
   });
 
   it('pins the audience union to the CHECK', () => {
-    expect(checkLiterals(migrationSql(), 'ck_banners_audience')).toEqual(
-      sorted(BANNER_AUDIENCES),
-    );
+    expect(checkLiterals(migrationSql(), 'ck_banners_audience')).toEqual(sorted(BANNER_AUDIENCES));
   });
 
   it('refuses a window that ends before it starts (allowing open ends)', () => {
     const sql = migrationSql();
     expect(sql).toContain('ck_banners_window');
-    expect(sql).toContain(
-      '"starts_at" IS NULL OR "ends_at" IS NULL OR "starts_at" < "ends_at"',
-    );
+    expect(sql).toContain('"starts_at" IS NULL OR "ends_at" IS NULL OR "starts_at" < "ends_at"');
   });
 
   it('indexes the live read (audience, sort_order) partially on is_active', () => {
     const sql = migrationSql();
-    expect(sql).toContain('CREATE INDEX "idx_banners_live" ON "banners" ("audience", "sort_order")');
+    expect(sql).toContain(
+      'CREATE INDEX "idx_banners_live" ON "banners" ("audience", "sort_order")',
+    );
     expect(sql).toContain('WHERE "is_active"');
   });
 });

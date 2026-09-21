@@ -15,8 +15,7 @@ export const adminDirectoryKeys = {
   driverBookings: (driverId: string, page: number) =>
     [...adminDirectoryKeys.all, 'driver-bookings', driverId, page] as const,
 
-  fleets: (query: Record<string, unknown>) =>
-    [...adminDirectoryKeys.all, 'fleets', query] as const,
+  fleets: (query: Record<string, unknown>) => [...adminDirectoryKeys.all, 'fleets', query] as const,
   fleet: (fleetId: string) => [...adminDirectoryKeys.all, 'fleet', fleetId] as const,
   fleetTrucks: (fleetId: string, page: number) =>
     [...adminDirectoryKeys.all, 'fleet-trucks', fleetId, page] as const,

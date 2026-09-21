@@ -84,7 +84,9 @@ export class BannersService {
          and (starts_at is null or starts_at <= now())
          and (ends_at is null or ends_at > now())
        order by sort_order asc, created_at desc, id desc
-    `)) as unknown as Array<Pick<BannerRow, 'id' | 'title' | 'image_key' | 'cta_link' | 'cta_label' | 'audience'>>;
+    `)) as unknown as Array<
+      Pick<BannerRow, 'id' | 'title' | 'image_key' | 'cta_link' | 'cta_label' | 'audience'>
+    >;
 
     return {
       items: await Promise.all(

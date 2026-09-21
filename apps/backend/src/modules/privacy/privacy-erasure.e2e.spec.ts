@@ -41,7 +41,14 @@ import {
   driverAuthHeaderFor,
 } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
-import { seedAdmin, seedCustomer, seedDriver, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
+import {
+  seedAdmin,
+  seedCustomer,
+  seedDriver,
+  setupTestDatabase,
+  truncateAll,
+  type TestDatabase,
+} from '../../test/db';
 import { seedBooking } from '../../test/fixtures';
 import { TokenService } from '../auth/token.service';
 import { ErasureService } from './erasure.service';
@@ -122,7 +129,9 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
       'refunds',
       'earnings_daily',
     ];
-    const entries = await Promise.all(tables.map(async (table) => [table, await tableCount(table)]));
+    const entries = await Promise.all(
+      tables.map(async (table) => [table, await tableCount(table)]),
+    );
     return Object.fromEntries(entries);
   };
 
@@ -167,14 +176,17 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
 
       // The session is dead NOW, not at the next refresh: `revokeSubject` ran
       // in the same transaction as the insert.
-      await expect(
-        tokens.rotate(session.refreshToken, ['customer']),
-      ).rejects.toMatchObject({ code: 'unauthorized' });
+      await expect(tokens.rotate(session.refreshToken, ['customer'])).rejects.toMatchObject({
+        code: 'unauthorized',
+      });
 
       const deviceRows = await db.select().from(devices).where(eq(devices.subjectId, userId));
       expect(deviceRows[0]?.revokedAt).not.toBeNull();
 
-      const rows = await db.select().from(deletionRequests).where(eq(deletionRequests.id, requestId));
+      const rows = await db
+        .select()
+        .from(deletionRequests)
+        .where(eq(deletionRequests.id, requestId));
       expect(rows[0]).toMatchObject({ status: 'requested', subjectType: 'user' });
     });
 
@@ -212,7 +224,9 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
       const rcKey = stored.fileUrl.replace('local://', '');
 
       await db.insert(savedVehicles).values({ userId, type: 'hatchback', rcUrl: stored.fileUrl });
-      await db.insert(addresses).values({ userId, fullAddress: '12 MG Road', lat: 12.97, lng: 77.59 });
+      await db
+        .insert(addresses)
+        .values({ userId, fullAddress: '12 MG Road', lat: 12.97, lng: 77.59 });
       await db.insert(emergencyContacts).values({ userId, name: 'Sister', phone: '9000000000' });
       await db.insert(socialIdentities).values({
         provider: 'google',
@@ -259,15 +273,21 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
       expect(user!.email).toBeNull();
 
       // ── Every small PII table is emptied ──────────────────────────────────
-      await expect(db.select().from(savedVehicles).where(eq(savedVehicles.userId, userId))).resolves.toHaveLength(0);
-      await expect(db.select().from(addresses).where(eq(addresses.userId, userId))).resolves.toHaveLength(0);
+      await expect(
+        db.select().from(savedVehicles).where(eq(savedVehicles.userId, userId)),
+      ).resolves.toHaveLength(0);
+      await expect(
+        db.select().from(addresses).where(eq(addresses.userId, userId)),
+      ).resolves.toHaveLength(0);
       await expect(
         db.select().from(emergencyContacts).where(eq(emergencyContacts.userId, userId)),
       ).resolves.toHaveLength(0);
       await expect(
         db.select().from(loginChallenges).where(eq(loginChallenges.subjectId, userId)),
       ).resolves.toHaveLength(0);
-      await expect(db.select().from(devices).where(eq(devices.subjectId, userId))).resolves.toHaveLength(0);
+      await expect(
+        db.select().from(devices).where(eq(devices.subjectId, userId)),
+      ).resolves.toHaveLength(0);
       await expect(
         db.select().from(socialIdentities).where(eq(socialIdentities.subjectId, userId)),
       ).resolves.toHaveLength(0);
@@ -315,10 +335,7 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
       expect(requestRow!.anonymisedAt).not.toBeNull();
 
       // ── The job log names the six ordered steps ──────────────────────────
-      const [job] = await db
-        .select()
-        .from(erasureJobs)
-        .where(eq(erasureJobs.requestId, requestId));
+      const [job] = await db.select().from(erasureJobs).where(eq(erasureJobs.requestId, requestId));
       expect(job!.status).toBe('completed');
       expect(job!.steps.map((step) => step.step)).toEqual([
         'holds',
@@ -401,9 +418,14 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
         isOnline: false,
       });
 
-      await expect(db.select().from(driverDocuments).where(eq(driverDocuments.driverId, driverId))).resolves.toHaveLength(0);
       await expect(
-        db.select().from(driverDocumentVersions).where(eq(driverDocumentVersions.driverId, driverId)),
+        db.select().from(driverDocuments).where(eq(driverDocuments.driverId, driverId)),
+      ).resolves.toHaveLength(0);
+      await expect(
+        db
+          .select()
+          .from(driverDocumentVersions)
+          .where(eq(driverDocumentVersions.driverId, driverId)),
       ).resolves.toHaveLength(0);
       await expect(storage.get(license.fileUrl.replace('local://', ''))).rejects.toThrow();
       await expect(storage.get(selfie.fileUrl.replace('local://', ''))).rejects.toThrow();
@@ -443,10 +465,7 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
       expect(stillThere!.mobile).not.toContain('deleted:');
 
       // The job records the refusal — the operator can see WHY it is parked.
-      const [job] = await db
-        .select()
-        .from(erasureJobs)
-        .where(eq(erasureJobs.requestId, requestId));
+      const [job] = await db.select().from(erasureJobs).where(eq(erasureJobs.requestId, requestId));
       expect(job!.status).toBe('failed');
       expect(job!.steps[0]).toMatchObject({ step: 'holds', outcome: 'refused' });
 
@@ -522,7 +541,13 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
       ]);
 
       await db.insert(webhookEvents).values([
-        { provider: 'razorpay', eventId: 'old-event', eventType: 'payment.captured', payload: {}, receivedAt: old },
+        {
+          provider: 'razorpay',
+          eventId: 'old-event',
+          eventType: 'payment.captured',
+          payload: {},
+          receivedAt: old,
+        },
         { provider: 'razorpay', eventId: 'new-event', eventType: 'payment.captured', payload: {} },
       ]);
 
@@ -550,7 +575,10 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
       await fileRequest(userId);
 
       const support = await seedAdmin(db, { subRole: 'support' });
-      const supportAuth = await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' });
+      const supportAuth = await adminAuthHeaderFor(app, {
+        adminId: support.id,
+        subRole: 'support',
+      });
       const operations = await seedAdmin(db, { subRole: 'operations' });
       const operationsAuth = await adminAuthHeaderFor(app, {
         adminId: operations.id,

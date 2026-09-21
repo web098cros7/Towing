@@ -156,9 +156,7 @@ describe('§11.7 share trip', () => {
       await assign(bookingId, driverId);
       const { token } = await share();
 
-      const response = await request(app.getHttpServer())
-        .get(`/v1/track/${token}`)
-        .expect(200);
+      const response = await request(app.getHttpServer()).get(`/v1/track/${token}`).expect(200);
 
       // The published schema, exactly. `expectMatchesContract` also fails if
       // the server returned a key the contract does not declare — the
@@ -169,16 +167,16 @@ describe('§11.7 share trip', () => {
     });
 
     it('404s an unknown token', async () => {
-      await request(app.getHttpServer())
-        .get('/v1/track/aaaaaaaaaaaaaaaaaaaaaa')
-        .expect(404);
+      await request(app.getHttpServer()).get('/v1/track/aaaaaaaaaaaaaaaaaaaaaa').expect(404);
     });
 
     it('refuses a malformed token at the edge, before any query', async () => {
       // The value reaches a WHERE clause on an unauthenticated route. Drizzle
       // parameterises it, but an unbounded body of text does not belong there.
       await request(app.getHttpServer()).get('/v1/track/short').expect(422);
-      await request(app.getHttpServer()).get(`/v1/track/${'a'.repeat(200)}`).expect(422);
+      await request(app.getHttpServer())
+        .get(`/v1/track/${'a'.repeat(200)}`)
+        .expect(422);
     });
 
     it('reports an expired link as GONE, not as missing', async () => {
@@ -193,9 +191,7 @@ describe('§11.7 share trip', () => {
         .set({ shareExpiresAt: new Date(Date.now() - 1_000) })
         .where(eq(bookings.id, bookingId));
 
-      const response = await request(app.getHttpServer())
-        .get(`/v1/track/${token}`)
-        .expect(410);
+      const response = await request(app.getHttpServer()).get(`/v1/track/${token}`).expect(410);
 
       expect(response.body.error.code).toBe('share_link_expired');
     });

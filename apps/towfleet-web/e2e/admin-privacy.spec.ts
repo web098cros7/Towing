@@ -61,7 +61,10 @@ test('the queue shows the hold reason and the erasure log', async ({ page, conte
   await expect(page.getByText('refused')).toBeVisible();
 });
 
-test('the workflow: approve, then execute behind a typed confirmation', async ({ page, context }) => {
+test('the workflow: approve, then execute behind a typed confirmation', async ({
+  page,
+  context,
+}) => {
   await adminLogin(page);
   await actAs(context, 'support');
   await page.goto('/admin/privacy');

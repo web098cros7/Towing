@@ -60,7 +60,9 @@ describe('migration 0028 zone editor', () => {
     // The geometry cast is what makes ST_IsValid usable on a geography column.
     expect(rail).toContain('ST_IsValid("area"::geometry)');
     // The service says the same thing in words before the insert is attempted.
-    expect(geoJsonPolygonSchema.safeParse({ type: 'Polygon', coordinates: [] }).success).toBe(false);
+    expect(geoJsonPolygonSchema.safeParse({ type: 'Polygon', coordinates: [] }).success).toBe(
+      false,
+    );
   });
 
   it('snapshots every edit in service_zone_versions', () => {

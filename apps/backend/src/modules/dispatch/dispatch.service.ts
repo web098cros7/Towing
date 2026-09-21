@@ -79,7 +79,10 @@ const EMPTY_WAVE_DELAY_MS = 2_000;
  * It doubles as the shape the log line is built from, so the two cannot drift.
  */
 export type WaveOutcome =
-  | { ran: false; reason: 'locked' | 'unknown_booking' | 'not_searching' | 'scheduled' | 'paused' }
+  | {
+      ran: false;
+      reason: 'locked' | 'unknown_booking' | 'not_searching' | 'scheduled' | 'paused';
+    }
   | { ran: false; reason: 'gave_up'; wave: number }
   | {
       ran: true;
@@ -194,7 +197,10 @@ export class DispatchService implements OnModuleInit {
       await this.queue.enqueue(
         'dispatch.search',
         { bookingId },
-        { jobId: `dispatch-${bookingId}-scheduled`, delayMs: booking.scheduledAt.getTime() - Date.now() },
+        {
+          jobId: `dispatch-${bookingId}-scheduled`,
+          delayMs: booking.scheduledAt.getTime() - Date.now(),
+        },
       );
       return { ran: false, reason: 'scheduled' };
     }
@@ -292,7 +298,9 @@ export class DispatchService implements OnModuleInit {
     this.logger.log(
       `booking ${bookingId} wave ${wave} @ ${radiusKm}km: ${selected.considered} in range, ${selected.eligible} eligible, ${offered} offered` +
         (selected.degraded ? ' (postgis fallback)' : '') +
-        (Object.keys(excludedCounts).length > 0 ? ` — excluded ${JSON.stringify(excludedCounts)}` : ''),
+        (Object.keys(excludedCounts).length > 0
+          ? ` — excluded ${JSON.stringify(excludedCounts)}`
+          : ''),
     );
 
     return {
@@ -591,7 +599,11 @@ export class DispatchService implements OnModuleInit {
    * completed jobs for an hour. A bare `dispatch-{bookingId}` would silently
    * drop every wave after the first.
    */
-  private async reschedule(bookingId: string, delayMs: number, discriminator: string): Promise<void> {
+  private async reschedule(
+    bookingId: string,
+    delayMs: number,
+    discriminator: string,
+  ): Promise<void> {
     await this.queue.enqueue(
       'dispatch.search',
       { bookingId },

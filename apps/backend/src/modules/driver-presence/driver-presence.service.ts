@@ -147,10 +147,7 @@ export class DriverPresenceService {
    * whichever arrived last.
    */
   async configFor(driverId: string): Promise<DriverConfigUpdateEvent> {
-    const [row, config] = await Promise.all([
-      this.repo.identity(driverId),
-      this.config.load(),
-    ]);
+    const [row, config] = await Promise.all([this.repo.identity(driverId), this.config.load()]);
 
     const online = row?.isOnline === true && row.kycStatus === 'approved';
     return {

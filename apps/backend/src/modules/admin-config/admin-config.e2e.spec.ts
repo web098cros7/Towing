@@ -9,7 +9,13 @@ import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { adminActions, commissionConfig, commissionConfigHistory, commissionProposals, pricingRules } from '../../db/schema';
+import {
+  adminActions,
+  commissionConfig,
+  commissionConfigHistory,
+  commissionProposals,
+  pricingRules,
+} from '../../db/schema';
 import { adminAuthHeaderFor, createTestApp, customerAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
 import { seedBooking } from '../../test/fixtures';
@@ -71,7 +77,10 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       const support = await seedAdmin(db, { subRole: 'support' });
       await request(app.getHttpServer())
         .get('/v1/admin/pricing')
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }))
+        .set(
+          'Authorization',
+          await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }),
+        )
         .expect(403);
     });
 
@@ -109,7 +118,10 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       const support = await seedAdmin(db, { subRole: 'support' });
       await request(app.getHttpServer())
         .get('/v1/admin/commission')
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }))
+        .set(
+          'Authorization',
+          await adminAuthHeaderFor(app, { adminId: support.id, subRole: 'support' }),
+        )
         .expect(403);
     });
 
@@ -164,7 +176,9 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       expectMatchesContract(adminCommissionConfigSchema, response.body);
       expect(response.body.floorPct).toBe(5);
       expect(response.body.capPct).toBe(10);
-      expect(response.body.bands.map((b: { band: string; pct: number }) => [b.band, b.pct])).toEqual([
+      expect(
+        response.body.bands.map((b: { band: string; pct: number }) => [b.band, b.pct]),
+      ).toEqual([
         ['A', 10],
         ['B', 8],
         ['C', 5],
@@ -235,7 +249,12 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       // Nothing moved.
       const [row] = await db.select().from(commissionConfig).where(eq(commissionConfig.band, 'A'));
       expect(Number(row!.pct)).toBe(10);
-      expect(await db.select().from(commissionConfigHistory).where(eq(commissionConfigHistory.oldPct, '10.00'))).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(commissionConfigHistory)
+          .where(eq(commissionConfigHistory.oldPct, '10.00')),
+      ).toHaveLength(0);
     });
 
     it('rejects below the floor as well as above the cap', async () => {
@@ -294,7 +313,9 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       // PUT that silently rewrites the whole fare matrix. The assertion is that
       // every OTHER key is untouched, not merely that this one changed.
       const before = (
-        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+        await request(app.getHttpServer())
+          .get('/v1/admin/pricing')
+          .set('Authorization', financeAuth)
       ).body;
 
       await request(app.getHttpServer())
@@ -304,7 +325,9 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
         .expect(200);
 
       const after = (
-        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+        await request(app.getHttpServer())
+          .get('/v1/admin/pricing')
+          .set('Authorization', financeAuth)
       ).body;
 
       expect(after.charges.nightPct).toBe(20);
@@ -313,7 +336,9 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
 
     it('edits a slab price and audits it', async () => {
       const before = (
-        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+        await request(app.getHttpServer())
+          .get('/v1/admin/pricing')
+          .set('Authorization', financeAuth)
       ).body;
       const slab = before.rules.find((r: { ruleKind: string }) => r.ruleKind === 'slab');
 
@@ -324,11 +349,16 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
         .expect(200);
 
       const after = (
-        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+        await request(app.getHttpServer())
+          .get('/v1/admin/pricing')
+          .set('Authorization', financeAuth)
       ).body;
       expect(after.rules.find((r: { id: string }) => r.id === slab.id).pricePaise).toBe(123_400);
 
-      const audits = await db.select().from(adminActions).where(eq(adminActions.action, 'pricing.update'));
+      const audits = await db
+        .select()
+        .from(adminActions)
+        .where(eq(adminActions.action, 'pricing.update'));
       expect(audits).toHaveLength(1);
       expect(audits[0]!.reason).toBe('Fuel cost');
       // Whole-row snapshots, so "what changed" is answerable without a diff log.
@@ -343,7 +373,9 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
         .send({})
         .expect(422);
 
-      expect(await db.select().from(adminActions).where(eq(adminActions.action, 'pricing.update'))).toHaveLength(0);
+      expect(
+        await db.select().from(adminActions).where(eq(adminActions.action, 'pricing.update')),
+      ).toHaveLength(0);
     });
 
     it('rejects a charge value outside its schema range', async () => {
@@ -421,16 +453,34 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       const seeded = await db.select().from(pricingRules);
       const cases: Array<Record<string, unknown>> = [
         // slab with a service_type — the service column is roadside-only.
-        { ruleKind: 'slab', serviceType: 'battery', vehicleClass: 'wheel_lift', maxKm: 5, pricePaise: 1_000 },
+        {
+          ruleKind: 'slab',
+          serviceType: 'battery',
+          vehicleClass: 'wheel_lift',
+          maxKm: 5,
+          pricePaise: 1_000,
+        },
         // slab with a ceiling — slabs are single prices.
-        { ruleKind: 'slab', vehicleClass: 'wheel_lift', maxKm: 5, pricePaise: 1_000, priceMaxPaise: 2_000 },
+        {
+          ruleKind: 'slab',
+          vehicleClass: 'wheel_lift',
+          maxKm: 5,
+          pricePaise: 1_000,
+          priceMaxPaise: 2_000,
+        },
         // slab without its band.
         { ruleKind: 'slab', vehicleClass: 'wheel_lift', pricePaise: 1_000 },
         // long_distance without a ceiling.
         { ruleKind: 'long_distance', vehicleClass: 'flatbed', maxKm: 700, pricePaise: 1_000 },
         // inverted §7.3 range — would quote a longer tow LESS (the price_range
         // CHECK's whole reason for existing).
-        { ruleKind: 'long_distance', vehicleClass: 'flatbed', maxKm: 700, pricePaise: 5_000, priceMaxPaise: 4_000 },
+        {
+          ruleKind: 'long_distance',
+          vehicleClass: 'flatbed',
+          maxKm: 700,
+          pricePaise: 5_000,
+          priceMaxPaise: 4_000,
+        },
         // roadside without a service…
         { ruleKind: 'roadside', maxKm: 5, pricePaise: 1_000 },
         // …and roadside that carries fields no lookup path reads.
@@ -465,7 +515,9 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       // is the documented way to reuse a band — prove it, rather than documenting
       // a conflict the operator cannot get out of.
       const config = (
-        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+        await request(app.getHttpServer())
+          .get('/v1/admin/pricing')
+          .set('Authorization', financeAuth)
       ).body;
       const incumbent = config.rules.find(
         (rule: { ruleKind: string; vehicleClass: string; maxKm: number }) =>
@@ -495,7 +547,9 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
   describe('POST /v1/admin/pricing/rules/:id/deactivate (W10)', () => {
     it('retires a rule without deleting it, and a double tap writes one audit row', async () => {
       const config = (
-        await request(app.getHttpServer()).get('/v1/admin/pricing').set('Authorization', financeAuth)
+        await request(app.getHttpServer())
+          .get('/v1/admin/pricing')
+          .set('Authorization', financeAuth)
       ).body;
       const slab = config.rules.find(
         (rule: { ruleKind: string; vehicleClass: string; maxKm: number }) =>
@@ -578,7 +632,10 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
   describe('PUT /v1/admin/commission/guardrail (W11 / decision G2)', () => {
     it('lets a SUPER ADMIN move the window, and the service enforces the new one', async () => {
       const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
-      const superAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+      const superAuth = await adminAuthHeaderFor(app, {
+        adminId: superAdmin.id,
+        subRole: 'super_admin',
+      });
 
       const response = await request(app.getHttpServer())
         .put('/v1/admin/commission/guardrail')
@@ -625,7 +682,10 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
 
     it('refuses a window that would leave a live band outside it, and audits the refusal', async () => {
       const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
-      const superAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+      const superAuth = await adminAuthHeaderFor(app, {
+        adminId: superAdmin.id,
+        subRole: 'super_admin',
+      });
 
       // Band A charges 10 %; a cap of 9 would make the live rate illegal.
       const response = await request(app.getHttpServer())
@@ -651,7 +711,10 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
 
     it('refuses the ABSURD at the schema, before the service is reached', async () => {
       const superAdmin = await seedAdmin(db, { subRole: 'super_admin' });
-      const superAuth = await adminAuthHeaderFor(app, { adminId: superAdmin.id, subRole: 'super_admin' });
+      const superAuth = await adminAuthHeaderFor(app, {
+        adminId: superAdmin.id,
+        subRole: 'super_admin',
+      });
 
       for (const body of [
         { floorPct: 0, capPct: 10 }, // floor must be > 0
@@ -719,7 +782,10 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       const ops = await seedAdmin(db, { subRole: 'operations' });
       await request(app.getHttpServer())
         .get('/v1/admin/commission/impact?bands=A:9,B:8,C:5&days=7')
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }))
+        .set(
+          'Authorization',
+          await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }),
+        )
         .expect(200);
     });
 
@@ -767,7 +833,10 @@ describe('admin config (/v1/admin/pricing, /v1/admin/commission)', () => {
       const ops = await seedAdmin(db, { subRole: 'operations' });
       const proposal = await request(app.getHttpServer())
         .post('/v1/admin/commission/proposals')
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }))
+        .set(
+          'Authorization',
+          await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }),
+        )
         .send({ band: 'B', pct: 7, reason: 'Driver supply is strong' })
         .expect(200);
 

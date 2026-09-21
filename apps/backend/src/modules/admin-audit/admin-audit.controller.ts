@@ -1,8 +1,5 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import {
-  adminAuditQuerySchema,
-  type AdminAuditQuery,
-} from '@towing/api-contracts';
+import { adminAuditQuerySchema, type AdminAuditQuery } from '@towing/api-contracts';
 import { z } from 'zod';
 import { ApiException } from '../../common/errors/api-exception';
 import { ThrottleBucket } from '../../common/throttling/throttler.config';

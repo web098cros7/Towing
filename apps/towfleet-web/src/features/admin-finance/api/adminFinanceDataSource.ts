@@ -79,7 +79,8 @@ const mockSource: AdminFinanceDataSource = {
   reject: async () => {
     await mockDelay();
   },
-  config: () => resolveMock(env.mockAdminFinanceState, adminFinanceConfigMock, adminFinanceConfigMock),
+  config: () =>
+    resolveMock(env.mockAdminFinanceState, adminFinanceConfigMock, adminFinanceConfigMock),
   updateConfig: async (patch) => {
     await mockDelay();
     return { ...adminFinanceConfigMock, ...patch };
@@ -260,4 +261,6 @@ const restSource: AdminFinanceDataSource = {
     }),
 };
 
-export const adminFinanceDataSource: AdminFinanceDataSource = env.useMocks ? mockSource : restSource;
+export const adminFinanceDataSource: AdminFinanceDataSource = env.useMocks
+  ? mockSource
+  : restSource;

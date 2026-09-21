@@ -69,7 +69,10 @@ describe('admin TOTP (/v1/admin/auth)', () => {
     return request(app.getHttpServer()).post('/v1/admin/auth/login').send({ email, password });
   }
 
-  async function enrolAndConfirm(adminId: string, subRole: 'super_admin' | 'operations' | 'support' | 'finance') {
+  async function enrolAndConfirm(
+    adminId: string,
+    subRole: 'super_admin' | 'operations' | 'support' | 'finance',
+  ) {
     const auth = await authHeader(adminId, subRole);
     const enroll = await request(app.getHttpServer())
       .post('/v1/admin/auth/2fa/enroll')
@@ -92,7 +95,10 @@ describe('admin TOTP (/v1/admin/auth)', () => {
     return { auth, secret };
   }
 
-  async function authHeader(adminId: string, subRole: 'super_admin' | 'operations' | 'support' | 'finance') {
+  async function authHeader(
+    adminId: string,
+    subRole: 'super_admin' | 'operations' | 'support' | 'finance',
+  ) {
     return adminAuthHeaderFor(app, { adminId, subRole });
   }
 

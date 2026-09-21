@@ -56,7 +56,8 @@ export const env = {
   /** W15's content editor (M5). */
   mockAdminContentState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_CONTENT_STATE ?? '') as MockState,
   /** W16's promotions console (M6). */
-  mockAdminPromotionsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PROMOTIONS_STATE ?? '') as MockState,
+  mockAdminPromotionsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_PROMOTIONS_STATE ??
+    '') as MockState,
   /** W17's analytics console (M6). */
   mockAdminAnalyticsState: (process.env.NEXT_PUBLIC_MOCK_ADMIN_ANALYTICS_STATE ?? '') as MockState,
   /** W18's notification console (M6). */

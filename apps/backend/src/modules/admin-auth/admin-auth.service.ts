@@ -331,7 +331,9 @@ export class AdminAuthService {
       .where(
         and(
           eq(adminUsers.id, adminId),
-          lastCounter === null ? isNull(adminUsers.twofaLastCounter) : lt(adminUsers.twofaLastCounter, counter),
+          lastCounter === null
+            ? isNull(adminUsers.twofaLastCounter)
+            : lt(adminUsers.twofaLastCounter, counter),
         ),
       )
       .returning({ id: adminUsers.id });
@@ -469,10 +471,17 @@ export class AdminAuthService {
    * Re-enrolment while unconfirmed restarts cleanly (old secret and codes
    * are replaced, never merged).
    */
-  async totpEnroll(adminId: string, context: SessionContext = {}): Promise<AdminTotpEnrollResponse> {
+  async totpEnroll(
+    adminId: string,
+    context: SessionContext = {},
+  ): Promise<AdminTotpEnrollResponse> {
     const adminRow = await this.requireActiveAdmin(adminId);
     if (adminRow.twofaEnabled) {
-      throw new ApiException(HttpStatus.CONFLICT, ErrorCodes.TOTP_ALREADY_ENABLED, 'Two-factor is already enabled');
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.TOTP_ALREADY_ENABLED,
+        'Two-factor is already enabled',
+      );
     }
 
     const secret = this.totp.generateSecret();
@@ -508,13 +517,25 @@ export class AdminAuthService {
   }
 
   /** Confirms an enrolment by proving possession: one correct code enables. */
-  async totpConfirm(adminId: string, input: AdminTotpConfirm, context: SessionContext = {}): Promise<AdminTotpStatus> {
+  async totpConfirm(
+    adminId: string,
+    input: AdminTotpConfirm,
+    context: SessionContext = {},
+  ): Promise<AdminTotpStatus> {
     const adminRow = await this.requireActiveAdmin(adminId);
     if (adminRow.twofaEnabled) {
-      throw new ApiException(HttpStatus.CONFLICT, ErrorCodes.TOTP_ALREADY_ENABLED, 'Two-factor is already enabled');
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.TOTP_ALREADY_ENABLED,
+        'Two-factor is already enabled',
+      );
     }
     if (!adminRow.twofaSecretEnc) {
-      throw new ApiException(HttpStatus.CONFLICT, ErrorCodes.TOTP_NOT_ENABLED, 'Start enrolment before confirming');
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.TOTP_NOT_ENABLED,
+        'Start enrolment before confirming',
+      );
     }
 
     let secret: string;
@@ -561,10 +582,18 @@ export class AdminAuthService {
    * authenticate the factor being removed) and revokes sessions: the account
    * just got weaker, so every session re-proves from the password.
    */
-  async totpDisable(adminId: string, reason: string, context: SessionContext = {}): Promise<AdminTotpStatus> {
+  async totpDisable(
+    adminId: string,
+    reason: string,
+    context: SessionContext = {},
+  ): Promise<AdminTotpStatus> {
     const adminRow = await this.requireActiveAdmin(adminId);
     if (!adminRow.twofaEnabled) {
-      throw new ApiException(HttpStatus.CONFLICT, ErrorCodes.TOTP_NOT_ENABLED, 'Two-factor is not enabled');
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.TOTP_NOT_ENABLED,
+        'Two-factor is not enabled',
+      );
     }
 
     const now = new Date();
@@ -606,18 +635,25 @@ export class AdminAuthService {
    * screenshot of the old sheet must not stay valid), and the plaintext is
    * returned exactly once — only hashes rest in the database.
    */
-  async totpRecoveryCodes(adminId: string, context: SessionContext = {}): Promise<AdminRecoveryCodesResponse> {
+  async totpRecoveryCodes(
+    adminId: string,
+    context: SessionContext = {},
+  ): Promise<AdminRecoveryCodesResponse> {
     const adminRow = await this.requireActiveAdmin(adminId);
     if (!adminRow.twofaEnabled) {
-      throw new ApiException(HttpStatus.CONFLICT, ErrorCodes.TOTP_NOT_ENABLED, 'Enable two-factor before issuing recovery codes');
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.TOTP_NOT_ENABLED,
+        'Enable two-factor before issuing recovery codes',
+      );
     }
 
     const codes = this.totp.generateRecoveryCodes();
     const now = new Date();
     await this.db.delete(adminRecoveryCodes).where(eq(adminRecoveryCodes.adminId, adminId));
-    await this.db.insert(adminRecoveryCodes).values(
-      codes.map(({ codeHash }) => ({ adminId, codeHash, createdAt: now })),
-    );
+    await this.db
+      .insert(adminRecoveryCodes)
+      .values(codes.map(({ codeHash }) => ({ adminId, codeHash, createdAt: now })));
 
     await this.audit.record({
       adminId,

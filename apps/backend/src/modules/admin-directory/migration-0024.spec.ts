@@ -46,9 +46,7 @@ describe('migration 0024 admin directory search and suspension', () => {
     const sql = migrationSql();
     expect(sql).toContain('idx_bookings_created_at');
     expect(sql).toContain('idx_bookings_zone_created');
-    const paidLine = sql
-      .split('\n')
-      .find((line) => line.includes('idx_bookings_paid_at'));
+    const paidLine = sql.split('\n').find((line) => line.includes('idx_bookings_paid_at'));
     expect(paidLine).toBeDefined();
     expect(paidLine).toContain(`WHERE "status" = 'paid'`);
   });

@@ -92,7 +92,12 @@ export class AdminFinanceController {
     @ZodBody(adminPayoutRejectSchema) body: AdminPayoutRejectRequest,
     @Req() request: AuthedRequest,
   ) {
-    return this.finance.reject(adminId(request), payoutId, body.reason, sessionContextFrom(request));
+    return this.finance.reject(
+      adminId(request),
+      payoutId,
+      body.reason,
+      sessionContextFrom(request),
+    );
   }
 
   @Get('config')
@@ -150,7 +155,12 @@ export class AdminFinanceController {
     @IdempotencyKey() idempotencyKey: string,
     @Req() request: AuthedRequest,
   ) {
-    return this.finance.issueRefund(adminId(request), body, idempotencyKey, sessionContextFrom(request));
+    return this.finance.issueRefund(
+      adminId(request),
+      body,
+      idempotencyKey,
+      sessionContextFrom(request),
+    );
   }
 
   /**
@@ -166,8 +176,7 @@ export class AdminFinanceController {
     @ZodQuery(adminReconciliationQuerySchema) query: AdminReconciliationQuery,
     @Res() res: Response,
   ) {
-    const date =
-      query.date ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const date = query.date ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     return this.finance.reconciliationCsv(res, date);
   }
 

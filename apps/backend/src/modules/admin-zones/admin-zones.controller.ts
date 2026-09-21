@@ -1,4 +1,16 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   adminZoneCreateSchema,
   adminZonePreviewRequestSchema,
@@ -43,7 +55,9 @@ export class AdminZonesController {
   @Post('preview')
   @Permissions('zone.edit')
   @HttpCode(HttpStatus.OK)
-  preview(@ZodBody(adminZonePreviewRequestSchema) body: AdminZonePreviewRequest): Promise<AdminZonePreview> {
+  preview(
+    @ZodBody(adminZonePreviewRequestSchema) body: AdminZonePreviewRequest,
+  ): Promise<AdminZonePreview> {
     return this.zones.preview(body);
   }
 
@@ -51,7 +65,10 @@ export class AdminZonesController {
   @Permissions('zone.edit')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
-  create(@ZodBody(adminZoneCreateSchema) body: AdminZoneCreate, @Req() request: AuthedRequest): Promise<AdminZone> {
+  create(
+    @ZodBody(adminZoneCreateSchema) body: AdminZoneCreate,
+    @Req() request: AuthedRequest,
+  ): Promise<AdminZone> {
     return this.zones.create(adminId(request), body, sessionContextFrom(request));
   }
 
@@ -77,7 +94,10 @@ export class AdminZonesController {
   @Permissions('zone.edit')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
-  activate(@Param('id', ParseUUIDPipe) id: string, @Req() request: AuthedRequest): Promise<AdminZone> {
+  activate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: AuthedRequest,
+  ): Promise<AdminZone> {
     return this.zones.setActive(adminId(request), id, true, undefined, sessionContextFrom(request));
   }
 
@@ -94,7 +114,13 @@ export class AdminZonesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: AuthedRequest,
   ): Promise<AdminZone> {
-    return this.zones.setActive(adminId(request), id, false, undefined, sessionContextFrom(request));
+    return this.zones.setActive(
+      adminId(request),
+      id,
+      false,
+      undefined,
+      sessionContextFrom(request),
+    );
   }
 
   /** Restore = apply an old snapshot as a NEW version; history stays append-only. */
@@ -107,7 +133,13 @@ export class AdminZonesController {
     @Param('versionId', ParseUUIDPipe) versionId: string,
     @Req() request: AuthedRequest,
   ): Promise<AdminZone> {
-    return this.zones.restore(adminId(request), id, versionId, undefined, sessionContextFrom(request));
+    return this.zones.restore(
+      adminId(request),
+      id,
+      versionId,
+      undefined,
+      sessionContextFrom(request),
+    );
   }
 }
 

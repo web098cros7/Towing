@@ -104,7 +104,7 @@ describe('W8 — partial refunds (money engine)', () => {
     clientKey: randomUUID(),
   });
 
-  it('refunds X to the paisa, claws back the driver\'s share, and keeps the booking paid', async () => {
+  it("refunds X to the paisa, claws back the driver's share, and keeps the booking paid", async () => {
     const bookingId = await seedPaidBooking();
 
     const result = await refunds.refundPartial({
@@ -179,7 +179,7 @@ describe('W8 — partial refunds (money engine)', () => {
     await expectNoDrift();
   });
 
-  it('refuses an amount beyond the payment\'s remaining balance before any money moves', async () => {
+  it("refuses an amount beyond the payment's remaining balance before any money moves", async () => {
     const bookingId = await seedPaidBooking();
     const gateway = vi.spyOn(app.get(PAYMENT_GATEWAY), 'refund');
     gateway.mockClear();

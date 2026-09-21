@@ -138,9 +138,7 @@ describe('admin ops live snapshot (W4)', () => {
     );
 
     expect(all.degraded).toBe(false);
-    expect(all.drivers.map((driver) => driver.driverId).sort()).toEqual(
-      [driverA, driverB].sort(),
-    );
+    expect(all.drivers.map((driver) => driver.driverId).sort()).toEqual([driverA, driverB].sort());
     expect(all.drivers.find((driver) => driver.driverId === driverA)).toMatchObject({
       fromFallback: false,
       lat: 12.9716,

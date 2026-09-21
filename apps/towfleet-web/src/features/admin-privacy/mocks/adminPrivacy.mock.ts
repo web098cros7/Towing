@@ -93,11 +93,41 @@ const REQUESTS: AdminDeletionRequest[] = [
       id: '00000000-0000-4000-8000-0000000000d3',
       status: 'completed',
       steps: [
-        { step: 'holds', outcome: 'done', count: 0, detail: 'no live booking, no open payout', at: '2026-08-17T06:20:00.000Z' },
-        { step: 'revoke_sessions', outcome: 'done', count: 2, detail: 'customer realm', at: '2026-08-17T06:20:00.000Z' },
-        { step: 'anonymise_identity', outcome: 'done', count: 1, detail: 'deleted:…', at: '2026-08-17T06:20:00.000Z' },
-        { step: 'erase_records', outcome: 'done', count: 9, detail: '1 storage object(s), 1 device(s)', at: '2026-08-17T06:20:00.000Z' },
-        { step: 'erase_booking_pii', outcome: 'done', count: 4, detail: '3 booking(s) scrubbed', at: '2026-08-17T06:20:00.000Z' },
+        {
+          step: 'holds',
+          outcome: 'done',
+          count: 0,
+          detail: 'no live booking, no open payout',
+          at: '2026-08-17T06:20:00.000Z',
+        },
+        {
+          step: 'revoke_sessions',
+          outcome: 'done',
+          count: 2,
+          detail: 'customer realm',
+          at: '2026-08-17T06:20:00.000Z',
+        },
+        {
+          step: 'anonymise_identity',
+          outcome: 'done',
+          count: 1,
+          detail: 'deleted:…',
+          at: '2026-08-17T06:20:00.000Z',
+        },
+        {
+          step: 'erase_records',
+          outcome: 'done',
+          count: 9,
+          detail: '1 storage object(s), 1 device(s)',
+          at: '2026-08-17T06:20:00.000Z',
+        },
+        {
+          step: 'erase_booking_pii',
+          outcome: 'done',
+          count: 4,
+          detail: '3 booking(s) scrubbed',
+          at: '2026-08-17T06:20:00.000Z',
+        },
         { step: 'complete', outcome: 'done', count: 0, at: '2026-08-17T06:20:00.000Z' },
       ],
       error: null,
@@ -196,7 +226,9 @@ const POLICY_META: Array<{ key: string; days: number; enforced: boolean; descrip
   },
 ];
 
-export function mockRetention(overrides: AdminRetentionUpdate['policies'] = []): AdminRetentionPoliciesResponse {
+export function mockRetention(
+  overrides: AdminRetentionUpdate['policies'] = [],
+): AdminRetentionPoliciesResponse {
   const byKey = new Map(overrides.map((policy) => [policy.policyKey, policy.retentionDays]));
   const items: AdminRetentionPolicy[] = POLICY_META.map((policy) => ({
     policyKey: policy.key,
@@ -213,11 +245,22 @@ export function mockSubjectExport(): AdminSubjectExportResponse {
     subjectType: 'user',
     subjectId: USER_ID,
     generatedAt: new Date().toISOString(),
-    profile: { id: USER_ID, mobile: '+919900000101', name: 'Ravi Kumar', email: 'ravi@example.com' },
+    profile: {
+      id: USER_ID,
+      mobile: '+919900000101',
+      name: 'Ravi Kumar',
+      email: 'ravi@example.com',
+    },
     vehicles: [{ id: 'v1', type: 'hatchback', plate: 'KA-01-AB-1234' }],
     addresses: [{ id: 'a1', fullAddress: '12 MG Road, Bengaluru' }],
     emergencyContacts: [{ id: 'e1', name: 'Sister', phone: '9900000000' }],
-    consents: [{ policyType: 'privacy_policy', policyVersion: '2026-08-10', consentedAt: '2026-08-10T00:00:00.000Z' }],
+    consents: [
+      {
+        policyType: 'privacy_policy',
+        policyVersion: '2026-08-10',
+        consentedAt: '2026-08-10T00:00:00.000Z',
+      },
+    ],
     bookings: [
       {
         id: '00000000-0000-4000-8000-0000000000f1',

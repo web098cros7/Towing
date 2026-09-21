@@ -20,11 +20,7 @@ import { BookingCancelDialog } from './BookingCancelDialog';
 import { BookingReassignDialog } from './BookingReassignDialog';
 import { BookingOverrideDialog } from './BookingOverrideDialog';
 import { OpenDisputeDialog } from './OpenDisputeDialog';
-import {
-  CANCELABLE_STATUSES,
-  DISPUTABLE_STATUSES,
-  REASSIGNABLE_STATUSES,
-} from './bookingStatus';
+import { CANCELABLE_STATUSES, DISPUTABLE_STATUSES, REASSIGNABLE_STATUSES } from './bookingStatus';
 
 /**
  * Every intervention W8 puts on a booking, in one row, each gated twice: by
@@ -93,7 +89,12 @@ export function BookingActions({ detail }: { detail: AdminBookingDetail }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {cancelable && can('booking.cancel') ? (
-        <Button variant="outline" size="sm" onClick={() => setCancelOpen(true)} data-testid="booking-action-cancel">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCancelOpen(true)}
+          data-testid="booking-action-cancel"
+        >
           <Undo2 className="size-4" /> Cancel
         </Button>
       ) : null}

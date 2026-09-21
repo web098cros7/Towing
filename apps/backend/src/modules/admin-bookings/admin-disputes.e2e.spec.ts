@@ -8,13 +8,7 @@ import { adminActions, bookings } from '../../db/schema';
 import { ledgerInvariants } from '../../db/ledger/invariants';
 import { adminAuthHeaderFor, createTestApp } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
-import {
-  seedAdmin,
-  seedCustomer,
-  seedDriver,
-  setupTestDatabase,
-  truncateAll,
-} from '../../test/db';
+import { seedAdmin, seedCustomer, seedDriver, setupTestDatabase, truncateAll } from '../../test/db';
 import type { TestDatabase } from '../../test/db';
 import { seedBooking, seedWalletWithLedger } from '../../test/fixtures';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
@@ -93,7 +87,10 @@ describe('W8 — disputes (/v1/admin/disputes)', () => {
       driverPayout: '900.00',
     });
     if (params.baseFare) {
-      await db.update(bookings).set({ baseFare: params.baseFare }).where(eq(bookings.id, bookingId));
+      await db
+        .update(bookings)
+        .set({ baseFare: params.baseFare })
+        .where(eq(bookings.id, bookingId));
     }
     await db.execute(sql`
       insert into payments (booking_id, amount, tax_amount, purpose, method, status,
@@ -198,7 +195,11 @@ describe('W8 — disputes (/v1/admin/disputes)', () => {
       .set('Authorization', adminAuth)
       .expect(200);
     expect(queue.body.total).toBe(1);
-    expect(queue.body.items[0]).toMatchObject({ id: disputeId, bookingId, reasonCode: 'driver_conduct' });
+    expect(queue.body.items[0]).toMatchObject({
+      id: disputeId,
+      bookingId,
+      reasonCode: 'driver_conduct',
+    });
     expect(queue.body.items[0].booking.status).toBe('disputed');
 
     const detail = await request(app.getHttpServer())
@@ -355,7 +356,11 @@ describe('W8 — disputes (/v1/admin/disputes)', () => {
       .send({ resolution: 'uphold_charge', note: 'meter and slab both check out' })
       .expect(200);
 
-    expect(res.body).toMatchObject({ resolution: 'uphold_charge', bookingStatus: 'paid', refundId: null });
+    expect(res.body).toMatchObject({
+      resolution: 'uphold_charge',
+      bookingStatus: 'paid',
+      refundId: null,
+    });
     expect(await bookingStatus(bookingId)).toBe('paid');
 
     const [refunds] = (await db.execute(sql`

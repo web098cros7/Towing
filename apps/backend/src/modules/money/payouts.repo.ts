@@ -126,7 +126,10 @@ export class PayoutsRepo {
    * the provider accepted the payout but we crashed before persisting
    * `route_ref` — without it that payout would be stranded until the poll.
    */
-  async byProviderRefOrId(providerRef: string | null, payoutId: string | null): Promise<PayoutRow | null> {
+  async byProviderRefOrId(
+    providerRef: string | null,
+    payoutId: string | null,
+  ): Promise<PayoutRow | null> {
     if (providerRef) {
       const rows = (await this.db.execute(sql`
         select * from payouts where route_ref = ${providerRef}
@@ -251,7 +254,9 @@ export class PayoutsRepo {
     // Inclusive IST day bounds on `requested_at`, the column the queue is
     // ordered by — the same boundary arithmetic the bookings list uses.
     if (query.from) {
-      filters.push(sql`p.requested_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`);
+      filters.push(
+        sql`p.requested_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`,
+      );
     }
     if (query.to) {
       filters.push(

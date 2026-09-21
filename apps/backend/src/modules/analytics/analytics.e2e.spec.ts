@@ -185,7 +185,9 @@ describe('analytics rollups (/v1/admin/analytics, W17)', () => {
     await writeDay(db, DAY);
 
     const snapshot = async (): Promise<unknown> => ({
-      daily: (await db.execute(sql`select * from analytics_daily where day = ${DAY}::date`)) as unknown,
+      daily: (await db.execute(
+        sql`select * from analytics_daily where day = ${DAY}::date`,
+      )) as unknown,
       zones: (await db.execute(
         sql`select * from analytics_zone_daily where day = ${DAY}::date order by zone_id`,
       )) as unknown,

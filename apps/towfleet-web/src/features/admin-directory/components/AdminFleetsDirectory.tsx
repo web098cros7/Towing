@@ -48,7 +48,9 @@ const columns: ColumnDef<AdminFleetItem, unknown>[] = [
     cell: ({ row }) => (
       <span className="tabular-nums">
         {row.original.driversCount}
-        <span className="ml-1 text-xs text-text-secondary">({row.original.onlineDriversCount} online)</span>
+        <span className="ml-1 text-xs text-text-secondary">
+          ({row.original.onlineDriversCount} online)
+        </span>
       </span>
     ),
   },

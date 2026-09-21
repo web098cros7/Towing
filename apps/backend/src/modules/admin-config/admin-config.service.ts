@@ -376,9 +376,7 @@ export class AdminConfigService {
     context: SessionContext,
   ): Promise<{ config: AdminCommissionConfig; auditId: string }> {
     const guardrail = await this.guardrail();
-    const offenders = bands.filter(
-      ({ pct }) => pct < guardrail.floorPct || pct > guardrail.capPct,
-    );
+    const offenders = bands.filter(({ pct }) => pct < guardrail.floorPct || pct > guardrail.capPct);
 
     if (offenders.length > 0) {
       await this.audit.record({
@@ -559,7 +557,10 @@ export class AdminConfigService {
       (await this.db.select().from(commissionConfig)).map((row) => [row.band, Number(row.pct)]),
     );
 
-    const byBand = new Map<Band, { bookings: number; currentPaise: number; proposedPaise: number }>();
+    const byBand = new Map<
+      Band,
+      { bookings: number; currentPaise: number; proposedPaise: number }
+    >();
     for (const row of rows) {
       const band = row.band as Band | null;
       if (!band) continue;

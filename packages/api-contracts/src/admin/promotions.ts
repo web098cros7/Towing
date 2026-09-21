@@ -188,12 +188,8 @@ export const adminCouponRedemptionSchema = z.object({
 });
 export type AdminCouponRedemption = z.infer<typeof adminCouponRedemptionSchema>;
 
-export const adminCouponRedemptionsResponseSchema = pageEnvelopeSchema(
-  adminCouponRedemptionSchema,
-);
-export type AdminCouponRedemptionsResponse = z.infer<
-  typeof adminCouponRedemptionsResponseSchema
->;
+export const adminCouponRedemptionsResponseSchema = pageEnvelopeSchema(adminCouponRedemptionSchema);
+export type AdminCouponRedemptionsResponse = z.infer<typeof adminCouponRedemptionsResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Banners

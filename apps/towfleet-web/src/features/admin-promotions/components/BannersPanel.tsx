@@ -92,7 +92,9 @@ export function BannersPanel() {
           return (
             <div key={audience} className="space-y-2">
               <h3 className="text-sm font-semibold">
-                {audience === 'customer' ? 'Customer carousel (TowGo)' : 'Driver carousel (TowPartner)'}
+                {audience === 'customer'
+                  ? 'Customer carousel (TowGo)'
+                  : 'Driver carousel (TowPartner)'}
               </h3>
               {rows.length === 0 ? (
                 <p className="text-xs text-text-secondary">Nothing for this audience.</p>

@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { boolean, index, integer, jsonb, pgTable, text,
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
   timestamp,
   uniqueIndex,
   uuid,
@@ -21,57 +27,59 @@ import { surgeBandEnum } from './enums';
  * tested here to pick the zone, its surge band, any highway charge and its
  * dispatch radius ladder.
  */
-export const serviceZones = pgTable('service_zones', {
-  id: primaryId(),
-  /**
-   * W13 — the human key the console cites (`hsr-corridor`), unique by
-   * construction. Backfilled from the id in 0028 because `name` is not unique
-   * and nothing has ever stopped two zones sharing one.
-   *
-   * The default generates one for callers that do not care (test fixtures, the
-   * odd script): the console's create form always supplies a code, and the seed
-   * slugs the zone's name.
-   */
-  code: text('code')
-    .notNull()
-    .$defaultFn(() => `zone-${randomUUID().slice(0, 8)}`),
-  name: text('name').notNull(),
-  /** Free text for whoever next wonders why this shape exists. */
-  notes: text('notes'),
-  /** Who last reshaped it. No cascade — history outlives the admin. */
-  updatedBy: uuid('updated_by').references(() => adminUsers.id),
-  /**
-   * The CURRENT shape's number. `service_zone_versions` holds every shape that
-   * number has named; a restore writes a NEW version, so the log stays
-   * append-only and "what did this look like in March" stays answerable.
-   */
-  version: integer('version').notNull().default(1),
-  // GIST index (`idx_service_zones_geo`) added in migration 0002. Phase 14 is
-  // its first user — `zone-resolver.service.ts`'s ST_Covers lookup.
-  area: geographyPolygon('area').notNull(),
-  /**
-   * §7.4 surge tier. Was nullable `text` until migration 0011; every existing
-   * row held 'standard', so the cast was free. The estimate multiplies by this,
-   * and a free-text typo is a silently un-surged fare.
-   */
-  surgeBand: surgeBandEnum('surge_band').notNull().default('standard'),
-  /** §7.4 highway pickup surcharge applies when the PICKUP falls in a zone with this set. */
-  isHighway: boolean('is_highway').notNull().default(false),
-  isActive: boolean('is_active').notNull().default(true),
-  /**
-   * §6.7 per-zone dispatch overrides — radius ladder, offer timing, wave size,
-   * per-service variations. Typed by `dispatchConfigOverrideSchema` and read
-   * ONLY through `resolveDispatchConfig()`, which supplies the code-level
-   * defaults when this is NULL. A consumer reading the JSONB directly and
-   * falling back to its own constants is the exact failure Phase 17 is written
-   * to avoid.
-   *
-   * Not to be confused with the `dispatch_config` TABLE, which holds the global
-   * scorer weights. See `db/schema/pricing.ts`.
-   */
-  dispatchConfig: jsonb('dispatch_config').$type<DispatchConfigOverride>(),
-  ...timestamps,
-},
+export const serviceZones = pgTable(
+  'service_zones',
+  {
+    id: primaryId(),
+    /**
+     * W13 — the human key the console cites (`hsr-corridor`), unique by
+     * construction. Backfilled from the id in 0028 because `name` is not unique
+     * and nothing has ever stopped two zones sharing one.
+     *
+     * The default generates one for callers that do not care (test fixtures, the
+     * odd script): the console's create form always supplies a code, and the seed
+     * slugs the zone's name.
+     */
+    code: text('code')
+      .notNull()
+      .$defaultFn(() => `zone-${randomUUID().slice(0, 8)}`),
+    name: text('name').notNull(),
+    /** Free text for whoever next wonders why this shape exists. */
+    notes: text('notes'),
+    /** Who last reshaped it. No cascade — history outlives the admin. */
+    updatedBy: uuid('updated_by').references(() => adminUsers.id),
+    /**
+     * The CURRENT shape's number. `service_zone_versions` holds every shape that
+     * number has named; a restore writes a NEW version, so the log stays
+     * append-only and "what did this look like in March" stays answerable.
+     */
+    version: integer('version').notNull().default(1),
+    // GIST index (`idx_service_zones_geo`) added in migration 0002. Phase 14 is
+    // its first user — `zone-resolver.service.ts`'s ST_Covers lookup.
+    area: geographyPolygon('area').notNull(),
+    /**
+     * §7.4 surge tier. Was nullable `text` until migration 0011; every existing
+     * row held 'standard', so the cast was free. The estimate multiplies by this,
+     * and a free-text typo is a silently un-surged fare.
+     */
+    surgeBand: surgeBandEnum('surge_band').notNull().default('standard'),
+    /** §7.4 highway pickup surcharge applies when the PICKUP falls in a zone with this set. */
+    isHighway: boolean('is_highway').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    /**
+     * §6.7 per-zone dispatch overrides — radius ladder, offer timing, wave size,
+     * per-service variations. Typed by `dispatchConfigOverrideSchema` and read
+     * ONLY through `resolveDispatchConfig()`, which supplies the code-level
+     * defaults when this is NULL. A consumer reading the JSONB directly and
+     * falling back to its own constants is the exact failure Phase 17 is written
+     * to avoid.
+     *
+     * Not to be confused with the `dispatch_config` TABLE, which holds the global
+     * scorer weights. See `db/schema/pricing.ts`.
+     */
+    dispatchConfig: jsonb('dispatch_config').$type<DispatchConfigOverride>(),
+    ...timestamps,
+  },
   (t) => [uniqueIndex('uq_service_zones_code').on(t.code)],
 );
 

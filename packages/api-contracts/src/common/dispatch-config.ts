@@ -134,8 +134,7 @@ export function resolveDispatchConfig(
     return {
       ...DISPATCH_CONFIG_DEFAULTS,
       offersPerWave:
-        perServiceOffer(globalPerServiceOffers, service) ??
-        DISPATCH_CONFIG_DEFAULTS.offersPerWave,
+        perServiceOffer(globalPerServiceOffers, service) ?? DISPATCH_CONFIG_DEFAULTS.offersPerWave,
     };
   }
 
@@ -202,10 +201,9 @@ export const scorerWeightsSchema = z
     acceptance: z.number().min(0).max(100),
     completion: z.number().min(0).max(100),
   })
-  .refine(
-    (w) => Math.abs(w.proximity + w.rating + w.acceptance + w.completion - 100) < 0.005,
-    { message: 'scorer weights must sum to 100' },
-  );
+  .refine((w) => Math.abs(w.proximity + w.rating + w.acceptance + w.completion - 100) < 0.005, {
+    message: 'scorer weights must sum to 100',
+  });
 export type ScorerWeights = z.infer<typeof scorerWeightsSchema>;
 
 /**

@@ -105,7 +105,6 @@ export function setZoneData(
   selectedZoneId: string | null,
 ): void {
   const source = map.getSource(ZONES_SOURCE) as
-    | { setData: (data: FeatureCollection) => void }
-    | undefined;
+    { setData: (data: FeatureCollection) => void } | undefined;
   source?.setData(zonesToGeoJson(zones, selectedZoneId));
 }

@@ -495,7 +495,6 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     variables: () => ({}),
   }),
 
-
   // --- Phase 17: dispatch -----------------------------------------------------
 
   defineTrigger({

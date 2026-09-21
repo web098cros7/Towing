@@ -216,7 +216,11 @@ export class AdminConfigController {
     @ZodBody(adminCommissionProposalCreateSchema) body: AdminCommissionProposalCreate,
     @Req() request: AuthedRequest,
   ): Promise<AdminCommissionProposal> {
-    return this.config.createCommissionProposal(adminId(request), body, sessionContextFrom(request));
+    return this.config.createCommissionProposal(
+      adminId(request),
+      body,
+      sessionContextFrom(request),
+    );
   }
 
   @Get('commission/proposals')

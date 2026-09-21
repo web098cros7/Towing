@@ -10,7 +10,12 @@ import type {
 import { adminApiFetch } from '@/lib/adminApiClient';
 import { env } from '@/lib/env';
 import { mockDelay, resolveMock } from '@/lib/mockUtils';
-import { adminZoneMocks, adminZoneVersionsMock, adminZonesMock, approxAreaKm2 } from '../mocks/adminZones.mock';
+import {
+  adminZoneMocks,
+  adminZoneVersionsMock,
+  adminZonesMock,
+  approxAreaKm2,
+} from '../mocks/adminZones.mock';
 
 /**
  * W13's `/admin/zones`.
@@ -67,7 +72,10 @@ function snapshot(zone: AdminZone, reason: string | null): AdminZoneVersion {
 }
 
 /** Bounding boxes only — the mock says which zones a box would touch, not how much. */
-function mockOverlaps(area: AdminZone['area'], excludeZoneId?: string): AdminZonePreview['overlaps'] {
+function mockOverlaps(
+  area: AdminZone['area'],
+  excludeZoneId?: string,
+): AdminZonePreview['overlaps'] {
   const ring = area.coordinates[0]!;
   const [minLng, minLat, maxLng, maxLat] = [
     Math.min(...ring.map(([lng]) => lng!)),
@@ -94,10 +102,14 @@ function mockOverlaps(area: AdminZone['area'], excludeZoneId?: string): AdminZon
 
 const mockSource: AdminZonesDataSource = {
   list: () =>
-    resolveMock(env.mockAdminZonesState, { ...adminZonesMock, items: mockItems }, {
-      ...adminZonesMock,
-      items: [],
-    }),
+    resolveMock(
+      env.mockAdminZonesState,
+      { ...adminZonesMock, items: mockItems },
+      {
+        ...adminZonesMock,
+        items: [],
+      },
+    ),
 
   create: async (body) => {
     await mockDelay();
@@ -158,7 +170,10 @@ const mockSource: AdminZonesDataSource = {
     };
     mockVersions = {
       ...mockVersions,
-      [zoneId]: [snapshot(zone, reason ?? (active ? 'Reopened' : 'Paused')), ...(mockVersions[zoneId] ?? [])],
+      [zoneId]: [
+        snapshot(zone, reason ?? (active ? 'Reopened' : 'Paused')),
+        ...(mockVersions[zoneId] ?? []),
+      ],
     };
     return upsertMock(zone);
   },
@@ -186,7 +201,10 @@ const mockSource: AdminZonesDataSource = {
     };
     mockVersions = {
       ...mockVersions,
-      [zoneId]: [snapshot(zone, `Restored version ${target.version}`), ...(mockVersions[zoneId] ?? [])],
+      [zoneId]: [
+        snapshot(zone, `Restored version ${target.version}`),
+        ...(mockVersions[zoneId] ?? []),
+      ],
     };
     return upsertMock(zone);
   },
@@ -207,7 +225,8 @@ const mockSource: AdminZonesDataSource = {
 
 const restSource: AdminZonesDataSource = {
   list: () => adminApiFetch<AdminZonesResponse>('zones'),
-  create: (body) => adminApiFetch<AdminZone>('zones', { method: 'POST', body: JSON.stringify(body) }),
+  create: (body) =>
+    adminApiFetch<AdminZone>('zones', { method: 'POST', body: JSON.stringify(body) }),
   update: (zoneId, body) =>
     adminApiFetch<AdminZone>(`zones/${zoneId}`, { method: 'PUT', body: JSON.stringify(body) }),
   setActive: (zoneId, active, reason) =>
@@ -219,7 +238,10 @@ const restSource: AdminZonesDataSource = {
   restore: (zoneId, versionId) =>
     adminApiFetch<AdminZone>(`zones/${zoneId}/versions/${versionId}/restore`, { method: 'POST' }),
   preview: (body) =>
-    adminApiFetch<AdminZonePreview>('zones/preview', { method: 'POST', body: JSON.stringify(body) }),
+    adminApiFetch<AdminZonePreview>('zones/preview', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };
 
 export const adminZonesDataSource: AdminZonesDataSource = env.useMocks ? mockSource : restSource;

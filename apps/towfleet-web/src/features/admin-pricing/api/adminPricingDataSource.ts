@@ -9,10 +9,7 @@ import type {
 import { adminApiFetch } from '@/lib/adminApiClient';
 import { env } from '@/lib/env';
 import { mockDelay, resolveMock } from '@/lib/mockUtils';
-import {
-  adminPricingConfigMock,
-  adminPricingHistoryMock,
-} from '../mocks/adminPricing.mock';
+import { adminPricingConfigMock, adminPricingHistoryMock } from '../mocks/adminPricing.mock';
 
 /**
  * W10's `/admin/pricing`. Every write is a PARTIAL by construction: the update
@@ -39,10 +36,11 @@ export interface AdminPricingDataSource {
 let mockConfig: AdminPricingConfig = adminPricingConfigMock;
 
 const mockSource: AdminPricingDataSource = {
-  config: () => resolveMock(env.mockAdminPricingState, mockConfig, {
-    ...adminPricingConfigMock,
-    rules: [],
-  }),
+  config: () =>
+    resolveMock(env.mockAdminPricingState, mockConfig, {
+      ...adminPricingConfigMock,
+      rules: [],
+    }),
 
   update: async (patch) => {
     await mockDelay();

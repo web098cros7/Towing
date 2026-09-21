@@ -1,7 +1,11 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { AdminZoneCreate, AdminZonePreviewRequest, AdminZoneUpdate } from '@towing/api-contracts';
+import type {
+  AdminZoneCreate,
+  AdminZonePreviewRequest,
+  AdminZoneUpdate,
+} from '@towing/api-contracts';
 import { adminZonesKeys } from './adminZones.keys';
 import { adminZonesDataSource } from './adminZonesDataSource';
 

@@ -151,8 +151,7 @@ const mockSource: AdminBookingsDataSource = {
 };
 
 const restSource: AdminBookingsDataSource = {
-  list: (query) =>
-    adminApiFetch<AdminBookingsResponse>(`bookings?${toQueryString(query)}`),
+  list: (query) => adminApiFetch<AdminBookingsResponse>(`bookings?${toQueryString(query)}`),
 
   detail: (bookingId) => adminApiFetch<AdminBookingDetail>(`bookings/${bookingId}`),
 

@@ -1,8 +1,5 @@
 import { Controller, Get, HttpCode, HttpStatus, Param, Post, Req, UseGuards } from '@nestjs/common';
-import {
-  quoteRequestSchema,
-  type QuoteRequest,
-} from '@towing/api-contracts';
+import { quoteRequestSchema, type QuoteRequest } from '@towing/api-contracts';
 import { z } from 'zod';
 import { ApiException } from '../../common/errors/api-exception';
 import { ThrottleBucket } from '../../common/throttling/throttler.config';

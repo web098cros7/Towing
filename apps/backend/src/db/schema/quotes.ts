@@ -1,4 +1,14 @@
-import { bigint, doublePrecision, index, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  doublePrecision,
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { adminUsers } from './admin';
 import { bookings } from './bookings';
 import { primaryId, timestamps } from './columns';
@@ -12,13 +22,7 @@ import { users } from './users';
  * CHECK-constrained in migration 0034, which also pins
  * "a quoted row carries its amounts".
  */
-export const QUOTE_STATUSES = [
-  'requested',
-  'quoted',
-  'accepted',
-  'rejected',
-  'expired',
-] as const;
+export const QUOTE_STATUSES = ['requested', 'quoted', 'accepted', 'rejected', 'expired'] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
 /** What the operator priced, kept verbatim so the booking can copy it. */

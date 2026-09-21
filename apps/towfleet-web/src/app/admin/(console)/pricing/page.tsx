@@ -48,7 +48,11 @@ export default function AdminPricingPage() {
         title="Pricing"
         description="Every number a fare is built from, editable with no deploy."
         actions={
-          <Button variant="outline" onClick={() => setHistoryOpen(true)} data-testid="pricing-history-open">
+          <Button
+            variant="outline"
+            onClick={() => setHistoryOpen(true)}
+            data-testid="pricing-history-open"
+          >
             History
           </Button>
         }

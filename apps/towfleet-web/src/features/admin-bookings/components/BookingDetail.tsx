@@ -1,7 +1,11 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle, StatusChip } from '@towing/web-ui';
-import type { AdminBookingDetail, AdminBookingPayment, AdminBookingRefund } from '@towing/api-contracts';
+import type {
+  AdminBookingDetail,
+  AdminBookingPayment,
+  AdminBookingRefund,
+} from '@towing/api-contracts';
 import { formatPaise } from '@/lib/money';
 import { NotesPanel } from '@/features/admin-notes/components/NotesPanel';
 import { BOOKING_STATUS_TONES } from './bookingStatus';
@@ -44,8 +48,8 @@ export function BookingDetail({ detail }: { detail: AdminBookingDetail }) {
         <Card className="xl:col-span-2">
           <CardContent className="p-4" data-testid="booking-dispute-banner">
             <p className="text-sm">
-              This booking has an <strong>open dispute</strong>. Money-bearing endings are made
-              from the Disputes queue — cancelling from this screen is refused while it is open.
+              This booking has an <strong>open dispute</strong>. Money-bearing endings are made from
+              the Disputes queue — cancelling from this screen is refused while it is open.
             </p>
           </CardContent>
         </Card>
@@ -130,13 +134,16 @@ export function BookingDetail({ detail }: { detail: AdminBookingDetail }) {
           <Row label="Total">
             <span data-testid="booking-total">{formatPaise(detail.breakdown.totalPaise)}</span>
           </Row>
-          <Row label={`Commission${detail.breakdown.commissionPct !== null ? ` (${detail.breakdown.commissionPct}% · band ${detail.breakdown.commissionBand})` : ''}`}>
+          <Row
+            label={`Commission${detail.breakdown.commissionPct !== null ? ` (${detail.breakdown.commissionPct}% · band ${detail.breakdown.commissionBand})` : ''}`}
+          >
             {formatPaise(detail.breakdown.commissionPaise)}
           </Row>
           <Row label="Driver payout">{formatPaise(detail.breakdown.driverPayoutPaise)}</Row>
           {detail.waitingFreeMinutes !== null ? (
             <Row label="Waiting policy">
-              {detail.waitingFreeMinutes} min free, {formatPaise(detail.waitingPerMinutePaise ?? 0)}/min
+              {detail.waitingFreeMinutes} min free, {formatPaise(detail.waitingPerMinutePaise ?? 0)}
+              /min
             </Row>
           ) : null}
         </CardContent>
@@ -218,7 +225,13 @@ export function BookingDetail({ detail }: { detail: AdminBookingDetail }) {
                     <span className="capitalize">{refund.kind} refund</span>
                     <StatusChip
                       status={refund.status}
-                      tone={refund.status === 'processed' ? 'success' : refund.status === 'failed' ? 'error' : 'warning'}
+                      tone={
+                        refund.status === 'processed'
+                          ? 'success'
+                          : refund.status === 'failed'
+                            ? 'error'
+                            : 'warning'
+                      }
                     />
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs text-text-secondary">

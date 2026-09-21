@@ -175,7 +175,11 @@ export function AdminBookingsList() {
         description="Every booking, with the interventions an operator can run on one. Money-bearing endings live in Disputes."
         actions={
           env.useMocks ? (
-            <Button variant="outline" disabled title="CSV export needs the real backend (mocks are on)">
+            <Button
+              variant="outline"
+              disabled
+              title="CSV export needs the real backend (mocks are on)"
+            >
               <Download className="size-4" /> Export CSV
             </Button>
           ) : (

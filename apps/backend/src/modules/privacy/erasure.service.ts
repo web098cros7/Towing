@@ -32,7 +32,13 @@ import { TokenService } from '../auth/token.service';
 import { sweepRetention } from './retention';
 
 /** Statuses in which a booking still needs the person's data to be operable. */
-const LIVE_BOOKING_STATUSES = ['searching', 'assigned', 'en_route', 'arrived', 'in_progress'] as const;
+const LIVE_BOOKING_STATUSES = [
+  'searching',
+  'assigned',
+  'en_route',
+  'arrived',
+  'in_progress',
+] as const;
 
 /** Money that has not landed yet: erasing the destination now would strand it. */
 const OPEN_PAYOUT_STATUSES = ['requested', 'processing'] as const;
@@ -162,7 +168,12 @@ export class ErasureService implements OnModuleInit {
           .where(eq(deletionRequests.id, requestId));
         await this.db
           .update(erasureJobs)
-          .set({ status: 'failed', error: hold.reason, finishedAt: new Date(), updatedAt: new Date() })
+          .set({
+            status: 'failed',
+            error: hold.reason,
+            finishedAt: new Date(),
+            updatedAt: new Date(),
+          })
           .where(eq(erasureJobs.id, job!.id));
         this.logger.warn(`erasure ${requestId} held: ${hold.reason}`);
         return { status: 'on_hold', steps };
@@ -374,7 +385,9 @@ export class ErasureService implements OnModuleInit {
         .select({ rcUrl: savedVehicles.rcUrl })
         .from(savedVehicles)
         .where(eq(savedVehicles.userId, subjectId));
-      fileUrls.push(...vehicles.map((row) => row.rcUrl).filter((url): url is string => url !== null));
+      fileUrls.push(
+        ...vehicles.map((row) => row.rcUrl).filter((url): url is string => url !== null),
+      );
     }
 
     for (const fileUrl of new Set(fileUrls)) {
@@ -472,7 +485,8 @@ export class ErasureService implements OnModuleInit {
 
     return {
       rows,
-      detail: `${objects} storage object(s), ${socialRows.length} social binding(s), ` +
+      detail:
+        `${objects} storage object(s), ${socialRows.length} social binding(s), ` +
         `${deviceRows.length} device(s), ${otpRows} otp row(s), ${ratingRows.length} review(s)`,
     };
   }

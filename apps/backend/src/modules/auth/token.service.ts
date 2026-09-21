@@ -338,7 +338,10 @@ export class TokenService {
     if (limited.length === 0) return undefined;
 
     return or(
-      notInArray(refreshTokens.realm, limited.map((entry) => entry.realm)),
+      notInArray(
+        refreshTokens.realm,
+        limited.map((entry) => entry.realm),
+      ),
       ...limited.map(({ realm, limits }) =>
         and(
           eq(refreshTokens.realm, realm),
@@ -377,8 +380,13 @@ export class TokenService {
     // once. There is no way to tell the thief from the victim, so every token
     // descended from this login is burned and both sides must log in again.
     if (row.rotatedAt || row.revokedAt) {
-      await this.revokeFamily(row.familyId, row.revokedAt ? 'family_revoked' : 'refresh_token_reuse');
-      return ApiException.unauthorized('Refresh token was already used; this session has been revoked');
+      await this.revokeFamily(
+        row.familyId,
+        row.revokedAt ? 'family_revoked' : 'refresh_token_reuse',
+      );
+      return ApiException.unauthorized(
+        'Refresh token was already used; this session has been revoked',
+      );
     }
 
     // W1 §3.6: not rotated, not revoked, not expired by TTL — so if the realm

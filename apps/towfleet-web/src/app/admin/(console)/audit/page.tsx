@@ -51,7 +51,9 @@ export default function AdminAuditPage() {
       ...(subjectType ? { subjectType } : {}),
       // An invalid uuid is dropped rather than sent to earn a 422 — the inline
       // hint below says why, so it is not a silent ignore.
-      ...(subjectIdTrimmed && UUID_PATTERN.test(subjectIdTrimmed) ? { subjectId: subjectIdTrimmed } : {}),
+      ...(subjectIdTrimmed && UUID_PATTERN.test(subjectIdTrimmed)
+        ? { subjectId: subjectIdTrimmed }
+        : {}),
       ...(range.from ? { from: `${range.from}T00:00:00.000Z` } : {}),
       ...(range.to ? { to: `${range.to}T23:59:59.999Z` } : {}),
     }),
@@ -65,7 +67,11 @@ export default function AdminAuditPage() {
   );
 
   const hasFilters =
-    action.trim() !== '' || subjectType !== '' || subjectIdTrimmed !== '' || range.from !== null || range.to !== null;
+    action.trim() !== '' ||
+    subjectType !== '' ||
+    subjectIdTrimmed !== '' ||
+    range.from !== null ||
+    range.to !== null;
 
   const columns: ColumnDef<AdminAuditEntry, unknown>[] = [
     {

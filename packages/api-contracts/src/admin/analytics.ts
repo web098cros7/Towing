@@ -108,9 +108,7 @@ export type AnalyticsRevenueResponse = z.infer<typeof analyticsRevenueResponseSc
 export const analyticsDriverResponseSchema = z.object({
   days: z.array(analyticsDaySchema),
   totals: analyticsTotalsSchema,
-  ratings: z.array(
-    z.object({ rating: z.number().int().min(1).max(5), count: z.number().int() }),
-  ),
+  ratings: z.array(z.object({ rating: z.number().int().min(1).max(5), count: z.number().int() })),
   /**
    * Averages of `drivers.acceptance_rate` / `completion_rate` — CURRENT
    * snapshots, not period metrics (no history table exists). Labelled as

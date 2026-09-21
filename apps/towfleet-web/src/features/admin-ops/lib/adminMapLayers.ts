@@ -172,7 +172,9 @@ export function bookingLegsToGeoJson(
   return { type: 'FeatureCollection', features };
 }
 
-export function adminZonesToGeoJson(zones: Array<{ id: string; name: string; geometry: unknown }>): FeatureCollection {
+export function adminZonesToGeoJson(
+  zones: Array<{ id: string; name: string; geometry: unknown }>,
+): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: zones.map((zone) => ({
@@ -380,7 +382,11 @@ export function applyAdminColors(map: MapLibreMap, colors: MapColors): void {
     map.setPaintProperty(ADMIN_BOOKING_PICKUP_LAYER, 'circle-stroke-color', colors.onJob);
     map.setPaintProperty(ADMIN_BOOKING_PICKUP_LAYER, 'circle-color', colors.background);
   }
-  for (const layer of [ADMIN_DRIVER_HALO_LAYER, ADMIN_DRIVER_HEADING_LAYER, ADMIN_DRIVER_DOT_LAYER]) {
+  for (const layer of [
+    ADMIN_DRIVER_HALO_LAYER,
+    ADMIN_DRIVER_HEADING_LAYER,
+    ADMIN_DRIVER_DOT_LAYER,
+  ]) {
     if (!map.getLayer(layer)) continue;
     if (layer === ADMIN_DRIVER_HEADING_LAYER) {
       map.setPaintProperty(layer, 'line-color', markerColorExpression(colors));

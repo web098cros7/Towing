@@ -21,13 +21,7 @@ import { bookingDetailSchema } from './bookings';
  * re-derives nothing, because the amounts travel on the row.
  */
 
-export const QUOTE_STATUSES = [
-  'requested',
-  'quoted',
-  'accepted',
-  'rejected',
-  'expired',
-] as const;
+export const QUOTE_STATUSES = ['requested', 'quoted', 'accepted', 'rejected', 'expired'] as const;
 export const quoteStatusSchema = z.enum(QUOTE_STATUSES);
 export type QuoteStatus = z.infer<typeof quoteStatusSchema>;
 

@@ -135,9 +135,10 @@ export class AnalyticsRollupService implements OnModuleInit {
       `Week ${start} to ${end}: ${totals.created} bookings, ${totals.paid} paid, ` +
       `GMV ${rupees(totals.gmv)}, commission ${rupees(totals.commission)}`;
 
-    const summary = [headline, ...(lines.length > 0 ? lines : ['No rollup rows for this week.'])].join(
-      '\n',
-    );
+    const summary = [
+      headline,
+      ...(lines.length > 0 ? lines : ['No rollup rows for this week.']),
+    ].join('\n');
 
     await this.notifications.emit('analytics.report', {
       week: `${start} to ${end}`,

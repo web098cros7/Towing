@@ -78,9 +78,7 @@ export const adminDeletionRequestsQuerySchema = pageQuerySchema.extend({
 export type AdminDeletionRequestsQuery = z.infer<typeof adminDeletionRequestsQuerySchema>;
 
 export const adminDeletionRequestsResponseSchema = pageEnvelopeSchema(adminDeletionRequestSchema);
-export type AdminDeletionRequestsResponse = z.infer<
-  typeof adminDeletionRequestsResponseSchema
->;
+export type AdminDeletionRequestsResponse = z.infer<typeof adminDeletionRequestsResponseSchema>;
 
 /** `POST …/approve|reject` — a reason is optional; the audit row carries who. */
 export const adminDeletionDecisionSchema = z
@@ -119,9 +117,7 @@ export type AdminRetentionPolicy = z.infer<typeof adminRetentionPolicySchema>;
 export const adminRetentionPoliciesResponseSchema = z.object({
   items: z.array(adminRetentionPolicySchema),
 });
-export type AdminRetentionPoliciesResponse = z.infer<
-  typeof adminRetentionPoliciesResponseSchema
->;
+export type AdminRetentionPoliciesResponse = z.infer<typeof adminRetentionPoliciesResponseSchema>;
 
 export const adminRetentionUpdateSchema = z.object({
   policies: z

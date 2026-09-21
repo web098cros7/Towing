@@ -37,14 +37,7 @@ export {
   type DialogProps,
 } from './components/Dialog';
 export { Switch, type SwitchProps } from './components/Switch';
-export {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from './components/Table';
+export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './components/Table';
 export { EmptyState } from './feedback/EmptyState';
 export { ErrorState } from './feedback/ErrorState';
 export {

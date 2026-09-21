@@ -15,9 +15,7 @@ import {
   renderTemplate,
   type TemplateKey,
 } from '../../common/notifications/template-catalog';
-import {
-  REGISTERED_TRIGGERS,
-} from '../../common/notifications/registry/triggers';
+import { REGISTERED_TRIGGERS } from '../../common/notifications/registry/triggers';
 import type { RegisteredTrigger } from '../../common/notifications/registry/trigger.types';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { ApiException } from '../../common/errors/api-exception';
@@ -63,42 +61,44 @@ export class AdminNotificationsService {
   ) {}
 
   templates(): AdminNotificationTemplatesResponse {
-    const items: AdminNotificationTemplate[] = (
-      Object.keys(TEMPLATES) as TemplateKey[]
-    ).map((key) => {
-      const definition = TEMPLATES[key];
-      const trigger = this.triggerByTemplate.get(key);
-      const rendered = renderTemplate(key, {});
+    const items: AdminNotificationTemplate[] = (Object.keys(TEMPLATES) as TemplateKey[]).map(
+      (key) => {
+        const definition = TEMPLATES[key];
+        const trigger = this.triggerByTemplate.get(key);
+        const rendered = renderTemplate(key, {});
 
-      const unusableChannels: AdminNotificationTemplate['unusableChannels'] = [];
-      if (definition.dltTemplateId === null && trigger?.channels.includes('sms')) {
-        unusableChannels.push('sms');
-      }
-      if (definition.waTemplateName === null && trigger?.channels.includes('whatsapp')) {
-        unusableChannels.push('whatsapp');
-      }
+        const unusableChannels: AdminNotificationTemplate['unusableChannels'] = [];
+        if (definition.dltTemplateId === null && trigger?.channels.includes('sms')) {
+          unusableChannels.push('sms');
+        }
+        if (definition.waTemplateName === null && trigger?.channels.includes('whatsapp')) {
+          unusableChannels.push('whatsapp');
+        }
 
-      return {
-        templateKey: key,
-        event: trigger?.event ?? null,
-        matrixRow: trigger?.matrixRow ? trigger.matrixRow : null,
-        channels: trigger ? [...trigger.channels] : [],
-        unusableChannels,
-        dltTemplateId: definition.dltTemplateId,
-        waTemplateName: definition.waTemplateName,
-        orderedVariables: [...definition.orderedVariables],
-        sampleTitle: rendered.title,
-        sampleBody: rendered.body,
-        sampleSubject: rendered.subject ?? null,
-        category: trigger ? trigger.category : null,
-        alwaysOn: trigger ? trigger.alwaysOn : null,
-      } satisfies AdminNotificationTemplate;
-    });
+        return {
+          templateKey: key,
+          event: trigger?.event ?? null,
+          matrixRow: trigger?.matrixRow ? trigger.matrixRow : null,
+          channels: trigger ? [...trigger.channels] : [],
+          unusableChannels,
+          dltTemplateId: definition.dltTemplateId,
+          waTemplateName: definition.waTemplateName,
+          orderedVariables: [...definition.orderedVariables],
+          sampleTitle: rendered.title,
+          sampleBody: rendered.body,
+          sampleSubject: rendered.subject ?? null,
+          category: trigger ? trigger.category : null,
+          alwaysOn: trigger ? trigger.alwaysOn : null,
+        } satisfies AdminNotificationTemplate;
+      },
+    );
 
     return { items };
   }
 
-  async deliveries(query: AdminNotificationDeliveriesQuery): Promise<AdminNotificationDeliveriesResponse> {
+  async deliveries(
+    query: AdminNotificationDeliveriesQuery,
+  ): Promise<AdminNotificationDeliveriesResponse> {
     const filters: SQL[] = [];
     if (query.status) filters.push(sql`d.status = ${query.status}`);
     if (query.channel) filters.push(sql`d.channel = ${query.channel}`);
@@ -144,7 +144,10 @@ export class AdminNotificationsService {
     };
   }
 
-  async testSend(adminId: string, body: AdminNotificationTestSend): Promise<AdminNotificationTestSendResponse> {
+  async testSend(
+    adminId: string,
+    body: AdminNotificationTestSend,
+  ): Promise<AdminNotificationTestSendResponse> {
     const key = body.templateKey as TemplateKey;
     const definition = TEMPLATES[key];
     if (!definition) {

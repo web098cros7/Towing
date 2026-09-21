@@ -2,18 +2,14 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import {
-  Badge,
-  DataTable,
-  FilterBar,
-  SearchInput,
-  Select,
-  type ColumnDef,
-} from '@towing/web-ui';
+import { Badge, DataTable, FilterBar, SearchInput, Select, type ColumnDef } from '@towing/web-ui';
 import type { AdminDriverDirectoryItem } from '@towing/api-contracts';
 import { useAdminDirectoryDrivers } from '../api/adminDirectory.queries';
 
-const KYC_VARIANT: Record<AdminDriverDirectoryItem['kycStatus'], 'success' | 'warning' | 'error' | 'neutral'> = {
+const KYC_VARIANT: Record<
+  AdminDriverDirectoryItem['kycStatus'],
+  'success' | 'warning' | 'error' | 'neutral'
+> = {
   approved: 'success',
   pending: 'warning',
   incomplete: 'neutral',
@@ -35,7 +31,9 @@ const columns: ColumnDef<AdminDriverDirectoryItem, unknown>[] = [
   {
     accessorKey: 'kycStatus',
     header: 'KYC',
-    cell: ({ row }) => <Badge variant={KYC_VARIANT[row.original.kycStatus]}>{row.original.kycStatus}</Badge>,
+    cell: ({ row }) => (
+      <Badge variant={KYC_VARIANT[row.original.kycStatus]}>{row.original.kycStatus}</Badge>
+    ),
   },
   {
     accessorKey: 'isOnline',
@@ -55,7 +53,8 @@ const columns: ColumnDef<AdminDriverDirectoryItem, unknown>[] = [
   {
     accessorKey: 'fleetName',
     header: 'Fleet',
-    cell: ({ row }) => row.original.fleetName ?? <span className="text-text-tertiary">Independent</span>,
+    cell: ({ row }) =>
+      row.original.fleetName ?? <span className="text-text-tertiary">Independent</span>,
   },
   {
     accessorKey: 'vehicleClass',

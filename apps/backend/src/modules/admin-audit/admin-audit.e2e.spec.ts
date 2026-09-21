@@ -6,7 +6,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions } from '../../db/schema';
 import { adminAuthHeaderFor, authHeaderFor, createTestApp } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
-import { seedAdmin, seedFleet, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
+import {
+  seedAdmin,
+  seedFleet,
+  setupTestDatabase,
+  truncateAll,
+  type TestDatabase,
+} from '../../test/db';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 
 /**
@@ -152,7 +158,9 @@ describe('admin audit viewer (/v1/admin/audit, §3.5)', () => {
     expect(second.body.entries).toHaveLength(2);
     expect(second.body.nextCursor).toBeNull();
 
-    const ids = [...first.body.entries, ...second.body.entries].map((entry: { id: string }) => entry.id);
+    const ids = [...first.body.entries, ...second.body.entries].map(
+      (entry: { id: string }) => entry.id,
+    );
     expect(new Set(ids).size).toBe(4);
 
     // A malformed cursor is a 422, never a silent restart at page one.

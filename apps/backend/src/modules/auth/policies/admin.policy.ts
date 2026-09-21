@@ -54,7 +54,12 @@ export class AdminRealmPolicy implements RealmPolicy {
     if (!admin || admin.status !== 'active') return null;
 
     return {
-      claims: { sub: admin.id, role: 'admin', sub_role: admin.subRole, authz_version: admin.authzVersion },
+      claims: {
+        sub: admin.id,
+        role: 'admin',
+        sub_role: admin.subRole,
+        authz_version: admin.authzVersion,
+      },
       fleetId: null,
     };
   }

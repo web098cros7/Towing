@@ -33,7 +33,11 @@ export class BookingsRepo {
    * second inline copy. A third would guarantee the three disagree about a
    * boundary row eventually.
    */
-  async list(userId: string, limit: number, cursor?: string): Promise<{ items: Booking[]; nextCursor: string | null }> {
+  async list(
+    userId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<{ items: Booking[]; nextCursor: string | null }> {
     const decoded = cursor ? decodeCursor(cursor) : null;
 
     const rows = await this.db
@@ -206,7 +210,8 @@ function toBooking(row: BookingRow): Booking {
     pickupAddress: row.pickupAddress,
     pickup: { lat: row.pickupLat, lng: row.pickupLng },
     dropAddress: row.dropAddress,
-    drop: row.dropLat !== null && row.dropLng !== null ? { lat: row.dropLat, lng: row.dropLng } : null,
+    drop:
+      row.dropLat !== null && row.dropLng !== null ? { lat: row.dropLat, lng: row.dropLng } : null,
     distanceKm: row.distanceKm === null ? null : Number(row.distanceKm),
     breakdown: {
       basePaise: rupeeStringToPaise(row.baseFare),
@@ -225,4 +230,3 @@ function toBooking(row: BookingRow): Booking {
     updatedAt: row.updatedAt.toISOString(),
   };
 }
-

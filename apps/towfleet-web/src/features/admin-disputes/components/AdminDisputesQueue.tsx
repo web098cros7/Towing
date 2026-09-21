@@ -50,13 +50,16 @@ const columns: ColumnDef<AdminDispute, unknown>[] = [
     accessorKey: 'openedFromStatus',
     header: 'Opened from',
     cell: ({ row }) => (
-      <span className="text-text-secondary">{row.original.openedFromStatus.replace(/_/g, ' ')}</span>
+      <span className="text-text-secondary">
+        {row.original.openedFromStatus.replace(/_/g, ' ')}
+      </span>
     ),
   },
   {
     id: 'assignee',
     header: 'Owner',
-    cell: ({ row }) => row.original.assignedAdminName ?? <span className="text-text-tertiary">Unassigned</span>,
+    cell: ({ row }) =>
+      row.original.assignedAdminName ?? <span className="text-text-tertiary">Unassigned</span>,
   },
   {
     id: 'resolution',

@@ -31,9 +31,7 @@ export function PromotionsPanel() {
         aria-label="Promotions section"
       />
 
-      <div className="mt-4">
-        {tab === 'coupons' ? <CouponsPanel /> : <BannersPanel />}
-      </div>
+      <div className="mt-4">{tab === 'coupons' ? <CouponsPanel /> : <BannersPanel />}</div>
     </div>
   );
 }

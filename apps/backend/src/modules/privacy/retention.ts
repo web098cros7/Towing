@@ -57,8 +57,7 @@ export const RETENTION_POLICY_DEFAULTS: readonly RetentionPolicyDefault[] = [
   {
     policyKey: 'wave_logs',
     retentionDays: 30,
-    description:
-      'dispatch_wave_logs — 30 days, purged by the analytics rollup job (§22.2).',
+    description: 'dispatch_wave_logs — 30 days, purged by the analytics rollup job (§22.2).',
   },
   {
     policyKey: 'webhook_events',

@@ -80,7 +80,10 @@ export function BandEditor({
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-sm text-text-secondary" data-testid="band-window">
-          §3.3 percentages. The window is <strong>{config.floorPct}–{config.capPct} %</strong>
+          §3.3 percentages. The window is{' '}
+          <strong>
+            {config.floorPct}–{config.capPct} %
+          </strong>
           {config.guardrailUpdatedAt
             ? ` (last moved ${new Date(config.guardrailUpdatedAt).toLocaleDateString('en-IN')})`
             : ''}
@@ -89,14 +92,16 @@ export function BandEditor({
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {config.bands.map((band) => (
-            <Field key={band.band} label={`Band ${band.band} (percent)`} htmlFor={`band-${band.band}`}>
+            <Field
+              key={band.band}
+              label={`Band ${band.band} (percent)`}
+              htmlFor={`band-${band.band}`}
+            >
               <Input
                 id={`band-${band.band}`}
                 inputMode="decimal"
                 value={draft[band.band] ?? ''}
-                onChange={(event) =>
-                  onDraftChange({ ...draft, [band.band]: event.target.value })
-                }
+                onChange={(event) => onDraftChange({ ...draft, [band.band]: event.target.value })}
                 data-testid={`band-${band.band}`}
               />
               <span className="mt-1 block text-xs text-text-tertiary">

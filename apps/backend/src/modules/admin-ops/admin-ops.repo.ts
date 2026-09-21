@@ -1,5 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { AdminDispatchAttempt, AdminDispatchWaveLog, ScorerWeights } from '@towing/api-contracts';
+import type {
+  AdminDispatchAttempt,
+  AdminDispatchWaveLog,
+  ScorerWeights,
+} from '@towing/api-contracts';
 import { sql, type SQL } from 'drizzle-orm';
 import { DB_READER, type DatabaseReader } from '../../db/db.module';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';

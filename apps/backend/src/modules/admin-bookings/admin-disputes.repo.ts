@@ -159,7 +159,9 @@ export class AdminDisputesRepo {
   }
 
   /** The dispute with its evidence — the service maps this to the contract. */
-  async detail(disputeId: string): Promise<{ dispute: AdminDispute; evidence: DisputeEvidenceRow[] } | null> {
+  async detail(
+    disputeId: string,
+  ): Promise<{ dispute: AdminDispute; evidence: DisputeEvidenceRow[] } | null> {
     const [row] = (await this.db.execute(sql`
       select d.*, a.name as assigned_admin_name,
              b.status as booking_status, b.total::text as booking_total,

@@ -269,9 +269,7 @@ export type AdminCommissionProposalCreate = z.infer<typeof adminCommissionPropos
 export const adminCommissionProposalDecisionSchema = z.object({
   reason: z.string().min(3).max(500).optional(),
 });
-export type AdminCommissionProposalDecision = z.infer<
-  typeof adminCommissionProposalDecisionSchema
->;
+export type AdminCommissionProposalDecision = z.infer<typeof adminCommissionProposalDecisionSchema>;
 
 /**
  * §9.4.9's impact preview: "at last week's volume, Band A 10 %→9 % ≈ −₹X

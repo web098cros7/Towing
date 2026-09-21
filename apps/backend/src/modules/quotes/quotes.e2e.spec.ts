@@ -1,20 +1,18 @@
 import type { INestApplication } from '@nestjs/common';
-import {
-  adminQuoteSchema,
-  quotesResponseSchema,
-  type Quote,
-} from '@towing/api-contracts';
+import { adminQuoteSchema, quotesResponseSchema, type Quote } from '@towing/api-contracts';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions, bookings, quotes } from '../../db/schema';
-import {
-  adminAuthHeaderFor,
-  createTestApp,
-  customerAuthHeaderFor,
-} from '../../test/app';
+import { adminAuthHeaderFor, createTestApp, customerAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
-import { seedAdmin, seedCustomer, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
+import {
+  seedAdmin,
+  seedCustomer,
+  setupTestDatabase,
+  truncateAll,
+  type TestDatabase,
+} from '../../test/db';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 import { seedPricingFixtures } from '../pricing/pricing.e2e.spec';
 

@@ -64,7 +64,9 @@ test('the drivers tab shows the rating distribution', async ({ page }) => {
   await expect(page.getByText('Avg acceptance')).toBeVisible();
 });
 
-test('the geo tab renders the heatmap container, metric switch and zone table', async ({ page }) => {
+test('the geo tab renders the heatmap container, metric switch and zone table', async ({
+  page,
+}) => {
   await adminLogin(page);
   await page.goto('/admin/analytics');
 

@@ -14,11 +14,7 @@ import {
   Switch,
   Textarea,
 } from '@towing/web-ui';
-import {
-  paiseToRupeeString,
-  type AdminCoupon,
-  type CouponKind,
-} from '@towing/api-contracts';
+import { paiseToRupeeString, type AdminCoupon, type CouponKind } from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
 import { useCreateCoupon, useUpdateCoupon } from '../api/adminPromotions.mutations';
 import { useCouponRedemptions } from '../api/adminPromotions.queries';
@@ -202,9 +198,7 @@ export function CouponEditorDrawer({
                 id="coupon-kind"
                 data-testid="coupon-kind"
                 value={draft.kind}
-                onChange={(event) =>
-                  setDraft({ ...draft, kind: event.target.value as CouponKind })
-                }
+                onChange={(event) => setDraft({ ...draft, kind: event.target.value as CouponKind })}
               >
                 <option value="percent">Percentage</option>
                 <option value="flat">Flat ₹</option>

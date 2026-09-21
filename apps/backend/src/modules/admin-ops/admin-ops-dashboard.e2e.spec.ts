@@ -144,16 +144,25 @@ describe('admin ops dashboard (W3)', () => {
 
     // 1 cancelled WHILE SEARCHING — no `assigned` in history, so it lands in the
     // denominator's third term rather than in `matched`.
-    const cancelled = await seedBooking(db, { userId: await seedCustomer(db), status: 'cancelled' });
+    const cancelled = await seedBooking(db, {
+      userId: await seedCustomer(db),
+      status: 'cancelled',
+    });
     // 1 no-drivers.
     const noDrivers = await seedBooking(db, {
       userId: await seedCustomer(db),
       status: 'no_drivers_found',
     });
     // 1 live search — counts on neither side of the fill rate.
-    const searching = await seedBooking(db, { userId: await seedCustomer(db), status: 'searching' });
+    const searching = await seedBooking(db, {
+      userId: await seedCustomer(db),
+      status: 'searching',
+    });
     // 1 dormant scheduled booking — sits in `searching` but must not count as one.
-    const scheduled = await seedBooking(db, { userId: await seedCustomer(db), status: 'searching' });
+    const scheduled = await seedBooking(db, {
+      userId: await seedCustomer(db),
+      status: 'searching',
+    });
     await db
       .update(bookings)
       .set({ scheduledAt: new Date(Date.now() + 3_600_000) })

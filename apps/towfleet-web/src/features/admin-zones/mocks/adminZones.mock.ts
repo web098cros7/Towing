@@ -61,7 +61,8 @@ function approxAreaKm2(area: GeoJsonPolygon): number {
   const kmPerDegLng = 111.32 * Math.cos((midLat * Math.PI) / 180);
   return (
     Math.round(
-      (Math.max(...lngs) - Math.min(...lngs)) * kmPerDegLng *
+      (Math.max(...lngs) - Math.min(...lngs)) *
+        kmPerDegLng *
         ((Math.max(...lats) - Math.min(...lats)) * kmPerDegLat) *
         10,
     ) / 10

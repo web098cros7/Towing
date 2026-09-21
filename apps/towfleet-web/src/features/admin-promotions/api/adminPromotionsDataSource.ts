@@ -43,7 +43,11 @@ export interface AdminPromotionsDataSource {
   listCoupons(query: AdminCouponsQuery): Promise<AdminCouponsResponse>;
   createCoupon(body: AdminCouponCreate): Promise<AdminCoupon>;
   updateCoupon(couponId: string, body: AdminCouponUpdate): Promise<AdminCoupon>;
-  listRedemptions(couponId: string, page: number, limit: number): Promise<AdminCouponRedemptionsResponse>;
+  listRedemptions(
+    couponId: string,
+    page: number,
+    limit: number,
+  ): Promise<AdminCouponRedemptionsResponse>;
 
   listBanners(): Promise<AdminBannersResponse>;
   createBanner(body: AdminBannerCreate): Promise<AdminBanner>;

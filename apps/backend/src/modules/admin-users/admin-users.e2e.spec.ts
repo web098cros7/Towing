@@ -125,7 +125,10 @@ describe('admin users (/v1/admin/admins)', () => {
   describe('RBAC (§4.2 — only super_admin holds admin.manage)', () => {
     it('GET /v1/admin/admins: super_admin 200 · other admin sub-roles 403 · other realm 403 · anon 401', async () => {
       const server = app.getHttpServer();
-      await request(server).get('/v1/admin/admins').set('Authorization', await superAuth()).expect(200);
+      await request(server)
+        .get('/v1/admin/admins')
+        .set('Authorization', await superAuth())
+        .expect(200);
 
       for (const subRole of ['operations', 'support', 'finance'] as const) {
         const other = await seedAdmin(db, { subRole });
@@ -204,7 +207,10 @@ describe('admin users (/v1/admin/admins)', () => {
       const ops = await seedAdmin(db, { subRole: 'operations' });
       await request(server)
         .get(`/v1/admin/admins/${superId}`)
-        .set('Authorization', await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }))
+        .set(
+          'Authorization',
+          await adminAuthHeaderFor(app, { adminId: ops.id, subRole: 'operations' }),
+        )
         .expect(403);
       await request(server).get(`/v1/admin/admins/${superId}`).expect(401);
     });
@@ -228,7 +234,14 @@ describe('admin users (/v1/admin/admins)', () => {
 
       const audit = await latestAudit('admin.create');
       expect(audit).toBeDefined();
-      for (const key of ['passwordHash', 'password_hash', 'twofaSecretEnc', 'twofa_secret_enc', 'twofaSecret', 'twofa_secret']) {
+      for (const key of [
+        'passwordHash',
+        'password_hash',
+        'twofaSecretEnc',
+        'twofa_secret_enc',
+        'twofaSecret',
+        'twofa_secret',
+      ]) {
         expect(JSON.stringify(audit!.after)).not.toContain(key);
       }
 

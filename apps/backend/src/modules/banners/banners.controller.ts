@@ -30,7 +30,9 @@ export class BannersController {
   @Get()
   @Public()
   @Header('Cache-Control', 'public, max-age=60')
-  list(@ZodQuery(publicBannersQuerySchema) query: PublicBannersQuery): Promise<PublicBannersResponse> {
+  list(
+    @ZodQuery(publicBannersQuerySchema) query: PublicBannersQuery,
+  ): Promise<PublicBannersResponse> {
     return this.banners.listPublic(query.audience);
   }
 }

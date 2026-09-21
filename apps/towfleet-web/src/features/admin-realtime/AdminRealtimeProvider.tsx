@@ -129,9 +129,7 @@ function AdminRealtimeLiveProvider({ children }: { children: React.ReactNode }) 
           { queryKey: [...adminOpsKeys.all, 'live'] },
           (previous) => {
             if (!previous) return previous;
-            const byDriver = new Map(
-              previous.drivers.map((driver) => [driver.driverId, driver]),
-            );
+            const byDriver = new Map(previous.drivers.map((driver) => [driver.driverId, driver]));
             for (const incoming of event.positions) {
               const existing = byDriver.get(incoming.driverId);
               if (!existing) continue;

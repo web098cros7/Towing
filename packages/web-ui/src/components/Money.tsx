@@ -19,7 +19,10 @@ export function Money({
 }) {
   const parsed = parseAmount(value);
   return (
-    <span className={cn('tabular-nums', className)} data-testid={value == null ? 'money-empty' : undefined}>
+    <span
+      className={cn('tabular-nums', className)}
+      data-testid={value == null ? 'money-empty' : undefined}
+    >
       {parsed === null ? '—' : formatInr(parsed, exact)}
     </span>
   );

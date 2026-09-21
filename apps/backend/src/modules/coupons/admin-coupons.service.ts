@@ -192,10 +192,12 @@ export class AdminCouponsService {
     const sets: SQL[] = [];
     if (body.code !== undefined) sets.push(sql`code = ${body.code}`);
     if (body.kind !== undefined) sets.push(sql`kind = ${body.kind}`);
-    if (body.kind !== undefined || body.percentValue !== undefined || body.flatValuePaise !== undefined) {
-      sets.push(
-        sql`value = ${valueColumn(kind, { percentValue, flatValuePaise })}::numeric`,
-      );
+    if (
+      body.kind !== undefined ||
+      body.percentValue !== undefined ||
+      body.flatValuePaise !== undefined
+    ) {
+      sets.push(sql`value = ${valueColumn(kind, { percentValue, flatValuePaise })}::numeric`);
     }
     if (body.maxDiscountPaise !== undefined) {
       sets.push(sql`max_discount = ${toRupeeParam(body.maxDiscountPaise)}::numeric`);
@@ -204,7 +206,8 @@ export class AdminCouponsService {
       sets.push(sql`min_order = ${toRupeeParam(body.minOrderPaise)}::numeric`);
     }
     if (body.maxUses !== undefined) sets.push(sql`max_uses = ${body.maxUses}`);
-    if (body.maxUsesPerUser !== undefined) sets.push(sql`max_uses_per_user = ${body.maxUsesPerUser}`);
+    if (body.maxUsesPerUser !== undefined)
+      sets.push(sql`max_uses_per_user = ${body.maxUsesPerUser}`);
     if (body.startsAt !== undefined) sets.push(sql`starts_at = ${body.startsAt}::timestamptz`);
     if (body.expiresAt !== undefined) sets.push(sql`expires_at = ${body.expiresAt}::timestamptz`);
     if (body.isActive !== undefined) sets.push(sql`is_active = ${body.isActive}`);
@@ -285,8 +288,7 @@ export class AdminCouponsService {
       kind: row.kind,
       percentValue: row.kind === 'percent' ? Number(row.value) : null,
       flatValuePaise: row.kind === 'flat' ? rupeeStringToPaise(row.value) : null,
-      maxDiscountPaise:
-        row.max_discount === null ? null : rupeeStringToPaise(row.max_discount),
+      maxDiscountPaise: row.max_discount === null ? null : rupeeStringToPaise(row.max_discount),
       minOrderPaise: rupeeStringToPaise(row.min_order),
       maxUses: row.max_uses ?? null,
       maxUsesPerUser: row.max_uses_per_user,

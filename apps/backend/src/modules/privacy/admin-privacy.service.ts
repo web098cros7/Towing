@@ -28,11 +28,7 @@ import { buildSubjectExport } from './subject-export';
 const EXECUTABLE_STATUSES: readonly DeletionRequestStatus[] = ['approved', 'on_hold'];
 
 /** The statuses `approve`/`reject` may move from — anything still open. */
-const DECIDABLE_STATUSES: readonly DeletionRequestStatus[] = [
-  'requested',
-  'on_hold',
-  'approved',
-];
+const DECIDABLE_STATUSES: readonly DeletionRequestStatus[] = ['requested', 'on_hold', 'approved'];
 
 interface RequestRow {
   id: string;
@@ -322,7 +318,11 @@ export class AdminPrivacyService {
   }
 
   /** `GET /admin/users/:id/export` — the operator-served access request, audited. */
-  async exportUser(adminId: string, userId: string, context: Context): Promise<AdminSubjectExportResponse> {
+  async exportUser(
+    adminId: string,
+    userId: string,
+    context: Context,
+  ): Promise<AdminSubjectExportResponse> {
     const [user] = await this.db
       .select({ id: users.id })
       .from(users)
@@ -451,7 +451,9 @@ export class AdminPrivacyService {
       .limit(1);
     if (!row) throw ApiException.notFound('Deletion request not found');
     if (!allowed.includes(row.status as DeletionRequestStatus)) {
-      throw ApiException.conflict(`Request is ${row.status}; this action needs one of ${allowed.join(', ')}`);
+      throw ApiException.conflict(
+        `Request is ${row.status}; this action needs one of ${allowed.join(', ')}`,
+      );
     }
     return { status: row.status, hold_reason: row.holdReason };
   }

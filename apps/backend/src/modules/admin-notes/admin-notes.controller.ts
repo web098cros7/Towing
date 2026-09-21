@@ -1,4 +1,14 @@
-import { Controller, Delete, Get, HttpCode, HttpStatus, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   adminCreateNoteSchema,
   adminNotesQuerySchema,
@@ -44,10 +54,7 @@ export class AdminNotesController {
   @Post()
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
-  create(
-    @ZodBody(adminCreateNoteSchema) body: AdminCreateNote,
-    @Req() request: AuthedRequest,
-  ) {
+  create(@ZodBody(adminCreateNoteSchema) body: AdminCreateNote, @Req() request: AuthedRequest) {
     return this.notes.create(viewerOf(request), body, sessionContextFrom(request));
   }
 

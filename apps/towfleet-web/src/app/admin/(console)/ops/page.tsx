@@ -18,10 +18,7 @@ export default function AdminLiveOpsPage() {
   if (!can('ops.live')) {
     return (
       <div>
-        <PageHeader
-          title="Live Ops"
-          description="Every online driver and active job on one map."
-        />
+        <PageHeader title="Live Ops" description="Every online driver and active job on one map." />
         <AdminForbidden resource="the live operations map" />
       </div>
     );

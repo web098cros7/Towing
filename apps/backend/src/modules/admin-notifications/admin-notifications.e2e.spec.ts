@@ -146,9 +146,7 @@ describe('notification console (/v1/admin/notifications, W18)', () => {
       .get('/v1/admin/notifications/templates')
       .set('Authorization', financeAuth)
       .expect(403);
-    await request(app.getHttpServer())
-      .get('/v1/admin/notifications/templates')
-      .expect(401);
+    await request(app.getHttpServer()).get('/v1/admin/notifications/templates').expect(401);
   });
 
   it('test-sends only to the caller, and only for super admins', async () => {

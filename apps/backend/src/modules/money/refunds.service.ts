@@ -32,8 +32,7 @@ import { PaymentsRepo } from './payments.repo';
  * client header reaches a key, and only through a hash that pins the admin.
  */
 export type RefundKeySource =
-  | { kind: 'dispute'; disputeId: string }
-  | { kind: 'admin'; adminId: string; clientKey: string };
+  { kind: 'dispute'; disputeId: string } | { kind: 'admin'; adminId: string; clientKey: string };
 
 /**
  * §14.5 — refunds and dispute reversals, and the first writer `refunds` has
@@ -306,7 +305,11 @@ export class RefundsService {
       if (params.amountPaise > remainingCredit) {
         throw ApiException.validation(
           `A ${params.liability} liability cannot exceed what that party was credited on this booking`,
-          { liability: params.liability, amountPaise: params.amountPaise, remainingCreditPaise: remainingCredit },
+          {
+            liability: params.liability,
+            amountPaise: params.amountPaise,
+            remainingCreditPaise: remainingCredit,
+          },
         );
       }
     }
@@ -511,7 +514,9 @@ export class RefundsService {
   }
 
   /** The settlement credit legs on a booking, per wallet owner. */
-  private async settlementCredits(bookingId: string): Promise<
+  private async settlementCredits(
+    bookingId: string,
+  ): Promise<
     Array<{ ownerType: 'user' | 'driver' | 'fleet'; ownerId: string; creditedPaise: number }>
   > {
     const rows = (await this.db.execute(sql`
@@ -548,10 +553,7 @@ export class RefundsService {
     }>;
     // Amounts are negative; the map stores the absolute clawed-back total.
     return new Map(
-      rows.map((row) => [
-        `${row.owner_type}:${row.owner_id}`,
-        -rupeeStringToPaise(row.reversed),
-      ]),
+      rows.map((row) => [`${row.owner_type}:${row.owner_id}`, -rupeeStringToPaise(row.reversed)]),
     );
   }
 
@@ -568,7 +570,10 @@ export class RefundsService {
     return credits.reduce(
       (total, credit) =>
         total +
-        Math.max(0, credit.creditedPaise - (reversed.get(`${credit.ownerType}:${credit.ownerId}`) ?? 0)),
+        Math.max(
+          0,
+          credit.creditedPaise - (reversed.get(`${credit.ownerType}:${credit.ownerId}`) ?? 0),
+        ),
       0,
     );
   }
@@ -657,7 +662,11 @@ export class RefundsService {
 }
 
 /** The v2 row key for a dispute- or finance-sourced refund. See `idempotency-keys.ts`. */
-function keyFromSource(bookingId: string, kind: 'full' | 'partial', source: RefundKeySource): string {
+function keyFromSource(
+  bookingId: string,
+  kind: 'full' | 'partial',
+  source: RefundKeySource,
+): string {
   return source.kind === 'dispute'
     ? disputeRefundRowKey(bookingId, kind, source.disputeId)
     : adminRefundRowKey(bookingId, kind, source.adminId, source.clientKey);

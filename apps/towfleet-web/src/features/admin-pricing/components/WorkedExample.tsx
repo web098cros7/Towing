@@ -1,7 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Money, Select } from '@towing/web-ui';
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  Input,
+  Money,
+  Select,
+} from '@towing/web-ui';
 import {
   resolveBand,
   type AdminChargeConfig,
@@ -162,7 +172,10 @@ export function WorkedExample({
               <Line label={`Night (${charges.nightPct}%)`} paise={example.nightPaise} />
               <Line label="Highway pickup" paise={example.highwayPaise} />
               <Line label="Accident recovery" paise={example.accidentPaise} />
-              <Line label={`Waiting (after ${charges.waitingFreeMinutes} free min)`} paise={example.waitingPaise} />
+              <Line
+                label={`Waiting (after ${charges.waitingFreeMinutes} free min)`}
+                paise={example.waitingPaise}
+              />
               <Line label="Surge" paise={example.surgePaise} />
               <tr className="border-t border-border font-semibold">
                 <td className="py-2">Total the customer pays</td>
@@ -180,8 +193,8 @@ export function WorkedExample({
             {example.band}
           </Badge>
           <span>
-            — the percentage is the band&rsquo;s configured rate; the engine applies it when the fare
-            is locked.
+            — the percentage is the band&rsquo;s configured rate; the engine applies it when the
+            fare is locked.
           </span>
         </div>
       </CardContent>
@@ -216,8 +229,15 @@ interface ExampleInput {
 function computeExample(input: ExampleInput) {
   const { charges, rules } = input;
   const empty = {
-    basePaise: 0, nightPaise: 0, highwayPaise: 0, accidentPaise: 0,
-    waitingPaise: 0, surgePaise: 0, totalPaise: 0, band: 'A' as const, error: null as string | null,
+    basePaise: 0,
+    nightPaise: 0,
+    highwayPaise: 0,
+    accidentPaise: 0,
+    waitingPaise: 0,
+    surgePaise: 0,
+    totalPaise: 0,
+    band: 'A' as const,
+    error: null as string | null,
   };
 
   if (!Number.isFinite(input.distanceKm) || input.distanceKm <= 0) {
@@ -244,7 +264,11 @@ function computeExample(input: ExampleInput) {
 
   const preSurge = basePaise + nightPaise + highwayPaise + accidentPaise + waitingPaise;
   const surgePct =
-    input.surgeBand === 'peak' ? charges.surgePctPeak : input.surgeBand === 'high' ? charges.surgePctHigh : 0;
+    input.surgeBand === 'peak'
+      ? charges.surgePctPeak
+      : input.surgeBand === 'high'
+        ? charges.surgePctHigh
+        : 0;
   const surgePaise = surgePct > 0 ? Math.round((preSurge * surgePct) / 100) : 0;
 
   return {
@@ -309,5 +333,7 @@ function baseFromRules(
 /** §7.4's window wraps midnight when start > end (22 → 6 does). */
 function isNight(hour: number, startHour: number, endHour: number): boolean {
   if (!Number.isFinite(hour)) return false;
-  return startHour <= endHour ? hour >= startHour && hour < endHour : hour >= startHour || hour < endHour;
+  return startHour <= endHour
+    ? hour >= startHour && hour < endHour
+    : hour >= startHour || hour < endHour;
 }

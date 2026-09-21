@@ -80,13 +80,7 @@ export class AdminBridgeService implements OnModuleInit {
     const event = parsed.data;
     switch (event.kind) {
       case 'booking_status': {
-        this.emitBookingFrame(
-          event.bookingId,
-          event.zoneId,
-          event.driverId,
-          event.to,
-          event.at,
-        );
+        this.emitBookingFrame(event.bookingId, event.zoneId, event.driverId, event.to, event.at);
         void this.appendActivity({
           id: `booking_status:${event.bookingId}:${event.at}`,
           kind: 'booking_status',
@@ -221,7 +215,9 @@ export class AdminBridgeService implements OnModuleInit {
 
     const dropped = this.gateway.dropLocalAdmin(adminId);
     if (dropped > 0) {
-      this.logger.log(`admin:revoke — dropped ${dropped} socket(s) of admin ${adminId} on this node`);
+      this.logger.log(
+        `admin:revoke — dropped ${dropped} socket(s) of admin ${adminId} on this node`,
+      );
     }
   }
 }

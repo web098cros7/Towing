@@ -12,10 +12,7 @@ export default function AdminAnalyticsPage() {
   if (!can('analytics.view')) {
     return (
       <div>
-        <PageHeader
-          title="Analytics"
-          description="Marketplace, revenue, drivers and geography."
-        />
+        <PageHeader title="Analytics" description="Marketplace, revenue, drivers and geography." />
         <AdminForbidden resource="the analytics console" />
       </div>
     );

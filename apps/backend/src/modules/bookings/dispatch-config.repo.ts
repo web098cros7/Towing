@@ -1,8 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  GLOBAL_DISPATCH_CONFIG_DEFAULTS,
-  type GlobalDispatchConfig,
-} from '@towing/api-contracts';
+import { GLOBAL_DISPATCH_CONFIG_DEFAULTS, type GlobalDispatchConfig } from '@towing/api-contracts';
 import { CacheService } from '../../common/cache/cache.service';
 import { DB, type Database } from '../../db/db.module';
 import { dispatchConfig } from '../../db/schema';
@@ -59,7 +56,8 @@ export class DispatchConfigRepo {
         // (`resolveDispatchConfig`'s per-service layer takes a `ServiceType`
         // key), so a hand-edited value degrades to "no override", never to a
         // crash on the dispatch path.
-        perServiceMaxOffers: (row.perServiceMaxOffers ?? null) as BookingGuardConfig['perServiceMaxOffers'],
+        perServiceMaxOffers: (row.perServiceMaxOffers ??
+          null) as BookingGuardConfig['perServiceMaxOffers'],
       };
     });
   }

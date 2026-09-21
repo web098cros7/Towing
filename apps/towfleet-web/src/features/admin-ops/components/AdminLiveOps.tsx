@@ -20,11 +20,7 @@ import { adminOpsSubscribe } from '@/features/admin-realtime/lib/socket';
 import { ageSeconds, presenceFor, presenceLabel } from '@/features/realtime/presence';
 import { useAdminOpsLive } from '../api/adminOps.queries';
 import { AdminLiveMap } from './AdminLiveMap';
-import {
-  AdminMapFilters,
-  EMPTY_ADMIN_FILTERS,
-  type AdminMapFilterState,
-} from './AdminMapFilters';
+import { AdminMapFilters, EMPTY_ADMIN_FILTERS, type AdminMapFilterState } from './AdminMapFilters';
 
 /**
  * W4's live map page (§9.4.6) — `AdminLiveOps`.
@@ -96,10 +92,7 @@ export function AdminLiveOps(): React.ReactNode {
 
   return (
     <div>
-      <PageHeader
-        title="Live Ops"
-        description="Every online driver and active job on one map."
-      />
+      <PageHeader title="Live Ops" description="Every online driver and active job on one map." />
 
       {live.isError ? (
         <ErrorState onRetry={() => void live.refetch()} />
@@ -109,7 +102,10 @@ export function AdminLiveOps(): React.ReactNode {
 
           {live.data?.degraded ? (
             <div>
-              <Badge variant="warning" title="Redis unavailable — positions served from the database">
+              <Badge
+                variant="warning"
+                title="Redis unavailable — positions served from the database"
+              >
                 Last known positions
               </Badge>
             </div>

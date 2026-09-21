@@ -47,9 +47,7 @@ const columns: ColumnDef<AdminCoupon, unknown>[] = [
   {
     id: 'window',
     header: 'Window',
-    cell: ({ row }) => (
-      <span className="text-text-secondary">{windowLabel(row.original)}</span>
-    ),
+    cell: ({ row }) => <span className="text-text-secondary">{windowLabel(row.original)}</span>,
   },
   {
     id: 'active',

@@ -30,11 +30,16 @@ const truckColumns: ColumnDef<TruckDto, unknown>[] = [
       </div>
     ),
   },
-  { accessorKey: 'status', header: 'Status', cell: ({ row }) => <Badge variant="neutral">{row.original.status}</Badge> },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ row }) => <Badge variant="neutral">{row.original.status}</Badge>,
+  },
   {
     accessorKey: 'assignedDriverName',
     header: 'Assigned driver',
-    cell: ({ row }) => row.original.assignedDriverName ?? <span className="text-text-tertiary">—</span>,
+    cell: ({ row }) =>
+      row.original.assignedDriverName ?? <span className="text-text-tertiary">—</span>,
   },
   {
     accessorKey: 'lastPingAt',
@@ -55,7 +60,11 @@ const fleetDriverColumns: ColumnDef<FleetDriverDto, unknown>[] = [
       </div>
     ),
   },
-  { accessorKey: 'kycStatus', header: 'KYC', cell: ({ row }) => <Badge variant="neutral">{row.original.kycStatus}</Badge> },
+  {
+    accessorKey: 'kycStatus',
+    header: 'KYC',
+    cell: ({ row }) => <Badge variant="neutral">{row.original.kycStatus}</Badge>,
+  },
   {
     accessorKey: 'isOnline',
     header: 'Online',
@@ -64,7 +73,8 @@ const fleetDriverColumns: ColumnDef<FleetDriverDto, unknown>[] = [
   {
     accessorKey: 'assignedTruckPlate',
     header: 'Truck',
-    cell: ({ row }) => row.original.assignedTruckPlate ?? <span className="text-text-tertiary">—</span>,
+    cell: ({ row }) =>
+      row.original.assignedTruckPlate ?? <span className="text-text-tertiary">—</span>,
   },
   { accessorKey: 'tripsTotal', header: 'Trips' },
   {
@@ -86,7 +96,9 @@ export function AdminFleetDetail({ fleetId }: { fleetId: string }) {
   const canSeeEarnings = can('finance.summary');
 
   const fleet = useAdminDirectoryFleet(fleetId);
-  const [tab, setTab] = useState<'profile' | 'trucks' | 'drivers' | 'earnings' | 'notes'>('profile');
+  const [tab, setTab] = useState<'profile' | 'trucks' | 'drivers' | 'earnings' | 'notes'>(
+    'profile',
+  );
   const trucks = useAdminDirectoryFleetTrucks(fleetId, 1);
   const drivers = useAdminDirectoryFleetDrivers(fleetId, 1);
   const earnings = useAdminDirectoryFleetEarnings(canSeeEarnings ? fleetId : null);
@@ -125,11 +137,20 @@ export function AdminFleetDetail({ fleetId }: { fleetId: string }) {
               {row.gstin ? ` · GSTIN ${row.gstin}` : ''}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant={row.status === 'active' ? 'success' : row.status === 'suspended' ? 'error' : 'warning'}>
+              <Badge
+                variant={
+                  row.status === 'active'
+                    ? 'success'
+                    : row.status === 'suspended'
+                      ? 'error'
+                      : 'warning'
+                }
+              >
                 {row.status}
               </Badge>
               <span className="text-sm text-text-secondary">
-                {row.driversCount} drivers ({row.onlineDriversCount} online) · {row.trucksCount} trucks
+                {row.driversCount} drivers ({row.onlineDriversCount} online) · {row.trucksCount}{' '}
+                trucks
               </span>
             </div>
             {row.suspensionReason ? (
@@ -160,7 +181,9 @@ export function AdminFleetDetail({ fleetId }: { fleetId: string }) {
                   void reactivate
                     .mutateAsync({ fleetId })
                     .catch((error: unknown) =>
-                      setSuspendError(error instanceof ApiError ? error.message : 'Reactivate failed'),
+                      setSuspendError(
+                        error instanceof ApiError ? error.message : 'Reactivate failed',
+                      ),
                     )
                 }
               >
@@ -171,7 +194,12 @@ export function AdminFleetDetail({ fleetId }: { fleetId: string }) {
         </div>
       </Card>
 
-      <Tabs aria-label="Fleet sections" value={tab} onChange={(value) => setTab(value)} items={tabs} />
+      <Tabs
+        aria-label="Fleet sections"
+        value={tab}
+        onChange={(value) => setTab(value)}
+        items={tabs}
+      />
 
       {tab === 'profile' ? (
         <Card className="grid grid-cols-2 gap-4 p-6 text-sm md:grid-cols-4">
@@ -227,11 +255,15 @@ export function AdminFleetDetail({ fleetId }: { fleetId: string }) {
               <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                 <div>
                   <div className="text-text-secondary">Wallet balance</div>
-                  <div className="text-lg font-semibold">{inr(earnings.data.wallet.balancePaise)}</div>
+                  <div className="text-lg font-semibold">
+                    {inr(earnings.data.wallet.balancePaise)}
+                  </div>
                 </div>
                 <div>
                   <div className="text-text-secondary">Available</div>
-                  <div className="text-lg font-semibold">{inr(earnings.data.wallet.availablePaise)}</div>
+                  <div className="text-lg font-semibold">
+                    {inr(earnings.data.wallet.availablePaise)}
+                  </div>
                 </div>
                 <div>
                   <div className="text-text-secondary">Jobs (period)</div>
@@ -239,12 +271,15 @@ export function AdminFleetDetail({ fleetId }: { fleetId: string }) {
                 </div>
                 <div>
                   <div className="text-text-secondary">Fleet share (period)</div>
-                  <div className="text-lg font-semibold">{inr(earnings.data.totals.fleetSharePaise)}</div>
+                  <div className="text-lg font-semibold">
+                    {inr(earnings.data.totals.fleetSharePaise)}
+                  </div>
                 </div>
               </div>
               <div className="text-xs text-text-secondary">
                 Period {earnings.data.period.from} → {earnings.data.period.to}. Gross{' '}
-                {inr(earnings.data.totals.grossPaise)}, commission {inr(earnings.data.totals.commissionPaise)}.
+                {inr(earnings.data.totals.grossPaise)}, commission{' '}
+                {inr(earnings.data.totals.commissionPaise)}.
               </div>
             </>
           ) : (

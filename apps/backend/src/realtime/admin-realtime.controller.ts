@@ -1,9 +1,5 @@
 import { Controller, HttpCode, HttpStatus, Inject, Post, Req, UseGuards } from '@nestjs/common';
-import {
-  ADMIN_NAMESPACE,
-  ErrorCodes,
-  type WsTicketResponse,
-} from '@towing/api-contracts';
+import { ADMIN_NAMESPACE, ErrorCodes, type WsTicketResponse } from '@towing/api-contracts';
 import { ApiException } from '../common/errors/api-exception';
 import { KillSwitchService } from '../common/killswitch/killswitch.service';
 import { ThrottleBucket } from '../common/throttling/throttler.config';

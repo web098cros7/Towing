@@ -1,8 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import {
-  pricingEstimateResponseSchema,
-  serviceCatalogResponseSchema,
-} from '@towing/api-contracts';
+import { pricingEstimateResponseSchema, serviceCatalogResponseSchema } from '@towing/api-contracts';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -140,7 +137,12 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const response = await request(app.getHttpServer())
         .post('/v1/pricing/estimate')
         .set('Authorization', customerAuth)
-        .send({ serviceSlug: 'car_tow', vehicleClass: 'flatbed', pickup: BENGALURU, drop: BENGALURU_DROP })
+        .send({
+          serviceSlug: 'car_tow',
+          vehicleClass: 'flatbed',
+          pickup: BENGALURU,
+          drop: BENGALURU_DROP,
+        })
         .expect(200);
 
       // `expectMatchesContract` toEquals, so an added field already fails — this
@@ -157,7 +159,12 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const response = await request(app.getHttpServer())
         .post('/v1/pricing/estimate')
         .set('Authorization', customerAuth)
-        .send({ serviceSlug: 'car_tow', vehicleClass: 'wheel_lift', pickup: HIGHWAY, drop: BENGALURU_DROP })
+        .send({
+          serviceSlug: 'car_tow',
+          vehicleClass: 'wheel_lift',
+          pickup: HIGHWAY,
+          drop: BENGALURU_DROP,
+        })
         .expect(200);
 
       expect(response.body.zone.isHighway).toBe(true);
@@ -168,7 +175,12 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const response = await request(app.getHttpServer())
         .post('/v1/pricing/estimate')
         .set('Authorization', customerAuth)
-        .send({ serviceSlug: 'car_tow', vehicleClass: 'wheel_lift', pickup: CHENNAI, drop: CHENNAI })
+        .send({
+          serviceSlug: 'car_tow',
+          vehicleClass: 'wheel_lift',
+          pickup: CHENNAI,
+          drop: CHENNAI,
+        })
         .expect(200);
 
       expect(response.body.zone.surgeBand).toBe('high');
@@ -330,10 +342,16 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const driverId = await seedDriver(db, { kycStatus: 'approved' });
       const driverAuth = await driverAuthHeaderFor(app, { driverId, kycStatus: 'approved' });
       const admin = await seedAdmin(db, { subRole: 'super_admin' });
-      const adminAuth = await adminAuthHeaderFor(app, { adminId: admin.id, subRole: 'super_admin' });
+      const adminAuth = await adminAuthHeaderFor(app, {
+        adminId: admin.id,
+        subRole: 'super_admin',
+      });
 
       for (const auth of [driverAuth, adminAuth]) {
-        await request(app.getHttpServer()).get('/v1/services').set('Authorization', auth).expect(403);
+        await request(app.getHttpServer())
+          .get('/v1/services')
+          .set('Authorization', auth)
+          .expect(403);
       }
       await request(app.getHttpServer()).get('/v1/services').expect(401);
     });

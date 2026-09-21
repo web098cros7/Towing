@@ -181,8 +181,7 @@ export class AdminDirectoryService {
     }
 
     const currentIds = before.map((zone) => zone.zoneId);
-    const unchanged =
-      currentIds.length === wanted.size && currentIds.every((id) => wanted.has(id));
+    const unchanged = currentIds.length === wanted.size && currentIds.every((id) => wanted.has(id));
     if (!unchanged) {
       await this.repo.replaceDriverZoneRestrictions(driverId, body.zoneIds, adminId);
       await this.audit.record({

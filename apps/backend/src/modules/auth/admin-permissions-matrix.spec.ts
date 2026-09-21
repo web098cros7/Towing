@@ -26,19 +26,91 @@ const SPEC_42: ReadonlyArray<{
   support: 'full' | 'limited' | 'none';
   finance: 'full' | 'limited' | 'none';
 }> = [
-  { capability: 'Approve/Reject KYC', super: 'full', ops: 'full', support: 'none', finance: 'none' },
-  { capability: 'Suspend/Reactivate users', super: 'full', ops: 'full', support: 'limited', finance: 'none' },
-  { capability: 'Edit pricing & surge', super: 'full', ops: 'full', support: 'none', finance: 'none' },
-  { capability: 'Edit commission bands (within guardrail)', super: 'full', ops: 'limited', support: 'none', finance: 'full' },
-  { capability: 'Edit commission guardrail (floor/cap)', super: 'full', ops: 'none', support: 'none', finance: 'none' },
-  { capability: 'Live ops monitoring', super: 'full', ops: 'full', support: 'full', finance: 'none' },
-  { capability: 'Cancel / reassign bookings', super: 'full', ops: 'full', support: 'limited', finance: 'none' },
-  { capability: 'Handle disputes / refunds', super: 'full', ops: 'full', support: 'full', finance: 'full' },
+  {
+    capability: 'Approve/Reject KYC',
+    super: 'full',
+    ops: 'full',
+    support: 'none',
+    finance: 'none',
+  },
+  {
+    capability: 'Suspend/Reactivate users',
+    super: 'full',
+    ops: 'full',
+    support: 'limited',
+    finance: 'none',
+  },
+  {
+    capability: 'Edit pricing & surge',
+    super: 'full',
+    ops: 'full',
+    support: 'none',
+    finance: 'none',
+  },
+  {
+    capability: 'Edit commission bands (within guardrail)',
+    super: 'full',
+    ops: 'limited',
+    support: 'none',
+    finance: 'full',
+  },
+  {
+    capability: 'Edit commission guardrail (floor/cap)',
+    super: 'full',
+    ops: 'none',
+    support: 'none',
+    finance: 'none',
+  },
+  {
+    capability: 'Live ops monitoring',
+    super: 'full',
+    ops: 'full',
+    support: 'full',
+    finance: 'none',
+  },
+  {
+    capability: 'Cancel / reassign bookings',
+    super: 'full',
+    ops: 'full',
+    support: 'limited',
+    finance: 'none',
+  },
+  {
+    capability: 'Handle disputes / refunds',
+    super: 'full',
+    ops: 'full',
+    support: 'full',
+    finance: 'full',
+  },
   { capability: 'Approve payouts', super: 'full', ops: 'none', support: 'none', finance: 'full' },
-  { capability: 'View finance / ledger', super: 'full', ops: 'limited', support: 'none', finance: 'full' },
-  { capability: 'Manage admins & roles', super: 'full', ops: 'none', support: 'none', finance: 'none' },
-  { capability: 'Manage promotions/coupons', super: 'full', ops: 'full', support: 'none', finance: 'none' },
-  { capability: 'Export analytics', super: 'full', ops: 'full', support: 'limited', finance: 'full' },
+  {
+    capability: 'View finance / ledger',
+    super: 'full',
+    ops: 'limited',
+    support: 'none',
+    finance: 'full',
+  },
+  {
+    capability: 'Manage admins & roles',
+    super: 'full',
+    ops: 'none',
+    support: 'none',
+    finance: 'none',
+  },
+  {
+    capability: 'Manage promotions/coupons',
+    super: 'full',
+    ops: 'full',
+    support: 'none',
+    finance: 'none',
+  },
+  {
+    capability: 'Export analytics',
+    super: 'full',
+    ops: 'full',
+    support: 'limited',
+    finance: 'full',
+  },
 ];
 
 /**
@@ -47,7 +119,11 @@ const SPEC_42: ReadonlyArray<{
  * cannot be committed quietly. Removing a deviation means changing the code
  * back to the spec, never deleting the row.
  */
-const DEVIATIONS: ReadonlyArray<{ permission: AdminPermission; deviation: string; reason: string }> = [
+const DEVIATIONS: ReadonlyArray<{
+  permission: AdminPermission;
+  deviation: string;
+  reason: string;
+}> = [
   {
     permission: 'pricing.edit',
     deviation: 'finance holds it; §4.2 grants Super + Ops only',
@@ -61,7 +137,8 @@ const DEVIATIONS: ReadonlyArray<{ permission: AdminPermission; deviation: string
   },
   {
     permission: 'finance.refund',
-    deviation: 'ops and support do NOT hold it although §4.2 gives all four "Handle disputes / refunds"',
+    deviation:
+      'ops and support do NOT hold it although §4.2 gives all four "Handle disputes / refunds"',
     reason:
       'Money movement is narrower than dispute handling by design: ops/support resolve the dispute, only finance/super_admin move the money (W8/W9)',
   },

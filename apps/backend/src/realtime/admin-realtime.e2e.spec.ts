@@ -90,7 +90,9 @@ describe('admin realtime (/v1/admin/realtime/ticket, §3.4)', () => {
   }
 
   async function issueAdminTicket(): Promise<string> {
-    return app.get(WsTicketService).issue({ realm: 'admin', subjectId: adminId, subRole: 'support' });
+    return app
+      .get(WsTicketService)
+      .issue({ realm: 'admin', subjectId: adminId, subRole: 'support' });
   }
 
   /** The first well-formed frame, or a rejection — this suite never hangs. */
@@ -113,7 +115,10 @@ describe('admin realtime (/v1/admin/realtime/ticket, §3.4)', () => {
   async function waitDisconnect(socket: Socket): Promise<void> {
     if (!socket.connected) return;
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('socket did not disconnect within 2.5s')), 2_500);
+      const timer = setTimeout(
+        () => reject(new Error('socket did not disconnect within 2.5s')),
+        2_500,
+      );
       socket.on('disconnect', () => {
         clearTimeout(timer);
         resolve();
@@ -166,7 +171,10 @@ describe('admin realtime (/v1/admin/realtime/ticket, §3.4)', () => {
     // Tickets are SINGLE-USE (GETDEL): the refused attempt redeems the value,
     // so proving "it still works in its own realm" needs a second ticket.
     const fleetTicket = await wsTicketFor(app, { userId: randomUUID(), fleetId: randomUUID() });
-    const fleetTicketAgain = await wsTicketFor(app, { userId: randomUUID(), fleetId: randomUUID() });
+    const fleetTicketAgain = await wsTicketFor(app, {
+      userId: randomUUID(),
+      fleetId: randomUUID(),
+    });
 
     await expect(connectWith(ADMIN_NAMESPACE, { ticket: fleetTicket })).rejects.toThrow();
     await connectWith(FLEET_NAMESPACE, { ticket: fleetTicketAgain });
@@ -192,7 +200,11 @@ describe('admin realtime (/v1/admin/realtime/ticket, §3.4)', () => {
     const { socket } = await connectWith(ADMIN_NAMESPACE, { ticket });
 
     const driverId = randomUUID();
-    const framePromise = nextFrame(socket, ADMIN_REALTIME_EVENT.LOCATION_UPDATE, adminLocationUpdateSchema);
+    const framePromise = nextFrame(
+      socket,
+      ADMIN_REALTIME_EVENT.LOCATION_UPDATE,
+      adminLocationUpdateSchema,
+    );
 
     const startedAt = Date.now();
     await testRedis().publish(
@@ -223,7 +235,11 @@ describe('admin realtime (/v1/admin/realtime/ticket, §3.4)', () => {
     const { socket } = await connectWith(ADMIN_NAMESPACE, { ticket });
 
     const bookingId = randomUUID();
-    const framePromise = nextFrame(socket, ADMIN_REALTIME_EVENT.BOOKING_STATUS, adminBookingStatusSchema);
+    const framePromise = nextFrame(
+      socket,
+      ADMIN_REALTIME_EVENT.BOOKING_STATUS,
+      adminBookingStatusSchema,
+    );
 
     await testRedis().publish(
       OPS_EVENTS_CHANNEL,

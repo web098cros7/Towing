@@ -46,7 +46,10 @@ export class AdminZonesService {
   ) {}
 
   async list(): Promise<AdminZonesResponse> {
-    const rows = await this.db.select(this.zoneColumns()).from(serviceZones).orderBy(asc(serviceZones.name));
+    const rows = await this.db
+      .select(this.zoneColumns())
+      .from(serviceZones)
+      .orderBy(asc(serviceZones.name));
 
     return {
       items: rows.map((row) => this.toZone(row)),
@@ -255,7 +258,9 @@ export class AdminZonesService {
     const [version] = await this.db
       .select()
       .from(serviceZoneVersions)
-      .where(sql`${serviceZoneVersions.id} = ${versionId} AND ${serviceZoneVersions.zoneId} = ${zoneId}`)
+      .where(
+        sql`${serviceZoneVersions.id} = ${versionId} AND ${serviceZoneVersions.zoneId} = ${zoneId}`,
+      )
       .limit(1);
     if (!version) throw ApiException.notFound('Zone version not found');
 
@@ -306,7 +311,9 @@ export class AdminZonesService {
         ) AS overlap_count
     `);
 
-    const row = (rows as unknown as Array<{ area_km2: string; live_bookings: string; overlap_count: string }>)[0]!;
+    const row = (
+      rows as unknown as Array<{ area_km2: string; live_bookings: string; overlap_count: string }>
+    )[0]!;
 
     const overlaps = await this.db
       .select({

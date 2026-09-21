@@ -41,10 +41,7 @@ export interface AnalyticsEventInput {
   props?: Record<string, unknown>;
 }
 
-export async function trackEvent(
-  tx: DatabaseExecutor,
-  event: AnalyticsEventInput,
-): Promise<void> {
+export async function trackEvent(tx: DatabaseExecutor, event: AnalyticsEventInput): Promise<void> {
   await tx.execute(sql`
     insert into analytics_events (name, booking_id, subject_type, subject_id, props)
     values (

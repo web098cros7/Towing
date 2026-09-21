@@ -481,10 +481,7 @@ describe('§5.2 job execution', () => {
         .select({ outcome: dispatchAttempts.outcome })
         .from(dispatchAttempts)
         .where(
-          and(
-            eq(dispatchAttempts.bookingId, bookingId),
-            eq(dispatchAttempts.driverId, driverId),
-          ),
+          and(eq(dispatchAttempts.bookingId, bookingId), eq(dispatchAttempts.driverId, driverId)),
         );
 
       // Two rows, two true facts: they accepted, and they could not finish.

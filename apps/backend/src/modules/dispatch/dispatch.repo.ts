@@ -2,7 +2,16 @@ import { Inject, Injectable } from '@nestjs/common';
 import { dispatchAttemptOutcomes, type DispatchAttemptOutcome } from '@towing/api-contracts';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
-import { bookings, dispatchAttempts, dispatchWaveLogs, drivers, fleets, fleetTrucks, services, users } from '../../db/schema';
+import {
+  bookings,
+  dispatchAttempts,
+  dispatchWaveLogs,
+  drivers,
+  fleets,
+  fleetTrucks,
+  services,
+  users,
+} from '../../db/schema';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 
 /**
@@ -470,9 +479,7 @@ export class DispatchRepo {
         resolved: sql<number>`count(*) filter (where ${dispatchAttempts.outcome} in ('accepted', 'rejected', 'expired'))::int`,
       })
       .from(dispatchAttempts)
-      .where(
-        and(eq(dispatchAttempts.driverId, driverId), gte(dispatchAttempts.offeredAt, since)),
-      );
+      .where(and(eq(dispatchAttempts.driverId, driverId), gte(dispatchAttempts.offeredAt, since)));
 
     if (!row || row.resolved === 0) return null;
 
@@ -486,11 +493,7 @@ export class DispatchRepo {
   }
 
   /** Persists the §6.4 wave position. The deadline is written once, on the first wave. */
-  async setWaveState(
-    bookingId: string,
-    wave: number,
-    deadlineAt: Date | null,
-  ): Promise<void> {
+  async setWaveState(bookingId: string, wave: number, deadlineAt: Date | null): Promise<void> {
     await this.db
       .update(bookings)
       .set({

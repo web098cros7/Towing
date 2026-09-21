@@ -316,19 +316,35 @@ describe('response contracts', () => {
       // asserted in `promotions-admin.e2e.spec.ts`.
       { path: '/v1/admin/coupons', schema: adminCouponsResponseSchema, realm: 'admin' },
       { path: '/v1/admin/banners', schema: adminBannersResponseSchema, realm: 'admin' },
-      { path: '/v1/banners?audience=customer', schema: publicBannersResponseSchema, realm: 'customer' },
+      {
+        path: '/v1/banners?audience=customer',
+        schema: publicBannersResponseSchema,
+        realm: 'customer',
+      },
       // W17 — the analytics envelopes. As ENVELOPE checks: the numbers come
       // from the rollups and today's live compute, and the non-vacuous
       // assertions (rollup matches a live query, bands/grid non-empty) live in
       // `analytics.e2e.spec.ts` where a whole IST day is seeded by hand.
-      { path: '/v1/admin/analytics/summary', schema: analyticsSummaryResponseSchema, realm: 'admin' },
+      {
+        path: '/v1/admin/analytics/summary',
+        schema: analyticsSummaryResponseSchema,
+        realm: 'admin',
+      },
       {
         path: '/v1/admin/analytics/marketplace',
         schema: analyticsSummaryResponseSchema,
         realm: 'admin',
       },
-      { path: '/v1/admin/analytics/revenue', schema: analyticsRevenueResponseSchema, realm: 'admin' },
-      { path: '/v1/admin/analytics/drivers', schema: analyticsDriverResponseSchema, realm: 'admin' },
+      {
+        path: '/v1/admin/analytics/revenue',
+        schema: analyticsRevenueResponseSchema,
+        realm: 'admin',
+      },
+      {
+        path: '/v1/admin/analytics/drivers',
+        schema: analyticsDriverResponseSchema,
+        realm: 'admin',
+      },
       { path: '/v1/admin/analytics/geo', schema: analyticsGeoResponseSchema, realm: 'admin' },
       // W18 — the notification catalogue + delivery log. The delivery row is
       // seeded below so the log read is not the vacuous kind this file warns

@@ -131,7 +131,13 @@ export const adminPricingHistoryMock: AdminPricingHistoryEntry[] = [
     action: 'pricing.rule.deactivate',
     reason: 'Superseded by the 3 km band',
     before: { ruleKind: 'slab', vehicleClass: 'wheel_lift', maxKm: 5, pricePaise: 99_900 },
-    after: { ruleKind: 'slab', vehicleClass: 'wheel_lift', maxKm: 5, pricePaise: 99_900, isActive: false },
+    after: {
+      ruleKind: 'slab',
+      vehicleClass: 'wheel_lift',
+      maxKm: 5,
+      pricePaise: 99_900,
+      isActive: false,
+    },
     createdAt: new Date(Date.now() - 27 * HOUR).toISOString(),
   },
 ];

@@ -72,9 +72,7 @@ describe('migration 0027 app and ping config', () => {
 
   it('adds the re-dispatch priority with its list pinned to the contract', () => {
     const sql = migrationSql();
-    expect(sql).toContain(
-      `ADD COLUMN "redispatch_priority" text DEFAULT 'front' NOT NULL`,
-    );
+    expect(sql).toContain(`ADD COLUMN "redispatch_priority" text DEFAULT 'front' NOT NULL`);
     expect(checkList(sql, 'ck_dispatch_config_redispatch_priority')).toEqual(
       [...redispatchPrioritySchema.options].sort(),
     );

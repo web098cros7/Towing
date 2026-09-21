@@ -64,7 +64,8 @@ export function RefundDrawer({
 
   const isPartial = amountRupees.trim() !== '';
   const amountPaise = isPartial ? Math.round(Number(amountRupees) * 100) : null;
-  const amountValid = !isPartial || (amountPaise !== null && Number.isFinite(amountPaise) && amountPaise > 0);
+  const amountValid =
+    !isPartial || (amountPaise !== null && Number.isFinite(amountPaise) && amountPaise > 0);
   // A uuid is what the API takes; the console asks for the whole id rather
   // than half-helping with a lookup that could match the wrong booking.
   const bookingValid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -81,9 +82,7 @@ export function RefundDrawer({
         body: {
           bookingId: bookingId.trim(),
           reason: reason.trim(),
-          ...(isPartial
-            ? { amountPaise: amountPaise as number, liability }
-            : {}),
+          ...(isPartial ? { amountPaise: amountPaise as number, liability } : {}),
         },
         idempotencyKey,
       });
@@ -111,7 +110,10 @@ export function RefundDrawer({
 
       <DrawerBody>
         {result ? (
-          <div className="rounded-card border border-border p-4 text-sm" data-testid="refund-result">
+          <div
+            className="rounded-card border border-border p-4 text-sm"
+            data-testid="refund-result"
+          >
             <p className="font-semibold text-success-soft-fg">
               {result.kind === 'full' ? 'Full refund' : 'Partial refund'} of{' '}
               {formatPaise(result.amountPaise)} — {result.status}

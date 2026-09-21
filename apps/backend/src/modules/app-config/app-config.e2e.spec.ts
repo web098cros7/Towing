@@ -6,7 +6,13 @@ import { eq } from 'drizzle-orm';
 import { adminActions, appConfig } from '../../db/schema';
 import { adminAuthHeaderFor, createTestApp } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
-import { seedAdmin, setupTestDatabase, testDb, truncateAll, type TestDatabase } from '../../test/db';
+import {
+  seedAdmin,
+  setupTestDatabase,
+  testDb,
+  truncateAll,
+  type TestDatabase,
+} from '../../test/db';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 import { AppConfigRepo } from './app-config.repo';
 
@@ -63,10 +69,7 @@ describe('app config (W12)', () => {
     const etag = first.headers.etag!;
     expect(etag).toBeTruthy();
 
-    await request(app.getHttpServer())
-      .get('/v1/app-config')
-      .set('If-None-Match', etag)
-      .expect(304);
+    await request(app.getHttpServer()).get('/v1/app-config').set('If-None-Match', etag).expect(304);
 
     // The tag covers the CONTENT, so a raised banner is a new tag — the whole
     // point of an ETag on the endpoint §19.9 depends on.

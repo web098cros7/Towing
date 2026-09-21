@@ -52,8 +52,8 @@ export function KillSwitchPanel({ config }: { config: AdminDispatchConfig }) {
       </CardHeader>
       <CardContent>
         <p className="mb-3 text-sm text-text-secondary">
-          Every switch here takes effect immediately and is audited. Rehearsed before launch
-          (work order §After M4).
+          Every switch here takes effect immediately and is audited. Rehearsed before launch (work
+          order §After M4).
         </p>
 
         <div className="space-y-3">

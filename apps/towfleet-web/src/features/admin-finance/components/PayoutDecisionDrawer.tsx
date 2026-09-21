@@ -110,8 +110,8 @@ export function PayoutDecisionDrawer({
 
         {decidable ? (
           <p className="mt-4 rounded-lg bg-surface1 p-3 text-xs text-text-secondary">
-            The payee&apos;s wallet was already debited when they requested this. Approving sends the
-            money to their bank; rejecting returns it to their wallet with a compensating entry.
+            The payee&apos;s wallet was already debited when they requested this. Approving sends
+            the money to their bank; rejecting returns it to their wallet with a compensating entry.
           </p>
         ) : null}
 
@@ -157,7 +157,10 @@ export function PayoutDecisionDrawer({
                 // server checking.
                 disabled={busy || reason.trim().length < 5}
                 onClick={() =>
-                  reject.mutate({ payoutId: payout.id, reason: reason.trim() }, { onSuccess: close })
+                  reject.mutate(
+                    { payoutId: payout.id, reason: reason.trim() },
+                    { onSuccess: close },
+                  )
                 }
               >
                 {reject.isPending ? 'Rejecting…' : 'Confirm rejection'}

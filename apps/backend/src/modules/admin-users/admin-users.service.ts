@@ -145,7 +145,13 @@ export class AdminUsersService {
 
     const subRoleChanging = input.subRole !== undefined && input.subRole !== before.subRole;
     if (subRoleChanging) {
-      await this.refuseLastSuperAdminRemoval(targetId, before.subRole, input.subRole, actorId, context);
+      await this.refuseLastSuperAdminRemoval(
+        targetId,
+        before.subRole,
+        input.subRole,
+        actorId,
+        context,
+      );
     }
 
     const now = new Date();
@@ -298,7 +304,11 @@ export class AdminUsersService {
   }
 
   private async findById(adminId: string) {
-    const [row] = await this.db.select().from(adminUsers).where(eq(adminUsers.id, adminId)).limit(1);
+    const [row] = await this.db
+      .select()
+      .from(adminUsers)
+      .where(eq(adminUsers.id, adminId))
+      .limit(1);
     return row ?? null;
   }
 
@@ -315,14 +325,19 @@ export class AdminUsersService {
     actorId: string,
     context: SessionContext,
   ): Promise<void> {
-    const removing =
-      currentSubRole === 'super_admin' && nextSubRole !== 'super_admin';
+    const removing = currentSubRole === 'super_admin' && nextSubRole !== 'super_admin';
     if (!removing) return;
 
     const totalRows = await this.db
       .select({ total: count() })
       .from(adminUsers)
-      .where(and(eq(adminUsers.subRole, 'super_admin'), eq(adminUsers.status, 'active'), ne(adminUsers.id, targetId)));
+      .where(
+        and(
+          eq(adminUsers.subRole, 'super_admin'),
+          eq(adminUsers.status, 'active'),
+          ne(adminUsers.id, targetId),
+        ),
+      );
 
     if ((totalRows[0]?.total ?? 0) === 0) {
       await this.audit.record({
@@ -368,7 +383,12 @@ export class AdminUsersService {
  * key in `admin-users.e2e.spec.ts` (no password_hash, no TOTP secrets).
  */
 export function redactAdminForAudit(row: Record<string, unknown>): Record<string, unknown> {
-  const { passwordHash: _passwordHash, twofaSecretEnc: _twofaSecretEnc, twofaSecret: _twofaSecret, ...rest } = row;
+  const {
+    passwordHash: _passwordHash,
+    twofaSecretEnc: _twofaSecretEnc,
+    twofaSecret: _twofaSecret,
+    ...rest
+  } = row;
   void _passwordHash;
   void _twofaSecretEnc;
   void _twofaSecret;

@@ -69,7 +69,11 @@ export class BookingsService {
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  async create(userId: string, body: BookingCreate, options: { locked?: LockedFare } = {}): Promise<BookingDetail> {
+  async create(
+    userId: string,
+    body: BookingCreate,
+    options: { locked?: LockedFare } = {},
+  ): Promise<BookingDetail> {
     const guards = await this.config.load();
 
     // ── §3.7 / §3.8 guards, cheapest first ────────────────────────────────
@@ -337,7 +341,9 @@ export class BookingsService {
         amount: `₹${paiseToRupeeString(locked.fare.totalPaise)}`,
       });
     } catch (error) {
-      this.logger.warn(`booking confirmation notification failed for ${bookingId}: ${String(error)}`);
+      this.logger.warn(
+        `booking confirmation notification failed for ${bookingId}: ${String(error)}`,
+      );
     }
 
     try {
@@ -348,7 +354,11 @@ export class BookingsService {
         ? Math.max(0, schedRow.scheduledAt.getTime() - Date.now())
         : undefined;
 
-      await this.queue.enqueue('dispatch.search', { bookingId }, { jobId: `dispatch:${bookingId}`, delayMs });
+      await this.queue.enqueue(
+        'dispatch.search',
+        { bookingId },
+        { jobId: `dispatch:${bookingId}`, delayMs },
+      );
     } catch (error) {
       this.logger.warn(`dispatch enqueue failed for ${bookingId}: ${String(error)}`);
     }
@@ -544,7 +554,11 @@ export class BookingsService {
    * here. Cancelling first and chasing the money afterwards would leave the
    * platform holding nothing.
    */
-  async cancel(userId: string, bookingId: string, body: BookingCancel): Promise<BookingCancelResponse> {
+  async cancel(
+    userId: string,
+    bookingId: string,
+    body: BookingCancel,
+  ): Promise<BookingCancelResponse> {
     const { row, outcome } = await this.cancellationFor(userId, bookingId);
 
     if (outcome.tier !== 'free') {

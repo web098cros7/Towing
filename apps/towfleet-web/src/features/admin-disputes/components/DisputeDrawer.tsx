@@ -22,7 +22,11 @@ import { useToast } from '@/components/admin/ToastProvider';
 import { NotesPanel } from '@/features/admin-notes/components/NotesPanel';
 import { formatPaise } from '@/lib/money';
 import { useAdminDispute } from '../api/adminDisputes.queries';
-import { useAddDisputeNote, useAssignDispute, useResolveDispute } from '../api/adminDisputes.mutations';
+import {
+  useAddDisputeNote,
+  useAssignDispute,
+  useResolveDispute,
+} from '../api/adminDisputes.mutations';
 import { DISPUTE_REASON_LABELS } from '@/features/admin-bookings/components/bookingStatus';
 import { ResolveDisputePanel } from './ResolveDisputePanel';
 import { BOOKING_STATUS_TONES } from '@/features/admin-bookings/components/bookingStatus';
@@ -219,8 +223,7 @@ function DisputeBody({
             <h3 className="mb-2 text-sm font-semibold">Owner</h3>
             <div className="flex items-center gap-3 text-sm">
               <span>
-                {dispute.assignedAdminName ??
-                  (mine ? 'You' : 'Unassigned — nobody is on this yet')}
+                {dispute.assignedAdminName ?? (mine ? 'You' : 'Unassigned — nobody is on this yet')}
               </span>
               {!mine ? (
                 <Button

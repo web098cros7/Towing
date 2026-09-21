@@ -202,9 +202,7 @@ describe('seed (deterministic dataset + §14 invariants)', () => {
       select email, password_hash from fleet_owner_credentials order by email
     `)) as unknown as Array<{ email: string; password_hash: string }>;
 
-    expect(rows.map((r) => r.email).sort()).toEqual(
-      FLEETS.map((f) => f.owner.email).sort(),
-    );
+    expect(rows.map((r) => r.email).sort()).toEqual(FLEETS.map((f) => f.owner.email).sort());
     for (const row of rows) {
       await expect(verifyPassword(SEED_PASSWORD, row.password_hash)).resolves.toBe(true);
     }

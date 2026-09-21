@@ -52,7 +52,12 @@ import { ImpersonationService } from './impersonation.service';
     AdminDriversDirectoryController,
     AdminFleetsDirectoryController,
   ],
-  providers: [AdminDirectoryRepo, AdminDirectoryService, AccountSuspensionService, ImpersonationService],
+  providers: [
+    AdminDirectoryRepo,
+    AdminDirectoryService,
+    AccountSuspensionService,
+    ImpersonationService,
+  ],
   exports: [AccountSuspensionService],
 })
 export class AdminDirectoryModule {}

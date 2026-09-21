@@ -70,7 +70,12 @@ import {
  * fetch is right by accident — screens must render from the entered value).
  */
 export interface AdminDirectoryDataSource {
-  users(query: { q?: string; status?: string; page: number; limit: number }): Promise<AdminDirectoryUsersResponse>;
+  users(query: {
+    q?: string;
+    status?: string;
+    page: number;
+    limit: number;
+  }): Promise<AdminDirectoryUsersResponse>;
   user(userId: string): Promise<AdminDirectoryUserDetail>;
   userBookings(userId: string, query: PageQuery): Promise<AdminDirectoryUserBookingsResponse>;
   suspendUser(userId: string, reason: string): Promise<AdminDirectorySuspendResponse>;
@@ -82,7 +87,10 @@ export interface AdminDirectoryDataSource {
   drivers(query: Partial<AdminDriversDirectoryQuery>): Promise<AdminDriversDirectoryResponse>;
   driver(driverId: string): Promise<AdminDriverDirectoryDetail>;
   driverBookings(driverId: string, query: PageQuery): Promise<AdminDriverBookingsResponse>;
-  suspendDriver(driverId: string, body: AdminDriverSuspendBody): Promise<AdminDriverDecisionResponse>;
+  suspendDriver(
+    driverId: string,
+    body: AdminDriverSuspendBody,
+  ): Promise<AdminDriverDecisionResponse>;
   reactivateDriver(driverId: string): Promise<AdminDriverDecisionResponse>;
   updateDriverZones(driverId: string, zoneIds: string[]): Promise<AdminDriverZonesResponse>;
 
@@ -141,30 +149,54 @@ const mockSource: AdminDirectoryDataSource = {
       }
     );
   },
-  userBookings: () => resolveMock(env.mockAdminDirectoryState, adminDirectoryUserBookingsMock, { ...adminDirectoryUserBookingsMock, items: [], total: 0 }),
+  userBookings: () =>
+    resolveMock(env.mockAdminDirectoryState, adminDirectoryUserBookingsMock, {
+      ...adminDirectoryUserBookingsMock,
+      items: [],
+      total: 0,
+    }),
   suspendUser: async (userId) => {
     await mockDelay();
     return { ...adminUserSuspensionResultMock, subjectId: userId };
   },
   reactivateUser: async (userId) => {
     await mockDelay();
-    return { ...adminUserSuspensionResultMock, subjectId: userId, status: 'active', cancelledSearchingBookings: 0 };
+    return {
+      ...adminUserSuspensionResultMock,
+      subjectId: userId,
+      status: 'active',
+      cancelledSearchingBookings: 0,
+    };
   },
   suspensionRequests: (status) =>
     resolveMock(
       env.mockAdminDirectoryState,
-      { items: adminSuspensionRequestsMock.filter((request) => !status || request.status === status) },
+      {
+        items: adminSuspensionRequestsMock.filter(
+          (request) => !status || request.status === status,
+        ),
+      },
       { items: [] },
     ),
   approveRequest: async (requestId, note) => {
     await mockDelay();
     const request = adminSuspensionRequestsMock.find((row) => row.id === requestId)!;
-    return { ...request, status: 'approved', decidedAt: new Date().toISOString(), decisionNote: note ?? null };
+    return {
+      ...request,
+      status: 'approved',
+      decidedAt: new Date().toISOString(),
+      decisionNote: note ?? null,
+    };
   },
   rejectRequest: async (requestId, note) => {
     await mockDelay();
     const request = adminSuspensionRequestsMock.find((row) => row.id === requestId)!;
-    return { ...request, status: 'rejected', decidedAt: new Date().toISOString(), decisionNote: note ?? null };
+    return {
+      ...request,
+      status: 'rejected',
+      decidedAt: new Date().toISOString(),
+      decisionNote: note ?? null,
+    };
   },
 
   drivers: (query) =>
@@ -186,10 +218,17 @@ const mockSource: AdminDirectoryDataSource = {
     ),
   driver: async (driverId) => {
     await mockDelay();
-    const base = adminDirectoryDriverDetailMock[driverId] ?? adminDirectoryDriverDetailMock[MOCK_DRIVER_ONLINE]!;
+    const base =
+      adminDirectoryDriverDetailMock[driverId] ??
+      adminDirectoryDriverDetailMock[MOCK_DRIVER_ONLINE]!;
     return { ...base, id: driverId, zoneRestrictions: mockDriverZoneRefs(driverId) };
   },
-  driverBookings: () => resolveMock(env.mockAdminDirectoryState, adminDirectoryDriverBookingsMock, { ...adminDirectoryDriverBookingsMock, items: [], total: 0 }),
+  driverBookings: () =>
+    resolveMock(env.mockAdminDirectoryState, adminDirectoryDriverBookingsMock, {
+      ...adminDirectoryDriverBookingsMock,
+      items: [],
+      total: 0,
+    }),
   suspendDriver: async (driverId) => {
     await mockDelay();
     return adminDriverDecisionMock(driverId);
@@ -221,7 +260,9 @@ const mockSource: AdminDirectoryDataSource = {
     ),
   fleet: async (fleetId) => {
     await mockDelay();
-    return adminDirectoryFleetsMock.find((fleet) => fleet.id === fleetId) ?? adminDirectoryFleetsMock[0]!;
+    return (
+      adminDirectoryFleetsMock.find((fleet) => fleet.id === fleetId) ?? adminDirectoryFleetsMock[0]!
+    );
   },
   fleetTrucks: async () => {
     await mockDelay();
@@ -308,7 +349,8 @@ const mockSource: AdminDirectoryDataSource = {
     return { ...adminFleetSuspensionMock(fleetId), status: 'active' };
   },
 
-  zones: () => resolveMock(env.mockAdminDirectoryState, { items: adminDirectoryZonesMock }, { items: [] }),
+  zones: () =>
+    resolveMock(env.mockAdminDirectoryState, { items: adminDirectoryZonesMock }, { items: [] }),
 
   impersonate: async (userId, reason) => {
     await mockDelay();
@@ -319,14 +361,33 @@ const mockSource: AdminDirectoryDataSource = {
   endImpersonation: async (userId, sessionId) => {
     await mockDelay();
     return {
-      session: { ...adminImpersonationMock.session, id: sessionId, subjectId: userId, endedAt: new Date().toISOString() },
+      session: {
+        ...adminImpersonationMock.session,
+        id: sessionId,
+        subjectId: userId,
+        endedAt: new Date().toISOString(),
+      },
     };
   },
-  appViewTrips: () => resolveMock(env.mockAdminDirectoryState, adminAppViewTripsMock, { items: [], nextCursor: null }),
-  appViewWallet: () => resolveMock(env.mockAdminDirectoryState, adminAppViewWalletMock, { wallet: { balancePaise: 0 }, transactions: [] }),
-  appViewNotifications: () => resolveMock(env.mockAdminDirectoryState, adminAppViewNotificationsMock, { items: [], nextCursor: null }),
-  appViewVehicles: () => resolveMock(env.mockAdminDirectoryState, adminAppViewVehiclesMock, { items: [] }),
-  appViewAddresses: () => resolveMock(env.mockAdminDirectoryState, adminAppViewAddressesMock, { items: [] }),
+  appViewTrips: () =>
+    resolveMock(env.mockAdminDirectoryState, adminAppViewTripsMock, {
+      items: [],
+      nextCursor: null,
+    }),
+  appViewWallet: () =>
+    resolveMock(env.mockAdminDirectoryState, adminAppViewWalletMock, {
+      wallet: { balancePaise: 0 },
+      transactions: [],
+    }),
+  appViewNotifications: () =>
+    resolveMock(env.mockAdminDirectoryState, adminAppViewNotificationsMock, {
+      items: [],
+      nextCursor: null,
+    }),
+  appViewVehicles: () =>
+    resolveMock(env.mockAdminDirectoryState, adminAppViewVehiclesMock, { items: [] }),
+  appViewAddresses: () =>
+    resolveMock(env.mockAdminDirectoryState, adminAppViewAddressesMock, { items: [] }),
 };
 
 const restSource: AdminDirectoryDataSource = {
@@ -385,7 +446,9 @@ const restSource: AdminDirectoryDataSource = {
       body: JSON.stringify(body),
     }),
   reactivateDriver: (driverId) =>
-    adminApiFetch<AdminDriverDecisionResponse>(`drivers/${driverId}/reactivate`, { method: 'POST' }),
+    adminApiFetch<AdminDriverDecisionResponse>(`drivers/${driverId}/reactivate`, {
+      method: 'POST',
+    }),
   updateDriverZones: (driverId, zoneIds) =>
     adminApiFetch<AdminDriverZonesResponse>(`drivers/${driverId}/zones`, {
       method: 'PUT',
@@ -398,9 +461,13 @@ const restSource: AdminDirectoryDataSource = {
     ),
   fleet: (fleetId) => adminApiFetch<AdminFleetDetail>(`fleets/${fleetId}`),
   fleetTrucks: (fleetId, query) =>
-    adminApiFetch<TrucksListResponse>(`fleets/${fleetId}/trucks${qs({ page: query.page, limit: query.limit })}`),
+    adminApiFetch<TrucksListResponse>(
+      `fleets/${fleetId}/trucks${qs({ page: query.page, limit: query.limit })}`,
+    ),
   fleetDrivers: (fleetId, query) =>
-    adminApiFetch<DriversListResponse>(`fleets/${fleetId}/drivers${qs({ page: query.page, limit: query.limit })}`),
+    adminApiFetch<DriversListResponse>(
+      `fleets/${fleetId}/drivers${qs({ page: query.page, limit: query.limit })}`,
+    ),
   fleetEarnings: (fleetId) => adminApiFetch<EarningsSummaryDto>(`fleets/${fleetId}/earnings`),
   suspendFleet: (fleetId, reason) =>
     adminApiFetch<AdminFleetSuspensionResponse>(`fleets/${fleetId}/suspend`, {
@@ -427,11 +494,17 @@ const restSource: AdminDirectoryDataSource = {
   appViewWallet: (userId, session) =>
     adminApiFetch<AdminAppViewWalletResponse>(`users/${userId}/app-view/wallet${qs({ session })}`),
   appViewNotifications: (userId, session) =>
-    adminApiFetch<AdminAppViewNotificationsResponse>(`users/${userId}/app-view/notifications${qs({ session })}`),
+    adminApiFetch<AdminAppViewNotificationsResponse>(
+      `users/${userId}/app-view/notifications${qs({ session })}`,
+    ),
   appViewVehicles: (userId, session) =>
-    adminApiFetch<AdminAppViewVehiclesResponse>(`users/${userId}/app-view/vehicles${qs({ session })}`),
+    adminApiFetch<AdminAppViewVehiclesResponse>(
+      `users/${userId}/app-view/vehicles${qs({ session })}`,
+    ),
   appViewAddresses: (userId, session) =>
-    adminApiFetch<AdminAppViewAddressesResponse>(`users/${userId}/app-view/addresses${qs({ session })}`),
+    adminApiFetch<AdminAppViewAddressesResponse>(
+      `users/${userId}/app-view/addresses${qs({ session })}`,
+    ),
 };
 
 export const adminDirectoryDataSource: AdminDirectoryDataSource = env.useMocks

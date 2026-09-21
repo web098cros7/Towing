@@ -47,7 +47,9 @@ describe('migration 0020 admin identity, audit cursor and notes', () => {
   it('creates admin_recovery_codes with a per-admin hash uniqueness', () => {
     const sql = migrationSql();
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS "admin_recovery_codes"');
-    expect(sql).toContain('"admin_id" uuid NOT NULL REFERENCES "admin_users"("id") ON DELETE cascade');
+    expect(sql).toContain(
+      '"admin_id" uuid NOT NULL REFERENCES "admin_users"("id") ON DELETE cascade',
+    );
     expect(sql).toContain('"code_hash" text NOT NULL');
     expect(sql).toContain('uq_admin_recovery_codes_admin_hash');
   });

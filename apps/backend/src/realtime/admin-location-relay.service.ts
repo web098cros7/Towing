@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import {
   ADMIN_REALTIME_EVENT,
   driverLocationEventSchema,
@@ -56,7 +62,9 @@ export class AdminLocationRelay implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.subscriber.subscribe(DRIVER_LOCATION_CHANNEL, (payload) => this.onDriverPing(payload));
+    await this.subscriber.subscribe(DRIVER_LOCATION_CHANNEL, (payload) =>
+      this.onDriverPing(payload),
+    );
     // unref: a stray interval must never keep a test worker or a draining ECS
     // task alive.
     this.timer = setInterval(() => this.flush(), this.env.REALTIME_FLUSH_MS);

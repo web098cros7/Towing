@@ -28,7 +28,8 @@ export const adminFinanceKeys = {
   transactions: (query: Partial<AdminTransactionsQuery>) =>
     [...adminFinanceKeys.all, 'transactions', query] as const,
   ledger: (query: Partial<AdminLedgerQuery>) => [...adminFinanceKeys.all, 'ledger', query] as const,
-  refunds: (query: Partial<AdminRefundsQuery>) => [...adminFinanceKeys.all, 'refunds', query] as const,
+  refunds: (query: Partial<AdminRefundsQuery>) =>
+    [...adminFinanceKeys.all, 'refunds', query] as const,
   invariants: () => [...adminFinanceKeys.all, 'invariants'] as const,
   /** §14.4's decision latency — a window, not a page, so it is keyed by days. */
   payoutSla: (windowDays: number) => [...adminFinanceKeys.all, 'payout-sla', windowDays] as const,

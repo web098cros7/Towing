@@ -23,10 +23,7 @@ import {
 import { ApiException } from '../../common/errors/api-exception';
 import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { NotificationService } from '../../common/notifications/notification.service';
-import {
-  STORAGE,
-  type StoragePort,
-} from '../../common/storage/storage.port';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { PresignedUploadService } from '../../common/storage/presigned-upload.helper';
 import { DB, type Database } from '../../db/db.module';
 import { ledgerKeys } from '../../db/ledger/idempotency-keys';

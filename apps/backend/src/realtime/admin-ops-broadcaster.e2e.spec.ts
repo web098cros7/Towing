@@ -73,7 +73,9 @@ describe('admin ops broadcaster (W3)', () => {
   }
 
   async function issueAdminTicket(): Promise<string> {
-    return app.get(WsTicketService).issue({ realm: 'admin', subjectId: adminId, subRole: 'operations' });
+    return app
+      .get(WsTicketService)
+      .issue({ realm: 'admin', subjectId: adminId, subRole: 'operations' });
   }
 
   /** The first well-formed frame, or a rejection — this suite never hangs. */
@@ -84,7 +86,10 @@ describe('admin ops broadcaster (W3)', () => {
     timeoutMs = 5_000,
   ): Promise<T> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`no ${event} frame within ${timeoutMs}ms`)), timeoutMs);
+      const timer = setTimeout(
+        () => reject(new Error(`no ${event} frame within ${timeoutMs}ms`)),
+        timeoutMs,
+      );
       socket.once(event, (payload: unknown) => {
         const parsed = parse.safeParse(payload);
         clearTimeout(timer);
@@ -130,11 +135,25 @@ describe('admin ops broadcaster (W3)', () => {
   it('pushes ops:metrics, ops:badges and the creation frame after a domain event', async () => {
     const socket = await connectWith(await issueAdminTicket());
 
-    const creation = nextFrame(socket, ADMIN_REALTIME_EVENT.BOOKING_STATUS, adminBookingStatusSchema);
+    const creation = nextFrame(
+      socket,
+      ADMIN_REALTIME_EVENT.BOOKING_STATUS,
+      adminBookingStatusSchema,
+    );
     // The payload arrives after the broadcaster's debounce window — give it
     // the debounce plus compute time, not the default frame timeout.
-    const metrics = nextFrame(socket, ADMIN_REALTIME_EVENT.OPS_METRICS, adminOpsMetricsEventSchema, 12_000);
-    const badges = nextFrame(socket, ADMIN_REALTIME_EVENT.OPS_BADGES, adminOpsBadgesEventSchema, 12_000);
+    const metrics = nextFrame(
+      socket,
+      ADMIN_REALTIME_EVENT.OPS_METRICS,
+      adminOpsMetricsEventSchema,
+      12_000,
+    );
+    const badges = nextFrame(
+      socket,
+      ADMIN_REALTIME_EVENT.OPS_BADGES,
+      adminOpsBadgesEventSchema,
+      12_000,
+    );
 
     const event = createdEnvelope();
     await testRedis().publish(OPS_EVENTS_CHANNEL, JSON.stringify(event));
@@ -192,17 +211,19 @@ describe('admin ops broadcaster (W3)', () => {
     await seedDriver(db, { kycStatus: 'pending' });
 
     const socket = await connectWith(await issueAdminTicket());
-    const metrics = nextFrame(socket, ADMIN_REALTIME_EVENT.OPS_METRICS, adminOpsMetricsEventSchema, 12_000);
+    const metrics = nextFrame(
+      socket,
+      ADMIN_REALTIME_EVENT.OPS_METRICS,
+      adminOpsMetricsEventSchema,
+      12_000,
+    );
 
     await testRedis().publish(OPS_EVENTS_CHANNEL, JSON.stringify(createdEnvelope()));
     const frame = await metrics;
 
     const res = await request(app.getHttpServer())
       .get('/v1/admin/ops/dashboard')
-      .set(
-        'Authorization',
-        await adminAuthHeaderFor(app, { adminId, subRole: 'operations' }),
-      )
+      .set('Authorization', await adminAuthHeaderFor(app, { adminId, subRole: 'operations' }))
       .expect(200);
 
     const body = adminOpsDashboardResponseSchema.parse(res.body);

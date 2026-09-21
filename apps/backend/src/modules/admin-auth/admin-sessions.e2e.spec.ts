@@ -6,7 +6,13 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { adminActions, refreshTokens } from '../../db/schema';
 import { createTestApp, authHeaderFor } from '../../test/app';
-import { seedAdmin, seedFleet, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
+import {
+  seedAdmin,
+  seedFleet,
+  setupTestDatabase,
+  truncateAll,
+  type TestDatabase,
+} from '../../test/db';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 import { TokenService } from '../auth/token.service';
 

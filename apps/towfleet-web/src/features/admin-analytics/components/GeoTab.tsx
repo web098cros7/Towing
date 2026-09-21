@@ -3,7 +3,16 @@
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 import type { AnalyticsGeoResponse } from '@towing/api-contracts';
-import { Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@towing/web-ui';
+import {
+  Select,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@towing/web-ui';
 import { env } from '@/lib/env';
 import { useThemeMode } from '@/lib/useThemeMode';
 import { mapColors } from '@/features/realtime/lib/mapColors';

@@ -1,7 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Card, CardContent, CardHeader, CardTitle, Field, Input, Select, Textarea } from '@towing/web-ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  Input,
+  Select,
+  Textarea,
+} from '@towing/web-ui';
 import type { AppConfig } from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
 import { useUpdateAppConfig } from '../api/adminDispatch.mutations';
@@ -42,8 +52,7 @@ export function AppConfigPanel({ config }: { config: AppConfig }) {
   }, [config]);
 
   const semver = /^\d+\.\d+\.\d+$/;
-  const versionsValid =
-    semver.test(form.minCustomerVersion) && semver.test(form.minDriverVersion);
+  const versionsValid = semver.test(form.minCustomerVersion) && semver.test(form.minDriverVersion);
   const bannerValid =
     form.sevLevel === '' ? form.sevMessage.trim() === '' : form.sevMessage.trim().length >= 3;
 

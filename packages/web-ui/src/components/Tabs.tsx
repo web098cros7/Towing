@@ -50,9 +50,7 @@ export function Tabs<T extends string>({
             onClick={() => onChange(item.value)}
             className={cn(
               'rounded-input px-3 py-1.5 text-sm font-medium transition-colors',
-              active
-                ? 'bg-brand-tint text-brand'
-                : 'text-text-secondary hover:text-text-primary',
+              active ? 'bg-brand-tint text-brand' : 'text-text-secondary hover:text-text-primary',
             )}
           >
             {item.label}

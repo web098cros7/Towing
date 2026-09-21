@@ -4,7 +4,10 @@ import { Skeleton } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { AdminForbidden } from '@/components/admin/AdminForbidden';
 import { useAdminCan } from '@/components/admin/Can';
-import { useAdminAppConfig, useAdminDispatchConfig } from '@/features/admin-dispatch/api/adminDispatch.queries';
+import {
+  useAdminAppConfig,
+  useAdminDispatchConfig,
+} from '@/features/admin-dispatch/api/adminDispatch.queries';
 import { AppConfigPanel } from '@/features/admin-dispatch/components/AppConfigPanel';
 import { DispatchGlobalForm } from '@/features/admin-dispatch/components/DispatchGlobalForm';
 import { KillSwitchPanel } from '@/features/admin-dispatch/components/KillSwitchPanel';

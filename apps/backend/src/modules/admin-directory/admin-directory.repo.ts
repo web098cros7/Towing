@@ -304,9 +304,11 @@ export class AdminDirectoryRepo {
   }
 
   /** The driver's trips, newest first, over the W6 bookings list indexes. */
-  async driverBookings(
-    params: { driverId: string; limit: number; offset: number },
-  ): Promise<{ items: AdminDirectoryBooking[]; total: number }> {
+  async driverBookings(params: {
+    driverId: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ items: AdminDirectoryBooking[]; total: number }> {
     const rows = (await this.db.execute(sql`
       select b.id, b.status::text as status, b.service_type::text as service_type,
              b.zone_id, b.driver_id, b.total, b.created_at, b.updated_at,
@@ -383,9 +385,9 @@ export class AdminDirectoryRepo {
     await this.db.transaction(async (tx) => {
       await tx.delete(driverZoneRestrictions).where(eq(driverZoneRestrictions.driverId, driverId));
       if (zoneIds.length > 0) {
-        await tx.insert(driverZoneRestrictions).values(
-          zoneIds.map((zoneId) => ({ driverId, zoneId, createdBy })),
-        );
+        await tx
+          .insert(driverZoneRestrictions)
+          .values(zoneIds.map((zoneId) => ({ driverId, zoneId, createdBy })));
       }
     });
   }

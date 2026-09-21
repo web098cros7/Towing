@@ -30,7 +30,11 @@ const EnvSchema = z.object({
   // hashed, so only the access secret needs to be a real signing secret.
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be >= 32 chars'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900), // 15m
-  JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30), // 30d
+  JWT_REFRESH_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 60 * 24 * 30), // 30d
 
   /**
    * A17: how long `JwtAuthGuard` trusts its per-process copy of an admin's
@@ -76,7 +80,12 @@ const EnvSchema = z.object({
   CORS_ORIGINS: z
     .string()
     .default('http://localhost:3000')
-    .transform((raw) => raw.split(',').map((o) => o.trim()).filter(Boolean)),
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ),
 
   /**
    * §19.2 kill switch. Off means: the ticket endpoint 503s, the gateway refuses
@@ -449,7 +458,12 @@ const EnvSchema = z.object({
   GOOGLE_OAUTH_CLIENT_IDS: z
     .string()
     .default('')
-    .transform((raw) => raw.split(',').map((id) => id.trim()).filter(Boolean)),
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
 
   GOOGLE_JWKS_URL: z.url().default('https://www.googleapis.com/oauth2/v3/certs'),
 
@@ -482,7 +496,12 @@ const EnvSchema = z.object({
   APPLE_CLIENT_IDS: z
     .string()
     .default('')
-    .transform((raw) => raw.split(',').map((id) => id.trim()).filter(Boolean)),
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
 
   APPLE_JWKS_URL: z.url().default('https://appleid.apple.com/auth/keys'),
 
@@ -600,9 +619,7 @@ const EnvSchema = z.object({
    */
   DIRECTIONS_PROVIDER: z.enum(['haversine', 'google_directions']).default('haversine'),
 
-  GOOGLE_DIRECTIONS_URL: z
-    .url()
-    .default('https://maps.googleapis.com/maps/api/directions/json'),
+  GOOGLE_DIRECTIONS_URL: z.url().default('https://maps.googleapis.com/maps/api/directions/json'),
 
   /**
    * §19.3's full 2–5 s band, unlike `ROUTING_TIMEOUT_MS` — and the contrast is
@@ -847,7 +864,9 @@ export function assertProductionSafety(env: Env): void {
   }
 
   if (env.NOTIFY_SMS_PROVIDER === 'msg91' && (!env.MSG91_AUTH_KEY || !env.MSG91_SENDER_ID)) {
-    throw new Error('MSG91_AUTH_KEY and MSG91_SENDER_ID are required when NOTIFY_SMS_PROVIDER=msg91');
+    throw new Error(
+      'MSG91_AUTH_KEY and MSG91_SENDER_ID are required when NOTIFY_SMS_PROVIDER=msg91',
+    );
   }
 
   if (
@@ -865,9 +884,7 @@ export function assertProductionSafety(env: Env): void {
   // make a Google Cloud billing account a launch blocker. What is refused is
   // the misconfiguration — the real adapter selected with nothing to call.
   if (env.ROUTING_PROVIDER === 'google_distance_matrix' && !env.GOOGLE_MAPS_API_KEY) {
-    throw new Error(
-      'GOOGLE_MAPS_API_KEY is required when ROUTING_PROVIDER=google_distance_matrix',
-    );
+    throw new Error('GOOGLE_MAPS_API_KEY is required when ROUTING_PROVIDER=google_distance_matrix');
   }
 
   // Geocoding follows routing exactly. `GEOCODING_PROVIDER=local` in production
@@ -912,4 +929,3 @@ export function assertProductionSafety(env: Env): void {
     throw new Error('EXOTEL_SID and EXOTEL_TOKEN are required when TELEPHONY_PROVIDER=exotel');
   }
 }
-

@@ -86,7 +86,11 @@ export class PaymentReconcileService implements OnModuleInit {
     // Captured or refunded: the vendor was asked a moment ago (or the money has
     // since gone back) — nothing to re-check.
     if (payment.status === 'captured' || payment.status === 'refunded') {
-      return { paymentId: payment.id, paymentStatus: payment.status, settled: payment.status === 'captured' };
+      return {
+        paymentId: payment.id,
+        paymentStatus: payment.status,
+        settled: payment.status === 'captured',
+      };
     }
 
     const handle = await this.gateway.fetchPayment({

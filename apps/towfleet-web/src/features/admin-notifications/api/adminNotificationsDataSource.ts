@@ -8,11 +8,7 @@ import type {
 import { adminApiFetch } from '@/lib/adminApiClient';
 import { env } from '@/lib/env';
 import { mockDelay, resolveMock } from '@/lib/mockUtils';
-import {
-  mockDeliveries,
-  mockTemplates,
-  mockTestSend,
-} from '../mocks/adminNotifications.mock';
+import { mockDeliveries, mockTemplates, mockTestSend } from '../mocks/adminNotifications.mock';
 
 /**
  * W18's notification console APIs (§12.3).

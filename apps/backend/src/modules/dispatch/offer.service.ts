@@ -188,7 +188,11 @@ export class OfferService {
    * simply wins or loses without corrupting either path.
    */
   async revokeAll(bookingId: string, reason: RevokeReason): Promise<string[]> {
-    const revoked = await this.revokeDrivers(bookingId, await this.repo.pendingOffers(bookingId), reason);
+    const revoked = await this.revokeDrivers(
+      bookingId,
+      await this.repo.pendingOffers(bookingId),
+      reason,
+    );
     if (revoked.length > 0) {
       this.logger.debug(`revoked ${revoked.length} offers on ${bookingId} (${reason})`);
     }
@@ -426,10 +430,7 @@ export class OfferService {
     // already had it a moment ago to score this candidate, and it is fresher
     // than the ~30 s Postgres flush.
     const fix = await this.presence.lastFix(driverId).catch(() => null);
-    void this.tracking.planRoute(
-      booking.id,
-      fix ? { lat: fix.lat, lng: fix.lng } : null,
-    );
+    void this.tracking.planRoute(booking.id, fix ? { lat: fix.lat, lng: fix.lng } : null);
   }
 
   /** `GET /v1/driver/offers/current` — §19.2's resync for a dropped socket. */
@@ -531,7 +532,10 @@ export class OfferService {
       note: booking.note,
       // §5.1's collection OTP is held by the CUSTOMER and typed by the driver;
       // the code itself never travels to this phone.
-      otpPending: booking.status === 'assigned' || booking.status === 'en_route' || booking.status === 'arrived',
+      otpPending:
+        booking.status === 'assigned' ||
+        booking.status === 'en_route' ||
+        booking.status === 'arrived',
       assignedAt: booking.updatedAt?.toISOString() ?? null,
 
       // §5.2's instants (Phase 18). ABSOLUTE, on the server's clock, for the

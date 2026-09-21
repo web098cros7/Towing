@@ -386,15 +386,43 @@ export const adminAppViewNotificationsMock = {
 
 export const adminAppViewVehiclesMock = {
   items: [
-    { id: id('91'), type: 'suv' as const, makeModel: 'Toyota Fortuner', plate: 'KA01AB1234', rcUrl: null, isDefault: true },
-    { id: id('92'), type: 'hatchback' as const, makeModel: 'Maruti Swift', plate: null, rcUrl: null, isDefault: false },
+    {
+      id: id('91'),
+      type: 'suv' as const,
+      makeModel: 'Toyota Fortuner',
+      plate: 'KA01AB1234',
+      rcUrl: null,
+      isDefault: true,
+    },
+    {
+      id: id('92'),
+      type: 'hatchback' as const,
+      makeModel: 'Maruti Swift',
+      plate: null,
+      rcUrl: null,
+      isDefault: false,
+    },
   ],
 };
 
 export const adminAppViewAddressesMock = {
   items: [
-    { id: id('95'), label: 'Home', fullAddress: '12 MG Road, Bengaluru', lat: 12.97, lng: 77.59, isDefault: true },
-    { id: id('96'), label: 'Office', fullAddress: 'Tower B, Whitefield', lat: 12.96, lng: 77.75, isDefault: false },
+    {
+      id: id('95'),
+      label: 'Home',
+      fullAddress: '12 MG Road, Bengaluru',
+      lat: 12.97,
+      lng: 77.59,
+      isDefault: true,
+    },
+    {
+      id: id('96'),
+      label: 'Office',
+      fullAddress: 'Tower B, Whitefield',
+      lat: 12.96,
+      lng: 77.75,
+      isDefault: false,
+    },
   ],
 };
 

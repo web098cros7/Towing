@@ -79,7 +79,9 @@ export class AdminBookingsRepo {
     }
     // Inclusive IST day bounds; `to` is inclusive of the whole day.
     if (query.from) {
-      filters.push(sql`b.created_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`);
+      filters.push(
+        sql`b.created_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`,
+      );
     }
     if (query.to) {
       filters.push(
@@ -225,7 +227,9 @@ export class AdminBookingsRepo {
       contactMobile: (row.contact_mobile as string | null) ?? null,
       waitingFreeMinutes: (row.waiting_free_minutes as number | null) ?? null,
       waitingPerMinutePaise:
-        row.waiting_per_minute === null ? null : rupeeStringToPaise(row.waiting_per_minute as string),
+        row.waiting_per_minute === null
+          ? null
+          : rupeeStringToPaise(row.waiting_per_minute as string),
       completedAt: isoOrNull(row.completed_at),
       paidAt: isoOrNull(row.paid_at),
       cancelledBy: (row.cancelled_by as BookingActorValue | null) ?? null,

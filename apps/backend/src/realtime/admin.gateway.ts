@@ -170,7 +170,9 @@ export class AdminGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
     event: E,
     ...payload: Parameters<AdminServerToClientEvents[E]>
   ): void {
-    this.localOperator().to(adminOpsRoom()).emit(event, ...payload);
+    this.localOperator()
+      .to(adminOpsRoom())
+      .emit(event, ...payload);
   }
 
   /**

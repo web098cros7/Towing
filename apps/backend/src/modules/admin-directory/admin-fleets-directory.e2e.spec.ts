@@ -92,9 +92,7 @@ describe('admin directory fleets (W6)', () => {
       .get(`/v1/admin/fleets?q=${bengaluru.fleetId.slice(0, 8)}`)
       .set('Authorization', opsToken)
       .expect(200);
-    expect(byPrefix.body.items.map((item: AdminFleetItem) => item.id)).toEqual([
-      bengaluru.fleetId,
-    ]);
+    expect(byPrefix.body.items.map((item: AdminFleetItem) => item.id)).toEqual([bengaluru.fleetId]);
 
     const suspended = await request(app.getHttpServer())
       .get('/v1/admin/fleets?status=suspended')
@@ -199,9 +197,9 @@ describe('admin directory fleets (W6)', () => {
     // G6 carry-forward: one `fleet.suspended` per driver, naming the fleet.
     const fleetEvents = notify.mock.calls.filter(([event]) => event === 'fleet.suspended');
     expect(fleetEvents).toHaveLength(2);
-    expect(fleetEvents.map(([, payload]) => (payload as { driverId: string }).driverId).sort()).toEqual(
-      [first, second].sort(),
-    );
+    expect(
+      fleetEvents.map(([, payload]) => (payload as { driverId: string }).driverId).sort(),
+    ).toEqual([first, second].sort());
     notify.mockRestore();
 
     // Reactivation clears the trio.

@@ -1,5 +1,14 @@
 import type { SubjectNotificationPrefs, VehicleCategory } from '@towing/api-contracts';
-import { boolean, doublePrecision, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  doublePrecision,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { adminUsers } from './admin';
 import { primaryId, timestamps } from './columns';
 import { accountStatusEnum } from './enums';

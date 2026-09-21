@@ -196,9 +196,7 @@ export const adminDisputeEvidenceConfirmBodySchema = z.object({
   kind: disputeEvidenceKindSchema,
   note: z.string().trim().max(500).optional(),
 });
-export type AdminDisputeEvidenceConfirmBody = z.infer<
-  typeof adminDisputeEvidenceConfirmBodySchema
->;
+export type AdminDisputeEvidenceConfirmBody = z.infer<typeof adminDisputeEvidenceConfirmBodySchema>;
 
 export const adminDisputeDetailSchema = adminDisputeSchema.extend({
   evidence: z.array(adminDisputeEvidenceSchema),

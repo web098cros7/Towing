@@ -13,7 +13,16 @@ import {
   YAxis,
 } from 'recharts';
 import type { AnalyticsRevenueResponse } from '@towing/api-contracts';
-import { KpiCard, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@towing/web-ui';
+import {
+  KpiCard,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@towing/web-ui';
 
 const rupees = (paise: number): string =>
   `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -54,7 +63,11 @@ export function RevenueTab({ data }: { data: AnalyticsRevenueResponse | undefine
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="GMV" value={rupees(data.totals.gmvPaise)} />
         <KpiCard label="Commission" value={rupees(data.totals.commissionPaise)} />
-        <KpiCard label="Take rate" value={percent(data.totals.takeRateBps)} hint="commission ÷ GMV" />
+        <KpiCard
+          label="Take rate"
+          value={percent(data.totals.takeRateBps)}
+          hint="commission ÷ GMV"
+        />
         <KpiCard label="AOV" value={rupees(data.totals.aovPaise)} hint="per paid booking" />
       </div>
 

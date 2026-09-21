@@ -1,13 +1,4 @@
-import {
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Post,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   analyticsExportQuerySchema,
@@ -90,7 +81,9 @@ export class AdminAnalyticsController {
 
   @Get('geo')
   @Permissions('analytics.view')
-  geo(@ZodQuery(analyticsRangeQuerySchema) query: AnalyticsRangeQuery): Promise<AnalyticsGeoResponse> {
+  geo(
+    @ZodQuery(analyticsRangeQuerySchema) query: AnalyticsRangeQuery,
+  ): Promise<AnalyticsGeoResponse> {
     return this.analytics.geo(query);
   }
 
@@ -121,9 +114,13 @@ export class AdminAnalyticsController {
     if (!auth) throw ApiException.unauthorized();
 
     const day = this.rollups.targetDay(body.day);
-    await this.queue.enqueue('analytics.rollup', { reason: 'manual', day }, {
-      jobId: `analytics:${day}:manual:${Date.now()}`,
-    });
+    await this.queue.enqueue(
+      'analytics.rollup',
+      { reason: 'manual', day },
+      {
+        jobId: `analytics:${day}:manual:${Date.now()}`,
+      },
+    );
 
     await this.audit.record({
       adminId: auth.sub,

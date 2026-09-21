@@ -110,12 +110,7 @@ export type AdminOpsActivityResponse = z.infer<typeof adminOpsActivityResponseSc
  * `searching` is not here on purpose: a search has no driver to follow and is
  * W5's dispatch inspector, not a marker.
  */
-export const adminLiveJobStatusSchema = z.enum([
-  'assigned',
-  'en_route',
-  'arrived',
-  'in_progress',
-]);
+export const adminLiveJobStatusSchema = z.enum(['assigned', 'en_route', 'arrived', 'in_progress']);
 
 export const adminOpsLiveQuerySchema = z.object({
   /** Narrows to drivers whose last known zone is this one, and bookings in it. */

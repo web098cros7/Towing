@@ -242,7 +242,9 @@ function QuoteDrawer({ id, onClose }: { id: string | null; onClose: () => void }
                 data-testid="drawer-quoted"
               >
                 <div className="font-semibold">{rupees(quote.totalPaise)}</div>
-                {quote.quoteNote ? <div className="text-text-secondary">{quote.quoteNote}</div> : null}
+                {quote.quoteNote ? (
+                  <div className="text-text-secondary">{quote.quoteNote}</div>
+                ) : null}
                 {quote.validUntil ? (
                   <div className="text-xs text-text-secondary" data-testid="drawer-valid-until">
                     Valid until {new Date(quote.validUntil).toLocaleString('en-IN')}

@@ -32,7 +32,11 @@ export function CommissionHistoryTable() {
             </thead>
             <tbody>
               {(data ?? []).map((entry) => (
-                <tr key={entry.id} className="border-t border-border" data-testid="commission-history-row">
+                <tr
+                  key={entry.id}
+                  className="border-t border-border"
+                  data-testid="commission-history-row"
+                >
                   <td className="py-1.5">
                     <RelativeTime at={entry.createdAt} className="text-text-secondary" />
                   </td>

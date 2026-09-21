@@ -28,7 +28,10 @@ export default function AdminFleetDetailPage() {
 
   return (
     <div>
-      <PageHeader title="Fleet" description="Profile, trucks, drivers, earnings and account actions." />
+      <PageHeader
+        title="Fleet"
+        description="Profile, trucks, drivers, earnings and account actions."
+      />
       <AdminFleetDetail fleetId={fleetId} />
     </div>
   );

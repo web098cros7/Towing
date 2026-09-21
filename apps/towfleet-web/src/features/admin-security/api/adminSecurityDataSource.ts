@@ -72,4 +72,6 @@ const restSource: AdminSecurityDataSource = {
   revokeSession: (id) => adminApiFetch<void>(`auth/sessions/${id}`, { method: 'DELETE' }),
 };
 
-export const adminSecurityDataSource: AdminSecurityDataSource = env.useMocks ? mockSource : restSource;
+export const adminSecurityDataSource: AdminSecurityDataSource = env.useMocks
+  ? mockSource
+  : restSource;

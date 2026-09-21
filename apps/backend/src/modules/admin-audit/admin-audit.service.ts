@@ -69,10 +69,7 @@ export class AdminAuditService {
           cursor
             ? or(
                 lt(adminActions.createdAt, cursor.createdAt),
-                and(
-                  eq(adminActions.createdAt, cursor.createdAt),
-                  lt(adminActions.id, cursor.id),
-                ),
+                and(eq(adminActions.createdAt, cursor.createdAt), lt(adminActions.id, cursor.id)),
               )
             : undefined,
         ),
@@ -100,11 +97,7 @@ export class AdminAuditService {
   }
 
   async detail(viewer: AuditViewer, id: string): Promise<AdminAuditDetail> {
-    const [row] = await this.db
-      .select()
-      .from(adminActions)
-      .where(eq(adminActions.id, id))
-      .limit(1);
+    const [row] = await this.db.select().from(adminActions).where(eq(adminActions.id, id)).limit(1);
 
     // Other admins' rows on subjects this viewer cannot read are a 404, not a
     // 403: whether a given admin action EXISTS is itself information the audit

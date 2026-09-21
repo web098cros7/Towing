@@ -64,10 +64,7 @@ export class AdminFleetsDirectoryController {
 
   @Get(':id/drivers')
   @Permissions('user.read')
-  drivers(
-    @ZodParam(z.uuid(), 'id') fleetId: string,
-    @ZodQuery(pageQuerySchema) query: PageQuery,
-  ) {
+  drivers(@ZodParam(z.uuid(), 'id') fleetId: string, @ZodQuery(pageQuerySchema) query: PageQuery) {
     return this.directory.fleetDrivers(fleetId, query);
   }
 

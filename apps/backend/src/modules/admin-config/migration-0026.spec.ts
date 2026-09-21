@@ -30,9 +30,7 @@ function constraintLines(sql: string, constraint: string): string[] {
   return sql
     .split(';')
     .map((statement) => statement.replace(/\s+/g, ' '))
-    .filter(
-      (statement) => statement.includes(`"${constraint}"`) && statement.includes('CHECK'),
-    );
+    .filter((statement) => statement.includes(`"${constraint}"`) && statement.includes('CHECK'));
 }
 
 describe('migration 0026 commission guardrail', () => {
@@ -74,9 +72,9 @@ describe('migration 0026 commission guardrail', () => {
     // unattributable failure 0011's comment warns about.
     const configCheck = constraintLines(sql, 'ck_commission_config_guardrail');
     const bookingCheck = constraintLines(sql, 'ck_bookings_commission_pct_guardrail');
-    expect(configCheck.some((line) => line.includes('"pct" > 0') && line.includes('"pct" <= 30'))).toBe(
-      true,
-    );
+    expect(
+      configCheck.some((line) => line.includes('"pct" > 0') && line.includes('"pct" <= 30')),
+    ).toBe(true);
     expect(
       bookingCheck.some(
         (line) => line.includes('"commission_pct" > 0') && line.includes('"commission_pct" <= 30'),

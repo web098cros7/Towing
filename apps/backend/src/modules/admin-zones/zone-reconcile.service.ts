@@ -56,9 +56,7 @@ export class ZoneReconcileService {
 
     for (const driver of affected) {
       const fix = await this.presence.lastFix(driver.id);
-      const resolved = fix
-        ? await this.resolver.resolve({ lat: fix.lat, lng: fix.lng })
-        : null;
+      const resolved = fix ? await this.resolver.resolve({ lat: fix.lat, lng: fix.lng }) : null;
 
       if (resolved && resolved.id !== zoneId) {
         await this.db

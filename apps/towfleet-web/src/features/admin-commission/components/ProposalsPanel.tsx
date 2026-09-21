@@ -1,7 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Field, Input, RelativeTime, Select } from '@towing/web-ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Field,
+  Input,
+  RelativeTime,
+  Select,
+} from '@towing/web-ui';
 import type { AdminCommissionConfig, Band } from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
 import { useAdminCommissionProposals } from '../api/adminCommission.queries';

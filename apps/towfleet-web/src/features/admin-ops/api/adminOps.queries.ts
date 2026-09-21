@@ -49,11 +49,7 @@ export function useAdminOpsActivity(enabled: boolean, mode: RealtimeMode) {
  * (re)connect and every filter change — a cached snapshot with a filter applied
  * is exactly the stale-marker problem the resync exists to prevent.
  */
-export function useAdminOpsLive(
-  query: AdminOpsLiveQuery,
-  enabled: boolean,
-  mode: RealtimeMode,
-) {
+export function useAdminOpsLive(query: AdminOpsLiveQuery, enabled: boolean, mode: RealtimeMode) {
   return useQuery({
     queryKey: adminOpsKeys.live({ zoneId: query.zoneId ?? null, status: query.status ?? null }),
     queryFn: () => adminOpsDataSource.live(query),

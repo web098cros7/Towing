@@ -1,7 +1,15 @@
 'use client';
 
 import { AlertCircle, Clock, Globe, User } from 'lucide-react';
-import { Drawer, DrawerBody, DrawerHeader, DrawerTitle, JsonDiff, RelativeTime, Skeleton } from '@towing/web-ui';
+import {
+  Drawer,
+  DrawerBody,
+  DrawerHeader,
+  DrawerTitle,
+  JsonDiff,
+  RelativeTime,
+  Skeleton,
+} from '@towing/web-ui';
 import { ErrorState } from '@towing/web-ui';
 import { useAdminAuditDetail } from '../api/adminAudit.queries';
 
@@ -56,7 +64,10 @@ export function AuditEntryDrawer({
               </Detail>
               <Detail icon={<Globe className="size-3.5" />} label="Source">
                 <span className="font-mono text-xs">{data.ip ?? '—'}</span>
-                <span className="block truncate text-xs text-text-tertiary" title={data.userAgent ?? undefined}>
+                <span
+                  className="block truncate text-xs text-text-tertiary"
+                  title={data.userAgent ?? undefined}
+                >
                   {data.userAgent ?? ''}
                 </span>
               </Detail>

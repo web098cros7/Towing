@@ -203,8 +203,8 @@ export default function AdminSecurityPage() {
                       {session.userAgent ?? 'Unknown device'}
                     </p>
                     <p className="mt-0.5 text-xs text-text-tertiary">
-                      {session.ip ?? '—'} · last used <RelativeTime at={session.lastUsedAt} /> · started{' '}
-                      <RelativeTime at={session.createdAt} />
+                      {session.ip ?? '—'} · last used <RelativeTime at={session.lastUsedAt} /> ·
+                      started <RelativeTime at={session.createdAt} />
                     </p>
                   </div>
                   <Button

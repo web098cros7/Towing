@@ -1,5 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
-import { adminBookingDetailSchema, adminBookingInvoiceSchema, rupeeStringToPaise } from '@towing/api-contracts';
+import {
+  adminBookingDetailSchema,
+  adminBookingInvoiceSchema,
+  rupeeStringToPaise,
+} from '@towing/api-contracts';
 import { sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -353,7 +357,10 @@ describe('W8 — admin bookings (/v1/admin/bookings)', () => {
 
     // A driver who is not in the candidate store cannot be offered to.
     const stranger = await seedDriver(db, { name: 'Offline Stranger' });
-    await db.update(bookings).set({ status: 'assigned', driverId: previousDriver }).where(eq(bookings.id, bookingId));
+    await db
+      .update(bookings)
+      .set({ status: 'assigned', driverId: previousDriver })
+      .where(eq(bookings.id, bookingId));
     await db.execute(sql`
       insert into dispatch_attempts (booking_id, driver_id, wave, radius_km, outcome, offered_at, responded_at)
       values (${bookingId}::uuid, ${previousDriver}::uuid, 2, 4.00, 'accepted', now(), now())
@@ -495,7 +502,7 @@ describe('W8 — admin bookings (/v1/admin/bookings)', () => {
   // §14.2 — recheck + remind
   // -------------------------------------------------------------------------
 
-  it('rechecks a booking\'s payment and settles it when the gateway confirms', async () => {
+  it("rechecks a booking's payment and settles it when the gateway confirms", async () => {
     const driverId = await seedDriver(db, { name: 'Recheck Driver' });
     const userId = await seedCustomer(db, 'Recheck Customer');
     const bookingId = await seedBooking(db, {

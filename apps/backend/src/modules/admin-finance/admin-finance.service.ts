@@ -27,7 +27,11 @@ import {
 import { ApiException } from '../../common/errors/api-exception';
 import { streamCsv } from '../../common/csv/csv';
 import { DB, type Database } from '../../db/db.module';
-import { driftedWallets, ledgerInvariants, type LedgerInvariants } from '../../db/ledger/invariants';
+import {
+  driftedWallets,
+  ledgerInvariants,
+  type LedgerInvariants,
+} from '../../db/ledger/invariants';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
 import { codeOf } from '../admin-bookings/admin-bookings.repo';
 import type { SessionContext } from '../auth/token.service';
@@ -97,10 +101,7 @@ export class AdminFinanceService {
     `);
 
     const detail = new Map(
-      (enriched as unknown as Array<Record<string, unknown>>).map((row) => [
-        row.id as string,
-        row,
-      ]),
+      (enriched as unknown as Array<Record<string, unknown>>).map((row) => [row.id as string, row]),
     );
 
     return {
@@ -338,7 +339,8 @@ export class AdminFinanceService {
       invariants,
       driftedWallets: wallets.map((wallet) => ({
         walletId: wallet.walletId,
-        ownerType: wallet.ownerType as AdminInvariantsResponse['driftedWallets'][number]['ownerType'],
+        ownerType:
+          wallet.ownerType as AdminInvariantsResponse['driftedWallets'][number]['ownerType'],
         ownerId: wallet.ownerId,
         balancePaise: wallet.balancePaise,
         ledgerPaise: wallet.ledgerPaise,
@@ -375,7 +377,17 @@ export class AdminFinanceService {
       res,
       {
         filename: `reconciliation-${date}.csv`,
-        header: ['kind', 'ref', 'booking_code', 'amount_paise', 'status', 'method', 'gateway_ref', 'at', 'note'],
+        header: [
+          'kind',
+          'ref',
+          'booking_code',
+          'amount_paise',
+          'status',
+          'method',
+          'gateway_ref',
+          'at',
+          'note',
+        ],
       },
       async () => {
         if (emitted) return [];

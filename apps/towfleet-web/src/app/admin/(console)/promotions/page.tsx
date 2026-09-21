@@ -12,10 +12,7 @@ export default function AdminPromotionsPage() {
   if (!can('promo.manage')) {
     return (
       <div>
-        <PageHeader
-          title="Promotions"
-          description="Coupon codes and the app carousel."
-        />
+        <PageHeader title="Promotions" description="Coupon codes and the app carousel." />
         <AdminForbidden resource="the promotions console" />
       </div>
     );

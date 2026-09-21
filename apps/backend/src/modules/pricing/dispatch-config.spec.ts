@@ -112,9 +112,13 @@ describe('dispatchConfigOverrideSchema — what an admin may write', () => {
   it('rejects a ladder that is not strictly ascending', () => {
     // A descending rung means wave 3 searches a SMALLER circle than wave 2, so
     // the search narrows as it is supposed to widen.
-    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 3] }).success).toBe(false);
+    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 3] }).success).toBe(
+      false,
+    );
     expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 2] }).success).toBe(false);
-    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 7] }).success).toBe(true);
+    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 7] }).success).toBe(
+      true,
+    );
   });
 
   it('rejects an empty ladder and a negative radius', () => {
@@ -161,7 +165,9 @@ describe('every seeded dispatch_config validates', () => {
 
 describe('scorerWeightsSchema (§6.2)', () => {
   it('accepts the launch weights', () => {
-    expect(scorerWeightsSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS.weights).success).toBe(true);
+    expect(scorerWeightsSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS.weights).success).toBe(
+      true,
+    );
   });
 
   it('rejects weights that do not sum to 100', () => {
@@ -184,10 +190,14 @@ describe('scorerWeightsSchema (§6.2)', () => {
 
 describe('globalDispatchConfigSchema', () => {
   it('accepts the defaults and rejects an unusable stale-ping threshold', () => {
-    expect(globalDispatchConfigSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS).success).toBe(true);
+    expect(globalDispatchConfigSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS).success).toBe(
+      true,
+    );
     expect(
-      globalDispatchConfigSchema.safeParse({ ...GLOBAL_DISPATCH_CONFIG_DEFAULTS, stalePingSeconds: 1 })
-        .success,
+      globalDispatchConfigSchema.safeParse({
+        ...GLOBAL_DISPATCH_CONFIG_DEFAULTS,
+        stalePingSeconds: 1,
+      }).success,
     ).toBe(false);
   });
 });

@@ -293,7 +293,11 @@ export class PricingService {
     // routing call is made at all — that is also what keeps the four roadside
     // services inside §7.6's budget when Maps is degraded.
     const { distanceKm, distanceSource, etaMinutes } = request.drop
-      ? await this.billedDistance(request.pickup, request.drop, rateCard.charges.haversineRoadFactor)
+      ? await this.billedDistance(
+          request.pickup,
+          request.drop,
+          rateCard.charges.haversineRoadFactor,
+        )
       : { distanceKm: 0, distanceSource: 'haversine' as const, etaMinutes: null };
 
     // `vehicleClass` is the RESOLVED class here (catalogue default or the

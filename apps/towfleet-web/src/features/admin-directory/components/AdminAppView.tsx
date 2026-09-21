@@ -35,8 +35,7 @@ export function AdminAppView({ userId, sessionId }: { userId: string; sessionId:
   const vehicles = useAdminAppView<AdminAppViewVehiclesResponse>(userId, 'vehicles', sessionId);
   const addresses = useAdminAppView<AdminAppViewAddressesResponse>(userId, 'addresses', sessionId);
 
-  const ended =
-    trips.error instanceof Error && /ended|expired/i.test(trips.error.message);
+  const ended = trips.error instanceof Error && /ended|expired/i.test(trips.error.message);
 
   return (
     <div className="space-y-4" data-testid="admin-app-view">

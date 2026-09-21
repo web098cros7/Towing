@@ -390,7 +390,10 @@ export class QuotesService {
         `This quote is ${row.status}; that action needs one of ${allowed.join(', ')}`,
       );
     }
-    return { status: row.status, totalPaise: row.total_paise === null ? null : Number(row.total_paise) };
+    return {
+      status: row.status,
+      totalPaise: row.total_paise === null ? null : Number(row.total_paise),
+    };
   }
 }
 
@@ -412,7 +415,10 @@ function toQuote(row: QuoteRow): Quote {
     vehicleClass: row.vehicle_class,
     pickup: { lat: row.pickup_lat, lng: row.pickup_lng },
     pickupAddress: row.pickup_address,
-    drop: row.drop_lat === null || row.drop_lng === null ? null : { lat: row.drop_lat, lng: row.drop_lng },
+    drop:
+      row.drop_lat === null || row.drop_lng === null
+        ? null
+        : { lat: row.drop_lat, lng: row.drop_lng },
     dropAddress: row.drop_address,
     distanceKm: Number(row.distance_km),
     notes: row.notes,

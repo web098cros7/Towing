@@ -61,7 +61,9 @@ export function ImpactPreview({ draft }: { draft: Record<Band, string> }) {
           </Button>
         </div>
 
-        {isError ? <p className="mt-3 text-sm text-error">The preview could not be computed.</p> : null}
+        {isError ? (
+          <p className="mt-3 text-sm text-error">The preview could not be computed.</p>
+        ) : null}
 
         {data ? (
           <table className="mt-4 w-full text-sm" data-testid="impact-table">

@@ -70,12 +70,15 @@ describe('admin coupons (/v1/admin/coupons, W16)', () => {
   });
 
   const createCoupon = (body: Record<string, unknown> = {}, auth = opsAuth) =>
-    request(app.getHttpServer()).post('/v1/admin/coupons').set('Authorization', auth).send({
-      code: 'SAVE20',
-      kind: 'percent',
-      percentValue: 20,
-      ...body,
-    });
+    request(app.getHttpServer())
+      .post('/v1/admin/coupons')
+      .set('Authorization', auth)
+      .send({
+        code: 'SAVE20',
+        kind: 'percent',
+        percentValue: 20,
+        ...body,
+      });
 
   it('creates a coupon and records the write', async () => {
     const res = await createCoupon().expect(200);
@@ -315,9 +318,7 @@ describe('admin banners (/v1/admin/banners + /v1/banners, W16)', () => {
 
   it('mints upload keys under banner-images/, with the extension the content type asks for', async () => {
     const png = await presign('image/png');
-    expect(png.key).toMatch(
-      new RegExp(`^banner-images/${opsId}/banner-[0-9a-f-]{36}\\.png$`),
-    );
+    expect(png.key).toMatch(new RegExp(`^banner-images/${opsId}/banner-[0-9a-f-]{36}\\.png$`));
 
     const webp = await presign('image/webp');
     expect(webp.key.endsWith('.webp')).toBe(true);
@@ -369,8 +370,16 @@ describe('admin banners (/v1/admin/banners + /v1/banners, W16)', () => {
     await create({ title: 'First', sortOrder: 1 });
 
     // Three that must NOT surface.
-    await create({ title: 'Future', sortOrder: 0, startsAt: new Date(Date.now() + 86_400_000).toISOString() });
-    await create({ title: 'Expired', sortOrder: 0, endsAt: new Date(Date.now() - 86_400_000).toISOString() });
+    await create({
+      title: 'Future',
+      sortOrder: 0,
+      startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    await create({
+      title: 'Expired',
+      sortOrder: 0,
+      endsAt: new Date(Date.now() - 86_400_000).toISOString(),
+    });
     await create({ title: 'Off', sortOrder: 0, isActive: false });
     await create({ title: 'Driver only', sortOrder: 0, audience: 'driver' });
 
@@ -439,7 +448,13 @@ describe('admin banners (/v1/admin/banners + /v1/banners, W16)', () => {
     await request(app.getHttpServer())
       .post('/v1/admin/banners')
       .set('Authorization', opsAuth)
-      .send({ title: 'Bad window', imageKey: slot.key, audience: 'customer', startsAt, endsAt: startsAt })
+      .send({
+        title: 'Bad window',
+        imageKey: slot.key,
+        audience: 'customer',
+        startsAt,
+        endsAt: startsAt,
+      })
       .expect(422);
 
     const created = (

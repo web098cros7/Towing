@@ -182,7 +182,9 @@ export function AdminUserDetail({ userId }: { userId: string }) {
                   void reactivate
                     .mutateAsync({ userId })
                     .catch((error: unknown) =>
-                      setSuspendError(error instanceof ApiError ? error.message : 'Reactivate failed'),
+                      setSuspendError(
+                        error instanceof ApiError ? error.message : 'Reactivate failed',
+                      ),
                     )
                 }
               >

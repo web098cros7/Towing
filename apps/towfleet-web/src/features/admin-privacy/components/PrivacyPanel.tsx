@@ -206,7 +206,8 @@ function RequestDrawer({ id, onClose }: { id: string | null; onClose: () => void
   const [confirmText, setConfirmText] = useState('');
 
   const request = detail.data ?? null;
-  const decided = request !== null && ['rejected', 'completed', 'executing'].includes(request.status);
+  const decided =
+    request !== null && ['rejected', 'completed', 'executing'].includes(request.status);
   const approved = request?.status === 'approved';
 
   const close = () => {
@@ -268,11 +269,17 @@ function RequestDrawer({ id, onClose }: { id: string | null; onClose: () => void
               <section className="space-y-2" data-testid="drawer-job">
                 <h3 className="text-sm font-semibold">
                   Erasure log{' '}
-                  <span className="font-normal text-text-secondary">({request.latestJob.status})</span>
+                  <span className="font-normal text-text-secondary">
+                    ({request.latestJob.status})
+                  </span>
                 </h3>
                 <ol className="space-y-1 text-sm">
                   {request.latestJob.steps.map((step) => (
-                    <li key={`${step.step}-${step.at}`} className="flex items-start gap-2" data-testid="step-row">
+                    <li
+                      key={`${step.step}-${step.at}`}
+                      className="flex items-start gap-2"
+                      data-testid="step-row"
+                    >
                       <Badge
                         variant={
                           step.outcome === 'done'
@@ -302,7 +309,10 @@ function RequestDrawer({ id, onClose }: { id: string | null; onClose: () => void
                     data-testid="approve"
                     disabled={decided}
                     onClick={() =>
-                      void run(() => decide.mutateAsync({ id: request.id, decision: 'approve', body: {} }), 'Request approved.')
+                      void run(
+                        () => decide.mutateAsync({ id: request.id, decision: 'approve', body: {} }),
+                        'Request approved.',
+                      )
                     }
                   >
                     Approve
@@ -312,7 +322,10 @@ function RequestDrawer({ id, onClose }: { id: string | null; onClose: () => void
                     data-testid="reject"
                     disabled={decided}
                     onClick={() =>
-                      void run(() => decide.mutateAsync({ id: request.id, decision: 'reject', body: {} }), 'Request rejected.')
+                      void run(
+                        () => decide.mutateAsync({ id: request.id, decision: 'reject', body: {} }),
+                        'Request rejected.',
+                      )
                     }
                   >
                     Reject
@@ -338,7 +351,11 @@ function RequestDrawer({ id, onClose }: { id: string | null; onClose: () => void
                       disabled={holdReason.trim().length < 3}
                       onClick={() =>
                         void run(
-                          () => hold.mutateAsync({ id: request.id, body: { reason: holdReason.trim() } }),
+                          () =>
+                            hold.mutateAsync({
+                              id: request.id,
+                              body: { reason: holdReason.trim() },
+                            }),
                           'Request parked on hold.',
                         )
                       }
@@ -405,7 +422,10 @@ function RetentionTab() {
 
   const save = async () => {
     const changed = items
-      .filter((policy) => draft[policy.policyKey] !== undefined && draft[policy.policyKey] !== policy.retentionDays)
+      .filter(
+        (policy) =>
+          draft[policy.policyKey] !== undefined && draft[policy.policyKey] !== policy.retentionDays,
+      )
       .map((policy) => ({ policyKey: policy.policyKey, retentionDays: days(policy) }));
     if (changed.length === 0) {
       toast('Nothing changed.', 'info');
@@ -477,7 +497,11 @@ function RetentionTab() {
             Super admin only.
           </span>
         )}
-        <Button data-testid="retention-save" disabled={!canEdit || update.isPending} onClick={() => void save()}>
+        <Button
+          data-testid="retention-save"
+          disabled={!canEdit || update.isPending}
+          onClick={() => void save()}
+        >
           Save retention
         </Button>
       </div>

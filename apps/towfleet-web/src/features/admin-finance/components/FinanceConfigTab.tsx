@@ -51,9 +51,14 @@ export function FinanceConfigTab() {
     Number.isNaN(number('cancelFree')) ||
     Number.isNaN(number('cancelPartial')) ||
     number('cancelPartial') >= number('cancelFree');
-  const numbersValid = ['payoutMax', 'taxPct', 'cancelFree', 'cancelPartial', 'cancelFee', 'compPct'].every(
-    (key) => !Number.isNaN(number(key)) && number(key) >= 0,
-  );
+  const numbersValid = [
+    'payoutMax',
+    'taxPct',
+    'cancelFree',
+    'cancelPartial',
+    'cancelFee',
+    'compPct',
+  ].every((key) => !Number.isNaN(number(key)) && number(key) >= 0);
   const canSave = Boolean(data) && windowValid && numbersValid && !update.isPending;
 
   const save = async () => {
@@ -142,12 +147,19 @@ export function FinanceConfigTab() {
           'Above this, payouts wait for a human. Below it, they go straight to the bank.',
           'config-payout-max',
         )}
-        {money('taxPct', 'Tax percent', 'GST on the fare. Zero until an accountant says otherwise.', 'config-tax-pct')}
+        {money(
+          'taxPct',
+          'Tax percent',
+          'GST on the fare. Zero until an accountant says otherwise.',
+          'config-tax-pct',
+        )}
         <Field label="Tax label" htmlFor="config-tax-label">
           <Input
             id="config-tax-label"
             value={form.taxLabel ?? ''}
-            onChange={(event) => setForm((current) => ({ ...current, taxLabel: event.target.value }))}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, taxLabel: event.target.value }))
+            }
             data-testid="config-tax-label"
           />
         </Field>

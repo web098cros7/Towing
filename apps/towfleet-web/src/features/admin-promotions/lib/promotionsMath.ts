@@ -21,8 +21,7 @@ export function previewDiscountPaise(
       ? Math.round((subtotalPaise * (coupon.percentValue ?? 0)) / 100)
       : (coupon.flatValuePaise ?? 0);
 
-  const capped =
-    coupon.maxDiscountPaise === null ? raw : Math.min(raw, coupon.maxDiscountPaise);
+  const capped = coupon.maxDiscountPaise === null ? raw : Math.min(raw, coupon.maxDiscountPaise);
 
   return Math.max(0, Math.min(capped, subtotalPaise));
 }

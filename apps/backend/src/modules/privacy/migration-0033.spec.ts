@@ -59,9 +59,8 @@ describe('migration 0033 privacy retention', () => {
   it('restates the open-request index over exactly the open statuses', () => {
     const sql = migrationSql();
     expect(sql).toContain('DROP INDEX "uq_deletion_requests_one_open_per_subject"');
-    const predicate = /uq_deletion_requests_one_open_per_subject[^;]+WHERE "status" IN \(([^)]+)\)/.exec(
-      sql,
-    );
+    const predicate =
+      /uq_deletion_requests_one_open_per_subject[^;]+WHERE "status" IN \(([^)]+)\)/.exec(sql);
     expect(predicate).not.toBeNull();
     const predicateBody = predicate?.[1] ?? '';
 
@@ -86,9 +85,7 @@ describe('migration 0033 privacy retention', () => {
 
   it('constrains erasure job statuses and subject types', () => {
     const sql = migrationSql();
-    expect(sql).toContain(
-      'CHECK ("status" IN (\'queued\', \'running\', \'completed\', \'failed\'))',
-    );
-    expect(sql).toContain('CHECK ("subject_type" IN (\'user\', \'driver\'))');
+    expect(sql).toContain("CHECK (\"status\" IN ('queued', 'running', 'completed', 'failed'))");
+    expect(sql).toContain("CHECK (\"subject_type\" IN ('user', 'driver'))");
   });
 });

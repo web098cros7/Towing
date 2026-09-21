@@ -312,10 +312,7 @@ export const commissionProposals = pgTable(
     ...timestamps,
   },
   (t) => [
-    index('idx_commission_proposals_status_created').on(
-      t.status,
-      t.createdAt.desc().nullsLast(),
-    ),
+    index('idx_commission_proposals_status_created').on(t.status, t.createdAt.desc().nullsLast()),
   ],
 );
 
@@ -338,7 +335,9 @@ export const dispatchConfig = pgTable('dispatch_config', {
   id: primaryId(),
   singleton: boolean('singleton').notNull().default(true).unique(),
   /** §6.2 — proximity/ETA 60 %, rating 15 %, acceptance 15 %, completion 10 %. Sum CHECKed = 100. */
-  weightProximity: numeric('weight_proximity', { precision: 5, scale: 2 }).notNull().default('60.00'),
+  weightProximity: numeric('weight_proximity', { precision: 5, scale: 2 })
+    .notNull()
+    .default('60.00'),
   weightRating: numeric('weight_rating', { precision: 5, scale: 2 }).notNull().default('15.00'),
   weightAcceptance: numeric('weight_acceptance', { precision: 5, scale: 2 })
     .notNull()

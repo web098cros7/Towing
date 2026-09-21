@@ -362,7 +362,13 @@ export class PaymentsService {
 
     // (c) After commit, all best-effort. None of it may fail a settlement that
     // has already happened.
-    await this.afterSettlement(bookingId, paymentId, inputs, totalPaise, settlement.driverSharePaise);
+    await this.afterSettlement(
+      bookingId,
+      paymentId,
+      inputs,
+      totalPaise,
+      settlement.driverSharePaise,
+    );
 
     await this.machine.announce(result);
   }
@@ -432,7 +438,11 @@ export class PaymentsService {
     // one after ITS commit, but that ran before the transition wrote
     // `commission_amount`, so the cell it computed is stale by construction.
     try {
-      await this.queue.enqueue('invoice.generate', { bookingId }, { jobId: `invoice:${bookingId}` });
+      await this.queue.enqueue(
+        'invoice.generate',
+        { bookingId },
+        { jobId: `invoice:${bookingId}` },
+      );
     } catch (error) {
       this.logger.warn(`invoice enqueue failed for ${bookingId}: ${String(error)}`);
     }

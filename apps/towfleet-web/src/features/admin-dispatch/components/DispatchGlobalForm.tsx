@@ -11,7 +11,11 @@ import {
   Input,
   Select,
 } from '@towing/web-ui';
-import { serviceTypeSchema, type AdminDispatchConfig, type AdminDispatchConfigUpdate } from '@towing/api-contracts';
+import {
+  serviceTypeSchema,
+  type AdminDispatchConfig,
+  type AdminDispatchConfigUpdate,
+} from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
 import { useUpdateDispatchConfig } from '../api/adminDispatch.mutations';
 
@@ -108,7 +112,8 @@ export function DispatchGlobalForm({ config }: { config: AdminDispatchConfig }) 
     if (number('pingOnJobMs') !== global.pingOnJobMs) patch.pingOnJobMs = number('pingOnJobMs');
     if (number('pingIdleMs') !== global.pingIdleMs) patch.pingIdleMs = number('pingIdleMs');
     if (form.redispatchPriority !== global.redispatchPriority) {
-      patch.redispatchPriority = form.redispatchPriority as AdminDispatchConfigUpdate['redispatchPriority'];
+      patch.redispatchPriority =
+        form.redispatchPriority as AdminDispatchConfigUpdate['redispatchPriority'];
     }
     if (form.oneActiveBookingPerCustomer !== String(global.oneActiveBookingPerCustomer)) {
       patch.oneActiveBookingPerCustomer = form.oneActiveBookingPerCustomer === 'true';
@@ -149,7 +154,9 @@ export function DispatchGlobalForm({ config }: { config: AdminDispatchConfig }) 
                 id={`weight-${key}`}
                 inputMode="numeric"
                 value={form[key] ?? ''}
-                onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, [key]: event.target.value }))
+                }
                 data-testid={`weight-${key}`}
               />
             </Field>
@@ -289,11 +296,7 @@ export function DispatchGlobalForm({ config }: { config: AdminDispatchConfig }) 
         ) : null}
 
         <div className="mt-4">
-          <Button
-            onClick={() => void save()}
-            disabled={!canSave}
-            data-testid="dispatch-save"
-          >
+          <Button onClick={() => void save()} disabled={!canSave} data-testid="dispatch-save">
             {update.isPending ? 'Saving…' : 'Save dispatch config'}
           </Button>
         </div>

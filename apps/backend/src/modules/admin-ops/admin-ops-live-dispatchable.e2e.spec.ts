@@ -9,7 +9,14 @@ import { drivers, driverZoneRestrictions, fleets, serviceZones } from '../../db/
 import { AdminOpsBroadcasterService } from '../../realtime/admin-ops-broadcaster.service';
 import { adminAuthHeaderFor } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
-import { seedAdmin, seedDriver, seedFleet, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
+import {
+  seedAdmin,
+  seedDriver,
+  seedFleet,
+  setupTestDatabase,
+  truncateAll,
+  type TestDatabase,
+} from '../../test/db';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 
 /**
@@ -68,7 +75,11 @@ describe('admin live map dispatchable (W6)', () => {
     zoneId: string,
     options: { fleetId?: string; shelved?: boolean } = {},
   ): Promise<string> {
-    const driverId = await seedDriver(db, { name, fleetId: options.fleetId, kycStatus: 'approved' });
+    const driverId = await seedDriver(db, {
+      name,
+      fleetId: options.fleetId,
+      kycStatus: 'approved',
+    });
     await db
       .update(drivers)
       .set({
@@ -128,10 +139,14 @@ describe('admin live map dispatchable (W6)', () => {
     const restrictedElsewhere = await onlineIn('Restricted Elsewhere', zoneId);
 
     await db.insert(driverZoneRestrictions).values({ driverId: restrictedHere, zoneId });
-    await db.insert(driverZoneRestrictions).values({ driverId: restrictedElsewhere, zoneId: otherZone });
+    await db
+      .insert(driverZoneRestrictions)
+      .values({ driverId: restrictedElsewhere, zoneId: otherZone });
 
     const rows = await liveDrivers();
-    expect(rows.find((candidate) => candidate.driverId === restrictedHere)!.dispatchable).toBe(false);
+    expect(rows.find((candidate) => candidate.driverId === restrictedHere)!.dispatchable).toBe(
+      false,
+    );
     expect(rows.find((candidate) => candidate.driverId === restrictedElsewhere)!.dispatchable).toBe(
       true,
     );

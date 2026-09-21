@@ -55,7 +55,11 @@ export function DriversTab({ data }: { data: AnalyticsDriverResponse | undefined
         />
         <KpiCard
           label="Avg rating"
-          value={data.currentAverages.averageRating === null ? '—' : String(data.currentAverages.averageRating)}
+          value={
+            data.currentAverages.averageRating === null
+              ? '—'
+              : String(data.currentAverages.averageRating)
+          }
           hint="current snapshot"
         />
       </div>

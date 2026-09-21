@@ -317,8 +317,8 @@ function TestSendTab() {
   return (
     <div className="max-w-xl space-y-4">
       <p className="text-sm text-text-secondary">
-        Sends ONE message to YOUR OWN admin contact — there is no destination field, on purpose.
-        The send is audited and rate-limited.
+        Sends ONE message to YOUR OWN admin contact — there is no destination field, on purpose. The
+        send is audited and rate-limited.
       </p>
 
       <div className="space-y-1">

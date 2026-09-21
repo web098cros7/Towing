@@ -9,9 +9,7 @@ import { adminDirectoryDataSource } from './adminDirectoryDataSource';
  * rare, and a precisely-targeted invalidation that misses one derived list
  * (a fleet's driver count after a driver suspension) is worse than a refetch.
  */
-const useDirectoryMutation = <TInput, TResult>(
-  mutate: (input: TInput) => Promise<TResult>,
-) => {
+const useDirectoryMutation = <TInput, TResult>(mutate: (input: TInput) => Promise<TResult>) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: mutate,

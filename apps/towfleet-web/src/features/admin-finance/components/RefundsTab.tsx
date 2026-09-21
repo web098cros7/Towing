@@ -17,9 +17,7 @@ const columns: ColumnDef<AdminRefundRowDto, unknown>[] = [
   {
     accessorKey: 'kind',
     header: 'Kind',
-    cell: ({ row }) => (
-      <span className="capitalize">{row.original.kind}</span>
-    ),
+    cell: ({ row }) => <span className="capitalize">{row.original.kind}</span>,
   },
   {
     accessorKey: 'amountPaise',

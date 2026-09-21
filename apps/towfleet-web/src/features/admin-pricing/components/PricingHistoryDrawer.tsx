@@ -1,6 +1,13 @@
 'use client';
 
-import { Drawer, DrawerBody, DrawerHeader, DrawerTitle, RelativeTime, Skeleton } from '@towing/web-ui';
+import {
+  Drawer,
+  DrawerBody,
+  DrawerHeader,
+  DrawerTitle,
+  RelativeTime,
+  Skeleton,
+} from '@towing/web-ui';
 import type { AdminPricingHistoryEntry } from '@towing/api-contracts';
 import { useAdminPricingHistory } from '../api/adminPricing.queries';
 
@@ -27,12 +34,18 @@ export function PricingHistoryDrawer({ open, onClose }: { open: boolean; onClose
         ) : (
           <ol className="space-y-3" data-testid="pricing-history-list">
             {(data ?? []).map((entry) => (
-              <li key={entry.id} className="rounded-card border border-border p-3" data-testid="pricing-history-row">
+              <li
+                key={entry.id}
+                className="rounded-card border border-border p-3"
+                data-testid="pricing-history-row"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold">{humanise(entry.action)}</span>
                   <RelativeTime at={entry.createdAt} className="text-xs text-text-tertiary" />
                 </div>
-                <p className="mt-1 text-xs text-text-secondary">{entry.reason ?? 'No reason given'}</p>
+                <p className="mt-1 text-xs text-text-secondary">
+                  {entry.reason ?? 'No reason given'}
+                </p>
                 <p className="mt-2 font-mono text-xs break-all text-text-tertiary">
                   {summarise(entry)}
                 </p>
@@ -68,9 +81,9 @@ function summarise(entry: AdminPricingHistoryEntry): string {
   const describe = (value: Record<string, unknown> | null): string | null => {
     if (!value) return null;
     if (typeof value.ruleKind === 'string') {
-      const band = value.maxKm !== null && value.maxKm !== undefined ? ` (up to ${value.maxKm} km)` : '';
-      const price =
-        typeof value.pricePaise === 'number' ? ` — ₹${value.pricePaise / 100}` : '';
+      const band =
+        value.maxKm !== null && value.maxKm !== undefined ? ` (up to ${value.maxKm} km)` : '';
+      const price = typeof value.pricePaise === 'number' ? ` — ₹${value.pricePaise / 100}` : '';
       const active = value.isActive === false ? ' · retired' : '';
       return `${String(value.ruleKind)} · ${String(value.vehicleClass ?? value.serviceType ?? '')}${band}${price}${active}`;
     }

@@ -61,8 +61,7 @@ export function useAddDisputeNote(disputeId: string) {
 export function useResolveDispute(disputeId: string) {
   const invalidate = useDisputeInvalidation();
   return useMutation({
-    mutationFn: (body: AdminDisputeResolveBody) =>
-      adminDisputesDataSource.resolve(disputeId, body),
+    mutationFn: (body: AdminDisputeResolveBody) => adminDisputesDataSource.resolve(disputeId, body),
     retry: false,
     onSuccess: invalidate,
   });

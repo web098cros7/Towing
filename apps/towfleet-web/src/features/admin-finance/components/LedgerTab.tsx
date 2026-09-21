@@ -69,9 +69,7 @@ const columns: ColumnDef<AdminLedgerEntryDto, unknown>[] = [
   {
     accessorKey: 'bookingCode',
     header: 'Ref',
-    cell: ({ row }) => (
-      <span className="font-mono text-xs">{row.original.bookingCode ?? '—'}</span>
-    ),
+    cell: ({ row }) => <span className="font-mono text-xs">{row.original.bookingCode ?? '—'}</span>,
   },
   {
     accessorKey: 'reason',

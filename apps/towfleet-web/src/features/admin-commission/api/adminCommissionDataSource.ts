@@ -54,9 +54,7 @@ const mockSource: AdminCommissionDataSource = {
       ...mockConfig,
       bands: mockConfig.bands.map((band) => {
         const edited = body.bands.find((entry) => entry.band === band.band);
-        return edited
-          ? { ...band, pct: edited.pct, updatedAt: new Date().toISOString() }
-          : band;
+        return edited ? { ...band, pct: edited.pct, updatedAt: new Date().toISOString() } : band;
       }),
     };
     return mockConfig;

@@ -75,7 +75,8 @@ export class AdminDispatchService {
             redispatchPriority: globalRow.redispatchPriority as 'front' | 'normal',
             pingOnJobMs: globalRow.pingOnJobMs,
             pingIdleMs: globalRow.pingIdleMs,
-            perServiceMaxOffers: (globalRow.perServiceMaxOffers ?? null) as AdminDispatchConfig['global']['perServiceMaxOffers'],
+            perServiceMaxOffers: (globalRow.perServiceMaxOffers ??
+              null) as AdminDispatchConfig['global']['perServiceMaxOffers'],
           }
         : // A fresh or half-seeded database reports the documented defaults
           // rather than 500ing. `DispatchConfigRepo` takes the same view, so the

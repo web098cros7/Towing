@@ -74,24 +74,22 @@ export class AdminFinanceRepo {
     `)) as unknown as [{ total: number }];
 
     return {
-      items: rows.map(
-        (row): AdminTransactionDto => ({
-          id: row.id as string,
-          bookingId: row.booking_id as string,
-          bookingCode: codeOf(row.booking_id as string),
-          purpose: row.purpose as AdminTransactionDto['purpose'],
-          status: row.status as AdminTransactionDto['status'],
-          method: row.method as AdminTransactionDto['method'],
-          amountPaise: rupeeStringToPaise(row.amount as string),
-          taxPaise: rupeeStringToPaise((row.tax_amount as string | null) ?? '0'),
-          refundedAmountPaise: rupeeStringToPaise((row.refunded_amount as string | null) ?? '0'),
-          gatewayRef: (row.gateway_ref as string | null) ?? null,
-          customerName: (row.customer_name as string | null) ?? null,
-          failureReason: (row.failure_reason as string | null) ?? null,
-          capturedAt: row.captured_at ? new Date(row.captured_at as string).toISOString() : null,
-          createdAt: new Date(row.created_at as string).toISOString(),
-        }),
-      ),
+      items: rows.map((row): AdminTransactionDto => ({
+        id: row.id as string,
+        bookingId: row.booking_id as string,
+        bookingCode: codeOf(row.booking_id as string),
+        purpose: row.purpose as AdminTransactionDto['purpose'],
+        status: row.status as AdminTransactionDto['status'],
+        method: row.method as AdminTransactionDto['method'],
+        amountPaise: rupeeStringToPaise(row.amount as string),
+        taxPaise: rupeeStringToPaise((row.tax_amount as string | null) ?? '0'),
+        refundedAmountPaise: rupeeStringToPaise((row.refunded_amount as string | null) ?? '0'),
+        gatewayRef: (row.gateway_ref as string | null) ?? null,
+        customerName: (row.customer_name as string | null) ?? null,
+        failureReason: (row.failure_reason as string | null) ?? null,
+        capturedAt: row.captured_at ? new Date(row.captured_at as string).toISOString() : null,
+        createdAt: new Date(row.created_at as string).toISOString(),
+      })),
       total: count.total,
     };
   }
@@ -143,7 +141,9 @@ export class AdminFinanceRepo {
     if (query.type) filters.push(sql`t.type = ${query.type}::wallet_txn_type`);
     if (query.refId) filters.push(sql`t.ref_id = ${query.refId}::uuid`);
     if (query.from) {
-      filters.push(sql`t.created_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`);
+      filters.push(
+        sql`t.created_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`,
+      );
     }
     if (query.to) {
       filters.push(
@@ -180,37 +180,35 @@ export class AdminFinanceRepo {
         : null;
 
     return {
-      items: page.map(
-        (row): AdminLedgerEntryDto => ({
-          id: row.id as string,
-          ownerType: row.owner_type as AdminLedgerEntryDto['ownerType'],
-          ownerId: row.owner_id as string,
-          ownerName: (row.owner_name as string | null) ?? null,
-          type: row.type as AdminLedgerEntryDto['type'],
-          // SIGNED paise — a debit is negative by the ledger's own convention
-          // and stays negative on screen.
-          amountPaise: Math.round(Number(row.amount as string) * 100),
-          reason: (row.reason as string | null) ?? null,
-          refId: (row.ref_id as string | null) ?? null,
-          bookingCode: row.ref_id ? codeOf(row.ref_id as string) : null,
-          idempotencyKey: row.idempotency_key as string,
-          createdAt: new Date(row.created_at as string).toISOString(),
-        }),
-      ),
+      items: page.map((row): AdminLedgerEntryDto => ({
+        id: row.id as string,
+        ownerType: row.owner_type as AdminLedgerEntryDto['ownerType'],
+        ownerId: row.owner_id as string,
+        ownerName: (row.owner_name as string | null) ?? null,
+        type: row.type as AdminLedgerEntryDto['type'],
+        // SIGNED paise — a debit is negative by the ledger's own convention
+        // and stays negative on screen.
+        amountPaise: Math.round(Number(row.amount as string) * 100),
+        reason: (row.reason as string | null) ?? null,
+        refId: (row.ref_id as string | null) ?? null,
+        bookingCode: row.ref_id ? codeOf(row.ref_id as string) : null,
+        idempotencyKey: row.idempotency_key as string,
+        createdAt: new Date(row.created_at as string).toISOString(),
+      })),
       nextCursor,
     };
   }
 
   // ── refunds list ──────────────────────────────────────────────────────────
 
-  async refunds(
-    query: AdminRefundsQuery,
-  ): Promise<{ items: AdminRefundRowDto[]; total: number }> {
+  async refunds(query: AdminRefundsQuery): Promise<{ items: AdminRefundRowDto[]; total: number }> {
     const filters: SQL[] = [];
     if (query.status) filters.push(sql`r.status = ${query.status}::refund_status`);
     if (query.kind) filters.push(sql`r.kind = ${query.kind}`);
     if (query.from) {
-      filters.push(sql`r.created_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`);
+      filters.push(
+        sql`r.created_at >= (${query.from}::date::timestamp at time zone 'Asia/Kolkata')`,
+      );
     }
     if (query.to) {
       filters.push(
@@ -237,25 +235,21 @@ export class AdminFinanceRepo {
     `)) as unknown as [{ total: number }];
 
     return {
-      items: rows.map(
-        (row): AdminRefundRowDto => ({
-          id: row.id as string,
-          bookingId: row.booking_id as string,
-          bookingCode: codeOf(row.booking_id as string),
-          kind: row.kind as AdminRefundRowDto['kind'],
-          amountPaise: rupeeStringToPaise(row.amount as string),
-          reason: (row.reason as string | null) ?? null,
-          status: row.status as AdminRefundRowDto['status'],
-          disputeId: (row.dispute_id as string | null) ?? null,
-          liability: (row.liability as string | null) ?? null,
-          initiatedBy: row.initiated_by as string,
-          gatewayRef: (row.gateway_ref as string | null) ?? null,
-          processedAt: row.processed_at
-            ? new Date(row.processed_at as string).toISOString()
-            : null,
-          createdAt: new Date(row.created_at as string).toISOString(),
-        }),
-      ),
+      items: rows.map((row): AdminRefundRowDto => ({
+        id: row.id as string,
+        bookingId: row.booking_id as string,
+        bookingCode: codeOf(row.booking_id as string),
+        kind: row.kind as AdminRefundRowDto['kind'],
+        amountPaise: rupeeStringToPaise(row.amount as string),
+        reason: (row.reason as string | null) ?? null,
+        status: row.status as AdminRefundRowDto['status'],
+        disputeId: (row.dispute_id as string | null) ?? null,
+        liability: (row.liability as string | null) ?? null,
+        initiatedBy: row.initiated_by as string,
+        gatewayRef: (row.gateway_ref as string | null) ?? null,
+        processedAt: row.processed_at ? new Date(row.processed_at as string).toISOString() : null,
+        createdAt: new Date(row.created_at as string).toISOString(),
+      })),
       total: count.total,
     };
   }

@@ -18,10 +18,7 @@ export default function AdminDispatchSearchesPage() {
   if (!can('ops.dispatch.inspect')) {
     return (
       <div>
-        <PageHeader
-          title="Dispatch inspector"
-          description="Why each wave chose who it chose."
-        />
+        <PageHeader title="Dispatch inspector" description="Why each wave chose who it chose." />
         <AdminForbidden resource="the dispatch inspector" />
       </div>
     );

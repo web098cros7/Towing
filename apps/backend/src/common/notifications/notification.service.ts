@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { NOTIFICATIONS, type NotificationChannel, type NotificationPort } from './notification.port';
+import {
+  NOTIFICATIONS,
+  type NotificationChannel,
+  type NotificationPort,
+} from './notification.port';
 import type { ChannelResult, RenderedMessage } from './channel.port';
 import { DB, type Database } from '../../db/db.module';
 import {

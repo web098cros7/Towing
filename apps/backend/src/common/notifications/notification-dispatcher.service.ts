@@ -101,7 +101,11 @@ export class NotificationDispatcherService implements OnModuleInit {
       if (job.startsWith('notifications.')) this.metrics.observeDeadLetter(job);
     });
 
-    await this.queue.schedule('notifications.sweep', { reason: 'cron' }, this.env.NOTIFY_SWEEP_CRON);
+    await this.queue.schedule(
+      'notifications.sweep',
+      { reason: 'cron' },
+      this.env.NOTIFY_SWEEP_CRON,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -433,9 +437,7 @@ export class NotificationDispatcherService implements OnModuleInit {
     const stranded = await this.db
       .select({ id: notificationEvents.id })
       .from(notificationEvents)
-      .where(
-        and(isNull(notificationEvents.fannedOutAt), lt(notificationEvents.createdAt, cutoff)),
-      )
+      .where(and(isNull(notificationEvents.fannedOutAt), lt(notificationEvents.createdAt, cutoff)))
       .limit(200);
 
     for (const event of stranded) {
@@ -516,7 +518,9 @@ export class NotificationDispatcherService implements OnModuleInit {
     if (!this.attachmentResolver) return undefined;
 
     try {
-      const resolved = await this.attachmentResolver.resolve(trigger.attachmentsFor(payload as never));
+      const resolved = await this.attachmentResolver.resolve(
+        trigger.attachmentsFor(payload as never),
+      );
       return resolved.length > 0 ? resolved : undefined;
     } catch (error) {
       this.logger.warn(`attachment could not be resolved: ${String(error)}`);

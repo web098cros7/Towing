@@ -34,10 +34,7 @@ export interface AdminDisputesDataSource {
   open(bookingId: string, body: AdminDisputeOpenBody): Promise<AdminDisputeOpenResponse>;
   assign(disputeId: string, body: AdminDisputeAssignBody): Promise<AdminDisputeDetail>;
   note(disputeId: string, body: AdminDisputeNoteBody): Promise<AdminDisputeDetail>;
-  resolve(
-    disputeId: string,
-    body: AdminDisputeResolveBody,
-  ): Promise<AdminDisputeResolveResponse>;
+  resolve(disputeId: string, body: AdminDisputeResolveBody): Promise<AdminDisputeResolveResponse>;
   evidencePresign(disputeId: string): Promise<AdminDisputeEvidencePresignResponse>;
   evidenceConfirm(
     disputeId: string,

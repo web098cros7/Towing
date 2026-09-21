@@ -201,7 +201,13 @@ describe('admin impersonation (W6)', () => {
     }
 
     // The rule that makes the whole design worth it: NO credential is minted.
-    for (const body of [trips.body, wallet.body, notifications.body, vehicles.body, addresses.body]) {
+    for (const body of [
+      trips.body,
+      wallet.body,
+      notifications.body,
+      vehicles.body,
+      addresses.body,
+    ]) {
       expect(body).not.toHaveProperty('accessToken');
       expect(body).not.toHaveProperty('refreshToken');
       expect(body).not.toHaveProperty('token');
@@ -329,7 +335,13 @@ describe('admin impersonation (W6)', () => {
     const remaining = await db
       .select()
       .from(impersonationSessions)
-      .where(and(eq(impersonationSessions.id, sessionId), isNull(impersonationSessions.endedAt), gt(impersonationSessions.expiresAt, new Date())));
+      .where(
+        and(
+          eq(impersonationSessions.id, sessionId),
+          isNull(impersonationSessions.endedAt),
+          gt(impersonationSessions.expiresAt, new Date()),
+        ),
+      );
     expect(remaining).toHaveLength(1);
   });
 

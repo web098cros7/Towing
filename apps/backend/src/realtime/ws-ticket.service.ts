@@ -107,7 +107,9 @@ export class WsTicketService {
     } catch (err) {
       // Availability-first would be wrong here: failing open on an auth check
       // is how tenants leak into each other's rooms.
-      this.logger.error(`ticket lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(
+        `ticket lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return null;
     }
     if (raw === null) return null;
@@ -136,7 +138,11 @@ function narrowClaims(parsed: unknown): WsTicketClaims | null {
     return { realm: 'driver', subjectId: claims.subjectId };
   }
 
-  if (claims.realm === 'customer' && typeof claims.bookingId === 'string' && claims.bookingId.length > 0) {
+  if (
+    claims.realm === 'customer' &&
+    typeof claims.bookingId === 'string' &&
+    claims.bookingId.length > 0
+  ) {
     return { realm: 'customer', subjectId: claims.subjectId, bookingId: claims.bookingId };
   }
 
@@ -146,7 +152,8 @@ function narrowClaims(parsed: unknown): WsTicketClaims | null {
   // joining the namespace with a claim nothing can reason about.
   if (claims.realm === 'admin') {
     const subRole = adminSubRoleSchema.safeParse(claims.subRole);
-    if (subRole.success) return { realm: 'admin', subjectId: claims.subjectId, subRole: subRole.data };
+    if (subRole.success)
+      return { realm: 'admin', subjectId: claims.subjectId, subRole: subRole.data };
   }
 
   if (claims.realm === 'fleet' && typeof claims.fleetId === 'string' && claims.fleetId.length > 0) {

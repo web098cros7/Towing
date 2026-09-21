@@ -64,9 +64,7 @@ test.describe('admin users directory', () => {
 
     // Impersonation: a reason is required, then the red-banner app view opens.
     await page.getByTestId('admin-user-impersonate').click();
-    await page
-      .getByTestId('impersonate-dialog-reason')
-      .fill('Investigating a support ticket');
+    await page.getByTestId('impersonate-dialog-reason').fill('Investigating a support ticket');
     await page.getByTestId('impersonate-dialog-submit').click();
     await expect(page).toHaveURL(/\/app-view\?session=[0-9a-f-]+$/);
     await expect(page.getByTestId('app-view-banner')).toBeVisible();

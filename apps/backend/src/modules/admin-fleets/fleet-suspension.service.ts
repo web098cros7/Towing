@@ -139,11 +139,15 @@ export class FleetSuspensionService {
           businessName: fleet.businessName,
         });
       } catch (error) {
-        this.logger.warn(`fleet ${fleetId} suspend notify failed for ${driverId}: ${String(error)}`);
+        this.logger.warn(
+          `fleet ${fleetId} suspend notify failed for ${driverId}: ${String(error)}`,
+        );
       }
     }
 
-    this.logger.log(`event=fleet_suspended fleet=${fleetId} drivers=${driverIds.length} evicted=${evicted}`);
+    this.logger.log(
+      `event=fleet_suspended fleet=${fleetId} drivers=${driverIds.length} evicted=${evicted}`,
+    );
     return { fleetId, status: 'suspended', driverCount: driverIds.length };
   }
 

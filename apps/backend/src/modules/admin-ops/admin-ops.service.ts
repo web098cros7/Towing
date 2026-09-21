@@ -319,9 +319,7 @@ export class AdminOpsService {
     } catch (err) {
       // §19.2: Redis down → serve the persisted PostGIS column, flagged. The
       // console shows a degraded chip; it does not show an error.
-      this.logger.warn(
-        `redis unavailable, serving driver positions from postgis: ${message(err)}`,
-      );
+      this.logger.warn(`redis unavailable, serving driver positions from postgis: ${message(err)}`);
       hot = new Map();
       degraded = true;
     }
@@ -427,10 +425,7 @@ export class AdminOpsService {
       },
       waves,
       attempts,
-      config: resolveDispatchConfig(
-        booking.zoneDispatchConfig,
-        booking.serviceType as ServiceType,
-      ),
+      config: resolveDispatchConfig(booking.zoneDispatchConfig, booking.serviceType as ServiceType),
       weights,
       liveWave: booking.searchWave,
       deadlineAt: booking.deadlineAt,
@@ -455,7 +450,10 @@ export class AdminOpsService {
       const key = `${row.zoneId ?? 'no-zone'}:${row.serviceType}`;
       const cached = configs.get(key);
       if (cached) return cached;
-      const resolved = resolveDispatchConfig(row.zoneDispatchConfig, row.serviceType as ServiceType);
+      const resolved = resolveDispatchConfig(
+        row.zoneDispatchConfig,
+        row.serviceType as ServiceType,
+      );
       configs.set(key, resolved);
       return resolved;
     };

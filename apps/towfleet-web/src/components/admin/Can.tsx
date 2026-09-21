@@ -18,13 +18,7 @@ export function useAdminCan(): (permission: AdminPermission) => boolean {
   return (permission) => (admin ? ROLE_PERMISSIONS[admin.subRole].includes(permission) : false);
 }
 
-export function Can({
-  perm,
-  children,
-}: {
-  perm: AdminPermission;
-  children: ReactNode;
-}): ReactNode {
+export function Can({ perm, children }: { perm: AdminPermission; children: ReactNode }): ReactNode {
   const can = useAdminCan();
   return can(perm) ? children : null;
 }

@@ -152,9 +152,7 @@ describe('admin zone-filtered location routing (W4)', () => {
     await publishPing(driverA, zoneA);
     await publishPing(driverB, zoneB);
 
-    await waitFor(
-      () => unfilteredTracker.ids.length >= 2 && filteredTracker.ids.length >= 1,
-    );
+    await waitFor(() => unfilteredTracker.ids.length >= 2 && filteredTracker.ids.length >= 1);
 
     expect(sorted(unfilteredTracker.ids)).toEqual(sorted([driverA, driverB]));
     // Zone B's ping is NOT pushed to a zone A filter, and zone A's ping arrives

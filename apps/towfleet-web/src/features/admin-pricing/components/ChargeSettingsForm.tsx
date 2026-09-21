@@ -80,7 +80,8 @@ export function ChargeSettingsForm({
     if (value('nightEnd') !== current.nightEndHour) {
       patch.nightEndHour = Math.round(value('nightEnd'));
     }
-    if (toPaise('highway') !== current.highwayChargePaise) patch.highwayChargePaise = toPaise('highway');
+    if (toPaise('highway') !== current.highwayChargePaise)
+      patch.highwayChargePaise = toPaise('highway');
     if (toPaise('accident') !== current.accidentChargePaise) {
       patch.accidentChargePaise = toPaise('accident');
     }
@@ -157,10 +158,22 @@ export function ChargeSettingsForm({
                 data-testid="charges-night-pct"
               />
             </Field>
-            {count('nightStart', 'Night starts (hour, IST)', '22 means 10 pm. The window wraps midnight.')}
+            {count(
+              'nightStart',
+              'Night starts (hour, IST)',
+              '22 means 10 pm. The window wraps midnight.',
+            )}
             {count('nightEnd', 'Night ends (hour, IST)', '6 means 6 am.')}
-            {money('highway', 'Highway pickup (₹)', '§7.4 gives ₹500–₹1,000; charged when the pickup is in a highway zone.')}
-            {money('accident', 'Accident recovery (₹)', 'Added when the service is accident recovery.')}
+            {money(
+              'highway',
+              'Highway pickup (₹)',
+              '§7.4 gives ₹500–₹1,000; charged when the pickup is in a highway zone.',
+            )}
+            {money(
+              'accident',
+              'Accident recovery (₹)',
+              'Added when the service is accident recovery.',
+            )}
             {count('waitingFree', 'Waiting free (minutes)', 'Before the waiting charge starts.')}
             {money('waitingMinute', 'Waiting per minute (₹)', 'After the free window.')}
             {money(

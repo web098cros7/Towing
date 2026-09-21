@@ -33,7 +33,10 @@ export function ActivityFeed({
         <div className="flex items-center justify-between">
           <CardTitle>Live activity</CardTitle>
           {activity.data?.backfilled ? (
-            <Badge variant="warning" title="The live list was empty — rows reconstructed from history">
+            <Badge
+              variant="warning"
+              title="The live list was empty — rows reconstructed from history"
+            >
               Backfilled
             </Badge>
           ) : null}

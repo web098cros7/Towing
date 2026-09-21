@@ -244,9 +244,9 @@ describe('admin directory drivers (W6)', () => {
       .send({ zoneIds: [south, north] })
       .expect(200);
     expectMatchesContract(adminDriverZonesResponseSchema, updated.body);
-    expect(updated.body.zoneRestrictions.map((zone: { zoneId: string }) => zone.zoneId).sort()).toEqual(
-      [south, north].sort(),
-    );
+    expect(
+      updated.body.zoneRestrictions.map((zone: { zoneId: string }) => zone.zoneId).sort(),
+    ).toEqual([south, north].sort());
 
     const [audit] = await db
       .select()
@@ -404,4 +404,3 @@ describe('admin directory drivers (W6)', () => {
     expect(financeRequests).toHaveLength(0);
   });
 });
-

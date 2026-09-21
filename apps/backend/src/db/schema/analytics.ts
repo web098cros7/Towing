@@ -1,4 +1,17 @@
-import { bigint, date, index, integer, jsonb, numeric, pgTable, primaryKey, smallint, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  date,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  primaryKey,
+  smallint,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { bookings } from './bookings';
 import { serviceZones } from './service-zones';
 

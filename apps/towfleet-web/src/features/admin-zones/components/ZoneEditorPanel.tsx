@@ -214,7 +214,12 @@ export function ZoneEditorPanel({
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>{effectiveCreating ? 'New service area' : 'Zone'}</CardTitle>
         {zone ? (
-          <Button size="sm" variant="secondary" onClick={onOpenVersions} data-testid="zone-versions">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onOpenVersions}
+            data-testid="zone-versions"
+          >
             Shape history ({zone.version})
           </Button>
         ) : null}
@@ -233,9 +238,7 @@ export function ZoneEditorPanel({
             <Input
               id="zone-code"
               value={form.code}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, code: event.target.value }))
-              }
+              onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
               data-testid="zone-code"
             />
           </Field>
@@ -301,7 +304,12 @@ export function ZoneEditorPanel({
               : 'The shape on the map matches the saved one.'}
         </p>
         {!effectiveCreating && !shapeChanged ? (
-          <Button size="sm" variant="secondary" onClick={onDrawRequested} data-testid="zone-edit-shape-panel">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onDrawRequested}
+            data-testid="zone-edit-shape-panel"
+          >
             Move corners on the map
           </Button>
         ) : null}
@@ -311,9 +319,7 @@ export function ZoneEditorPanel({
             id="zone-reason"
             value={form.reason}
             placeholder="Why this change?"
-            onChange={(event) =>
-              setForm((current) => ({ ...current, reason: event.target.value }))
-            }
+            onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
             data-testid="zone-reason"
           />
         </Field>
@@ -325,12 +331,7 @@ export function ZoneEditorPanel({
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            disabled={!canSave}
-            onClick={() => void save()}
-            data-testid="zone-save"
-          >
+          <Button size="sm" disabled={!canSave} onClick={() => void save()} data-testid="zone-save">
             {effectiveCreating ? 'Create zone' : 'Save zone'}
           </Button>
           <Button

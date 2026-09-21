@@ -64,7 +64,13 @@ export class AdminPrivacyController {
     @ZodBody(adminDeletionDecisionSchema) body: AdminDeletionDecision,
     @Req() request: AuthedRequest,
   ) {
-    return this.privacy.decide(selfId(request), requestId, 'approved', body, sessionContextFrom(request));
+    return this.privacy.decide(
+      selfId(request),
+      requestId,
+      'approved',
+      body,
+      sessionContextFrom(request),
+    );
   }
 
   @Post('privacy/deletion-requests/:id/reject')
@@ -76,7 +82,13 @@ export class AdminPrivacyController {
     @ZodBody(adminDeletionDecisionSchema) body: AdminDeletionDecision,
     @Req() request: AuthedRequest,
   ) {
-    return this.privacy.decide(selfId(request), requestId, 'rejected', body, sessionContextFrom(request));
+    return this.privacy.decide(
+      selfId(request),
+      requestId,
+      'rejected',
+      body,
+      sessionContextFrom(request),
+    );
   }
 
   @Post('privacy/deletion-requests/:id/hold')

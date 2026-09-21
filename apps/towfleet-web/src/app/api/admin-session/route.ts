@@ -50,9 +50,10 @@ export async function GET() {
      */
     const cookieStore = await cookies();
     const requested = cookieStore.get('mock_sub_role')?.value;
-    const subRole = (['super_admin', 'operations', 'support', 'finance'] as const).find(
-      (role) => role === requested,
-    ) ?? 'operations';
+    const subRole =
+      (['super_admin', 'operations', 'support', 'finance'] as const).find(
+        (role) => role === requested,
+      ) ?? 'operations';
 
     return NextResponse.json({
       admin: {
