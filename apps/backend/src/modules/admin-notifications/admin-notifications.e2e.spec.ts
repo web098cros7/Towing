@@ -5,7 +5,8 @@ import {
 } from '@towing/api-contracts';
 import { desc, sql } from 'drizzle-orm';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QUEUE, type QueuePort, type QueueStats } from '../../common/queue/queue.port';
 import { adminActions } from '../../db/schema';
 import { adminAuthHeaderFor, createTestApp } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
@@ -86,6 +87,23 @@ describe('notification console (/v1/admin/notifications, W18)', () => {
     expect(kyc.unusableChannels).toEqual(expect.arrayContaining(['sms', 'whatsapp']));
     expect(kyc.sampleTitle.length).toBeGreaterThan(0);
 
+    // One row per template, but a template can be emitted by SEVERAL triggers: the catalogue must list every one of them and must not silently keep the last.
+    expect(kyc.events).toEqual(['driver.kyc.approved']);
+    expect(kyc.matrixRows).toEqual(['kyc_approved']);
+    expect(kyc.channels).toEqual(expect.arrayContaining(['push', 'sms', 'whatsapp']));
+
+    const receipt = res.body.items.find(
+      (item: { templateKey: string }) => item.templateKey === 'payment_receipt_email',
+    );
+    expect(receipt.events).toEqual(['payment.succeeded', 'payment.failed']);
+    expect(receipt.matrixRows).toEqual(['payment_status']);
+    expect(receipt.channels).toEqual(['push', 'email', 'sms']);
+    expect(receipt.unusableChannels).toEqual(['sms']);
+
+    // The OTP placeholder trigger reuses driver_kyc_approved as a catalogue key but is delivered through the OTP port and never renders it, so it must not be listed.
+    const allEvents = res.body.items.flatMap((item: { events: string[] }) => item.events);
+    expect(allEvents).not.toContain('otp.requested');
+
     // Every trigger is wired as of W14 (`DEFERRED_TRIGGERS` is empty), so the
     // "unwired template" state is not reachable — but email-less templates are,
     // and they must say so with a null subject rather than an invented one.
@@ -147,6 +165,39 @@ describe('notification console (/v1/admin/notifications, W18)', () => {
       .set('Authorization', financeAuth)
       .expect(403);
     await request(app.getHttpServer()).get('/v1/admin/notifications/templates').expect(401);
+  });
+
+  it('counts dead letters from the notification queues only', async () => {
+    const stat = (name: QueueStats['name'], failed: number): QueueStats => ({
+      name,
+      waiting: 0,
+      active: 0,
+      delayed: 0,
+      failed,
+      completed: 0,
+    });
+    const stats = vi
+      .spyOn(app.get<QueuePort>(QUEUE), 'stats')
+      .mockResolvedValue([
+        stat('notifications.sweep', 18),
+        stat('notifications.push-receipts', 5),
+        stat('trucks.bulk-import', 7),
+        stat('notifications.fanout', 1),
+        stat('notifications.deliver.sms', 3),
+        stat('notifications.deliver.email', 2),
+      ]);
+
+    try {
+      const res = await request(app.getHttpServer())
+        .get('/v1/admin/notifications/deliveries')
+        .set('Authorization', opsAuth)
+        .expect(200);
+
+      // 18 stale sweep failures, 5 push-receipt and 7 unrelated failures must not count: 1 + 3 + 2 = 6.
+      expect(res.body.deadLetterDepth).toBe(6);
+    } finally {
+      stats.mockRestore();
+    }
   });
 
   it('test-sends only to the caller, and only for super admins', async () => {

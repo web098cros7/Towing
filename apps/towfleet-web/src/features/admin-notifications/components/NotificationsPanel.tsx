@@ -174,7 +174,15 @@ function TemplatesTab() {
             {data.items.map((template) => (
               <TableRow key={template.templateKey} data-testid="template-row">
                 <TableCell className="font-mono text-xs">{template.templateKey}</TableCell>
-                <TableCell className="font-mono text-xs">{template.event ?? '—'}</TableCell>
+                <TableCell className="font-mono text-xs">
+                  <div className="flex flex-col gap-0.5">
+                    {template.events.length === 0 ? (
+                      <span className="text-text-tertiary">—</span>
+                    ) : (
+                      template.events.map((event) => <span key={event}>{event}</span>)
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
                     {template.channels.map((channel) => (

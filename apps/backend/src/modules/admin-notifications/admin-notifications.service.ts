@@ -24,6 +24,19 @@ import { adminUsers } from '../../db/schema';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
 
 /**
+ * The notification queues whose failed depth counts as undelivered
+ * notifications. The sweep and push-receipt queues are excluded because a
+ * failed cron run is not an undelivered notification.
+ */
+const NOTIFICATION_QUEUE_NAMES: ReadonlySet<string> = new Set([
+  'notifications.fanout',
+  'notifications.deliver.push',
+  'notifications.deliver.sms',
+  'notifications.deliver.whatsapp',
+  'notifications.deliver.email',
+]);
+
+/**
  * W18's reads and the one guarded write (§12.3).
  *
  * TEMPLATES COME FROM CODE, NOT A TABLE. `template-catalog.ts` is the source
@@ -48,10 +61,21 @@ import { AdminAuditService } from '../admin-auth/admin-audit.service';
  */
 @Injectable()
 export class AdminNotificationsService {
-  /** templateKey → the trigger that emits it (first wins; keys are unique in practice). */
-  private readonly triggerByTemplate = new Map<string, RegisteredTrigger<never>>(
-    REGISTERED_TRIGGERS.map((trigger) => [trigger.template, trigger]),
-  );
+  /**
+   * templateKey → every trigger that emits it, in registry order. Triggers
+   * delivered through the OTP port are left out: they reuse a catalogue key as
+   * a placeholder and never render it.
+   */
+  private readonly triggersByTemplate: Map<string, RegisteredTrigger<never>[]> = (() => {
+    const map = new Map<string, RegisteredTrigger<never>[]>();
+    for (const trigger of REGISTERED_TRIGGERS) {
+      if (trigger.deliveredBy === 'otp_port') continue;
+      const existing = map.get(trigger.template);
+      if (existing) existing.push(trigger);
+      else map.set(trigger.template, [trigger]);
+    }
+    return map;
+  })();
 
   constructor(
     @Inject(DB) private readonly db: Database,
@@ -64,22 +88,32 @@ export class AdminNotificationsService {
     const items: AdminNotificationTemplate[] = (Object.keys(TEMPLATES) as TemplateKey[]).map(
       (key) => {
         const definition = TEMPLATES[key];
-        const trigger = this.triggerByTemplate.get(key);
+        const triggers = this.triggersByTemplate.get(key) ?? [];
+        const first = triggers[0];
         const rendered = renderTemplate(key, {});
 
+        const channels: AdminNotificationTemplate['channels'] = [];
+        for (const trigger of triggers) {
+          for (const channel of trigger.channels) {
+            if (!channels.includes(channel)) channels.push(channel);
+          }
+        }
+
         const unusableChannels: AdminNotificationTemplate['unusableChannels'] = [];
-        if (definition.dltTemplateId === null && trigger?.channels.includes('sms')) {
+        if (definition.dltTemplateId === null && channels.includes('sms')) {
           unusableChannels.push('sms');
         }
-        if (definition.waTemplateName === null && trigger?.channels.includes('whatsapp')) {
+        if (definition.waTemplateName === null && channels.includes('whatsapp')) {
           unusableChannels.push('whatsapp');
         }
 
         return {
           templateKey: key,
-          event: trigger?.event ?? null,
-          matrixRow: trigger?.matrixRow ? trigger.matrixRow : null,
-          channels: trigger ? [...trigger.channels] : [],
+          events: triggers.map((trigger) => trigger.event),
+          matrixRows: [...new Set(triggers.map((trigger) => trigger.matrixRow))].filter(
+            (row) => row !== '',
+          ),
+          channels,
           unusableChannels,
           dltTemplateId: definition.dltTemplateId,
           waTemplateName: definition.waTemplateName,
@@ -87,8 +121,9 @@ export class AdminNotificationsService {
           sampleTitle: rendered.title,
           sampleBody: rendered.body,
           sampleSubject: rendered.subject ?? null,
-          category: trigger ? trigger.category : null,
-          alwaysOn: trigger ? trigger.alwaysOn : null,
+          // All triggers sharing a template agree on both category and alwaysOn.
+          category: first ? first.category : null,
+          alwaysOn: first ? first.alwaysOn : null,
         } satisfies AdminNotificationTemplate;
       },
     );
@@ -118,7 +153,10 @@ export class AdminNotificationsService {
     `)) as unknown as Array<Record<string, unknown>>;
 
     const stats = await this.queue.stats();
-    const deadLetterDepth = stats.reduce((total, queue) => total + queue.failed, 0);
+    const deadLetterDepth = stats.reduce(
+      (total, queue) => (NOTIFICATION_QUEUE_NAMES.has(queue.name) ? total + queue.failed : total),
+      0,
+    );
 
     return {
       items: rows.map((row) => ({

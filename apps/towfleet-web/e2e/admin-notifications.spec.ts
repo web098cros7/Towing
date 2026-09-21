@@ -21,6 +21,11 @@ test('the template catalogue names the channels that cannot send', async ({ page
   await expect(rows.first()).toBeVisible();
   await expect(page.getByText('driver_kyc_approved')).toBeVisible();
 
+  // A template emitted by SEVERAL triggers lists each of them, not just the last.
+  const receipt = rows.filter({ hasText: 'payment_receipt_email' });
+  await expect(receipt).toContainText('payment.succeeded');
+  await expect(receipt).toContainText('payment.failed');
+
   // The operationally important fact, loud: SMS and WhatsApp ids are pending.
   await expect(page.getByTestId('unusable-sms').first()).toBeVisible();
   await expect(page.getByTestId('unusable-whatsapp').first()).toBeVisible();

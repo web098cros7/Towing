@@ -24,10 +24,11 @@ export const notificationUnusableChannelSchema = z.enum(NOTIFICATION_UNUSABLE_CH
 
 export const adminNotificationTemplateSchema = z.object({
   templateKey: z.string(),
-  /** The trigger that emits it; null when the template waits for a producer. */
-  event: z.string().nullable(),
-  matrixRow: z.string().nullable(),
-  /** The channels the trigger fans out on. Empty when no trigger is bound yet. */
+  /** Every trigger that emits it, in registry order. Empty when the template waits for a producer. */
+  events: z.array(z.string()),
+  /** The MATRIX_12_2 rows those triggers claim (blank rows omitted). */
+  matrixRows: z.array(z.string()),
+  /** The channels the triggers fan out on (their union). Empty when no trigger is bound yet. */
   channels: z.array(notificationChannelSchema),
   /** Channels that physically cannot send: their provider template id is null. */
   unusableChannels: z.array(notificationUnusableChannelSchema),
@@ -97,7 +98,7 @@ export type AdminNotificationDeliveriesQuery = z.infer<
 export const adminNotificationDeliveriesResponseSchema = pageEnvelopeSchema(
   adminNotificationDeliverySchema,
 ).extend({
-  /** Sum of `failed` across every queue — §12.3's DLQ depth, live. */
+  /** Sum of `failed` across the notification queues only (fan-out and the four delivery queues) — §12.3's DLQ depth, live. */
   deadLetterDepth: z.number().int(),
 });
 export type AdminNotificationDeliveriesResponse = z.infer<

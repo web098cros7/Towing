@@ -18,8 +18,8 @@ import type {
 const templates: AdminNotificationTemplate[] = [
   {
     templateKey: 'driver_kyc_approved',
-    event: 'driver.kyc.approved',
-    matrixRow: 'kyc_approved',
+    events: ['driver.kyc.approved'],
+    matrixRows: ['kyc_approved'],
     channels: ['sms', 'whatsapp'],
     unusableChannels: ['sms', 'whatsapp'],
     dltTemplateId: null,
@@ -34,8 +34,8 @@ const templates: AdminNotificationTemplate[] = [
   },
   {
     templateKey: 'job_invoice_email',
-    event: 'booking.completed_invoice',
-    matrixRow: 'invoice',
+    events: ['booking.completed_invoice'],
+    matrixRows: ['invoice'],
     channels: ['email'],
     unusableChannels: [],
     dltTemplateId: null,
@@ -49,8 +49,8 @@ const templates: AdminNotificationTemplate[] = [
   },
   {
     templateKey: 'sos_ops_alert',
-    event: 'sos.ops_alert',
-    matrixRow: '',
+    events: ['sos.ops_alert'],
+    matrixRows: [],
     channels: ['email', 'sms'],
     unusableChannels: ['sms'],
     dltTemplateId: null,
@@ -64,8 +64,8 @@ const templates: AdminNotificationTemplate[] = [
   },
   {
     templateKey: 'analytics_weekly_report',
-    event: 'analytics.report',
-    matrixRow: '',
+    events: ['analytics.report'],
+    matrixRows: [],
     channels: ['email'],
     unusableChannels: [],
     dltTemplateId: null,
@@ -76,6 +76,21 @@ const templates: AdminNotificationTemplate[] = [
     sampleSubject: 'Weekly marketplace report — last week',
     category: 'compliance',
     alwaysOn: true,
+  },
+  {
+    templateKey: 'payment_receipt_email',
+    events: ['payment.succeeded', 'payment.failed'],
+    matrixRows: ['payment_status'],
+    channels: ['push', 'sms', 'email'],
+    unusableChannels: ['sms'],
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['bookingRef', 'amount', 'status'],
+    sampleTitle: 'Payment received',
+    sampleBody: 'We received  for booking . Your receipt is below.',
+    sampleSubject: 'Receipt for booking ',
+    category: 'money',
+    alwaysOn: false,
   },
 ];
 
