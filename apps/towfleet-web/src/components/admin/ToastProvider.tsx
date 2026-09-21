@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }): ReactNode 
             key={entry.id}
             data-testid={`toast-${entry.kind}`}
             role="status"
-            className={`pointer-events-auto rounded-card border px-4 py-3 text-sm shadow-lg ${KIND_CLASSES[entry.kind]}`}
+            className={`animate-admin-toast-in pointer-events-auto rounded-card border px-4 py-3 text-sm shadow-lg ${KIND_CLASSES[entry.kind]}`}
           >
             {entry.message}
           </div>

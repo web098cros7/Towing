@@ -76,5 +76,113 @@
     color: var(--text-primary);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Smoother feel everywhere: consistent focus, selection, scrollbars. */
+  ::selection {
+    background: var(--brand-tint);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  /* Slim, theme-aware scrollbars for sidebar / drawers / tables. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ---- Admin console motion system (Modern SaaS refresh) ---- */
+@keyframes admin-drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes admin-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes admin-pop-in {
+  from {
+    transform: translateY(6px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+@keyframes admin-toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes admin-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+@layer utilities {
+  .animate-admin-drawer-in {
+    animation: admin-drawer-in 200ms ease-out;
+  }
+  .animate-admin-fade-in {
+    animation: admin-fade-in 150ms ease-out;
+  }
+  .animate-admin-pop-in {
+    animation: admin-pop-in 160ms ease-out;
+  }
+  .animate-admin-toast-in {
+    animation: admin-toast-in 200ms ease-out;
+  }
+  /* Sticky table header that stays readable over scrolled rows. */
+  .admin-sticky-head {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--card);
+    backdrop-filter: blur(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-admin-drawer-in,
+  .animate-admin-fade-in,
+  .animate-admin-pop-in,
+  .animate-admin-toast-in {
+    animation: none;
   }
 }

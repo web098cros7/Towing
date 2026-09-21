@@ -9,6 +9,8 @@ export interface DrawerProps {
   /** Accessible name; wired to `aria-labelledby`. */
   labelledBy: string;
   side?: 'right' | 'left';
+  /** Width preset — md preserves the previous 28rem default (now 30rem). */
+  size?: 'sm' | 'md' | 'lg';
   className?: string;
   children: React.ReactNode;
 }
@@ -32,6 +34,7 @@ export function Drawer({
   onClose,
   labelledBy,
   side = 'right',
+  size = 'md',
   className,
   children,
 }: DrawerProps) {
@@ -45,6 +48,13 @@ export function Drawer({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
+  const sizeClass =
+    size === 'sm'
+      ? 'w-[min(22rem,calc(100vw-2rem))]'
+      : size === 'lg'
+        ? 'w-[min(44rem,calc(100vw-2rem))]'
+        : 'w-[min(30rem,calc(100vw-2rem))]';
+
   return (
     <dialog
       ref={ref}
@@ -54,8 +64,10 @@ export function Drawer({
         if (event.target === ref.current) onClose();
       }}
       className={cn(
-        'm-0 h-[100dvh] w-[min(28rem,calc(100vw-2rem))] max-w-none translate-x-0 rounded-none border-border bg-card p-0 text-text-primary shadow-xl',
-        'backdrop:bg-black/50',
+        'm-0 h-[100dvh] max-w-none translate-x-0 rounded-none border-border bg-card p-0 text-text-primary shadow-2xl',
+        'backdrop:bg-black/50 backdrop:animate-admin-fade-in',
+        'open:animate-admin-drawer-in',
+        sizeClass,
         side === 'right' ? 'ml-auto border-l' : 'mr-auto border-r',
         className,
       )}

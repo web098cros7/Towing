@@ -35,7 +35,12 @@ function redirectTo(request: NextRequest, pathname: string, preserveNext = false
  * shape and the API validates it again; a middleware that tried to would be a
  * third place the format lives.
  */
-const PUBLIC_PREFIXES = ['/t/'];
+/**
+ * Public brand assets (`/brand/logo.svg`) — the login pages themselves render
+ * the wordmark while unauthenticated, so the asset must bypass the
+ * deny-by-default redirect like the share-trip page does.
+ */
+const PUBLIC_PREFIXES = ['/t/', '/brand/'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

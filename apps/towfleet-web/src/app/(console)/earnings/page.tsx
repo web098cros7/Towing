@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { CircleDollarSign, TrendingUp, Wallet } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -11,6 +12,8 @@ import {
   CardTitle,
   DataTable,
   ErrorState,
+  KpiCard,
+  Select,
   Skeleton,
   buttonVariants,
   cn,
@@ -25,7 +28,8 @@ import {
 import { statementCsvUrl } from '@/features/earnings/api/earningsDataSource';
 import { EarningsTrendChart } from '@/features/earnings/components/EarningsTrendChart';
 import { RequestPayoutDialog } from '@/features/earnings/components/RequestPayoutDialog';
-import type { JobSplit, Payout, PayoutStatus } from '@/features/earnings/types';
+import type { DateRange, JobSplit, Payout, PayoutStatus } from '@/features/earnings/types';
+import { addDays, istToday } from '@/features/admin-ops/lib/dashboardRange';
 import { env } from '@/lib/env';
 import { formatPaise } from '@/lib/money';
 
@@ -108,9 +112,28 @@ function PayoutRow({ payout }: { payout: Payout }) {
   );
 }
 
+type EarningsPreset = 'month' | '7' | '30' | '90';
+
+const PRESET_LABEL: Record<EarningsPreset, string> = {
+  month: 'Month',
+  '7': '7D',
+  '30': '30D',
+  '90': '90D',
+};
+
 export default function EarningsPage() {
-  const summary = useEarningsSummary();
-  const splits = useEarningsSplits();
+  // Month = backend default (current IST month); day presets bound all three
+  // reads to the same trailing window. The statement link always follows the
+  // loaded period, so it never disagrees with the numbers on screen.
+  const [preset, setPreset] = useState<EarningsPreset>('month');
+  const range: DateRange = useMemo(() => {
+    if (preset === 'month') return {};
+    const days = Number(preset);
+    return { from: addDays(istToday(), -(days - 1)), to: istToday() };
+  }, [preset]);
+
+  const summary = useEarningsSummary(range);
+  const splits = useEarningsSplits(range);
   const payouts = usePayouts();
   const [payoutOpen, setPayoutOpen] = useState(false);
 
@@ -162,7 +185,20 @@ export default function EarningsPage() {
             : `Per-job split after platform commission — your effective fleet share this period is ${effectiveSharePct}% of the driver pool.`
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              aria-label="Earnings period"
+              data-testid="earnings-range"
+              className="h-10 w-28"
+              value={preset}
+              onChange={(e) => setPreset(e.target.value as EarningsPreset)}
+            >
+              {(Object.keys(PRESET_LABEL) as EarningsPreset[]).map((p) => (
+                <option key={p} value={p}>
+                  {PRESET_LABEL[p]}
+                </option>
+              ))}
+            </Select>
             {env.useMocks ? (
               <Button variant="outline" disabled title="Statement export needs the real backend (mocks are on)">
                 Statement CSV
@@ -195,50 +231,29 @@ export default function EarningsPage() {
           Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-28" />)
         ) : (
           <>
-            <Card>
-              <CardHeader className="pb-0">
-                <CardTitle>Wallet balance</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="text-3xl font-bold tabular-nums">
-                  {formatPaise(data.wallet.balancePaise)}
-                </div>
-                <p className="mt-1 text-xs text-text-tertiary">
-                  {formatPaise(data.wallet.availablePaise)} available for payout
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-0">
-                <CardTitle>Gross (period)</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="text-3xl font-bold tabular-nums">
-                  {formatPaise(data.totals.grossPaise)}
-                </div>
-                <p className="mt-1 text-xs text-text-tertiary">{data.totals.jobs} settled jobs</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-0">
-                <CardTitle>Platform commission</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="text-3xl font-bold tabular-nums">
-                  −{formatPaise(data.totals.commissionPaise)}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-0">
-                <CardTitle>Fleet share</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="text-3xl font-bold tabular-nums text-brand">
-                  {formatPaise(data.totals.fleetSharePaise)}
-                </div>
-              </CardContent>
-            </Card>
+            <KpiCard
+              label="Wallet balance"
+              value={formatPaise(data.wallet.balancePaise)}
+              hint={`${formatPaise(data.wallet.availablePaise)} available for payout`}
+              icon={<Wallet />}
+            />
+            <KpiCard
+              label="Gross (period)"
+              value={formatPaise(data.totals.grossPaise)}
+              hint={`${data.totals.jobs} settled jobs`}
+              icon={<CircleDollarSign />}
+            />
+            <KpiCard
+              label="Platform commission"
+              value={`−${formatPaise(data.totals.commissionPaise)}`}
+              icon={<CircleDollarSign />}
+            />
+            <KpiCard
+              label="Fleet share"
+              value={formatPaise(data.totals.fleetSharePaise)}
+              icon={<TrendingUp />}
+              tone="brand"
+            />
           </>
         )}
       </div>
