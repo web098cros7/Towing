@@ -386,7 +386,10 @@ export async function runSeed(
   );
 
   const adminCredentials = await Promise.all(
-    ADMIN_FIXTURES.map(async (admin) => ({ admin, passwordHash: await hashPassword(SEED_PASSWORD) })),
+    ADMIN_FIXTURES.map(async (admin) => ({
+      admin,
+      passwordHash: await hashPassword(SEED_PASSWORD),
+    })),
   );
 
   const summary: SeedSummary = {
@@ -688,10 +691,7 @@ export async function runSeed(
     // ── Drivers + shares ────────────────────────────────────────────────────
     const seededDrivers: SeededDriver[] = [];
 
-    const insertDriver = async (
-      fixture: DriverFixture,
-      fleetKey: FleetFixture['key'] | null,
-    ) => {
+    const insertDriver = async (fixture: DriverFixture, fleetKey: FleetFixture['key'] | null) => {
       const fleet = fleetKey ? fleetByKey.get(fleetKey)! : null;
       const approved = fixture.kycStatus === 'approved';
       const homeAreas = fleet?.fixture.areas ?? FLEETS[0]!.areas;
@@ -813,6 +813,10 @@ export async function runSeed(
           // string, and the scale-1 values are unchanged.
           mobile: `+9198450201${String(i).padStart(2, '0')}`,
           name,
+          // Join dates spread over history (recent-biased, like the bookings)
+          // so `new_customers` per day is real — customers all "joining today"
+          // would flatline the dashboard's growth story and the W17 rollup.
+          createdAt: new Date(now.getTime() - Math.pow(rng(), 1.35) * HISTORY_DAYS * DAY_MS),
         })),
       )
       .returning({ id: users.id });
@@ -945,8 +949,7 @@ export async function runSeed(
       // they are the same function, not because they were checked once.
       const isHighwayPickup = band === 'B' && rng() < 0.6;
       const waitingMinutes = rng() < 0.2 ? 15 + Math.floor(5 + rng() * 25) : 0;
-      const surgeBand: SurgeBand =
-        rng() < 0.15 ? (rng() < 0.5 ? 'high' : 'peak') : 'standard';
+      const surgeBand: SurgeBand = rng() < 0.15 ? (rng() < 0.5 ? 'high' : 'peak') : 'standard';
       const requestedDiscountPaise = rng() < 0.1 ? (100 + Math.floor(rng() * 3) * 100) * 100 : 0;
 
       const fare = computeFare({
@@ -1074,6 +1077,9 @@ export async function runSeed(
             ] as const) as BookingInsert['paymentMethod'])
           : null,
         createdAt,
+        // paid_at is what the W17 rollup keys paid/GMV off — a settled booking
+        // without it is invisible to every trend screen (empty dashboard bug).
+        paidAt,
         updatedAt: paidAt ?? createdAt,
       });
 
@@ -1158,7 +1164,12 @@ export async function runSeed(
 
     perBooking.forEach((b, i) => {
       const id = bookingIds[i]!;
-      historyRows.push({ bookingId: id, status: 'searching', actor: 'system', createdAt: b.createdAt });
+      historyRows.push({
+        bookingId: id,
+        status: 'searching',
+        actor: 'system',
+        createdAt: b.createdAt,
+      });
 
       if (b.driver) {
         historyRows.push({

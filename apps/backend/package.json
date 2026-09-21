@@ -16,6 +16,7 @@
     "db:seed": "tsx src/db/seed/index.ts",
     "db:reset": "tsx src/db/seed/index.ts --reset",
     "db:seed:load": "tsx src/db/seed/index.ts --reset --scale=10",
+    "analytics:backfill": "tsx src/scripts/backfill-analytics.ts",
     "earnings:rebuild": "tsx src/scripts/rebuild-earnings.ts",
     "sim:locations": "tsx src/scripts/simulate-locations.ts",
     "sim:drivers": "tsx src/scripts/simulate-drivers.ts",
