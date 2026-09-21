@@ -33,6 +33,52 @@ test('lists coupons and filters them', async ({ page }) => {
   await expect(page.getByText('SAVE20')).toHaveCount(0);
 });
 
+test('the coupon form refuses bad values on the field, before anything is sent', async ({
+  page,
+}) => {
+  await adminLogin(page);
+  await page.goto('/admin/promotions');
+
+  await page.getByTestId('coupon-new').click();
+  await expect(page.getByRole('heading', { name: 'New coupon' })).toBeVisible();
+
+  // Nothing typed yet: the code is too short.
+  await page.getByTestId('coupon-save').click();
+  await expect(page.getByTestId('coupon-error-code')).toHaveText(
+    'A coupon code needs at least 3 characters',
+  );
+
+  await page.getByTestId('coupon-code').fill('OVER100');
+  await page.getByTestId('coupon-percent').fill('150');
+  await page.getByTestId('coupon-starts').fill('2026-10-10T20:00');
+  await page.getByTestId('coupon-expires').fill('2026-10-01T09:00');
+  await page.getByTestId('coupon-save').click();
+
+  await expect(page.getByTestId('coupon-error-percent')).toHaveText(
+    'A percentage cannot exceed 100',
+  );
+  await expect(page.getByTestId('coupon-error-expires')).toHaveText(
+    'Expires must be after it starts',
+  );
+  await expect(page.getByTestId('coupon-error-code')).toHaveCount(0);
+
+  // Refused on the spot: no success toast, and the drawer stays open.
+  await expect(page.getByTestId('toast-success')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'New coupon' })).toBeVisible();
+
+  // Fixing a field clears just its own message.
+  await page.getByTestId('coupon-percent').fill('50');
+  await expect(page.getByTestId('coupon-error-percent')).toHaveCount(0);
+  await expect(page.getByTestId('coupon-error-expires')).toBeVisible();
+
+  // Zero is refused too.
+  await page.getByTestId('coupon-percent').fill('0');
+  await page.getByTestId('coupon-save').click();
+  await expect(page.getByTestId('coupon-error-percent')).toHaveText(
+    'The percentage must be greater than 0',
+  );
+});
+
 test('editing a coupon moves the customer preview and saves', async ({ page }) => {
   await adminLogin(page);
   await page.goto('/admin/promotions');

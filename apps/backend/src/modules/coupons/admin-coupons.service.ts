@@ -12,11 +12,11 @@ import {
 } from '@towing/api-contracts';
 import { sql, type SQL } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
-import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { DB, type Database } from '../../db/db.module';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
 import { codeOf } from '../admin-bookings/admin-bookings.repo';
 import type { SessionContext } from '../auth/token.service';
+import { couponWindowError, couponWriteFailure } from './coupon-write-failure';
 
 interface CouponRow {
   id: string;
@@ -99,6 +99,11 @@ export class AdminCouponsService {
   ): Promise<AdminCoupon> {
     const value = valueColumn(body.kind, body);
 
+    // The contract refuses a reversed window too; this is the same check the update path runs, so a caller that bypasses the pipe still gets a 422 rather than a database error.
+    if (body.startsAt && body.expiresAt && new Date(body.startsAt) >= new Date(body.expiresAt)) {
+      throw couponWindowError();
+    }
+
     let createdId: string;
     try {
       const rows = (await this.db.execute(sql`
@@ -121,12 +126,7 @@ export class AdminCouponsService {
       `)) as unknown as Array<{ id: string }>;
       createdId = rows[0]!.id;
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw ApiException.conflict('A coupon with that code already exists', {
-          code: body.code,
-        });
-      }
-      throw error;
+      throw couponWriteFailure(error, { code: body.code, kind: body.kind });
     }
 
     const coupon = await this.get(createdId);
@@ -186,7 +186,7 @@ export class AdminCouponsService {
     const startsAt = body.startsAt !== undefined ? body.startsAt : before.startsAt;
     const endsAt = body.expiresAt !== undefined ? body.expiresAt : before.expiresAt;
     if (startsAt && endsAt && new Date(startsAt) >= new Date(endsAt)) {
-      throw ApiException.validation('The window must end after it starts', { startsAt, endsAt });
+      throw couponWindowError();
     }
 
     const sets: SQL[] = [];
@@ -220,12 +220,7 @@ export class AdminCouponsService {
         `);
       }
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw ApiException.conflict('A coupon with that code already exists', {
-          code: body.code,
-        });
-      }
-      throw error;
+      throw couponWriteFailure(error, { code: body.code, kind });
     }
 
     const after = await this.get(couponId);

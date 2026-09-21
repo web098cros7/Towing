@@ -16,9 +16,16 @@ import {
 } from '@towing/web-ui';
 import { paiseToRupeeString, type AdminCoupon, type CouponKind } from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
+import { apiIssues } from '@/lib/apiIssues';
 import { useCreateCoupon, useUpdateCoupon } from '../api/adminPromotions.mutations';
 import { useCouponRedemptions } from '../api/adminPromotions.queries';
 import { fromLocalInput, previewDiscountPaise, toLocalInput } from '../lib/promotionsMath';
+import {
+  fieldErrorsFromIssues,
+  validateCouponDraft,
+  type CouponField,
+  type CouponFieldErrors,
+} from '../lib/couponValidation';
 
 interface CouponDraft {
   code: string;
@@ -97,6 +104,7 @@ export function CouponEditorDrawer({
   const [draft, setDraft] = useState<CouponDraft>(() => draftFrom(coupon));
   const [sampleRupees, setSampleRupees] = useState('2000');
   const [redemptionPage, setRedemptionPage] = useState(1);
+  const [errors, setErrors] = useState<CouponFieldErrors>({});
 
   const create = useCreateCoupon();
   const update = useUpdateCoupon();
@@ -106,8 +114,21 @@ export function CouponEditorDrawer({
   useEffect(() => {
     setDraft(draftFrom(coupon));
     setRedemptionPage(1);
+    setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
+
+  // Every input goes through here so an edit clears the message under the field it fixes.
+  const edit = (patch: Partial<CouponDraft>): void => {
+    setDraft({ ...draft, ...patch });
+    setErrors((current) => {
+      const next = { ...current };
+      for (const key of Object.keys(patch) as CouponField[]) delete next[key];
+      // Moving the start can settle the "expires after it starts" message.
+      if ('startsAt' in patch) delete next.expiresAt;
+      return next;
+    });
+  };
 
   const open = target !== null;
   const isNew = target === 'new';
@@ -127,11 +148,11 @@ export function CouponEditorDrawer({
   );
 
   const save = (): void => {
+    const found = validateCouponDraft(draft);
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+
     const code = draft.code.trim();
-    if (code.length < 3) {
-      toast('A coupon code needs at least 3 characters', 'error');
-      return;
-    }
 
     const body = {
       code,
@@ -154,6 +175,13 @@ export function CouponEditorDrawer({
       onClose();
     };
     const onError = (cause: unknown): void => {
+      // The server names the field in the same words as the checks above, so a rule the client
+      // missed still lands under the right input instead of a vague toast.
+      const fromServer = fieldErrorsFromIssues(apiIssues(cause));
+      if (Object.keys(fromServer).length > 0) {
+        setErrors(fromServer);
+        return;
+      }
       toast(cause instanceof Error ? cause.message : 'Could not save the coupon', 'error');
     };
 
@@ -180,10 +208,16 @@ export function CouponEditorDrawer({
             <Input
               id="coupon-code"
               data-testid="coupon-code"
+              aria-invalid={errors.code ? true : undefined}
               value={draft.code}
-              onChange={(event) => setDraft({ ...draft, code: event.target.value.toUpperCase() })}
+              onChange={(event) => edit({ code: event.target.value.toUpperCase() })}
               placeholder="SAVE20"
             />
+            {errors.code ? (
+              <p className="text-xs text-error" role="alert" data-testid="coupon-error-code">
+                {errors.code}
+              </p>
+            ) : null}
             <p className="text-xs text-text-secondary">
               Matched case-insensitively; customers may type it any way.
             </p>
@@ -198,7 +232,7 @@ export function CouponEditorDrawer({
                 id="coupon-kind"
                 data-testid="coupon-kind"
                 value={draft.kind}
-                onChange={(event) => setDraft({ ...draft, kind: event.target.value as CouponKind })}
+                onChange={(event) => edit({ kind: event.target.value as CouponKind })}
               >
                 <option value="percent">Percentage</option>
                 <option value="flat">Flat ₹</option>
@@ -213,13 +247,19 @@ export function CouponEditorDrawer({
                 <Input
                   id="coupon-percent"
                   data-testid="coupon-percent"
+                  aria-invalid={errors.percentValue ? true : undefined}
                   type="number"
                   min="0"
                   max="100"
                   step="0.5"
                   value={draft.percentValue}
-                  onChange={(event) => setDraft({ ...draft, percentValue: event.target.value })}
+                  onChange={(event) => edit({ percentValue: event.target.value })}
                 />
+                {errors.percentValue ? (
+                  <p className="text-xs text-error" role="alert" data-testid="coupon-error-percent">
+                    {errors.percentValue}
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-1">
@@ -229,12 +269,18 @@ export function CouponEditorDrawer({
                 <Input
                   id="coupon-flat"
                   data-testid="coupon-flat"
+                  aria-invalid={errors.flatRupees ? true : undefined}
                   type="number"
                   min="1"
                   step="1"
                   value={draft.flatRupees}
-                  onChange={(event) => setDraft({ ...draft, flatRupees: event.target.value })}
+                  onChange={(event) => edit({ flatRupees: event.target.value })}
                 />
+                {errors.flatRupees ? (
+                  <p className="text-xs text-error" role="alert" data-testid="coupon-error-flat">
+                    {errors.flatRupees}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>
@@ -247,13 +293,19 @@ export function CouponEditorDrawer({
               <Input
                 id="coupon-cap"
                 data-testid="coupon-cap"
+                aria-invalid={errors.maxDiscountRupees ? true : undefined}
                 type="number"
                 min="0"
                 step="1"
                 value={draft.maxDiscountRupees}
-                onChange={(event) => setDraft({ ...draft, maxDiscountRupees: event.target.value })}
+                onChange={(event) => edit({ maxDiscountRupees: event.target.value })}
                 placeholder="No cap"
               />
+              {errors.maxDiscountRupees ? (
+                <p className="text-xs text-error" role="alert" data-testid="coupon-error-cap">
+                  {errors.maxDiscountRupees}
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -265,13 +317,19 @@ export function CouponEditorDrawer({
               <Input
                 id="coupon-min-order"
                 data-testid="coupon-min-order"
+                aria-invalid={errors.minOrderRupees ? true : undefined}
                 type="number"
                 min="0"
                 step="1"
                 value={draft.minOrderRupees}
-                onChange={(event) => setDraft({ ...draft, minOrderRupees: event.target.value })}
+                onChange={(event) => edit({ minOrderRupees: event.target.value })}
                 placeholder="0"
               />
+              {errors.minOrderRupees ? (
+                <p className="text-xs text-error" role="alert" data-testid="coupon-error-min-order">
+                  {errors.minOrderRupees}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1">
               <label className="text-sm font-semibold" htmlFor="coupon-max-uses">
@@ -280,13 +338,19 @@ export function CouponEditorDrawer({
               <Input
                 id="coupon-max-uses"
                 data-testid="coupon-max-uses"
+                aria-invalid={errors.maxUses ? true : undefined}
                 type="number"
                 min="1"
                 step="1"
                 value={draft.maxUses}
-                onChange={(event) => setDraft({ ...draft, maxUses: event.target.value })}
+                onChange={(event) => edit({ maxUses: event.target.value })}
                 placeholder="Unlimited"
               />
+              {errors.maxUses ? (
+                <p className="text-xs text-error" role="alert" data-testid="coupon-error-max-uses">
+                  {errors.maxUses}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -298,12 +362,18 @@ export function CouponEditorDrawer({
               <Input
                 id="coupon-per-user"
                 data-testid="coupon-per-user"
+                aria-invalid={errors.maxUsesPerUser ? true : undefined}
                 type="number"
                 min="1"
                 step="1"
                 value={draft.maxUsesPerUser}
-                onChange={(event) => setDraft({ ...draft, maxUsesPerUser: event.target.value })}
+                onChange={(event) => edit({ maxUsesPerUser: event.target.value })}
               />
+              {errors.maxUsesPerUser ? (
+                <p className="text-xs text-error" role="alert" data-testid="coupon-error-per-user">
+                  {errors.maxUsesPerUser}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -317,7 +387,7 @@ export function CouponEditorDrawer({
                 data-testid="coupon-starts"
                 type="datetime-local"
                 value={draft.startsAt}
-                onChange={(event) => setDraft({ ...draft, startsAt: event.target.value })}
+                onChange={(event) => edit({ startsAt: event.target.value })}
               />
             </div>
             <div className="space-y-1">
@@ -327,10 +397,16 @@ export function CouponEditorDrawer({
               <Input
                 id="coupon-expires"
                 data-testid="coupon-expires"
+                aria-invalid={errors.expiresAt ? true : undefined}
                 type="datetime-local"
                 value={draft.expiresAt}
-                onChange={(event) => setDraft({ ...draft, expiresAt: event.target.value })}
+                onChange={(event) => edit({ expiresAt: event.target.value })}
               />
+              {errors.expiresAt ? (
+                <p className="text-xs text-error" role="alert" data-testid="coupon-error-expires">
+                  {errors.expiresAt}
+                </p>
+              ) : null}
             </div>
           </div>
 

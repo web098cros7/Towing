@@ -105,6 +105,44 @@ describe('admin coupons (/v1/admin/coupons, W16)', () => {
     expect(res.body.error.code).toBe('conflict');
   });
 
+  it('refuses values the database would reject with a 422 that names the field, never a 500', async () => {
+    // The window rule used to read endsAt, a field coupons do not have, so a reversed window reached the CHECK constraint and came back as an opaque 500. Zero and out-of-range numbers did the same.
+    const cases: Array<{ body: Record<string, unknown>; field: string }> = [
+      {
+        body: { startsAt: '2026-10-10T00:00:00.000Z', expiresAt: '2026-10-01T00:00:00.000Z' },
+        field: 'expiresAt',
+      },
+      {
+        body: { startsAt: '2026-10-10T00:00:00.000Z', expiresAt: '2026-10-10T00:00:00.000Z' },
+        field: 'expiresAt',
+      },
+      { body: { percentValue: 0 }, field: 'percentValue' },
+      { body: { percentValue: 150 }, field: 'percentValue' },
+      {
+        body: { kind: 'flat', percentValue: undefined, flatValuePaise: 0 },
+        field: 'flatValuePaise',
+      },
+      { body: { maxUses: 2_147_483_648 }, field: 'maxUses' },
+      {
+        body: { kind: 'flat', percentValue: undefined, flatValuePaise: 1_000_000_000_000 },
+        field: 'flatValuePaise',
+      },
+    ];
+
+    for (const { body, field } of cases) {
+      const res = await createCoupon(body).expect(422);
+      expect(res.body.error.code).toBe('validation_failed');
+      const paths = res.body.error.details.issues.map((issue: { path: string }) => issue.path);
+      expect(paths, JSON.stringify(body)).toContain(field);
+    }
+
+    // Nothing was written.
+    const [{ n }] = (await db.execute(sql`select count(*)::int as n from coupons`)) as unknown as [
+      { n: number },
+    ];
+    expect(n).toBe(0);
+  });
+
   it('an edit never moves used_count, and the redemption ledger stays whole', async () => {
     const created = (await createCoupon({ maxUses: 10 }).expect(200)).body;
 

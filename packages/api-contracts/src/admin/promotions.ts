@@ -66,6 +66,16 @@ export const adminCouponsResponseSchema = pageEnvelopeSchema(adminCouponSchema);
 export type AdminCouponsResponse = z.infer<typeof adminCouponsResponseSchema>;
 
 /**
+ * Write-side twins of the response schemas. A stored coupon is always > 0
+ * (ck_coupons_value) and its money columns are numeric(12,2), so the API
+ * refuses 0 and out-of-range numbers up front instead of letting the database
+ * answer with a 500.
+ */
+const percentValueWriteSchema = percentValueSchema.gt(0);
+const couponPaiseSchema = unsignedPaiseSchema.max(999_999_999_999);
+const couponFlatValueSchema = couponPaiseSchema.min(1);
+
+/**
  * The value rule both write bodies share: at most one of the two value
  * fields, and when `kind` is present it must match which one it is. Whether
  * the field is REQUIRED is the difference between create (it is) and update
@@ -114,13 +124,15 @@ function addValueIssues(
 }
 
 function addWindowIssue(
-  body: { startsAt?: string | null; endsAt?: string | null },
+  body: { startsAt?: string | null; endsAt?: string | null; expiresAt?: string | null },
   ctx: z.RefinementCtx,
+  endField: 'endsAt' | 'expiresAt' = 'endsAt',
 ): void {
-  if (body.startsAt && body.endsAt && new Date(body.startsAt) >= new Date(body.endsAt)) {
+  const end = body[endField];
+  if (body.startsAt && end && new Date(body.startsAt) >= new Date(end)) {
     ctx.addIssue({
       code: 'custom',
-      path: ['endsAt'],
+      path: [endField],
       message: 'The window must end after it starts',
     });
   }
@@ -130,11 +142,11 @@ export const adminCouponCreateSchema = z
   .object({
     code: z.string().trim().min(3).max(32),
     kind: couponKindSchema,
-    percentValue: percentValueSchema.optional(),
-    flatValuePaise: unsignedPaiseSchema.optional(),
-    maxDiscountPaise: unsignedPaiseSchema.nullable().optional(),
-    minOrderPaise: unsignedPaiseSchema.optional(),
-    maxUses: z.number().int().min(1).nullable().optional(),
+    percentValue: percentValueWriteSchema.optional(),
+    flatValuePaise: couponFlatValueSchema.optional(),
+    maxDiscountPaise: couponPaiseSchema.nullable().optional(),
+    minOrderPaise: couponPaiseSchema.optional(),
+    maxUses: z.number().int().min(1).max(2_147_483_647).nullable().optional(),
     maxUsesPerUser: z.number().int().min(1).max(100).optional(),
     startsAt: z.iso.datetime().nullable().optional(),
     expiresAt: z.iso.datetime().nullable().optional(),
@@ -143,7 +155,7 @@ export const adminCouponCreateSchema = z
   })
   .superRefine((body, ctx) => {
     addValueIssues(body, ctx, true);
-    addWindowIssue(body, ctx);
+    addWindowIssue(body, ctx, 'expiresAt');
   });
 export type AdminCouponCreate = z.infer<typeof adminCouponCreateSchema>;
 
@@ -158,11 +170,11 @@ export const adminCouponUpdateSchema = z
   .object({
     code: z.string().trim().min(3).max(32).optional(),
     kind: couponKindSchema.optional(),
-    percentValue: percentValueSchema.optional(),
-    flatValuePaise: unsignedPaiseSchema.optional(),
-    maxDiscountPaise: unsignedPaiseSchema.nullable().optional(),
-    minOrderPaise: unsignedPaiseSchema.optional(),
-    maxUses: z.number().int().min(1).nullable().optional(),
+    percentValue: percentValueWriteSchema.optional(),
+    flatValuePaise: couponFlatValueSchema.optional(),
+    maxDiscountPaise: couponPaiseSchema.nullable().optional(),
+    minOrderPaise: couponPaiseSchema.optional(),
+    maxUses: z.number().int().min(1).max(2_147_483_647).nullable().optional(),
     maxUsesPerUser: z.number().int().min(1).max(100).optional(),
     startsAt: z.iso.datetime().nullable().optional(),
     expiresAt: z.iso.datetime().nullable().optional(),
@@ -171,7 +183,7 @@ export const adminCouponUpdateSchema = z
   })
   .superRefine((body, ctx) => {
     addValueIssues(body, ctx, false);
-    addWindowIssue(body, ctx);
+    addWindowIssue(body, ctx, 'expiresAt');
   });
 export type AdminCouponUpdate = z.infer<typeof adminCouponUpdateSchema>;
 
