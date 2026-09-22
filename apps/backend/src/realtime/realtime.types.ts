@@ -1,4 +1,5 @@
 import type {
+  JobPaymentEvent,
   AdminBookingStatusEvent,
   AdminLocationUpdateEvent,
   AdminOpsBadgesEvent,
@@ -106,6 +107,8 @@ export interface DriverServerToClientEvents {
   'job:revoked': (payload: JobRevokedEvent) => void;
   /** Figma 24 — driver↔customer chat. */
   'chat:message': (payload: BookingMessage) => void;
+  /** How the customer is paying for a finished job, and when it is paid. */
+  'job:payment': (payload: JobPaymentEvent) => void;
 }
 
 /** Attached at handshake from the redeemed ticket — the only source of a socket's driver. */

@@ -112,6 +112,22 @@ export const currentOfferResponseSchema = z.object({
 export type CurrentOfferResponse = z.infer<typeof currentOfferResponseSchema>;
 
 /**
+ * What the customer is paying and how.
+ *
+ * `method` is null until they choose. `awaiting_cash` means collect
+ * `amountDuePaise` in cash, then call cash-collected. `amountDuePaise` is what
+ * the CUSTOMER owes after any coupon — it can differ from `earnings.grossPaise`.
+ * `pending` with method 'online' means they are paying in the app.
+ */
+export const driverJobPaymentSchema = z.object({
+  method: z.enum(['cash', 'online']).nullable(),
+  status: z.enum(['pending', 'awaiting_cash', 'paid']),
+  amountDuePaise: unsignedPaiseSchema,
+  discountPaise: unsignedPaiseSchema,
+});
+export type DriverJobPayment = z.infer<typeof driverJobPaymentSchema>;
+
+/**
  * A job the driver has accepted.
  *
  * Carries the customer's number, which the offer deliberately does not: §11.9's
@@ -126,6 +142,7 @@ export const driverJobSchema = z.object({
   vehicleClass: vehicleClassSchema,
 
   earnings: jobEarningsSchema,
+  payment: driverJobPaymentSchema,
   ...jobLegSchema.shape,
 
   customerName: z.string().nullable(),

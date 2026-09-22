@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { jobOfferSchema } from '../driver/jobs';
+import { driverJobPaymentSchema, jobOfferSchema } from '../driver/jobs';
 
 /**
  * The `/driver` namespace (§16.6) — Phase 16.
@@ -35,6 +35,8 @@ export const DRIVER_EVENT = {
   JOB_REVOKED: 'job:revoked',
   /** Figma 24 — one chat message frame, delivered to the driver room. */
   CHAT_MESSAGE: 'chat:message',
+  /** The customer chose cash, switched to online, or the job was paid. */
+  JOB_PAYMENT: 'job:payment',
 } as const;
 export type DriverEventName = (typeof DRIVER_EVENT)[keyof typeof DRIVER_EVENT];
 
@@ -142,3 +144,17 @@ export const jobRevokedSchema = z.object({
   at: z.iso.datetime(),
 });
 export type JobRevokedEvent = z.infer<typeof jobRevokedSchema>;
+
+/**
+ * The customer chose cash, switched to online, or the job was paid.
+ *
+ * The payload carries the same `driverJobPaymentSchema` the job DTO does, so
+ * the driver's screen can update in place without a refetch — and the two
+ * deliveries cannot disagree about what the customer owes.
+ */
+export const jobPaymentEventSchema = z.object({
+  bookingId: z.uuid(),
+  payment: driverJobPaymentSchema,
+  at: z.iso.datetime(),
+});
+export type JobPaymentEvent = z.infer<typeof jobPaymentEventSchema>;

@@ -20,6 +20,7 @@ import { DriverGateway } from '../driver-presence/driver.gateway';
 import { PresenceStore } from '../driver-presence/presence-store';
 import { EtaService } from '../tracking/eta.service';
 
+import { loadJobPayment } from '../money/job-payment';
 import { projectEarnings } from '../money/settlement';
 import { CandidateSelectionService, type ScoredCandidate } from './candidate-selection.service';
 import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
@@ -516,6 +517,7 @@ export class OfferService {
       serviceType: booking.serviceType,
       vehicleClass: booking.vehicleClass,
       earnings: earningsOf(booking),
+      payment: await loadJobPayment(this.db, booking),
       pickup: { lat: booking.pickupLat, lng: booking.pickupLng },
       pickupAddress: booking.pickupAddress,
       drop:

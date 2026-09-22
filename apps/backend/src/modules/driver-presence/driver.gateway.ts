@@ -18,6 +18,7 @@ import {
   type DriverConfigUpdateEvent,
   type DriverLocationAccepted,
   type JobOfferEvent,
+  type JobPaymentEvent,
   type JobRevokedEvent,
 } from '@towing/api-contracts';
 import { SkipThrottling } from '../../common/throttling/throttler.config';
@@ -230,6 +231,17 @@ export class DriverGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   /** Figma 24 — one chat message, to the driver's room (cross-node, like `emitJobOffer`). */
   emitChatMessage(driverId: string, message: BookingMessage): void {
     this.namespace.to(driverRoom(driverId)).emit(DRIVER_EVENT.CHAT_MESSAGE, message);
+  }
+
+  /**
+   * The customer chose cash, switched to online, or the job was paid.
+   *
+   * Cross-node, like `emitChatMessage` and for the same reason: the payment
+   * route ran on whichever worker served the customer's REST call, and the
+   * driver's socket is very likely attached to a different task.
+   */
+  emitJobPayment(driverId: string, frame: JobPaymentEvent): void {
+    this.namespace.to(driverRoom(driverId)).emit(DRIVER_EVENT.JOB_PAYMENT, frame);
   }
 
   /** How many sockets this driver has attached to THIS node. */

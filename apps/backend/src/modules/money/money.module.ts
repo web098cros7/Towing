@@ -27,6 +27,7 @@ import { DriverPayoutAccountService } from './driver-payout-account.service';
 import { PayoutAccountsRepo } from './payout-accounts.repo';
 import { BookingsModule } from '../bookings/bookings.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { DriverPresenceModule } from '../driver-presence/driver-presence.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PaymentGatewayModule } from './payment-gateway.module';
 import { RazorpayRouteAdapter } from './razorpay-route.adapter';
@@ -55,6 +56,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     AuthModule,
     BookingsModule,
     CouponsModule,
+    DriverPresenceModule,
     PricingModule,
     PaymentGatewayModule,
     ReferralsModule,

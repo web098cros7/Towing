@@ -4,6 +4,7 @@ import type { DriverJob, JobStatus } from '@towing/api-contracts';
 import { rupeeStringToPaise } from '@towing/api-contracts';
 import { DB, type Database } from '../../db/db.module';
 import { bookings, drivers, users } from '../../db/schema';
+import { loadJobPayment } from '../money/job-payment';
 import { projectEarnings } from '../money/settlement';
 
 /** The booking as the §5.2 machine needs it — authorisation, timing and the locked money. */
@@ -121,6 +122,7 @@ export class JobExecutionRepo {
         band: booking.commissionBand,
         commissionPct: booking.commissionPct,
       }),
+      payment: await loadJobPayment(this.db, booking),
       pickup: { lat: booking.pickupLat, lng: booking.pickupLng },
       pickupAddress: booking.pickupAddress,
       drop:

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   ErrorCodes,
   paiseToRupeeString,
@@ -19,12 +19,15 @@ import { NotificationService } from '../../common/notifications/notification.ser
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { ENV, type Env } from '../../config/env';
 import { DB, type Database } from '../../db/db.module';
+import { bookings } from '../../db/schema';
 import { ledgerKeys, paymentRowKey } from '../../db/ledger/idempotency-keys';
 import { LedgerService } from '../../db/ledger/ledger.service';
 import { paymentCaptureLockKey } from '../../redis/redis.constants';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
+import { DriverGateway } from '../driver-presence/driver.gateway';
 import { trackEvent } from '../analytics/analytics-events';
+import { loadJobPayment } from './job-payment';
 import {
   PAYMENT_GATEWAY,
   type PaymentGatewayPort,
@@ -63,6 +66,7 @@ export class PaymentsService {
     private readonly machine: BookingStateMachineService,
     private readonly lock: RedisLock,
     private readonly customers: CustomerGateway,
+    private readonly drivers: DriverGateway,
     private readonly rateCards: PricingConfigRepo,
     private readonly notifications: NotificationService,
     private readonly referrals: ReferralsService,
@@ -132,6 +136,7 @@ export class PaymentsService {
     // a gateway failure) and continue as if there were no open intent.
     if (open && open.provider === 'cash') {
       await this.repo.markFailed(open.id, 'Customer switched to online payment');
+      await this.notifyDriverPayment(bookingId);
       open = null;
     }
 
@@ -282,6 +287,7 @@ export class PaymentsService {
 
     const open = await this.repo.openIntent(bookingId, 'booking');
     if (open?.provider === 'cash') {
+      await this.notifyDriverPayment(bookingId);
       return {
         paymentId: open.id,
         bookingId,
@@ -304,6 +310,8 @@ export class PaymentsService {
       idempotencyKey: paymentRowKey(bookingId, 'booking', sha256(`cash:${randomUUID()}`)),
       provider: 'cash',
     });
+
+    await this.notifyDriverPayment(bookingId);
 
     return {
       paymentId: row.id,
@@ -612,6 +620,8 @@ export class PaymentsService {
     );
 
     await this.machine.announce(result);
+
+    await this.notifyDriverPayment(bookingId);
   }
 
   /**
@@ -1030,6 +1040,41 @@ export class PaymentsService {
       invoiceAvailable: Boolean(row.invoice_key),
       failureReason: (row.failure_reason as string | null) ?? null,
     };
+  }
+
+  /**
+   * Tell the driver holding this booking what the customer is paying and how.
+   *
+   * BEST-EFFORT THROUGHOUT. A socket failure must never fail a payment — the
+   * driver's screen will resync on its next poll, and the money has already
+   * moved. Every error is swallowed into a warning.
+   */
+  private async notifyDriverPayment(bookingId: string): Promise<void> {
+    try {
+      const [row] = await this.db
+        .select({
+          id: bookings.id,
+          status: bookings.status,
+          total: bookings.total,
+          discount: bookings.discount,
+          paymentMethod: bookings.paymentMethod,
+          driverId: bookings.driverId,
+        })
+        .from(bookings)
+        .where(eq(bookings.id, bookingId))
+        .limit(1);
+
+      if (!row || !row.driverId) return;
+
+      const payment = await loadJobPayment(this.db, row);
+      this.drivers.emitJobPayment(row.driverId, {
+        bookingId,
+        payment,
+        at: new Date().toISOString(),
+      });
+    } catch (error) {
+      this.logger.warn(`job payment notify failed for ${bookingId}: ${String(error)}`);
+    }
   }
 
   /** Notifications are best-effort; a failed send must not unsettle a payment. */

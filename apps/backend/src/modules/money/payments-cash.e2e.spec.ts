@@ -14,6 +14,7 @@ import {
 } from '../../test/db';
 import { seedBooking } from '../../test/fixtures';
 import { ledgerInvariants } from '../../db/ledger/invariants';
+import { JobExecutionRepo } from '../job-execution/job-execution.repo';
 
 /**
  * Figma 27's cash flow, end to end.
@@ -176,6 +177,50 @@ describe('cash payment e2e (/v1/payments/:bookingId/cash, /v1/jobs/:id/cash-coll
     expect(cashRow?.status).toBe('failed');
 
     await collectCash().expect(409);
+    await expectNoDrift();
+  });
+
+  it('the driver sees the payment state on the ended job, and it moves with the customer', async () => {
+    const repo = app.get(JobExecutionRepo);
+
+    // No choice yet: the driver's current job is gone (the trip is over), but
+    // the ended job still carries the payment state — pending, no method.
+    await request(app.getHttpServer())
+      .get('/v1/driver/jobs/current')
+      .set('Authorization', driverAuth)
+      .expect(200)
+      .expect((res) => expect(res.body.job).toBeNull());
+
+    const before = await repo.endedJob(bookingId);
+    expect(before?.payment).toEqual({
+      method: null,
+      status: 'pending',
+      amountDuePaise: 200_000,
+      discountPaise: 0,
+    });
+
+    // The customer chooses cash: the driver must now collect ₹2,000.
+    await chooseCash().expect(200);
+
+    const afterCash = await repo.endedJob(bookingId);
+    expect(afterCash?.payment).toEqual({
+      method: 'cash',
+      status: 'awaiting_cash',
+      amountDuePaise: 200_000,
+      discountPaise: 0,
+    });
+
+    // The driver confirms collection: paid, cash.
+    await collectCash().expect(200);
+
+    const afterCollect = await repo.endedJob(bookingId);
+    expect(afterCollect?.payment).toEqual({
+      method: 'cash',
+      status: 'paid',
+      amountDuePaise: 200_000,
+      discountPaise: 0,
+    });
+
     await expectNoDrift();
   });
 });
