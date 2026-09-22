@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { DriverJob, JobReject, JobUnableReason } from '@towing/api-contracts';
+import type {
+  BookingMessage,
+  DriverJob,
+  JobReject,
+  JobUnableReason,
+} from '@towing/api-contracts';
 import { useDriverStatusStore } from '@/features/dashboard/store/driverStatusStore';
 import { track } from '@/lib/analytics/analytics';
 import { offersDataSource } from './offersDataSource';
@@ -199,6 +204,71 @@ export function useUnableToDeliver() {
       queryClient.setQueryData(offersKeys.job(), null);
       // The driver is available again, so an offer may already be waiting.
       void queryClient.invalidateQueries({ queryKey: offersKeys.current() });
+    },
+  });
+}
+
+/**
+ * Trip chat (Phase 20).
+ *
+ * THE POLL IS THE DURABLE HALF. The socket frame is the fast path and can be
+ * missed — a backgrounded app, a dropped connection, a message sent while the
+ * screen was not mounted — so the transcript is refetched on an interval and the
+ * socket only makes it feel instant. Five seconds is the same order as the job
+ * poll and is what makes a missed frame a five-second delay rather than a
+ * message the driver never sees.
+ *
+ * The GET also marks the customer's messages read server-side, which is why it
+ * is not cached across mounts: opening the screen is the read receipt.
+ */
+const MESSAGES_POLL_MS = 5_000;
+
+export function useJobMessages(bookingId: string) {
+  return useQuery({
+    queryKey: offersKeys.messages(bookingId),
+    queryFn: () => offersDataSource.messages(bookingId),
+    refetchInterval: MESSAGES_POLL_MS,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Sends one message.
+ *
+ * THE CACHE IS APPENDED TO ON SUCCESS, not invalidated. The POST returns the
+ * created `BookingMessage`, so writing it in is exact — and it means the
+ * driver's own line appears the instant the server accepts it rather than on the
+ * next five-second poll. The id check is what stops the socket frame that
+ * arrives a moment later from duplicating it.
+ */
+export function useSendJobMessage(bookingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => offersDataSource.sendMessage(bookingId, body),
+    onSuccess: (message: BookingMessage) => {
+      queryClient.setQueryData<BookingMessage[]>(offersKeys.messages(bookingId), (previous) => {
+        const list = previous ?? [];
+        if (list.some((m) => m.id === message.id)) return list;
+        return [...list, message];
+      });
+    },
+  });
+}
+
+/**
+ * §9.2.4's cash-collected confirmation.
+ *
+ * CLEARS THE HELD JOB ON SUCCESS, the same way `useUnableToDeliver` does and for
+ * the same reason: the booking is now `paid` and belongs to nobody, so leaving
+ * the completed job in the cache would show the driver a job they are no longer
+ * on and let them tap "Cash collected" a second time.
+ */
+export function useCashCollected() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bookingId: string) => offersDataSource.cashCollected(bookingId),
+    onSuccess: () => {
+      queryClient.setQueryData(offersKeys.job(), null);
     },
   });
 }

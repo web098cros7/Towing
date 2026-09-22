@@ -4,7 +4,11 @@ import { track } from '@/lib/analytics/analytics';
 import * as locationService from '@/lib/location/driverLocationService';
 import { resetSeq } from '@/lib/location/pingBuffer';
 import { connectDriverSocket, disconnectDriverSocket } from '@/lib/realtime/driverSocket';
-import { applyJobOffer, applyJobRevoked } from '@/features/offers/realtime/offerFrames';
+import {
+  applyChatMessage,
+  applyJobOffer,
+  applyJobRevoked,
+} from '@/features/offers/realtime/offerFrames';
 import { storage } from '@/lib/storage/storage';
 import { useDriverStatusStore } from '@/features/dashboard/store/driverStatusStore';
 import { presenceDataSource } from './presenceDataSource';
@@ -97,6 +101,9 @@ export function usePresence() {
         // functions and not callbacks closed over this render.
         onJobOffer: applyJobOffer,
         onJobRevoked: applyJobRevoked,
+        // Trip chat, same reasoning: the merge is a cache write, not a UI
+        // callback, so it survives this component unmounting.
+        onChatMessage: applyChatMessage,
       });
 
       if (!storage.getString(FIRST_ONLINE_KEY)) {

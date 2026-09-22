@@ -8,12 +8,16 @@ import { ApiClientError } from '@/lib/api/errors';
 import { useLastFixStore } from '@/lib/location/lastFixStore';
 import { haptics, Pressable } from '@/motion';
 import { driverColors } from '@/theme/driverColors';
+import { formatPaise } from '@/utils/format';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useArriveAtJob,
+  useCashCollected,
   useCompleteJob,
   useStartJob,
   useUnableToDeliver,
 } from '../api/offers.queries';
+import { offersKeys } from '../api/offers.keys';
 import { UnableSheet } from './UnableSheet';
 
 /**
@@ -57,6 +61,8 @@ export function JobActionRail({ job }: { job: DriverJob }) {
   const start = useStartJob();
   const complete = useCompleteJob();
   const unable = useUnableToDeliver();
+  const cashCollected = useCashCollected();
+  const queryClient = useQueryClient();
 
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
@@ -152,6 +158,54 @@ export function JobActionRail({ job }: { job: DriverJob }) {
     ]);
   }, [complete, job.bookingId]);
 
+  /**
+   * §9.2.4's cash-collected confirmation.
+   *
+   * The 409 is the interesting case: it means the customer chose to pay in the
+   * app, so the driver is looking at a "Cash collected" button that does not
+   * apply to this trip. The alert says so in the customer's terms rather than
+   * the server's, and the "Done" link below is the way out for that trip.
+   */
+  const onCashCollected = useCallback(() => {
+    const amount = formatPaise(job.earnings.grossPaise);
+    Alert.alert('Cash collected?', `Confirm you received ${amount} in cash.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Confirm',
+        onPress: () => {
+          haptics.medium();
+          cashCollected.mutate(job.bookingId, {
+            onSuccess: () => {
+              haptics.success();
+              Alert.alert('Cash recorded', 'The trip is paid.');
+            },
+            onError: (error: unknown) => {
+              haptics.error();
+              if (error instanceof ApiClientError && error.status === 409) {
+                Alert.alert(
+                  'Paying in the app',
+                  "The customer hasn't chosen cash — they'll pay in the MiTow app.",
+                );
+                return;
+              }
+              Alert.alert('Could not record the cash', 'Please try again in a moment.');
+            },
+          });
+        },
+      },
+    ]);
+  }, [cashCollected, job.bookingId, job.earnings.grossPaise]);
+
+  /**
+   * The app-paid exit. Clears the held job without a server call — the booking
+   * is already `paid` on the server's side (the customer paid in the app), and
+   * the only thing left is to stop showing the driver a completed job they are
+   * no longer on.
+   */
+  const onDone = useCallback(() => {
+    queryClient.setQueryData(offersKeys.job(), null);
+  }, [queryClient]);
+
   const onUnable = useCallback(
     (reason: JobUnableReason, note?: string) => {
       unable.mutate(
@@ -242,6 +296,42 @@ export function JobActionRail({ job }: { job: DriverJob }) {
           fullWidth
           accessibilityLabel="Complete job"
         />
+      ) : null}
+
+      {/*
+        §9.2.4's cash collection, shown only once the trip is completed. The
+        amount is the GROSS — what the customer owes — not the driver's net;
+        the commission is settled separately and the driver is collecting the
+        customer's money, not their own.
+      */}
+      {job.status === 'completed' ? (
+        <Card padding={16} style={{ borderRadius: 20, gap: 12, borderColor: '#E5E7EB' }}>
+          <Text style={{ fontSize: 14, lineHeight: 20 }}>
+            Collect cash if the customer chose cash
+          </Text>
+          <Button
+            label={
+              cashCollected.isPending
+                ? 'Recording…'
+                : `Cash collected · ${formatPaise(job.earnings.grossPaise)}`
+            }
+            onPress={onCashCollected}
+            disabled={cashCollected.isPending}
+            fullWidth
+            accessibilityLabel="Cash collected"
+          />
+          <Pressable
+            onPress={onDone}
+            haptic="light"
+            accessibilityRole="button"
+            accessibilityLabel="Done"
+            style={() => ({ alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16 })}
+          >
+            <Text style={{ fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary }}>
+              Done
+            </Text>
+          </Pressable>
+        </Card>
       ) : null}
 
       {/*

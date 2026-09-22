@@ -50,6 +50,14 @@ export type RootStackParamList = {
    */
   AssignedJob: undefined;
 
+  /**
+   * §16.3's trip chat (Phase 20). Keyed by booking id rather than reading the
+   * held job from the cache: the chat is a conversation about ONE booking, and
+   * a driver who has just completed a trip and is looking at the completion
+   * screen must still be able to open the transcript for that booking.
+   */
+  JobChat: { bookingId: string };
+
   // Account (Profile) sub-screens
   PersonalInformation: undefined;
   /** Vehicle class + long-distance opt-in (`PUT /driver/capabilities`). Was `MyVehicles`. */

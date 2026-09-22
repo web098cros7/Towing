@@ -1,4 +1,9 @@
-import type { DriverJob, JobOfferEvent, JobRevokedEvent } from '@towing/api-contracts';
+import type {
+  BookingMessage,
+  DriverJob,
+  JobOfferEvent,
+  JobRevokedEvent,
+} from '@towing/api-contracts';
 import { queryClient } from '@/providers/queryClient';
 import { offersKeys } from '../api/offers.keys';
 import type { JobOffer } from '../types';
@@ -46,4 +51,26 @@ export function applyJobRevoked(event: JobRevokedEvent): void {
       void queryClient.invalidateQueries({ queryKey: offersKeys.job() });
     }
   }
+}
+
+/**
+ * A `chat:message` frame, merged into the transcript for its booking.
+ *
+ * ONLY IF THE QUERY EXISTS. A frame for a booking whose chat screen was never
+ * opened — or was closed — must not create a cache entry: the next open would
+ * then render a one-message transcript that the GET is about to overwrite
+ * anyway, and the merge would have been pointless work. `getQueryData` returning
+ * `undefined` is the signal that nobody is listening.
+ *
+ * THE ID CHECK IS THE WHOLE POINT. The driver's own send writes the message into
+ * the cache from the POST response, and the socket echoes it back a moment
+ * later; without the check the driver would see their own line twice.
+ */
+export function applyChatMessage(message: BookingMessage): void {
+  const key = offersKeys.messages(message.bookingId);
+  const existing = queryClient.getQueryData<BookingMessage[]>(key);
+  if (!existing) return;
+  if (existing.some((m) => m.id === message.id)) return;
+
+  queryClient.setQueryData<BookingMessage[]>(key, [...existing, message]);
 }

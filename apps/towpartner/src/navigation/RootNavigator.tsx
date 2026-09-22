@@ -25,6 +25,7 @@ import { PayoutsScreen } from '@/screens/earnings/PayoutsScreen';
 import { WeeklyEarningsScreen } from '@/screens/earnings/WeeklyEarningsScreen';
 import { OfferTakeoverScreen } from '@/screens/newjob/OfferTakeoverScreen';
 import { AssignedJobScreen } from '@/screens/activejob/AssignedJobScreen';
+import { JobChatScreen } from '@/screens/activejob/JobChatScreen';
 import { useOfferTakeover } from '@/features/offers/hooks/useOfferTakeover';
 import { navigationRef } from './navigationRef';
 import {
@@ -164,6 +165,14 @@ export function RootNavigator() {
                   animationDuration: motion.duration.slow,
                 }}
               />
+
+              {/*
+                §16.3's trip chat. A normal horizontal push rather than the
+                vertical slide AssignedJob uses — the chat is a sub-screen of
+                the job, not a peer of it, and the back arrow has to read as
+                "return to the job" rather than "dismiss".
+              */}
+              <Stack.Screen name="JobChat" component={JobChatScreen} />
 
               <Stack.Screen name="PersonalInformation" component={PersonalInformationScreen} />
               <Stack.Screen name="Capabilities" component={CapabilitiesScreen} />

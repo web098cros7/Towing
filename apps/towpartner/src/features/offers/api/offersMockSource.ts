@@ -1,4 +1,5 @@
 import type {
+  BookingMessage,
   CallContact,
   DriverJob,
   JobUnable,
@@ -28,6 +29,41 @@ let otpAttempts = 0;
 const MOCK_OTP = '482913';
 
 const MOCK_MAX_ATTEMPTS = 5;
+
+/**
+ * Trip chat, in memory, per booking.
+ *
+ * SEEDED WITH ONE CUSTOMER LINE so the transcript is not empty on first open —
+ * a driver testing the screen should see the bubble layout, not a blank list.
+ * The reply after a driver send is what makes the socket path visible without a
+ * second device: the frame arrives three seconds later, exactly as it would from
+ * the server.
+ */
+const mockMessages = new Map<string, BookingMessage[]>();
+let mockMessageSeq = 0;
+
+function nextMessageId(): string {
+  mockMessageSeq += 1;
+  return `mock-msg-${mockMessageSeq}`;
+}
+
+function messagesFor(bookingId: string): BookingMessage[] {
+  let list = mockMessages.get(bookingId);
+  if (!list) {
+    list = [
+      {
+        id: nextMessageId(),
+        bookingId,
+        senderType: 'customer',
+        body: "Hi, I'm waiting near the gate",
+        createdAt: new Date(Date.now() - 60_000).toISOString(),
+        readAt: null,
+      },
+    ];
+    mockMessages.set(bookingId, list);
+  }
+  return list;
+}
 
 /**
  * Mock offer lifecycle. `EXPO_PUBLIC_MOCK_OFFER_STATE=none` returns no request
@@ -162,6 +198,46 @@ export const offersMockSource: OffersDataSource = {
       displayName: acceptedJob?.customerName ?? 'Customer',
       reference: null,
     };
+  },
+
+  async messages(bookingId: string): Promise<BookingMessage[]> {
+    await delay(250);
+    return [...messagesFor(bookingId)];
+  },
+
+  async sendMessage(bookingId: string, body: string): Promise<BookingMessage> {
+    await delay(300);
+    const list = messagesFor(bookingId);
+    const message: BookingMessage = {
+      id: nextMessageId(),
+      bookingId,
+      senderType: 'driver',
+      body,
+      createdAt: new Date().toISOString(),
+      readAt: null,
+    };
+    list.push(message);
+
+    // The customer's reply, three seconds later — the same shape the socket
+    // frame carries, so the screen's merge path is exercised without a second
+    // device. Fire-and-forget: the caller has already got its answer.
+    setTimeout(() => {
+      list.push({
+        id: nextMessageId(),
+        bookingId,
+        senderType: 'customer',
+        body: 'Okay, thanks!',
+        createdAt: new Date().toISOString(),
+        readAt: null,
+      });
+    }, 3_000);
+
+    return message;
+  },
+
+  async cashCollected(bookingId: string): Promise<{ bookingId: string; bookingStatus: string }> {
+    await delay(400);
+    return { bookingId, bookingStatus: 'paid' };
   },
 };
 

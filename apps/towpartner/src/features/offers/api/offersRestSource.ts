@@ -1,4 +1,5 @@
 import type {
+  BookingMessage,
   CallContact,
   CurrentJobResponse,
   CurrentOfferResponse,
@@ -99,5 +100,54 @@ export const offersRestSource: OffersDataSource = {
 
   async contact(bookingId: string): Promise<CallContact> {
     return apiFetch<CallContact>(`jobs/${bookingId}/contact`);
+  },
+
+  /**
+   * Trip chat (Phase 20).
+   *
+   * The GET is the durable half of the pair: the socket frame is the fast path
+   * and can be missed, so the screen refetches on an interval and this route is
+   * what makes the transcript eventually correct. Reading it also marks the
+   * customer's messages read server-side, which is why it is not cached.
+   */
+  async messages(bookingId: string): Promise<BookingMessage[]> {
+    const { items } = await apiFetch<{ items: BookingMessage[] }>(`jobs/${bookingId}/messages`);
+    return items;
+  },
+
+  /**
+   * Sends one message.
+   *
+   * `Idempotency-Key` IS CARRIED HERE, unlike the §5.2 chain above, and the
+   * difference is the point: a chat message is not a state transition, so a
+   * double-tap that sends two identical lines is a bug rather than a graceful
+   * 409. The key makes the second tap a no-op on the server, which is what the
+   * driver meant by it.
+   */
+  async sendMessage(bookingId: string, body: string): Promise<BookingMessage> {
+    return apiFetch<BookingMessage>(`jobs/${bookingId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+      idempotent: true,
+    });
+  },
+
+  /**
+   * §9.2.4's cash-collected confirmation.
+   *
+   * 200 means the booking is now `paid`; 409 means the customer chose to pay in
+   * the app and the driver should not be collecting anything. The screen turns
+   * that 409 into a specific message rather than a generic failure — it is a
+   * correct answer, not an error.
+   */
+  async cashCollected(bookingId: string): Promise<{ bookingId: string; bookingStatus: string }> {
+    return apiFetch<{ bookingId: string; bookingStatus: string }>(
+      `jobs/${bookingId}/cash-collected`,
+      {
+        method: 'POST',
+        body: JSON.stringify({}),
+        idempotent: true,
+      },
+    );
   },
 };

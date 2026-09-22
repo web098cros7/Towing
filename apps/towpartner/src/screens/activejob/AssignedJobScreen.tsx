@@ -223,6 +223,11 @@ export function AssignedJobScreen() {
                   </Text>
                 </View>
                 <ActionChip icon={Phone} label="Call" onPress={onCall} disabled={!job.customerMobile} />
+                <ActionChip
+                  icon={MessageCircle}
+                  label="Message"
+                  onPress={() => navigation.navigate('JobChat', { bookingId: job.bookingId })}
+                />
                 <ActionChip icon={Navigation} label="Navigate" onPress={onNavigate} />
               </View>
             </Card>

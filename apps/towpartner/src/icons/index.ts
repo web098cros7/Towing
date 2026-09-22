@@ -28,6 +28,7 @@ export {
   RefreshCw,
   Phone,
   MessageCircle,
+  Send,
   MessageSquare,
   Star,
   Truck,

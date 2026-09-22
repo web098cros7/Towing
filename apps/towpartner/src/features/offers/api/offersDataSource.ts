@@ -1,4 +1,5 @@
 import type {
+  BookingMessage,
   CallContact,
   DriverJob,
   JobReject,
@@ -42,6 +43,15 @@ export interface OffersDataSource {
   unable(bookingId: string, body: JobUnable): Promise<JobUnableResponse>;
   /** §9.2.3's call button, behind `TelephonyPort`. */
   contact(bookingId: string): Promise<CallContact>;
+
+  // --- Trip chat + cash (Phase 20) ----------------------------------------
+
+  /** Oldest first. Reading marks the customer's messages read server-side. */
+  messages(bookingId: string): Promise<BookingMessage[]>;
+  /** 409 once the trip is no longer active. */
+  sendMessage(bookingId: string, body: string): Promise<BookingMessage>;
+  /** 200 = paid; 409 when the customer is paying in the app. */
+  cashCollected(bookingId: string): Promise<{ bookingId: string; bookingStatus: string }>;
 }
 
 export const offersDataSource: OffersDataSource = env.useMocks

@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type {
+  BookingMessage,
   DriverConfigUpdateEvent,
   JobOfferEvent,
   JobRevokedEvent,
@@ -39,6 +40,12 @@ export interface DriverSocketHandlers {
   onConfigUpdate: (config: DriverConfigUpdateEvent) => void;
   onJobOffer: (offer: JobOfferEvent) => void;
   onJobRevoked: (event: JobRevokedEvent) => void;
+  /**
+   * Trip chat (Phase 20). Optional because the socket is also connected from
+   * contexts that have no chat screen mounted — the handler is a cache merge,
+   * not a UI callback, and a missing one is a no-op rather than a crash.
+   */
+  onChatMessage?: (message: BookingMessage) => void;
 }
 
 let socket: Socket | null = null;
@@ -107,6 +114,16 @@ export async function connectDriverSocket(next: DriverSocketHandlers): Promise<v
    */
   connection.on(DRIVER_EVENT.JOB_REVOKED, (event: JobRevokedEvent) =>
     handlers?.onJobRevoked(event),
+  );
+
+  /**
+   * Trip chat, both directions. The same frame carries the driver's own echo and
+   * the customer's reply — the merge in `applyChatMessage` is what tells them
+   * apart, and the id check there is what stops the echo duplicating the line
+   * the POST already wrote in.
+   */
+  connection.on(DRIVER_EVENT.CHAT_MESSAGE, (message: BookingMessage) =>
+    handlers?.onChatMessage?.(message),
   );
 
   connection.on('disconnect', () => {
