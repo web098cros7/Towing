@@ -41,7 +41,7 @@ export async function sendSos(input: SosCreateInput): Promise<SosCreateResponse>
       replayed: false,
     };
   }
-  return apiFetch<SosCreateResponse>('/sos', {
+  return apiFetch<SosCreateResponse>('sos', {
     method: 'POST',
     body: JSON.stringify(input),
     idempotent: true,
@@ -56,7 +56,7 @@ export async function cancelSos(alertId: string): Promise<SosCancelResponse> {
       cancelledAt: new Date().toISOString(),
     };
   }
-  return apiFetch<SosCancelResponse>(`/sos/${alertId}/cancel`, {
+  return apiFetch<SosCancelResponse>(`sos/${alertId}/cancel`, {
     method: 'POST',
     idempotent: true,
   });
