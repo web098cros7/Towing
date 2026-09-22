@@ -20,11 +20,13 @@ import { devCheckoutSignature, devPaymentRef } from '../money/dev-payment.adapte
 /**
  * Refer & Earn (Figma 45), end to end.
  *
- * The reward is wired into payment settlement, so the interesting test is the
- * last one: a referee applies a code, pays for their first trip, and BOTH
- * wallets hold the reward afterwards. Everything before it exists to make the
- * preconditions of that test unambiguous — a code that is stable, a redemption
- * that is case-insensitive, and the four ways an apply is refused.
+ * The referee's reward is credited at apply time so it can be spent on their
+ * first trip; the referrer is credited only after that trip is paid. The
+ * interesting test is the last one: a referee applies a code, pays for their
+ * first trip with the reward as wallet credit, and the referrer is credited
+ * afterwards. Everything before it exists to make the preconditions of that
+ * test unambiguous — a code that is stable, a redemption that is
+ * case-insensitive, and the four ways an apply is refused.
  */
 describe('referrals e2e (/v1/me/referral)', () => {
   let app: INestApplication;
@@ -107,6 +109,10 @@ describe('referrals e2e (/v1/me/referral)', () => {
       const applied = await applyCode(refereeAuth, code.toLowerCase()).expect(200);
       expect(applied.body).toEqual({ status: 'pending', refereeRewardPaise: 10000 });
 
+      // The referee's reward is credited immediately so it can be spent on
+      // their first trip.
+      expect(await walletBalancePaise(refereeId)).toBe(10000);
+
       const referrerSummary = await summaryOf(referrerAuth).expect(200);
       expect(referrerSummary.body.invitedCount).toBe(1);
 
@@ -156,7 +162,7 @@ describe('referrals e2e (/v1/me/referral)', () => {
   });
 
   describe('reward', () => {
-    it('credits both wallets once the referee pays for their first trip', async () => {
+    it('spends the referee reward on the first trip and credits the referrer after', async () => {
       const referrerId = await seedCustomer(db, 'Referrer');
       const referrerAuth = await customerAuthHeaderFor(app, { userId: referrerId });
       const code = (await summaryOf(referrerAuth).expect(200)).body.code as string;
@@ -166,9 +172,8 @@ describe('referrals e2e (/v1/me/referral)', () => {
 
       await applyCode(refereeAuth, code).expect(200);
 
-      // The referee's wallet is empty, so the intent applies no wallet money —
-      // the reward arrives AFTER settlement, not as a discount on the trip.
-      expect(await walletBalancePaise(refereeId)).toBe(0);
+      // The referee's reward is credited at apply time.
+      expect(await walletBalancePaise(refereeId)).toBe(10000);
 
       const driverId = await seedDriver(db, { name: 'Settling Driver' });
       const bookingId = await seedBooking(db, {
@@ -189,6 +194,10 @@ describe('referrals e2e (/v1/me/referral)', () => {
         .send({ purpose: 'booking' })
         .expect(201);
 
+      // The reward is spent as wallet credit on this trip.
+      expect(intent.body.walletAppliedPaise).toBe(10000);
+      expect(intent.body.amountPaise).toBe(200000 - 10000);
+
       const orderRef = intent.body.orderRef as string;
       const gatewayRef = devPaymentRef(orderRef);
       const signature = devCheckoutSignature(orderRef, gatewayRef, SECRET);
@@ -201,7 +210,7 @@ describe('referrals e2e (/v1/me/referral)', () => {
         .expect(200);
 
       expect(await walletBalancePaise(referrerId)).toBe(10000);
-      expect(await walletBalancePaise(refereeId)).toBe(10000);
+      expect(await walletBalancePaise(refereeId)).toBe(0);
 
       const referrerSummary = await summaryOf(referrerAuth).expect(200);
       expect(referrerSummary.body.rewardedCount).toBe(1);

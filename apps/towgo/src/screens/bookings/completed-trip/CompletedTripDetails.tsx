@@ -105,7 +105,7 @@ export function CompletedTripDetails({
   /** Finished but not paid yet: nothing was paid, so no method, no paid time and no receipt exist. */
   const unpaid = booking.status === 'completed';
   const method = unpaid ? null : bookingMethod(booking);
-  const paidAtIso = paidAtFor(booking.id);
+  const paidAtIso = paidAtFor(booking);
   const paidAt = !unpaid && paidAtIso ? paidAtLabel(paidAtIso) : null;
 
   /** Call: the driver's number handed to the phone's dialer, exactly as 20 and 18 do. */

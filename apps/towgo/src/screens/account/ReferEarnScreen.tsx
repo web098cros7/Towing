@@ -1,8 +1,9 @@
-import React from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Image, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { usePressablePrimitive } from '@towing/ui';
 
 import {
   MiScreen,
@@ -17,17 +18,59 @@ import {
 } from '@/design';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import type { RootStackParamList } from '@/navigation/types';
+import { useReferral } from '@/features/referrals/api/referrals';
+import { copyText } from '@/lib/clipboard';
+import { formatPaise } from '@/utils/format';
 
 /**
  * Refer & Earn — Figma 45 · Refer & Earn (298:3586).
- *
- * DATA GAP: There is no referral backend. No referral code, friend count, or
- * earnings exist in the app. Every dynamic value renders as a SlotPlaceholder
- * and Copy / Share are inert until the backend lands. Gap reported to owner.
  */
 export function ReferEarnScreen(): React.ReactElement {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
+  const { data, isLoading } = useReferral();
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
+  const code = data?.code;
+  const shareUrl = data?.shareUrl;
+  const refereeRewardPaise = data?.refereeRewardPaise;
+  const referrerRewardPaise = data?.referrerRewardPaise;
+
+  const handleCopy = useCallback(() => {
+    if (!code) return;
+    copyText(code).catch(() => {});
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  }, [code]);
+
+  const handleShare = useCallback(() => {
+    if (!code || !shareUrl || refereeRewardPaise === undefined) return;
+    Share.share({
+      message: `Join me on MiTow! Use my code ${code} to get ${formatPaise(
+        refereeRewardPaise,
+      )} off your first tow: ${shareUrl}`,
+    }).catch(() => {});
+  }, [code, shareUrl, refereeRewardPaise]);
+
+  const Pressable = usePressablePrimitive();
+
+  const step2Subtitle =
+    refereeRewardPaise !== undefined
+      ? `They get ${formatPaise(refereeRewardPaise)} off their first trip`
+      : 'They get ₹100 off their first trip';
+
+  const step3Title =
+    referrerRewardPaise !== undefined
+      ? `You earn ${formatPaise(referrerRewardPaise)}`
+      : 'You earn ₹100';
 
   return (
     <MiScreen edges={['top']}>
@@ -51,19 +94,36 @@ export function ReferEarnScreen(): React.ReactElement {
             <MiText variant="bodyS14" color="secondary">
               Your referral code
             </MiText>
-            <SlotPlaceholder variant="title20" width={104} />
+            {isLoading || !code ? (
+              <SlotPlaceholder variant="title20" width={104} />
+            ) : (
+              <MiText variant="title20">{code}</MiText>
+            )}
           </View>
-          {/* Copy (298:3813) — not pressable while there is no code */}
-          <View style={styles.copyRow}>
+          {/* Copy (298:3813) */}
+          <Pressable
+            onPress={handleCopy}
+            disabled={!code}
+            hitSlop={10}
+            pressScale={1}
+            style={styles.copyRow}
+            accessibilityRole="button"
+            accessibilityLabel="Copy referral code"
+          >
             <MiColorIcon name="copy" size={20} />
             <MiText variant="strong15" color="brand">
-              Copy
+              {copied ? 'Copied' : 'Copy'}
             </MiText>
-          </View>
+          </Pressable>
         </View>
 
-        {/* Share Invite Link (298:3816) — disabled until a referral code exists */}
-        <MiButton tone="dark" label="Share Invite Link" disabled />
+        {/* Share Invite Link (298:3816) */}
+        <MiButton
+          tone="dark"
+          label="Share Invite Link"
+          disabled={isLoading || !code}
+          onPress={handleShare}
+        />
 
         {/* How it works (298:3822) */}
         <View style={styles.howItWorks}>
@@ -78,10 +138,10 @@ export function ReferEarnScreen(): React.ReactElement {
             <StepRow
               index="2"
               title="Your friend books a tow"
-              subtitle="They get ₹100 off their first trip"
+              subtitle={step2Subtitle}
             />
             <View style={styles.divider} />
-            <StepRow index="3" title="You earn ₹100" subtitle="Credited to your MiTow Wallet" />
+            <StepRow index="3" title={step3Title} subtitle="Credited to your MiTow Wallet" />
           </View>
         </View>
 
@@ -91,14 +151,22 @@ export function ReferEarnScreen(): React.ReactElement {
             <MiText variant="bodyS14" color="secondary">
               Friends joined
             </MiText>
-            <SlotPlaceholder variant="title20" width={13} />
+            {isLoading || !data ? (
+              <SlotPlaceholder variant="title20" width={13} />
+            ) : (
+              <MiText variant="title20">{String(data.invitedCount)}</MiText>
+            )}
           </View>
           <View style={styles.rewardDivider} />
           <View style={[styles.rewardColumn, styles.rewardColumnRight]}>
             <MiText variant="bodyS14" color="secondary">
               You earned
             </MiText>
-            <SlotPlaceholder variant="title20" width={51} />
+            {isLoading || !data ? (
+              <SlotPlaceholder variant="title20" width={51} />
+            ) : (
+              <MiText variant="title20">{formatPaise(data.earnedPaise)}</MiText>
+            )}
           </View>
         </View>
       </ScrollView>

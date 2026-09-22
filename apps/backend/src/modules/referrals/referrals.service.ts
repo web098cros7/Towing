@@ -13,8 +13,9 @@ const SUFFIX_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const DEFAULT_REWARD_PAISE = 10000;
 
 /**
- * Refer & Earn (Figma 45). Mints a per-user code, records redemptions, and
- * credits both sides once the referee's first booking is paid.
+ * Refer & Earn (Figma 45). Mints a per-user code, records redemptions, credits
+ * the referee's wallet when they apply the code (so it can be spent on their
+ * first trip), and credits the referrer once that first trip is paid.
  */
 @Injectable()
 export class ReferralsService {
@@ -130,11 +131,14 @@ export class ReferralsService {
       throw new ApiException(HttpStatus.CONFLICT, ErrorCodes.VALIDATION_FAILED, 'Referral codes are for customers who have not booked yet');
     }
 
+    let redemptionId: string;
     try {
-      await this.db.execute(sql`
+      const inserted = (await this.db.execute(sql`
         insert into referral_redemptions (referrer_user_id, referee_user_id, code)
         values (${owner}::uuid, ${userId}::uuid, ${code})
-      `);
+        returning id
+      `)) as unknown as Array<{ id: string }>;
+      redemptionId = inserted[0]!.id;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ApiException(HttpStatus.CONFLICT, ErrorCodes.VALIDATION_FAILED, 'You have already used a referral code');
@@ -143,12 +147,34 @@ export class ReferralsService {
     }
 
     const { refereeRewardPaise } = await this.rewards();
+
+    // The referee's reward is spendable on their first trip, so it is credited
+    // now — the wallet is applied automatically at payment.
+    if (refereeRewardPaise > 0) {
+      await this.ledger.post([
+        {
+          owner: { ownerType: 'user', ownerId: userId },
+          type: 'adjustment',
+          amountPaise: refereeRewardPaise,
+          reason: 'Welcome reward for joining with a referral code',
+          refId: redemptionId,
+          idempotencyKey: `rr:v1:${redemptionId}:referee`,
+        },
+      ]);
+      await this.db.execute(sql`
+        update referral_redemptions
+           set referee_reward_paise = ${refereeRewardPaise}
+         where id = ${redemptionId}::uuid
+      `);
+    }
+
     return { status: 'pending' as const, refereeRewardPaise };
   }
 
   /**
-   * Called by payment settlement after a booking becomes `paid`. Rewards both
-   * sides only when this is the referee's first paid trip.
+   * Called by payment settlement after a booking becomes `paid`. Credits the
+   * referrer only when this is the referee's first paid trip; the referee was
+   * already credited at apply time.
    */
   async rewardForBooking(bookingId: string): Promise<void> {
     const bookingRows = (await this.db.execute(sql`
@@ -170,7 +196,7 @@ export class ReferralsService {
     `)) as unknown as Array<{ n: number }>;
     if ((paidRows[0]?.n ?? 0) !== 1) return;
 
-    const { referrerRewardPaise, refereeRewardPaise } = await this.rewards();
+    const { referrerRewardPaise } = await this.rewards();
 
     const legs: LedgerLeg[] = [];
     if (referrerRewardPaise > 0) {
@@ -183,16 +209,6 @@ export class ReferralsService {
         idempotencyKey: `rr:v1:${redemption.id}:referrer`,
       });
     }
-    if (refereeRewardPaise > 0) {
-      legs.push({
-        owner: { ownerType: 'user', ownerId: redemption.referee_user_id },
-        type: 'adjustment',
-        amountPaise: refereeRewardPaise,
-        reason: 'Welcome reward for joining with a referral code',
-        refId: bookingId,
-        idempotencyKey: `rr:v1:${redemption.id}:referee`,
-      });
-    }
 
     if (legs.length > 0) {
       await this.ledger.post(legs);
@@ -203,8 +219,7 @@ export class ReferralsService {
          set status = 'rewarded',
              rewarded_booking_id = ${bookingId}::uuid,
              rewarded_at = now(),
-             referrer_reward_paise = ${referrerRewardPaise},
-             referee_reward_paise = ${refereeRewardPaise}
+             referrer_reward_paise = ${referrerRewardPaise}
        where id = ${redemption.id}::uuid and status = 'pending'
     `);
   }

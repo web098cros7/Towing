@@ -18,6 +18,7 @@ import {
 } from '@/design';
 import { useVehicles } from '@/features/account/api/vehicles.queries';
 import { useEmergencyContacts } from '@/features/account/api/emergencyContacts.queries';
+import { useProfile, useUpdateProfile } from '@/features/account/api/profile.queries';
 import { storage } from '@/lib/storage/storage';
 import type { RootStackParamList } from '@/navigation/types';
 import { AppearanceSheet, type AppearanceChoice } from './AppearanceSheet';
@@ -69,6 +70,8 @@ export function SettingsScreen() {
 
   const vehiclesQuery = useVehicles();
   const contactsQuery = useEmergencyContacts();
+  const profileQuery = useProfile();
+  const updateProfile = useUpdateProfile();
 
   const [language, setLanguage] = useState<LanguageCode>(() => readSavedLanguage());
   const [draft, setDraft] = useState<LanguageCode>(language);
@@ -77,9 +80,22 @@ export function SettingsScreen() {
   const [appearance, setAppearance] = useState<AppearanceChoice>(() => readSavedAppearance());
   const [appearanceOpen, setAppearanceOpen] = useState(false);
 
+  // The profile's saved values win when they arrive; MMKV stays as the offline
+  // cache. A null on the profile means "unset", so the cache's value stands.
   useEffect(() => {
-    setLanguage(readSavedLanguage());
-  }, []);
+    const profile = profileQuery.data;
+    if (!profile) return;
+    // Figma 54 lists five languages; a server value outside them keeps the cached choice.
+    const saved = LANGUAGES.find((l) => l.code === profile.language)?.code;
+    if (saved) {
+      setLanguage(saved);
+      storage.set(LANGUAGE_KEY, saved);
+    }
+    if (profile.appearance) {
+      setAppearance(profile.appearance);
+      storage.set(APPEARANCE_KEY, profile.appearance);
+    }
+  }, [profileQuery.data]);
 
   const openSheet = useCallback(() => {
     setDraft(language);
@@ -90,12 +106,15 @@ export function SettingsScreen() {
     setSheetOpen(false);
   }, []);
 
-  // The app text stays English until translations exist (reported).
+  // The app text stays English until translations exist (reported). The choice is
+  // saved to the account; a failed save is silent (the cache keeps the choice and
+  // the next Done retries).
   const doneSheet = useCallback(() => {
     storage.set(LANGUAGE_KEY, draft);
     setLanguage(draft);
     setSheetOpen(false);
-  }, [draft]);
+    updateProfile.mutate({ language: draft });
+  }, [draft, updateProfile]);
 
   const vehiclesCount = vehiclesQuery.data?.length ?? null;
   const contactsCount = contactsQuery.data?.length ?? null;
@@ -265,7 +284,9 @@ export function SettingsScreen() {
       </MiSheet>
 
       {/* Appearance sheet 301:4427 — the app is light-only today (store/themeStore.ts), so the
-          choice is remembered but the app stays light until a dark theme exists (reported). */}
+          choice is remembered and saved to the account, but the app stays light until a dark
+          theme exists (reported). A failed save is silent (the cache keeps the choice and the
+          next Done retries). */}
       <AppearanceSheet
         visible={appearanceOpen}
         value={appearance}
@@ -274,6 +295,7 @@ export function SettingsScreen() {
           storage.set(APPEARANCE_KEY, c);
           setAppearance(c);
           setAppearanceOpen(false);
+          updateProfile.mutate({ appearance: c });
         }}
       />
     </MiScreen>

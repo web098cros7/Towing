@@ -12,7 +12,7 @@ export const referralSummarySchema = z.object({
   shareUrl: z.string(),
   /** Paise credited to the referrer per rewarded friend. */
   referrerRewardPaise: unsignedPaiseSchema,
-  /** Paise credited to the referee on their first paid trip. */
+  /** Paise credited to the referee when they apply a code, spendable on their first trip. */
   refereeRewardPaise: unsignedPaiseSchema,
   /** Friends who applied your code. */
   invitedCount: z.number().int().nonnegative(),

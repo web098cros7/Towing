@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -76,6 +76,54 @@ function formatPolicyDate(iso: string): string {
   return `${day} ${months[month - 1]} ${year}`;
 }
 
+/** '2026-08-10T12:34:56Z' → '10 Aug 2026'. */
+function formatUpdatedAt(iso: string): string {
+  const datePart = iso.slice(0, 10);
+  return formatPolicyDate(datePart);
+}
+
+type Section = { title: string; body: string };
+
+/**
+ * Split a page's markdown body into accordion sections at level-2 headings.
+ * A leading preamble with no heading is dropped, unless the page has no `##`
+ * headings at all — then the whole body becomes one section titled with the
+ * page title.
+ */
+function splitSections(bodyMd: string, pageTitle: string): Section[] {
+  const lines = bodyMd.split('\n');
+  const sections: Section[] = [];
+  let currentTitle: string | null = null;
+  let currentBody: string[] = [];
+
+  const flush = () => {
+    if (currentTitle !== null) {
+      sections.push({ title: currentTitle, body: currentBody.join('\n').trim() });
+    }
+    currentBody = [];
+  };
+
+  for (const line of lines) {
+    const match = /^##\s+(.*)$/.exec(line);
+    if (match) {
+      flush();
+      currentTitle = match[1].trim();
+    } else if (currentTitle !== null) {
+      currentBody.push(line);
+    }
+  }
+  flush();
+
+  if (sections.length === 0) {
+    const trimmed = bodyMd.trim();
+    if (trimmed) {
+      return [{ title: pageTitle, body: trimmed }];
+    }
+    return [];
+  }
+  return sections;
+}
+
 export function LegalScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -94,6 +142,29 @@ export function LegalScreen() {
   // accept terms must be able to read them.
   const legal = useContentPages('legal');
   const legalPages = legal.data?.items ?? [];
+
+  const privacyPage = useMemo(
+    () => legalPages.find((p) => p.slug.toLowerCase().includes('privacy')) ?? null,
+    [legalPages],
+  );
+  const termsPage = useMemo(
+    () => legalPages.find((p) => p.slug.toLowerCase().includes('terms')) ?? null,
+    [legalPages],
+  );
+
+  const privacySections: Section[] = useMemo(() => {
+    if (privacyPage) return splitSections(privacyPage.bodyMd, privacyPage.title);
+    return PRIVACY_SECTIONS;
+  }, [privacyPage]);
+
+  const termsSections: Section[] = useMemo(() => {
+    if (termsPage) return splitSections(termsPage.bodyMd, termsPage.title);
+    return TERMS_SECTIONS;
+  }, [termsPage]);
+
+  const privacyVersionLine = privacyPage
+    ? `Version ${POLICY_VERSION} · Updated ${formatUpdatedAt(privacyPage.updatedAt)}`
+    : `Version ${POLICY_VERSION} · Updated ${formatPolicyDate(POLICY_VERSION)}`;
 
   const onDownloadData = useCallback(() => {
     exportData.mutate(undefined, {
@@ -162,11 +233,11 @@ export function LegalScreen() {
           <View style={{ gap: 2 }}>
             <MiText variant="heading18">Privacy Policy</MiText>
             <MiText variant="label13" color="secondary">
-              {`Version ${POLICY_VERSION} · Updated ${formatPolicyDate(POLICY_VERSION)}`}
+              {privacyVersionLine}
             </MiText>
           </View>
           <MiFaqCard>
-            {PRIVACY_SECTIONS.map((s, i) => {
+            {privacySections.map((s, i) => {
               const key = `p${i}`;
               return (
                 <MiFaqRow
@@ -185,7 +256,7 @@ export function LegalScreen() {
         <View style={{ gap: 12 }}>
           <MiText variant="heading18">Terms of Service</MiText>
           <MiFaqCard>
-            {TERMS_SECTIONS.map((s, i) => {
+            {termsSections.map((s, i) => {
               const key = `t${i}`;
               return (
                 <MiFaqRow

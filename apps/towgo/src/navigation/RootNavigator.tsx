@@ -58,6 +58,10 @@ import {
 } from '@/features/account/components/ConsentCaptureOverlay';
 import { navLightTheme, navDarkTheme } from './navTheme';
 import { track } from '@/lib/analytics/analytics';
+import {
+  useCaptureReferralLinks,
+  useApplyPendingReferral,
+} from '@/features/referrals/pendingReferral';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -85,6 +89,11 @@ export function RootNavigator() {
   // Both are no-ops until there is a session; both are safe to mount always.
   usePushRegistration();
   useNotificationListeners();
+
+  // Referral deep links: capture any incoming invite URL, then apply the
+  // stored code once the user is signed in and past profile setup.
+  useCaptureReferralLinks();
+  useApplyPendingReferral(status === 'authenticated' && !isNew);
 
   useEffect(() => {
     hydrate();

@@ -42,6 +42,19 @@ const CATEGORIES: { key: Category; label: string }[] = [
 ];
 
 /**
+ * Category for a server FAQ, derived from its slug. First match wins; no match
+ * means the FAQ is only shown under 'All'.
+ */
+function categoryFromSlug(slug: string): 'booking' | 'payments' | 'safety' | 'account' | null {
+  const s = slug.toLowerCase();
+  if (/pay|fare|refund|wallet|coupon|price/.test(s)) return 'payments';
+  if (/safe|emergency|sos|police|insurance/.test(s)) return 'safety';
+  if (/account|profile|login|otp|delete|privacy|data/.test(s)) return 'account';
+  if (/book|cancel|track|driver|tow|trip/.test(s)) return 'booking';
+  return null;
+}
+
+/**
  * Help Center — Figma 59 · Help Center (296:3244).
  */
 export function HelpCenterScreen() {
@@ -49,16 +62,40 @@ export function HelpCenterScreen() {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<Category>('all');
-  const [open, setOpen] = useState<string | null>('f1');
+  // `undefined` = the drawn default (the first visible FAQ open); `null` = all closed.
+  const [open, setOpen] = useState<string | null | undefined>(undefined);
+
+  const content = useContentPages('faq');
+  const serverItems = content.data?.items ?? [];
+
+  const list = useMemo(() => {
+    if (serverItems.length > 0) {
+      return serverItems.map((page) => ({
+        id: page.slug,
+        question: page.title,
+        answer: page.bodyMd,
+        category: categoryFromSlug(page.slug),
+      }));
+    }
+    return faqs.map((f) => ({
+      id: f.id,
+      question: f.question,
+      answer: f.answer,
+      category: CATEGORY[f.id] ?? null,
+    }));
+  }, [serverItems]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return faqs.filter((f) => {
-      if (category !== 'all' && CATEGORY[f.id] !== category) return false;
+    return list.filter((f) => {
+      if (category !== 'all' && f.category !== category) return false;
       if (!q) return true;
       return f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q);
     });
-  }, [query, category]);
+  }, [list, query, category]);
+
+  const firstVisibleId = visible.length > 0 ? visible[0].id : null;
+  const openId = open === undefined ? firstVisibleId : open;
 
   return (
     <MiScreen edges={['top']}>
@@ -109,8 +146,8 @@ export function HelpCenterScreen() {
                 key={f.id}
                 question={f.question}
                 answer={f.answer}
-                expanded={open === f.id}
-                onToggle={() => setOpen(open === f.id ? null : f.id)}
+                expanded={openId === f.id}
+                onToggle={() => setOpen(openId === f.id ? null : f.id)}
               />
             ))}
           </MiFaqCard>

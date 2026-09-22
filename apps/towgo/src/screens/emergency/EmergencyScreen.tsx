@@ -1,9 +1,10 @@
 import React, { useCallback, useRef } from 'react';
-import { Linking, ScrollView, Share, View } from 'react-native';
+import { Alert, Linking, ScrollView, Share, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 import {
   MiInfoBanner,
   MiMapButton,
@@ -17,6 +18,7 @@ import { useEmergencyContacts } from '@/features/account/api/emergencyContacts.q
 import { useSupportContact } from '@/features/app-config/appConfig';
 import { useActiveBooking } from '@/features/bookings/api/bookings.queries';
 import { useLocationStore } from '@/features/location/locationStore';
+import { cancelSos, sendSos } from '@/features/sos/sos';
 import { useShareTrip } from '@/features/tracking/api/tracking.queries';
 import { track } from '@/lib/analytics/analytics';
 import type { RootStackParamList } from '@/navigation/types';
@@ -158,9 +160,10 @@ export function EmergencyScreen() {
 
   /**
    * Notify Emergency Contact (254:1426). No contact saved: 52 Add Emergency Contact.
-   * Otherwise the phone's messages app, addressed to the first saved contact (the API
-   * has no primary flag), pre-filled with the same link as Share. The user presses
-   * Send; no server-side notify exists.
+   * Otherwise: get a position, POST the SOS (the server alerts MiTow's safety desk
+   * AND messages the contact by SMS/WhatsApp), then confirm with an Undo that
+   * cancels within `SOS_UNDO_WINDOW_SECONDS`. If the SOS call itself fails, fall
+   * back to the phone's messages app with the same link as Share, as before.
    */
   const onNotifyContact = useCallback(async () => {
     if (busy.current) return;
@@ -174,17 +177,73 @@ export function EmergencyScreen() {
         navigation.navigate('AddEmergencyContact');
         return;
       }
-      const link = await liveLink();
-      if (!link) return;
-      // No `trip_shared` here: this only opens the messages app with a draft, and
-      // the app cannot tell whether the customer pressed Send.
-      await Linking.openURL(smsUrl(contact.phone, link.message));
+
+      // Get a position: last known first, then a fresh fix. Permission denied or
+      // no fix at all: fall back to the pickup coords the screen already reads.
+      let coords: { latitude: number; longitude: number; accuracy?: number | null } | null = null;
+      try {
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm.status === 'granted') {
+          const last = await Location.getLastKnownPositionAsync();
+          const pos = last ?? (await Location.getCurrentPositionAsync());
+          if (pos) {
+            coords = {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+            };
+          }
+        }
+      } catch {
+        // Fall through to the pickup coords below.
+      }
+      if (!coords) {
+        const { pickup } = useLocationStore.getState();
+        if (pickup.coords) {
+          coords = {
+            latitude: pickup.coords.latitude,
+            longitude: pickup.coords.longitude,
+          };
+        }
+      }
+      if (!coords) {
+        Alert.alert('Location unavailable', 'Turn on location and try again.');
+        return;
+      }
+
+      try {
+        const result = await sendSos({
+          lat: coords.latitude,
+          lng: coords.longitude,
+          accuracyM: coords.accuracy ?? undefined,
+          bookingId: tripId ?? undefined,
+        });
+        Alert.alert(
+          'Help is on the way',
+          `We've alerted ${contact.name} and MiTow's safety team with your location.`,
+          [
+            {
+              text: 'Undo',
+              style: 'destructive',
+              onPress: () => void cancelSos(result.alertId),
+            },
+            { text: 'OK' },
+          ],
+        );
+      } catch {
+        // SOS call failed: fall back to the existing SMS draft.
+        const link = await liveLink();
+        if (!link) return;
+        // No `trip_shared` here: this only opens the messages app with a draft, and
+        // the app cannot tell whether the customer pressed Send.
+        await Linking.openURL(smsUrl(contact.phone, link.message));
+      }
     } catch {
       // No failure state is drawn (no messages app, a failed mint, a timeout).
     } finally {
       busy.current = false;
     }
-  }, [contacts, liveLink, navigation, refetchContacts]);
+  }, [contacts, liveLink, navigation, refetchContacts, tripId]);
 
   return (
     <MiScreen edges={['top']}>
