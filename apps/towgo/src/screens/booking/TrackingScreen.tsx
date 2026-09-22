@@ -11,6 +11,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  CommonActions,
+  StackActions,
   useNavigation,
   usePreventRemove,
   useRoute,
@@ -36,12 +38,11 @@ import {
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
 import { useBooking, useCancelBooking } from '@/features/bookings/api/bookings.queries';
 import { openDriverChat } from '@/features/chat/openDriverChat';
+import { recordMockCodeShown } from '@/features/tracking/api/mockTripClock';
 import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import { useRevokeShare, useShareTrip } from '@/features/tracking/api/tracking.queries';
 import { BookingOtpCard } from '@/features/tracking/components/BookingOtpCard';
 import { CancelTripSheet } from '@/features/tracking/components/CancelTripSheet';
-import { PaymentSheet } from '@/features/payments/components/PaymentSheet';
-import { RatingSheet } from '@/features/payments/components/RatingSheet';
 import { ConnectionBanner } from '@/features/tracking/components/ConnectionBanner';
 import { LiveEtaCard } from '@/features/tracking/components/LiveEtaCard';
 import { StatusTimeline, hasTimelinePosition } from '@/features/tracking/components/StatusTimeline';
@@ -52,11 +53,14 @@ import {
 import { useCollectionCode } from '@/features/tracking/hooks/useCollectionCode';
 import { useLiveTracking } from '@/features/tracking/hooks/useLiveTracking';
 import { track } from '@/lib/analytics/analytics';
+import { env } from '@/lib/env';
 import { BottomSheet, haptics } from '@/motion';
 import type { RootStackParamList } from '@/navigation/types';
 import { ArrivalTimeline } from './tracking/ArrivalTimeline';
 import { CollectionCodeCard } from './tracking/CollectionCodeCard';
+import { EtaBanner } from './tracking/EtaBanner';
 import { CodeHeading, StaticTripHeading } from './tracking/TripHeadings';
+import { TripTimeline } from './tracking/TripTimeline';
 import { VehicleCard } from './tracking/VehicleCard';
 import {
   displayDriver,
@@ -66,6 +70,7 @@ import {
   vehicleModelLabel,
   vehiclePlateLabel,
   type TrackedDriverDisplay,
+  type TrackingDesign,
 } from './tracking/trackingDisplay';
 
 /**
@@ -82,24 +87,36 @@ import {
  * - Figma 24 · Collection Code (`299:3840`), an in-screen step of `arrived`:
  *   Confirm Pickup opens it (no server call: there is no customer pickup
  *   action), and Back, the system back and Android's back button return to 23.
- *   The map stays mounted throughout.
+ * - Figma 25 · Trip in Progress (`234:382`), `in_progress`: "Trip in Progress",
+ *   the three-row trip timeline and the ETA banner. Its Help chip opens 26
+ *   Emergency (owner decision); every other Help chip opens 58 Support.
  *
- * Each draws exactly what its frame draws over a live map, with Back and Help
- * over it; nothing else. The collection code, sharing, the full timeline and
- * cancel live on 20 Booking Details, one tap away on the vehicle card.
+ * The map stays mounted throughout. Each draws exactly what its frame draws over
+ * a live map, with Back and Help over it; nothing else. The collection code,
+ * sharing, the full timeline and cancel live on 20 Booking Details, one tap
+ * away on the vehicle card (18, 19, 23).
  *
- * In progress, completed, paid and cancelled keep the previous draggable sheet
- * and its content (collection code, share, timeline, cancel, payment and
- * rating) until 25 onwards are rebuilt.
+ * The trip then leaves this screen, once: `completed` REPLACES it with 27
+ * Payment, `paid` with 20 Booking Details (or goes back to the 20 it was opened
+ * from), and `cancelled` goes Home (under another screen, such as 26, it only
+ * leaves the stack).
+ *
+ * The statuses no rebuilt screen draws (`searching` and `no_drivers_found`
+ * after a driver drops out and the server re-dispatches, and `disputed`) keep
+ * the previous draggable sheet and its content (collection code, share,
+ * timeline, cancel).
  */
 
 /** 18 / 19 Safe hands banner copy, verbatim (straight apostrophe U+0027). */
 const SAFE_TITLE = "You're in safe hands";
 const SAFE_SUBTITLE = 'All our drivers are verified and insured.';
 
-/** 19 heading `254:1456`, verbatim. */
+/** 19 heading `254:1456`, verbatim; 25's `236:406` has the same title. */
 const ARRIVING_TITLE = 'Trip in Progress';
 const ARRIVING_SUBTITLE = 'Your tow truck is on the way to your location';
+
+/** 25 heading subtitle `236:408`, verbatim (no full stop). */
+const IN_TRANSIT_SUBTITLE = 'Your vehicle is being towed to the drop location';
 
 /** 23 heading `236:334`, banner `236:360` and button `236:369`, verbatim (U+0026 ampersand). */
 const ARRIVED_TITLE = 'Driver has arrived';
@@ -120,11 +137,14 @@ const ARRIVED_BOTTOM_SPACE = 35.5;
 /** 24's sheet hugs 362 of content over MiSheetPanel's 34 bottom padding (sheet 396, top 456). */
 const CODE_CONTENT_HEIGHT = 362;
 const CODE_BOTTOM_SPACE = 34;
+/** 25's sheet is a fixed 463.6 (top 388.4): the banner ends at 395.2, then 68.4 of empty sheet. */
+const IN_TRANSIT_CONTENT_HEIGHT = 395.2;
+const IN_TRANSIT_BOTTOM_SPACE = 68.4;
 /** Each bottom space includes the 34 home-indicator zone; taller system insets add to it. */
 const DESIGN_BOTTOM_INSET = 34;
 
-/** The rebuilt sheet on screen: 18, 19, 23, or 24 (a step of 23 with its own, shorter sheet). */
-type SheetDesign = 'enRoute18' | 'arriving19' | 'arrived23' | 'code24';
+/** The rebuilt sheet on screen: 18, 19, 23, 24 (a step of 23 with its own, shorter sheet) or 25. */
+type SheetDesign = 'enRoute18' | 'arriving19' | 'arrived23' | 'code24' | 'inTransit25';
 
 const PEEK_RATIO = 0.28;
 const DEFAULT_RATIO = 0.55;
@@ -145,7 +165,8 @@ export function TrackingScreen() {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
 
-  const { bookingId } = useRoute<RouteProp<RootStackParamList, 'Tracking'>>().params;
+  const route = useRoute<RouteProp<RootStackParamList, 'Tracking'>>();
+  const { bookingId } = route.params;
 
   const { data: booking } = useBooking(bookingId, { poll: true });
   /** The poll stops on a terminal status so a finished trip does not keep polling. */
@@ -155,8 +176,6 @@ export function TrackingScreen() {
   const revokeShare = useRevokeShare(bookingId);
   const cancelBooking = useCancelBooking();
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [payOpen, setPayOpen] = useState(false);
-  const [rateOpen, setRateOpen] = useState(false);
 
   const goHome = useCallback(() => navigation.popToTop(), [navigation]);
   /**
@@ -171,13 +190,55 @@ export function TrackingScreen() {
     else navigation.navigate('Tabs', { screen: 'Home' });
   }, [navigation]);
   const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
+  /**
+   * 25's Help chip opens 26 Emergency for this trip. Figma draws no entry to 26;
+   * screens are numbered in flow order, 26 follows 25, and Help is 25's only
+   * control beyond Back and the map's (owner decision).
+   */
+  const openEmergency = useCallback(
+    () => navigation.navigate('Emergency', { bookingId }),
+    [bookingId, navigation],
+  );
   const openBookingDetails = useCallback(
     () => navigation.navigate('BookingDetails', { bookingId }),
     [bookingId, navigation],
   );
 
-  const status = tracking?.status ?? booking?.status;
-  const design = trackingDesignFor(status);
+  /**
+   * The tracking payload is the fresher source (the socket patches it), but its
+   * poll stops as soon as the BOOKING reads settled (above). So a settled booking
+   * wins: a booking poll that saw `completed` before the tracking poll did would
+   * otherwise leave 25 up for good, and the hand-off to 27 would never run.
+   */
+  const status = isSettled(booking?.status)
+    ? booking?.status
+    : (tracking?.status ?? booking?.status);
+
+  /**
+   * `cancelled` draws nothing of its own: the screen goes Home at once (below),
+   * so it keeps the design that was up for that instant. `trackingDesignFor`
+   * gives it `legacy`, which would flash the old sheet and swap the live map for
+   * the legacy one (reloading it) just before Home. Before any status, 18.
+   */
+  const lastDesign = useRef<TrackingDesign>('enRoute18');
+  const statusDesign = trackingDesignFor(status);
+  if (status !== 'cancelled') lastDesign.current = statusDesign;
+  const design = status === 'cancelled' ? lastDesign.current : statusDesign;
+
+  /**
+   * 25's payload for the instant before the hand-off. On `completed` and `paid`
+   * (and a `cancelled` that lands on 25) 25 stays drawn while the next screen
+   * slides in, but the live payload no longer describes the drop leg: the ETA
+   * title and the "Est." time would turn into placeholder bars, and the map would
+   * drop the route and zoom in on the drop. So 25 keeps drawing the last
+   * `in_progress` payload.
+   */
+  const lastInProgress = useRef<BookingTracking | undefined>(undefined);
+  if (tracking?.status === 'in_progress') lastInProgress.current = tracking;
+  const tripTracking =
+    design === 'inTransit25' && status !== 'in_progress'
+      ? (lastInProgress.current ?? tracking)
+      : tracking;
 
   // --- 23 → 24 ------------------------------------------------------------
 
@@ -196,6 +257,15 @@ export function TrackingScreen() {
   const closeCode = useCallback(() => setCodeOpen(false), []);
 
   /**
+   * Test mode only: the first time 24 is up, the mock driver "types the code"
+   * and, a little later, the mock trip clock starts the tow (`in_progress`, 25).
+   * With the live API the driver does that on their own phone.
+   */
+  useEffect(() => {
+    if (showCode && env.useMocks) recordMockCodeShown(bookingId);
+  }, [bookingId, showCode]);
+
+  /**
    * Back on 24 returns to 23: the Back chevron (`closeCode`) directly, and
    * Android's back button and the iOS back swipe as a GO_BACK / POP caught here.
    * Anything else that would remove the screen (none today) closes 24 first and
@@ -206,12 +276,15 @@ export function TrackingScreen() {
    * on while 24 is up. With removal prevented, native-stack cancels the swipe
    * (`preventNativeDismiss`) and dispatches a POP, which lands here. 23 and
    * earlier keep it off.
+   *
+   * A cancelled trip is let straight through: 24 stays drawn for the instant
+   * before Home, rather than closing to 23 on the way out.
    */
   useEffect(() => {
     navigation.setOptions({ gestureEnabled: showCode });
   }, [navigation, showCode]);
   const pendingRemoval = useRef<NavigationAction | null>(null);
-  usePreventRemove(showCode, ({ data }) => {
+  usePreventRemove(showCode && status !== 'cancelled', ({ data }) => {
     if (!BACK_ACTIONS.has(data.action.type)) pendingRemoval.current = data.action;
     setCodeOpen(false);
   });
@@ -243,37 +316,89 @@ export function TrackingScreen() {
     (booking?.otpAvailable ?? false) && design === 'arrived23',
   );
 
-  /** One-shot: a dismissed payment sheet must not be thrown back on the next poll. */
+  /**
+   * The end of the trip leaves this screen, once (a poll landing before the
+   * screen has gone must not navigate a second time):
+   * - `completed` → 27 Payment, REPLACING this screen, so Back on 27 never lands
+   *   on a finished trip (no such state is drawn) (25 spec D5, owner decision);
+   * - `paid` → 20 Booking Details, also replacing it: a trip paid for elsewhere
+   *   has nothing left to track. When this trip's 20 is already right below
+   *   (Tracking opened from it), this screen goes back to it instead, so the
+   *   stack never holds two copies of 20;
+   * - `cancelled` → Home.
+   * 25 stays drawn for the instant before (`trackingDesignFor`), with the last
+   * `in_progress` payload (`tripTracking`).
+   *
+   * 25's Help pushes 26 Emergency over this screen, and the polls keep running
+   * under it. So each hand-off is aimed at THIS route and leaves 26 on top: a
+   * screen's `replace` / `goBack` otherwise act on the FOCUSED route, because
+   * the stack router reads the action's `source` only when its `target` names
+   * the navigator (`atThisRoute`). A cancel removes only this route while
+   * another screen is on top, so the customer is not pulled off it; on screen,
+   * it goes Home.
+   */
   const settledOnce = useRef(false);
+
+  const atThisRoute = useCallback(
+    (action: NavigationAction): NavigationAction => ({
+      ...action,
+      source: route.key,
+      target: navigation.getState().key,
+    }),
+    [navigation, route.key],
+  );
 
   useEffect(() => {
     if (!status || settledOnce.current) return;
 
     if (status === 'completed') {
       settledOnce.current = true;
-      setPayOpen(true);
+      navigation.dispatch(atThisRoute(StackActions.replace('Payment', { bookingId })));
       return;
     }
 
     if (status === 'paid') {
       settledOnce.current = true;
-      setRateOpen(true);
+      const { routes } = navigation.getState();
+      const below = routes[routes.findIndex((r) => r.key === route.key) - 1];
+      const detailsBelow =
+        below?.name === 'BookingDetails' &&
+        (below.params as RootStackParamList['BookingDetails'] | undefined)?.bookingId === bookingId;
+      navigation.dispatch(
+        atThisRoute(
+          detailsBelow
+            ? CommonActions.goBack()
+            : StackActions.replace('BookingDetails', { bookingId }),
+        ),
+      );
       return;
     }
 
     if (status === 'cancelled') {
       settledOnce.current = true;
-      goHome();
+      if (navigation.isFocused()) {
+        goHome();
+        return;
+      }
+      navigation.dispatch((s) => {
+        const routes = s.routes.filter((r) => r.key !== route.key);
+        return CommonActions.reset({ ...s, routes, index: routes.length - 1 });
+      });
     }
-  }, [goHome, status]);
+  }, [atThisRoute, bookingId, goHome, navigation, route.key, status]);
 
   const onShare = useCallback(async () => {
     try {
       const link = await shareTrip.mutateAsync();
-      await Share.share({ message: `Follow my tow live: ${link.url}`, url: link.url });
-      track('trip_shared');
+      const result = await Share.share({
+        message: `Follow my tow live: ${link.url}`,
+        url: link.url,
+      });
+      // Counted only when the sheet reports a share: iOS resolves a dismissed sheet
+      // with `dismissedAction` (Android always reports `sharedAction`).
+      if (result.action === Share.sharedAction) track('trip_shared');
     } catch {
-      // A dismissed share sheet rejects on iOS; a failed mint lives on the mutation.
+      // A failed mint lives on the mutation; a share sheet that fails to open draws nothing.
     }
   }, [shareTrip]);
 
@@ -351,6 +476,8 @@ export function TrackingScreen() {
         return ARRIVED_CONTENT_HEIGHT + bottomSpace(ARRIVED_BOTTOM_SPACE);
       case 'code24':
         return CODE_CONTENT_HEIGHT + bottomSpace(CODE_BOTTOM_SPACE);
+      case 'inTransit25':
+        return IN_TRANSIT_CONTENT_HEIGHT + bottomSpace(IN_TRANSIT_BOTTOM_SPACE);
       default:
         return SHEET_CONTENT_HEIGHT + bottomSpace(EN_ROUTE_BOTTOM_SPACE);
     }
@@ -398,13 +525,15 @@ export function TrackingScreen() {
         ? 'arriving'
         : design === 'arrived23'
           ? 'arrived'
-          : 'legacy';
+          : design === 'inTransit25'
+            ? 'inTransit'
+            : 'legacy';
 
   /**
-   * 18, 19 and 23 share one FixedSheet instance, so the blocks they share carry
-   * STABLE KEYS: without them React matches children by position, and a block
-   * that moves down a slot (19's Safe hands banner, below the timeline 18 does
-   * not have) would remount on the 18 → 19 switch.
+   * 18, 19, 23 and 25 share one FixedSheet instance, so the blocks they share
+   * carry STABLE KEYS: without them React matches children by position, and a
+   * block that moves down a slot (19's Safe hands banner, below the timeline 18
+   * does not have) would remount on the 18 → 19 switch.
    */
   const driverRow = (
     <DriverRow key="driver" driver={driver} onCall={onCall} onMessage={onMessage} />
@@ -423,7 +552,7 @@ export function TrackingScreen() {
       <StatusBar style="dark" />
 
       <TrackingMap
-        tracking={tracking}
+        tracking={tripTracking}
         presence={presence}
         variant={mapVariant}
         sheetTop={sheetTop}
@@ -431,7 +560,7 @@ export function TrackingScreen() {
         driverChipLabel={firstName ? `${firstName} is here` : null}
       />
 
-      {/* Back (18 `229:269`, 19 `254:1516`, 23 `236:373`, 24 `299:4110`): Map Control 46 at (16, 49). */}
+      {/* Back (18 `229:269`, 19 `254:1516`, 23 `236:373`, 24 `299:4110`, 25 `236:460`): Map Control 46 at (16, 49). */}
       <MiMapButton
         icon="chevron-left"
         size={46}
@@ -440,11 +569,12 @@ export function TrackingScreen() {
         style={{ position: 'absolute', left: 16, top: controlsTop }}
       />
       {/*
-        Help: 18, 19 and 23 draw it at (284.8, 48.5), 13.2 from the right edge;
-        24 `299:4116` at (285, 49), 13 from it.
+        Help: 18, 19, 23 and 25 (`236:466`) draw it at (284.8, 48.5), 13.2 from
+        the right edge; 24 `299:4116` at (285, 49), 13 from it. 25's opens 26
+        Emergency, every other one 58 Support.
       */}
       <MiHelpChip
-        onPress={openSupport}
+        onPress={design === 'inTransit25' ? openEmergency : openSupport}
         style={
           showCode
             ? { position: 'absolute', right: 13, top: controlsTop }
@@ -521,6 +651,28 @@ export function TrackingScreen() {
             style={{ marginTop: 5.4, marginRight: -0.4 }}
           />
         </FixedSheet>
+      ) : design === 'inTransit25' ? (
+        /*
+          25's sheet `236:403`: fixed 463.6 as drawn, padding 13.7 / 20.4 / 0 / 21.6,
+          gap 18; the 68.4 of empty sheet under the banner (the home-indicator
+          zone included) is its bottom space.
+        */
+        <FixedSheet
+          onLayout={onSheetLayout}
+          paddingTop={13.7}
+          paddingBottom={bottomSpace(IN_TRANSIT_BOTTOM_SPACE)}
+          gap={18}
+        >
+          <Grabber key="grabber" />
+          <StaticTripHeading key="heading" title={ARRIVING_TITLE} subtitle={IN_TRANSIT_SUBTITLE} />
+          <TripTimeline
+            key="trip-timeline"
+            tracking={tripTracking}
+            pickupAddress={booking?.originLabel}
+            dropAddress={booking?.destinationLabel}
+          />
+          <EtaBanner key="eta" tracking={tripTracking} />
+        </FixedSheet>
       ) : showCode ? (
         /*
           24's sheet `299:4128` is exactly MiSheetPanel's defaults: handle 36 × 5,
@@ -556,6 +708,7 @@ export function TrackingScreen() {
         </BottomSheet>
       )}
 
+      {/* The legacy sheet's "Cancel trip". */}
       <CancelTripSheet
         bookingId={bookingId}
         visible={cancelOpen}
@@ -563,32 +716,12 @@ export function TrackingScreen() {
         onConfirm={onCancelConfirm}
         isCancelling={cancelBooking.isPending}
       />
-
-      <PaymentSheet
-        bookingId={bookingId}
-        visible={payOpen}
-        onDismiss={() => setPayOpen(false)}
-        onPaid={() => {
-          setPayOpen(false);
-          setRateOpen(true);
-        }}
-      />
-
-      <RatingSheet
-        bookingId={bookingId}
-        driverName={tracking?.driver?.name ?? null}
-        visible={rateOpen}
-        onDismiss={() => {
-          setRateOpen(false);
-          goHome();
-        }}
-      />
     </View>
   );
 }
 
 /**
- * The fixed, non-draggable sheet of 18, 19 and 23: pinned to the bottom,
+ * The fixed, non-draggable sheet of 18, 19, 23 and 25: pinned to the bottom,
  * surface/page, top corners 24, MiTow/Elevation/Sheet, left 21.6 / right 20.4.
  * Its height is its content, measured for the map and the map controls.
  */
@@ -629,7 +762,7 @@ function FixedSheet({
   );
 }
 
-/** Handle / Grabber (18 `226:318`, 19 `254:1455`, 23 `236:333`): 50 × 5, radius 2.5, border/handle, centred. */
+/** Handle / Grabber (18 `226:318`, 19 `254:1455`, 23 `236:333`, 25 `236:405`): 50 × 5, radius 2.5, border/handle, centred. */
 function Grabber() {
   return (
     <View style={{ height: 5, alignItems: 'center' }}>
@@ -685,8 +818,10 @@ function SafeHandsBanner({ height, paddingLeft }: { height: number; paddingLeft:
 }
 
 /**
- * The pre-redesign sheet for in progress / completed / paid, kept until 25
- * onwards are rebuilt. Its shared blocks use the rebuilt components.
+ * The pre-redesign sheet, kept for the statuses no rebuilt screen draws: a
+ * re-dispatch after the driver drops out (`searching`, then possibly
+ * `no_drivers_found`) and `disputed` (data gap). Its shared blocks use the
+ * rebuilt components.
  */
 function LegacySheetContent({
   bookingId,

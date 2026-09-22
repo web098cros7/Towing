@@ -4,8 +4,8 @@
 # the same "mocks-on Maestro flows retained as hermetic CI path" rule Phase 12
 # established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
 #
-# What it proves: the bell — documented as a no-op until Phase 13 — opens the
-# centre, unread rows render, and "mark all read" clears the badge.
+# What it proves: the Profile tab's Notifications row opens the centre, unread
+# rows render, and "mark all read" clears the badge.
 #
 # ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
 # Maestro flow in this repo has ever run. Reviewed against the screens as
@@ -14,33 +14,30 @@ appId: in.mitow.customer
 ---
 - runFlow: customer-login.yaml
 
-# The bell lives in `AppHeader`, which the REDESIGNED Home NO LONGER RENDERS —
-# Figma 08 replaced that shell with a full-bleed map and a fixed sheet, and the
-# design puts no bell on Home. The Support tab that replaced Services pushes 58
-# Support, which has no bell either, and Profile hides it, so Bookings is the
-# tab the centre is reached from.
-- tapOn: 'Bookings'
-- assertVisible: 'My Bookings'
+# The redesigned Home (Figma 08) and Bookings (Figma 33) draw no bell at all,
+# so the centre is no longer reached from Bookings. The redesigned Profile tab
+# (Figma 38) is the way in, via its Notifications menu row.
+- tapOn: 'Profile'
+- assertVisible: 'Profile'
 
-# Its accessibility label switches to "Notifications, unread" when the dot is
-# showing, which is the mock fixture's default state (2 of 3 rows unread).
-- assertVisible: "Notifications, unread"
-- tapOn: "Notifications, unread"
+# The Notifications menu row is one accessible element whose label contains
+# both its title and subtitle.
+- tapOn: '.*Manage alerts and updates.*'
 
-- assertVisible: "Notifications"
-# Each row is one accessible element labelled "[Unread. ]<title>. <body>", so
-# the titles are matched with `.*` (see customer-login.yaml).
+- assertVisible: 'Notifications'
+# Each row is one accessible element labelled
+# "[Unread. ]<title>. <body>. <time>", so the titles are matched with `.*`
+# (see customer-login.yaml).
 - assertVisible: '.*Your driver is verified.*'
 - assertVisible: '.*Payment received.*'
 
 # The visible "Mark all read" carries the accessibilityLabel below.
-- tapOn: "Mark all notifications as read"
+- tapOn: 'Mark all notifications as read'
 
 # The affordance disappears with the last unread row — the same condition that
-# hides the bell's dot.
-- assertNotVisible: "Mark all notifications as read"
+# hides the badge.
+- assertNotVisible: 'Mark all notifications as read'
 
-- tapOn: "Go back"
-- assertVisible: 'My Bookings'
-# Back on Bookings, the bell is labelled plain "Notifications" again.
-- assertVisible: "Notifications"
+- tapOn: 'Go back'
+# Back on Profile, the Notifications row is still there.
+- assertVisible: '.*Manage alerts and updates.*'

@@ -27,6 +27,7 @@ import {
 import {
   ARRIVING_TRUCK_CALLOUT,
   EN_ROUTE_TRUCK_CALLOUT,
+  IN_TRANSIT_TRUCK_CALLOUT,
   ROUTE_START_PT,
   ROUTE_STROKE,
   ROUTE_STUB_END_PT,
@@ -45,8 +46,8 @@ import { useAnimatedPosition } from '../hooks/useAnimatedPosition';
 /**
  * The live tracking map.
  *
- * One native map serves Figma 18, 19, 23 and 24, so moving from one to the next
- * never reloads it (23 → 24 → 23 keeps the map mounted, as the owner asked):
+ * One native map serves Figma 18, 19, 23, 24 and 25, so moving from one to the
+ * next never reloads it (23 → 24 → 23 keeps the map mounted, as the owner asked):
  *
  * - `variant="enRoute"` is Figma 18 · Driver En Route's map (`229:235`), drawn
  *   on the real maps SDK: a black icon/map-pin on the pickup, the solid #0B0C0E
@@ -63,12 +64,18 @@ import { useAnimatedPosition } from '../hooks/useAnimatedPosition';
  *   the pickup. No truck, route or pin. Recenter only; 19.3 under the sheet.
  * - `variant="code"` is Figma 24 · Collection Code: only the "{first name} is
  *   here" chip on the driver. No controls; 24 under the sheet.
- * - `variant="legacy"` keeps the pre-redesign map for the statuses 25 onwards
- *   will redraw (in progress, completed): theme markers, pickup and drop, and a
- *   re-center chip while following is paused.
+ * - `variant="inTransit"` is Figma 25 · Trip in Progress. 25 draws a Placeholder
+ *   too, and the owner's 19 ruling carries over: 18's truck and route, but to
+ *   the DROP, with the pin on the drop and 25's "On the way to / drop location"
+ *   callout (126 wide) riding on the truck. Locate me and Recenter as 25 places
+ *   them; the map stops 21.6 below the sheet's top.
+ * - `variant="legacy"` keeps the pre-redesign map for the statuses no rebuilt
+ *   screen draws (a re-dispatch after a driver drops out, disputed): theme
+ *   markers, pickup and drop, and a re-center chip while following is paused.
  */
 
-export type TrackingMapVariant = 'enRoute' | 'arriving' | 'arrived' | 'code' | 'legacy';
+export type TrackingMapVariant =
+  'enRoute' | 'arriving' | 'arrived' | 'code' | 'inTransit' | 'legacy';
 
 export interface TrackingMapProps {
   tracking: BookingTracking | undefined;
@@ -91,13 +98,18 @@ const MAP_UNDER_SHEET: Record<LiveVariant, number> = {
   arriving: 30, // 407.9 − 377.9
   arrived: 19.3, // 400 − 380.7
   code: 24, // 480 − 456
+  inTransit: 21.6, // 410 − 388.4
 };
 
 /**
- * A frame with the truck on it (18, 19): where its controls sit, and where the
- * camera puts the two ends of the trip.
+ * A frame with the truck on it (18, 19, 25): where its controls sit, and where
+ * the camera puts the two ends of the trip.
  */
 type TruckDesign = {
+  /** The leg's end, where the pin sits and the route runs to: the pickup (18, 19) or the drop (25). */
+  destination: 'pickup' | 'drop';
+  /** The pin's accessibility label (not copy). */
+  pinLabel: string;
   /** The drawn map frame's height on the 852 frame, and how far it runs under the sheet. */
   frameHeight: number;
   underSheet: number;
@@ -118,6 +130,8 @@ type TruckDesign = {
  * 50 at (327, 251), Recenter `229:288` 50 at (325.1, 311.7).
  */
 const EN_ROUTE_DESIGN: TruckDesign = {
+  destination: 'pickup',
+  pinLabel: 'Your location',
   frameHeight: 440,
   underSheet: MAP_UNDER_SHEET.enRoute,
   truck: { x: 92, y: 214 },
@@ -137,6 +151,8 @@ const EN_ROUTE_DESIGN: TruckDesign = {
  * (327, 242), Recenter `254:1535` 50 at (327, 304).
  */
 const ARRIVING_DESIGN: TruckDesign = {
+  destination: 'pickup',
+  pinLabel: 'Your location',
   frameHeight: 407.9,
   underSheet: MAP_UNDER_SHEET.arriving,
   truck: { x: 135 - 19.7, y: 109 + 82.8 },
@@ -148,6 +164,26 @@ const ARRIVING_DESIGN: TruckDesign = {
 };
 
 /**
+ * Figma 25 draws no truck or pin either, only the Drop callout at (98.6, 126.1),
+ * so the truck centre goes where that places it with 18's offset: (78.9, 208.9).
+ * The pin is on the DROP and keeps 18's height above the sheet (52.3) and 18's
+ * x: 388.4 − 52.3 = 336.1. The map frame is 410 tall. Locate me `236:474` is 50
+ * at (327.9, 248), Recenter `236:479` 50 at (327.9, 309.5): right 15.1.
+ */
+const IN_TRANSIT_DESIGN: TruckDesign = {
+  destination: 'drop',
+  pinLabel: 'Drop location',
+  frameHeight: 410,
+  underSheet: MAP_UNDER_SHEET.inTransit,
+  truck: { x: 98.6 - 19.7, y: 126.1 + 82.8 },
+  pinTip: { x: 260.5, y: 388.4 - (410.8 - 358.5) },
+  columnX: 327.9,
+  callout: IN_TRANSIT_TRUCK_CALLOUT,
+  locate: { right: 15.1, above: 140.4 },
+  recenter: { right: 15.1, above: 78.9 },
+};
+
+/**
  * Camera framing: fitting truck, pin and route into the rectangle between the
  * drawn truck centre and pin tip reproduces the drawn layout whenever the
  * route's box has the drawn proportions, and keeps both ends there otherwise
@@ -155,11 +191,11 @@ const ARRIVING_DESIGN: TruckDesign = {
  *
  * The drawn arrangement has the truck up and to the left of the pin. When the
  * truck is to the pin's RIGHT, the same insets would push its callout (141.5 to
- * the right of the truck centre on 18, 130.7 on 19) under the control column
- * and off the screen, and the design requires the callout fully visible left of
- * it. So the truck is held at x ≤ column − reach (18: right inset 209.4; 19:
- * 196.7) and the pin tip keeps its 15.5 half-width clear of the 16 side margin
- * (left inset 32).
+ * the right of the truck centre on 18, 130.7 on 19, 145.7 on 25) under the
+ * control column and off the screen, and the design requires the callout fully
+ * visible left of it. So the truck is held at x ≤ column − reach (18: right
+ * inset 209.4; 19: 196.7; 25: 210.8) and the pin tip keeps its 15.5 half-width
+ * clear of the 16 side margin (left inset 32).
  *
  * The bottom inset is measured from the map frame's bottom. Google Maps on
  * Android ADDS the fit padding to the map padding (`appendMapPadding`), Apple
@@ -190,9 +226,14 @@ const FIT_PADDING = {
     truckLeft: fitPaddingFor(ARRIVING_DESIGN, false),
     truckRight: fitPaddingFor(ARRIVING_DESIGN, true),
   },
+  inTransit: {
+    truckLeft: fitPaddingFor(IN_TRANSIT_DESIGN, false),
+    truckRight: fitPaddingFor(IN_TRANSIT_DESIGN, true),
+  },
 };
 const EN_ROUTE_MAP_PADDING = { bottom: MAP_UNDER_SHEET.enRoute };
 const ARRIVING_MAP_PADDING = { bottom: MAP_UNDER_SHEET.arriving };
+const IN_TRANSIT_MAP_PADDING = { bottom: MAP_UNDER_SHEET.inTransit };
 
 /**
  * 23: the camera puts the driver where the callout's tail tip is drawn,
@@ -217,9 +258,17 @@ export function TrackingMap(props: TrackingMapProps) {
   );
 }
 
-function useActiveRoute(tracking: BookingTracking | undefined): MapCoordinate[] | null {
+/**
+ * The server's road route for a leg: `routePolyline` to the pickup,
+ * `routeDropPolyline` (pickup → drop, planned once at assignment) to the drop.
+ * Without a leg, the one the status says is active.
+ */
+function useActiveRoute(
+  tracking: BookingTracking | undefined,
+  leg: 'pickup' | 'drop' = tracking?.status === 'in_progress' ? 'drop' : 'pickup',
+): MapCoordinate[] | null {
   const encoded = tracking
-    ? tracking.status === 'in_progress'
+    ? leg === 'drop'
       ? tracking.routeDropPolyline
       : tracking.routePolyline
     : null;
@@ -256,18 +305,24 @@ function LiveTripMap({
   const { width: mapWidth } = useWindowDimensions();
   const [ready, setReady] = useState(false);
   /**
-   * The step the customer paused camera following in (by panning 18, 19 or 23,
-   * or Locate me; 24 never pauses). Following is per step: each step opens
+   * The step the customer paused camera following in (by panning 18, 19, 23 or
+   * 25, or Locate me; 24 never pauses). Following is per step: each step opens
    * following, and the camera effect drops the pause when a step opens.
    */
   const [pausedIn, setPausedIn] = useState<LiveVariant | null>(null);
   const following = pausedIn !== variant;
   const animated = useAnimatedPosition(tracking?.position ?? null);
-  const serverRoute = useActiveRoute(tracking);
 
-  /** 18 and 19 carry the truck, the route and the pin; 23 and 24 carry neither. */
+  /** 18, 19 and 25 carry the truck, the route and the pin; 23 and 24 carry neither. */
   const truckDesign =
-    variant === 'enRoute' ? EN_ROUTE_DESIGN : variant === 'arriving' ? ARRIVING_DESIGN : null;
+    variant === 'enRoute'
+      ? EN_ROUTE_DESIGN
+      : variant === 'arriving'
+        ? ARRIVING_DESIGN
+        : variant === 'inTransit'
+          ? IN_TRANSIT_DESIGN
+          : null;
+  const serverRoute = useActiveRoute(tracking, truckDesign?.destination ?? 'pickup');
 
   const pickupLat = tracking?.pickup.lat;
   const pickupLng = tracking?.pickup.lng;
@@ -279,6 +334,22 @@ function LiveTripMap({
     [pickupLat, pickupLng],
   );
 
+  const dropLat = tracking?.drop?.lat;
+  const dropLng = tracking?.drop?.lng;
+  const drop = useMemo<MapCoordinate | null>(
+    () =>
+      dropLat === undefined || dropLng === undefined
+        ? null
+        : { latitude: dropLat, longitude: dropLng },
+    [dropLat, dropLng],
+  );
+
+  /**
+   * The truck frames' pin: the pickup on 18 and 19, the drop on 25. A booking
+   * with no drop (roadside help) has none on 25, so no pin and no route (data gap).
+   */
+  const destination = truckDesign?.destination === 'drop' ? drop : pickup;
+
   const fixLat = tracking?.position?.lat;
   const fixLng = tracking?.position?.lng;
   const fix = useMemo<MapCoordinate | null>(
@@ -289,13 +360,15 @@ function LiveTripMap({
 
   /**
    * The route is always drawn truck → pin, as the design draws it: the server's
-   * road route, or a straight line from the driver's fix to the pickup when the
-   * server has none. Solid in both cases; the design draws no dashed state.
+   * road route for the leg, or a straight line from the driver's fix to the pin
+   * when the server has none. Solid in both cases; the design draws no dashed
+   * state.
    */
   const route = useMemo<MapCoordinate[] | null>(() => {
+    if (!destination) return null;
     if (serverRoute) return serverRoute;
-    return fix && pickup ? [fix, pickup] : null;
-  }, [fix, pickup, serverRoute]);
+    return fix ? [fix, destination] : null;
+  }, [destination, fix, serverRoute]);
 
   const [initialRegion] = useState<MapRegion | undefined>(() =>
     tracking
@@ -364,15 +437,15 @@ function LiveTripMap({
     const out: MapOverlay[] = [];
 
     if (truckDesign) {
-      if (pickup) {
+      if (destination) {
         out.push({
           key: 'destination',
-          coordinate: pickup,
+          coordinate: destination,
           view: pinView,
           // Tip at (15.5, 29.3) of the 31 box (vector at 5.17, 1.94, 20.67 × 27.37).
           anchor: { x: 0.5, y: 0.945 },
           zIndex: 1,
-          accessibilityLabel: 'Your location',
+          accessibilityLabel: truckDesign.pinLabel,
         });
       }
       if (truckLat !== undefined && truckLng !== undefined) {
@@ -429,6 +502,7 @@ function LiveTripMap({
     return out;
   }, [
     arrivedCalloutView,
+    destination,
     driverChipLabel,
     driverHereView,
     driverPoint,
@@ -462,6 +536,7 @@ function LiveTripMap({
   const mapPadding = useMemo(() => {
     if (variant === 'enRoute') return EN_ROUTE_MAP_PADDING;
     if (variant === 'arriving') return ARRIVING_MAP_PADDING;
+    if (variant === 'inTransit') return IN_TRANSIT_MAP_PADDING;
     if (variant === 'arrived') {
       return {
         top: Math.max(0, Math.round(sheetTop - 2 * ARRIVED_FOCUS.aboveSheet)),
@@ -477,24 +552,24 @@ function LiveTripMap({
 
   // --- Camera ---------------------------------------------------------------
 
-  const truckRightOfPin = fix !== null && pickup !== null && fix.longitude > pickup.longitude;
-  const fitPadding =
+  const truckRightOfPin =
+    fix !== null && destination !== null && fix.longitude > destination.longitude;
+  const fitPaddings =
     variant === 'arriving'
-      ? truckRightOfPin
-        ? FIT_PADDING.arriving.truckRight
-        : FIT_PADDING.arriving.truckLeft
-      : truckRightOfPin
-        ? FIT_PADDING.enRoute.truckRight
-        : FIT_PADDING.enRoute.truckLeft;
+      ? FIT_PADDING.arriving
+      : variant === 'inTransit'
+        ? FIT_PADDING.inTransit
+        : FIT_PADDING.enRoute;
+  const fitPadding = truckRightOfPin ? fitPaddings.truckRight : fitPaddings.truckLeft;
 
   /** Truck, pin and the whole route (not the trimmed polyline), from the latest fix. */
   const fitCoordinates = useMemo<MapCoordinate[]>(() => {
     const out: MapCoordinate[] = [];
     if (fix) out.push(fix);
-    if (pickup) out.push(pickup);
+    if (destination) out.push(destination);
     if (route) out.push(...route);
     return out;
-  }, [fix, pickup, route]);
+  }, [destination, fix, route]);
 
   /** 23 and 24 centre on the driver's latest fix, or on the pickup before one. */
   const focus = fix ?? pickup;
@@ -646,7 +721,8 @@ function LiveTripMap({
 
       {/*
         Locate me: 18 `229:283` 50 at (327, 251), right 16 and 159.8 above the sheet;
-        19 `254:1530` 50 at (327, 242), right 16 and 135.9 above the sheet.
+        19 `254:1530` 50 at (327, 242), right 16 and 135.9 above the sheet;
+        25 `236:474` 50 at (327.9, 248), right 15.1 and 140.4 above the sheet.
       */}
       {truckDesign ? (
         <MiMapButton
@@ -664,7 +740,8 @@ function LiveTripMap({
       {/*
         Recenter: 18 `229:288` 50 at (325.1, 311.7), right 17.9 and 99.1 above the sheet;
         19 `254:1535` 50 at (327, 304), right 16 and 73.9 above the sheet;
-        23 `236:387` 50 at (326.3, 309.5), right 16.7 and 71.2 above the sheet.
+        23 `236:387` 50 at (326.3, 309.5), right 16.7 and 71.2 above the sheet;
+        25 `236:479` 50 at (327.9, 309.5), right 15.1 and 78.9 above the sheet.
         24 draws none.
       */}
       {truckDesign ? (

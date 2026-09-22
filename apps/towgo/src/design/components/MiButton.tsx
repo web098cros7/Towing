@@ -39,6 +39,15 @@ export type MiButtonProps = {
   trailingIcon?: MiLineIconName | IconComponent;
   /** Leading icon ("Show leading icon" = true), e.g. 58's 'message'. */
   leadingIcon?: MiLineIconName;
+  /**
+   * A leading element of your own, drawn BEFORE the label exactly where `leadingIcon` goes.
+   * For a leading glyph that is not a line icon — 35's "Download Receipt" leads with the
+   * `download` COLOUR icon at 22, and `MiColorIcon` is a different registry.
+   *
+   * Mutually exclusive with `leadingIcon`; that one wins if both are given. Additive: omitting
+   * both renders exactly as before.
+   */
+  leadingSlot?: React.ReactNode;
   /** Size of the leading icon box. Default 22 (the master's Leading icon slot). */
   leadingIconSize?: number;
   /** Size of the trailing icon box. Default 24. */
@@ -135,6 +144,7 @@ export function MiButton({
   tone = 'dark',
   trailingIcon,
   leadingIcon,
+  leadingSlot,
   leadingIconSize = 22,
   trailingIconSize = 24,
   height = mitowLayout.controlHeight,
@@ -203,7 +213,9 @@ export function MiButton({
         <>
           {leadingIcon ? (
             <MiLineIcon name={leadingIcon} size={leadingIconSize} color={spec.fg} />
-          ) : null}
+          ) : (
+            (leadingSlot ?? null)
+          )}
           <MiText variant="strong16" color={spec.labelColor} numberOfLines={1}>
             {label}
           </MiText>

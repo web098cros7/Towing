@@ -1,17 +1,27 @@
 import React from 'react';
-import { View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useTheme } from '@towing/theme';
-import { EmptyState, ErrorState, Skeleton, Text } from '@towing/ui';
-import { Wallet } from '@/icons';
-import { SubScreen } from '@/components/SubScreen';
-import { SettingsList } from '@/components/SettingsList';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ErrorState } from '@towing/ui';
+import {
+  MiScreen,
+  MiText,
+  MiNavBar,
+  MiMenuCard,
+  MiMenuRow,
+  mitowColors,
+  mitowLayout,
+  mitowRadii,
+} from '@/design';
+import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { useWallet, useWalletTransactions } from '@/features/payments/api/payments.queries';
-import { formatPaise, formatRelativeTime } from '@/utils/format';
+import { formatPaise } from '@/utils/format';
 import type { WalletTransactionDto } from '@towing/api-contracts';
+import type { RootStackParamList } from '@/navigation/types';
 
 /**
- * §9.1.9's "in-app wallet balance".
+ * Figma 44 · Wallet (295:3093).
  *
  * READ-ONLY, and deliberately so. There is no top-up: adding money to a wallet
  * is a second payment flow with its own capture, its own idempotency and its
@@ -25,84 +35,146 @@ import type { WalletTransactionDto } from '@towing/api-contracts';
  * survived undetected until this phase.
  */
 export function WalletScreen() {
-  const navigation = useNavigation();
-  const theme = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
 
   const wallet = useWallet();
   const transactions = useWalletTransactions();
 
+  const rows = transactions.data ?? [];
+  const hasRows = rows.length > 0;
+
   return (
-    <SubScreen title="Wallet" onBack={() => navigation.goBack()}>
-      <View style={{ gap: 24 }}>
-        <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-          <Text color="secondary" style={{ fontSize: 13, lineHeight: 18 }}>
-            Balance
-          </Text>
+    <MiScreen edges={['top']}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: mitowLayout.sideMargin,
+          gap: mitowLayout.blockGap,
+          paddingBottom: Math.max(insets.bottom, 34),
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 295:3093 — Nav bar */}
+        <MiNavBar title="MiTow Wallet" trailing="none" onBack={() => navigation.goBack()} />
+
+        {/* 295:3344 — Balance card */}
+        <View style={styles.balanceCard}>
+          <MiText variant="bodyM15" color="onDark">
+            Available balance
+          </MiText>
           {wallet.isPending ? (
-            <Skeleton width={160} height={44} radius={10} />
+            <SlotPlaceholder variant="amount44" width={109} />
           ) : (
-            <Text weight="bold" tabular style={{ fontSize: 40, lineHeight: 48, marginTop: 4 }}>
+            <MiText variant="amount44" color="onDark">
               {formatPaise(wallet.data?.balancePaise ?? 0)}
-            </Text>
+            </MiText>
           )}
-          <Text color="tertiary" style={{ fontSize: 12, lineHeight: 17, marginTop: 6 }}>
-            Applied automatically to your next trip
-          </Text>
+          {/* 295:3347 — Auto-apply pill */}
+          <View style={styles.autoApplyPill}>
+            <MiText variant="label13">Applied automatically to your next trip</MiText>
+          </View>
         </View>
 
-        {transactions.isError ? (
+        {/* 295:3349 — Transactions */}
+        {transactions.isError && !hasRows ? (
           <ErrorState title="Couldn't load your wallet" onRetry={() => transactions.refetch()} />
-        ) : transactions.isPending ? (
-          <Skeleton width="100%" height={180} radius={16} />
-        ) : transactions.data && transactions.data.length > 0 ? (
-          <SettingsList>
-            {transactions.data.map((entry) => (
-              <TransactionRow key={entry.id} entry={entry} />
-            ))}
-          </SettingsList>
-        ) : (
-          <EmptyState
-            icon={Wallet}
-            title="Nothing here yet"
-            body="Refunds and credits will appear in this list."
-          />
-        )}
-      </View>
-    </SubScreen>
+        ) : hasRows ? (
+          <View style={{ gap: mitowLayout.headingGap }}>
+            <MiText variant="heading18">Transactions</MiText>
+            <MiMenuCard radius={16} paddingVertical={4}>
+              {rows.map((entry) => (
+                <TransactionRow key={entry.id} entry={entry} />
+              ))}
+            </MiMenuCard>
+          </View>
+        ) : null}
+
+        {/* 295:3407 — Footer note */}
+        <MiText variant="bodyS14" color="secondary">
+          Refunds and credits appear here and are applied automatically to your next trip.
+        </MiText>
+      </ScrollView>
+    </MiScreen>
   );
 }
 
 function TransactionRow({ entry }: { entry: WalletTransactionDto }) {
-  const theme = useTheme();
   const credit = entry.amountPaise > 0;
+  const isRefund = entry.type.toLowerCase().includes('refund');
+
+  const icon =
+    isRefund && credit
+      ? ({ color: 'refund' } as const)
+      : entry.amountPaise < 0
+        ? ({ color: 'tow-truck' } as const)
+        : ({ color: 'gift' } as const);
+
+  const title = (() => {
+    if (entry.type === 'adjustment' && credit) return 'Goodwill credit';
+    if (isRefund && credit) return 'Refund · cancelled booking';
+    if (entry.amountPaise < 0 && !isRefund) return 'Used on trip';
+    return entry.reason ?? entry.type;
+  })();
+
+  const dateLabel = dayMonth(entry.createdAt);
+  const subtitle =
+    entry.reason && entry.reason !== title ? `${dateLabel} · ${entry.reason}` : dateLabel;
+
+  const valueText = credit
+    ? `+${formatPaise(entry.amountPaise)}`
+    : `−${formatPaise(Math.abs(entry.amountPaise))}`;
 
   return (
-    <View
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }}
-      accessibilityLabel={`${entry.reason ?? entry.type}, ${formatPaise(entry.amountPaise)}`}
-    >
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 15, lineHeight: 20 }} numberOfLines={1}>
-          {/* The ledger's own reason, which §14.3 requires to carry the band. */}
-          {entry.reason ?? entry.type}
-        </Text>
-        <Text color="tertiary" style={{ fontSize: 12, lineHeight: 17 }}>
-          {formatRelativeTime(entry.createdAt)}
-        </Text>
-      </View>
-
-      <Text
-        weight="medium"
-        tabular
-        style={{
-          fontSize: 15,
-          lineHeight: 20,
-          color: credit ? theme.colors.success : theme.colors.textPrimary,
-        }}
-      >
-        {/* SIGNED. `formatPaise` renders the minus — it did not before Phase 19. */}
-        {credit ? `+${formatPaise(entry.amountPaise)}` : formatPaise(entry.amountPaise)}
-      </Text>
-    </View>
+    <MiMenuRow
+      icon={icon}
+      title={title}
+      subtitle={subtitle}
+      showChevron={false}
+      accessibilityLabel={`${title}, ${subtitle}, ${valueText}`}
+      trailing={
+        <MiText variant="strong16" color={credit ? 'success' : 'primary'}>
+          {valueText}
+        </MiText>
+      }
+    />
   );
 }
+
+const MONTHS_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/** "02 Mar" — zero-padded day + short month. */
+function dayMonth(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${day} ${MONTHS_SHORT[d.getMonth()]}`;
+}
+
+const styles = StyleSheet.create({
+  balanceCard: {
+    backgroundColor: mitowColors.surfaceInverse,
+    borderRadius: 20,
+    padding: 20,
+    gap: 6,
+    alignItems: 'flex-start',
+  },
+  autoApplyPill: {
+    backgroundColor: mitowColors.brandYellow,
+    borderRadius: mitowRadii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+});

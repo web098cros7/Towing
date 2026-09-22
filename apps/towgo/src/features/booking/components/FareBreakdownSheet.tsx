@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTheme } from '@towing/theme';
 import { MiButton, MiCard, MiColorIcon, MiSheetPanel, MiText, mitowColors } from '@/design';
+import { MiModalFrame } from '@/design/components/MiModalFrame';
 import { formatPaise } from '@/utils/format';
 import { towMethodLabelFor } from '../data/towTypes.data';
 import type { FareEstimate } from '../types';
@@ -108,7 +109,7 @@ export function FareBreakdownSheet({
       navigationBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+      <MiModalFrame style={{ justifyContent: 'flex-end' }}>
         <View
           style={[StyleSheet.absoluteFill, { backgroundColor: mitowColors.dim }]}
           accessible={false}
@@ -135,7 +136,7 @@ export function FareBreakdownSheet({
             </MiSheetPanel>
           </Animated.View>
         </Animated.View>
-      </View>
+      </MiModalFrame>
     </Modal>
   );
 }

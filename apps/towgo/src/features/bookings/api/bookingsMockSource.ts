@@ -45,8 +45,10 @@ const created: BookingDetail[] = [];
  *     search is accepted after `MOCK_MATCH_SECONDS`, reading back as `assigned`
  *     with a fixture driver, which hands off to 18;
  *   · from the match on, the shared mock trip clock (`mockTripClock.ts`) moves
- *     it `assigned` → `en_route` → `arrived` (18 → 19 → 23/24), the same clock
- *     the tracking mock reads, so Booking Details and Tracking agree.
+ *     it `assigned` → `en_route` → `arrived` → `in_progress` → `completed`
+ *     (18 → 19 → 23/24 → 25 → 27), and on to `paid` once a mock payment is
+ *     captured: the same clock the tracking mock reads, so Booking Details and
+ *     Tracking agree.
  */
 const MOCK_SEARCH_SECONDS = 30;
 const MOCK_MATCH_SECONDS = 12;
@@ -71,12 +73,29 @@ const MOCK_OTP_WINDOW_MS = 30 * 60 * 1000;
 /** Booking id -> epoch ms at which its current mock collection code lapses. */
 const mockOtpExpiresAt = new Map<string, number>();
 
-/** The statuses the mock trip clock drives; anything else (cancelled, searching) is left alone. */
+/**
+ * The statuses the mock trip clock drives; anything else (cancelled, searching)
+ * is left alone. `paid` is not in it: the clock hands a `completed` booking on
+ * to `paid`, and a paid booking is finished, so nothing may move it back.
+ */
 const MOCK_TRIP_STATUSES: ReadonlySet<BookingDetail['status']> = new Set<BookingDetail['status']>([
   'assigned',
   'en_route',
   'arrived',
+  'in_progress',
+  'completed',
 ]);
+
+/**
+ * The service a created mock booking reports. `BookingStore` holds progress
+ * phases only (quote, vehicle class), not a `services.slug`, so a booking made
+ * through the flow would otherwise reach `serviceTitle` with a null slug and
+ * keep the placeholder — correct, but it would make 33's own flow untestable
+ * end to end. The flow's entry point is Home's "Book a Tow", so the booking is
+ * a tow. A real backend sends the slug on create; this does not touch a row
+ * that already carries one.
+ */
+const MOCK_CREATED_SERVICE_SLUG = 'car_tow';
 
 /** The wave a mock search is on, `elapsedSeconds` after it started. */
 function mockWaveAt(
@@ -99,6 +118,12 @@ function freshMockSearch(): NonNullable<BookingDetail['search']> {
     ...mockWaveAt(0),
     deadlineAt: new Date(Date.now() + MOCK_SEARCH_SECONDS * 1000).toISOString(),
   };
+}
+
+/** A slug-less booking is read as a tow, so 33 can name and draw it (see above). */
+function withMockedService<T extends { serviceSlug: string }>(booking: T): T {
+  if (!booking.serviceSlug) booking.serviceSlug = MOCK_CREATED_SERVICE_SLUG;
+  return booking;
 }
 
 /**
@@ -166,7 +191,11 @@ export const bookingsMockSource: BookingsDataSource = {
     // pagination is exercised against the real API, not against a fixed array.
     const own = ownIds();
     return {
-      items: cursor ? [] : [...created, ...bookingsMock.filter((b) => !own.has(b.id))],
+      items: cursor
+        ? []
+        : [...created, ...bookingsMock.filter((b) => !own.has(b.id))]
+            // 33's card names the service, so a session booking without a slug gets one.
+            .map(withMockedService),
       nextCursor: null,
     };
   },
@@ -178,7 +207,7 @@ export const bookingsMockSource: BookingsDataSource = {
     if (env.mockBookingsState === 'empty') return null;
     const own = created.find((b) => b.id === bookingId);
     // A copy, so React Query sees a new object when the mock search moves on.
-    if (own) return { ...settleMockSearch(own) };
+    if (own) return withMockedService({ ...settleMockSearch(own) });
     return bookingDetailsMock.find((b) => b.id === bookingId) ?? null;
   },
 
@@ -190,6 +219,7 @@ export const bookingsMockSource: BookingsDataSource = {
     const booking: BookingDetail = {
       id,
       reference: `TW-${id.slice(-8).toUpperCase()}`,
+      serviceSlug: input.serviceSlug,
       originLabel: input.pickupAddress,
       destinationLabel: input.dropAddress ?? '—',
       pickupPoint: input.pickup,

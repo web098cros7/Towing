@@ -20,6 +20,12 @@ export type Booking = {
   id: string;
   /** Human-readable reference, e.g. `TW-3F9A21B4`. Server-assigned. */
   reference: string;
+  /**
+   * The booked service's `services.slug` (`car_tow`, `battery`, ...), the contract's
+   * `serviceSlug`. 27 and 30 name the service from it (`serviceTitle`,
+   * features/services/data/serviceTitles.ts).
+   */
+  serviceSlug: string;
   originLabel: string;
   destinationLabel: string;
   /**

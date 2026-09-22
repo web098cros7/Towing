@@ -24,6 +24,8 @@ export const walletKeys = {
 
 export const couponKeys = {
   all: ['coupons'] as const,
+  /** 28's "Available offers". Mock-only data today; see `CouponOffer`. */
+  offers: () => ['coupons', 'offers'] as const,
 };
 
 export const ratingKeys = {

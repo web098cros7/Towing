@@ -6,6 +6,8 @@ import type { ImageSourcePropType } from 'react-native';
  * margin, all four corners alpha 0) in `src/assets/icons/mi-<name>.png`.
  *
  * Key = the Figma name after `icon/color/`. Render with `<MiColorIcon name="..." size={..} />`.
+ *
+ * One key is an instance override, not a component: 'verified-success' (30).
  */
 export const colorIconSources = {
   'add-photo': require('../../assets/icons/mi-add-photo.png'),
@@ -76,6 +78,14 @@ export const colorIconSources = {
   'user-shield': require('../../assets/icons/mi-user-shield.png'),
   user: require('../../assets/icons/mi-user.png'),
   verified: require('../../assets/icons/mi-verified.png'),
+  /**
+   * NOT a Figma component name: icon/color/verified `323:5546` with its base shield vector
+   * overridden to status/success #39AB5A, as instanced on 30's Secure Payment banner
+   * (`I245:1078;224:15`). The yellow rim halves and the white check are unchanged. Rasterized
+   * with sharp from that instance's SVG export to the same 192 × 192 RGBA format as every icon
+   * here, corners alpha 0. Use 'verified' (`mi-verified.png`) everywhere else.
+   */
+  'verified-success': require('../../assets/icons/mi-verified-success.png'),
   wallet: require('../../assets/icons/mi-wallet.png'),
   wrench: require('../../assets/icons/mi-wrench.png'),
 } as const satisfies Record<string, ImageSourcePropType>;

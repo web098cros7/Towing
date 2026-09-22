@@ -10,7 +10,10 @@ import type {
   WalletDto,
   WalletTransactionDto,
 } from '@towing/api-contracts';
+import { bookingsMockSource } from '@/features/bookings/api/bookingsMockSource';
+import { recordMockPaid } from '@/features/tracking/api/mockTripClock';
 import { env } from '@/lib/env';
+import type { CouponOffer } from '../types';
 import type { PaymentsDataSource } from './paymentsDataSource';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -25,14 +28,94 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * skip the SDK entirely here, so the whole chain (pay → invoice → rate) is
  * walkable on a laptop.
  *
- * `EXPO_PUBLIC_MOCK_PAYMENT_STATE=failed` reaches §19.2's `COMPLETED (unpaid)`
- * branch, which is otherwise unreachable in a mock: a fake gateway never fails
- * on its own, and a ladder that has never executed is not a ladder.
+ * THE FIRST PAY OF EACH BOOKING IS DECLINED, and the next one is captured, so
+ * test mode walks 27 Payment → 29 Payment Failed → 30 Payment Successful with no
+ * setting to change: a fake gateway never fails on its own, and a ladder that
+ * has never executed is not a ladder. `EXPO_PUBLIC_MOCK_PAYMENT_STATE=failed`
+ * still declines EVERY attempt (§19.2's `COMPLETED (unpaid)` branch for good).
+ *
+ * THE AMOUNT IS THE BOOKING'S TOTAL, read from the mock booking, so 27's Total,
+ * 29's Amount and 30's Service price agree with each other and with My Bookings.
+ * A coupon applied on 28 (test mode only) comes off that total here, which the
+ * real server cannot do yet (27-28 Data gap 8).
  */
 
 /** Module-level so a capture actually changes what the next read returns. */
 const paid = new Set<string>();
 const rated = new Map<string, RatingStateDto['mine']>();
+/** Bookings whose first capture this session has already been declined. */
+const declinedOnce = new Set<string>();
+/**
+ * Order reference → the amount of the intent that opened it, which the capture result echoes.
+ * Keyed by order, not by booking: a coupon re-creates the intent under a new key, so one
+ * booking has several orders, and a capture must report the amount of the one it settles.
+ */
+const intentAmountByOrder = new Map<string, number>();
+
+/** What the mock charged before the amount followed the booking. Kept as the fallback. */
+const FALLBACK_TOTAL_PAISE = 200_000;
+
+/**
+ * 28's three drawn offers (`299:4081`, `299:4088`, `299:4095`), their copy
+ * VERBATIM: "₹" U+20B9, "till" lower case, "Every day" lower-case d.
+ */
+const OFFERS: CouponOffer[] = [
+  { code: 'SAVE20', title: '20% off up to ₹300', validity: 'Valid till 31 Mar' },
+  { code: 'TOW100', title: 'Flat ₹100 off tows above ₹800', validity: 'Valid till 15 Apr' },
+  { code: 'NIGHT50', title: '₹50 off night tows, 10 PM to 6 AM', validity: 'Every day' },
+];
+
+/**
+ * The mock's coupon rules, shared by `validateCoupon` and `createIntent` so the
+ * saving 28 announces is exactly what the intent takes off. Each drawn offer
+ * does what its title says, except NIGHT50's night window, which nothing in the
+ * system models (it is accepted at any hour here). EXPIRED stays the expired
+ * branch.
+ */
+function mockCoupon(code: string, subtotalPaise: number): CouponValidationDto {
+  const normalised = code.trim().toUpperCase();
+
+  if (normalised === 'SAVE20') {
+    const discountPaise = Math.min(Math.round(subtotalPaise * 0.2), 30_000, subtotalPaise);
+    return { valid: true, code: 'SAVE20', kind: 'percent', discountPaise, reason: null };
+  }
+
+  if (normalised === 'TOW100') {
+    if (subtotalPaise < 80_000) {
+      return {
+        valid: false,
+        code: 'TOW100',
+        kind: 'flat',
+        discountPaise: 0,
+        reason: 'below_min_order',
+      };
+    }
+    return { valid: true, code: 'TOW100', kind: 'flat', discountPaise: 10_000, reason: null };
+  }
+
+  if (normalised === 'NIGHT50') {
+    const discountPaise = Math.min(5_000, subtotalPaise);
+    return { valid: true, code: 'NIGHT50', kind: 'flat', discountPaise, reason: null };
+  }
+
+  if (normalised === 'EXPIRED') {
+    return { valid: false, code: 'EXPIRED', kind: 'percent', discountPaise: 0, reason: 'expired' };
+  }
+
+  // An unknown code and an inactive one give the SAME answer server-side —
+  // a coupon endpoint is a code-guessing surface.
+  return { valid: false, code: null, kind: null, discountPaise: 0, reason: 'invalid' };
+}
+
+/** The mock booking's total (what the server locks at confirm), or the old fixed amount. */
+async function bookingTotalPaise(bookingId: string): Promise<number> {
+  try {
+    const booking = await bookingsMockSource.getBooking(bookingId);
+    return booking?.breakdown.totalPaise ?? FALLBACK_TOTAL_PAISE;
+  } catch {
+    return FALLBACK_TOTAL_PAISE;
+  }
+}
 
 const transactions: WalletTransactionDto[] = [
   {
@@ -57,15 +140,29 @@ const transactions: WalletTransactionDto[] = [
 ];
 
 export const paymentsMockSource: PaymentsDataSource = {
-  async createIntent(bookingId: string, purpose: PaymentPurpose): Promise<PaymentIntentDto> {
-    await delay(500);
+  async createIntent(
+    bookingId: string,
+    purpose: PaymentPurpose,
+    idempotencyKey: string,
+    couponCode?: string | null,
+  ): Promise<PaymentIntentDto> {
+    await delay(300);
     if (env.mockPaymentState === 'error') throw new Error('Could not start the payment');
 
-    const amountPaise = purpose === 'cancellation_fee' ? 15_000 : 200_000;
+    const subtotalPaise =
+      purpose === 'cancellation_fee' ? 15_000 : await bookingTotalPaise(bookingId);
+    const coupon =
+      couponCode && purpose === 'booking' ? mockCoupon(couponCode, subtotalPaise) : null;
+    const discountPaise = coupon?.valid ? coupon.discountPaise : 0;
+    const amountPaise = subtotalPaise - discountPaise;
+    // One order per intent key, as the server keeps it: a replay under the same key is the same
+    // order; a new key (28's Apply / Remove) is a new one.
+    const orderRef = `order_dev_mock_${bookingId.slice(0, 8)}_${idempotencyKey.slice(0, 8)}`;
+    intentAmountByOrder.set(orderRef, amountPaise);
 
     return {
       paymentId: `mock-payment-${bookingId}`,
-      orderRef: `order_dev_mock_${bookingId.slice(0, 8)}`,
+      orderRef,
       publicKey: 'rzp_test_dev',
       amountPaise,
       currency: 'INR',
@@ -78,47 +175,55 @@ export const paymentsMockSource: PaymentsDataSource = {
         gatewayRef: `pay_dev_mock_${bookingId.slice(0, 8)}`,
         signature: 'mock-signature',
       },
+      // One base line for the whole subtotal: the mock booking's own lines are
+      // not the point here, and nothing on 27 draws a breakdown.
       breakdown: {
-        basePaise: 150_000,
+        basePaise: subtotalPaise,
         nightPaise: 0,
         highwayPaise: 0,
         accidentPaise: 0,
-        waitingPaise: 25_000,
-        surgePaise: 25_000,
-        discountPaise: 0,
+        waitingPaise: 0,
+        surgePaise: 0,
+        discountPaise,
         taxPaise: 0,
         totalPaise: amountPaise,
       },
     };
   },
 
-  async capture(bookingId: string, _body: PaymentCaptureRequest): Promise<PaymentResultDto> {
+  async capture(bookingId: string, body: PaymentCaptureRequest): Promise<PaymentResultDto> {
     await delay(900);
+    const amountPaise = intentAmountByOrder.get(body.orderRef) ?? FALLBACK_TOTAL_PAISE;
 
-    if (env.mockPaymentState === 'failed') {
+    // The first attempt per booking, or every attempt under `failed`. See the header.
+    if (env.mockPaymentState === 'failed' || !declinedOnce.has(bookingId)) {
+      declinedOnce.add(bookingId);
       // §19.2's honest state: the BOOKING stays `completed`, and the app has to
-      // be able to render that rather than pretending the trip vanished.
+      // be able to render that rather than pretending the trip vanished. The
+      // reason is 29's drawn sample ("Declined by bank", `292:2731`).
       return {
         paymentId: `mock-payment-${bookingId}`,
         bookingId,
         status: 'failed',
         bookingStatus: 'completed',
-        amountPaise: 200_000,
+        amountPaise,
         invoiceAvailable: false,
-        failureReason: 'Your bank declined this payment',
+        failureReason: 'Declined by bank',
       };
     }
 
     if (env.mockPaymentState === 'error') throw new Error('Could not confirm the payment');
 
     paid.add(bookingId);
+    // The mock trip clock turns the mock booking `paid` from here.
+    recordMockPaid(bookingId);
 
     return {
       paymentId: `mock-payment-${bookingId}`,
       bookingId,
       status: 'captured',
       bookingStatus: 'paid',
-      amountPaise: 200_000,
+      amountPaise,
       invoiceAvailable: true,
       failureReason: null,
     };
@@ -140,25 +245,15 @@ export const paymentsMockSource: PaymentsDataSource = {
     await delay(500);
     if (env.mockCouponState === 'error') throw new Error('Could not check that code');
 
-    // One code that works and one that is expired, so both branches of the
-    // sheet are reachable without a server.
-    if (code.trim().toUpperCase() === 'SAVE20') {
-      return {
-        valid: true,
-        code: 'SAVE20',
-        kind: 'percent',
-        discountPaise: Math.round(subtotalPaise * 0.2),
-        reason: null,
-      };
-    }
+    // The three drawn offers work and EXPIRED is expired, so both branches of
+    // 28 are reachable without a server. See `mockCoupon`.
+    return mockCoupon(code, subtotalPaise);
+  },
 
-    if (code.trim().toUpperCase() === 'EXPIRED') {
-      return { valid: false, code: 'EXPIRED', kind: 'percent', discountPaise: 0, reason: 'expired' };
-    }
-
-    // An unknown code and an inactive one give the SAME answer server-side —
-    // a coupon endpoint is a code-guessing surface.
-    return { valid: false, code: null, kind: null, discountPaise: 0, reason: 'invalid' };
+  async getCouponOffers(): Promise<CouponOffer[]> {
+    await delay(300);
+    if (env.mockCouponState === 'error') throw new Error('Could not load offers');
+    return OFFERS;
   },
 
   async getInvoiceLink(bookingId: string): Promise<InvoiceLinkDto> {

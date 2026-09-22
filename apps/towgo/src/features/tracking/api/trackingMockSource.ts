@@ -11,7 +11,7 @@ import type {
   BookingTrackingDisplay,
   TrackedDriverDisplay,
 } from '@/screens/booking/tracking/trackingDisplay';
-import { mockTripPhase } from './mockTripClock';
+import { mockTripPhase, type MockTripPhase } from './mockTripClock';
 import type { TrackingDataSource } from './trackingDataSource';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -27,11 +27,15 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  *
  * So the trip follows the shared mock trip clock (`mockTripClock.ts`, the same
  * one `bookingsMockSource` reads for the booking's status):
- *   · `assigned` — the truck waits at the start of the approach (18);
- *   · `en_route` — it walks the approach to the pickup, placed by the clock
+ *   · `assigned`    — the truck waits at the start of the approach (18);
+ *   · `en_route`    — it walks the approach to the pickup, placed by the clock
  *     rather than by the read count, so the walk takes the same time whatever
  *     the poll cadence (19);
- *   · `arrived`  — it stands on the pickup, and stays there (23 and 24).
+ *   · `arrived`     — it stands on the pickup until 24 has shown the code
+ *     (23 and 24);
+ *   · `in_progress` — it stands on the pickup while the vehicle is loaded, then
+ *     walks the drop leg to the drop (25);
+ *   · `completed`, `paid` — it stands on the drop (27 onwards).
  *
  * `EXPO_PUBLIC_MOCK_TRACKING_STATE` forces the §11.6 honesty states, which are
  * otherwise unreachable in mock mode because a mock never goes stale:
@@ -58,6 +62,22 @@ const APPROACH = [
 ];
 
 /**
+ * The drop leg, from the pickup south-east to the drop: Figma 25 draws its
+ * callout up and to the left, so the camera puts the truck up and to the left
+ * of the drop pin, as 18 does with the pickup's.
+ */
+const DROP_PATH = [
+  PICKUP,
+  { lat: 12.969, lng: 77.599 },
+  { lat: 12.9655, lng: 77.604 },
+  { lat: 12.961, lng: 77.6085 },
+  { lat: 12.954, lng: 77.614 },
+  { lat: 12.946, lng: 77.62 },
+  { lat: 12.9395, lng: 77.624 },
+  DROP,
+];
+
+/**
  * Figma 18's example driver ("Rakesh Kumar", "4.8 (500+ trips)", "KA 01 AB 1234",
  * "Tata 407 (Flatbed)", IMG-01 photo). `vehicleMake` / `vehicleModel` are the
  * app-local extension in `TrackedDriverDisplay` (the contract has no make or
@@ -78,20 +98,34 @@ const MOCK_DRIVER: TrackedDriverDisplay = {
   vehicleModel: '407',
 };
 
-/** The approach's legs (7 points, 6 legs); the pickup is the last point. */
-const LEGS = APPROACH.length - 1;
-
 /** Figma 18's "Arriving in 5 mins", and 19's "10:12 AM" → "Est. 10:17 AM": five clock minutes out. */
 const DRAWN_ETA_SECONDS = 5 * 60;
 
+/** Figma 25's "10:35 AM" → "Estimated arrival in 15 mins" → "Est. 10:50 AM": fifteen clock minutes out. */
+const DRAWN_DROP_ETA_SECONDS = 15 * 60;
+
 /**
- * A road-shaped route from the truck to the pickup. Each leg turns a corner
- * (north-south, then east-west) the way a street grid does, so the design's
- * solid route line has something to draw in mock mode. `from` is the truck,
- * which may be part-way along the leg to `APPROACH[nextIndex]`.
+ * How far past the drawn minute the drop-leg arrival is anchored. The minute
+ * count (`useEtaMinutes`) ROUNDS the seconds left, so an arrival on the whole
+ * minute (10:50:00) already reads "14 mins" in the second half of 10:35, beside
+ * "Est. 10:50 AM". At 10:50:29 the count stays "15 mins" through all of 10:35,
+ * and "Est." (rounded to the nearest minute) still names 10:50 AM.
  */
-function mockRoute(from: { lat: number; lng: number }, nextIndex: number): string {
-  const points = [from, ...APPROACH.slice(nextIndex)];
+const DROP_ARRIVAL_SLACK_SECONDS = 29;
+
+/**
+ * A road-shaped route from the truck to the end of `path` (the pickup on the
+ * approach, the drop on the drop leg). Each leg turns a corner (north-south,
+ * then east-west) the way a street grid does, so the design's solid route line
+ * has something to draw in mock mode. `from` is the truck, which may be
+ * part-way along the leg to `path[nextIndex]`.
+ */
+function mockRoute(
+  path: readonly { lat: number; lng: number }[],
+  from: { lat: number; lng: number },
+  nextIndex: number,
+): string {
+  const points = [from, ...path.slice(nextIndex)];
   const out: { lat: number; lng: number }[] = [];
   points.forEach((point, i) => {
     const previous = points[i - 1];
@@ -114,24 +148,78 @@ function bearing(from: { lat: number; lng: number }, to: { lat: number; lng: num
 }
 
 /**
- * Where the truck is `progress` (0 → 1) of the way along the approach: the
- * point itself, the approach index it is heading for, and its bearing.
+ * Where the truck is `progress` (0 → 1) of the way along `path` (the approach,
+ * or the drop leg): the point itself, the path index it is heading for, and its
+ * bearing. Every leg takes the same time.
  */
-function alongApproach(progress: number): {
+function alongPath(
+  path: readonly { lat: number; lng: number }[],
+  progress: number,
+): {
   here: { lat: number; lng: number };
   nextIndex: number;
   headingDeg: number;
 } {
-  const scaled = Math.min(Math.max(progress, 0), 1) * LEGS;
-  const leg = Math.min(LEGS - 1, Math.floor(scaled));
+  const legs = path.length - 1;
+  const scaled = Math.min(Math.max(progress, 0), 1) * legs;
+  const leg = Math.min(legs - 1, Math.floor(scaled));
   const t = scaled - leg;
-  const from = APPROACH[leg]!;
-  const to = APPROACH[leg + 1]!;
+  const from = path[leg]!;
+  const to = path[leg + 1]!;
   return {
     here: { lat: from.lat + (to.lat - from.lat) * t, lng: from.lng + (to.lng - from.lng) * t },
     nextIndex: leg + 1,
     headingDeg: bearing(from, to),
   };
+}
+
+/** An epoch-ms instant as the contract's ISO string; `null` stays `null`. */
+function iso(ms: number | null): string | null {
+  return ms === null ? null : new Date(ms).toISOString();
+}
+
+/**
+ * A fixed arrival instant `drawnSeconds` after the WHOLE MINUTE a leg began in,
+ * as seconds from `now` (at least one minute). The designs draw both the start
+ * and the estimate as clock minutes: set off at 10:12:40, a plain +5 minutes is
+ * 10:17:40, which rounds to "Est. 10:18 AM" beside "10:12 AM".
+ */
+function secondsToDrawnArrival(legStartedAt: number, drawnSeconds: number, now: number): number {
+  const arrivalAt = Math.floor(legStartedAt / 60_000) * 60_000 + drawnSeconds * 1000;
+  return Math.max(60, Math.round((arrivalAt - now) / 1000));
+}
+
+/**
+ * The ETA of the active leg, as the server's `etaSeconds` describes it:
+ * - assigned: the drawn five minutes;
+ * - en route: to a fixed arrival five minutes after the driver set off, so 19's
+ *   "Est." clock holds still the way a real estimate does while the truck keeps
+ *   to it;
+ * - arrived: none left;
+ * - in progress: the drop leg. The drawn fifteen minutes while the vehicle is
+ *   loaded, then to a fixed arrival fifteen minutes (and 29 s,
+ *   `DROP_ARRIVAL_SLACK_SECONDS`) after the whole minute the truck left the
+ *   pickup in, so 25 reads "10:35 AM", "15 mins", "Est. 10:50 AM" for all of
+ *   that minute;
+ * - completed, paid: none left.
+ */
+function mockEtaSeconds(phase: MockTripPhase, now: number): number {
+  switch (phase.status) {
+    case 'assigned':
+      return DRAWN_ETA_SECONDS;
+    case 'en_route':
+      return secondsToDrawnArrival(phase.enRouteAt ?? now, DRAWN_ETA_SECONDS, now);
+    case 'in_progress':
+      return phase.inTransitAt === null
+        ? DRAWN_DROP_ETA_SECONDS
+        : secondsToDrawnArrival(
+            phase.inTransitAt,
+            DRAWN_DROP_ETA_SECONDS + DROP_ARRIVAL_SLACK_SECONDS,
+            now,
+          );
+    default:
+      return 0;
+  }
 }
 
 /** Ages the fix so the §11.6 states can be forced without waiting for one. */
@@ -148,27 +236,14 @@ export const trackingMockSource: TrackingDataSource = {
 
     const now = Date.now();
     const phase = mockTripPhase(bookingId, now);
-    const arrived = phase.status === 'arrived';
-    const { here, nextIndex, headingDeg } = alongApproach(phase.progress);
-
-    /**
-     * Assigned: the drawn five minutes. En route: a fixed arrival instant five
-     * minutes after the driver set off, so 19's "Est." clock holds still the way
-     * a real estimate does while the truck keeps to it. Arrived: none left.
-     *
-     * The arrival is five minutes after the WHOLE MINUTE the driver set off in,
-     * because 19 draws both as clock minutes: set off at 10:12:40, a plain
-     * +5 minutes is 10:17:40, which rounds to "Est. 10:18 AM" beside "10:12 AM".
-     */
-    const arrivalAt =
-      phase.enRouteAt === null
-        ? null
-        : Math.floor(phase.enRouteAt / 60_000) * 60_000 + DRAWN_ETA_SECONDS * 1000;
-    const etaSeconds = arrived
-      ? 0
-      : arrivalAt === null
-        ? DRAWN_ETA_SECONDS
-        : Math.max(60, Math.round((arrivalAt - now) / 1000));
+    const towing = phase.status === 'in_progress';
+    // Moving: walking the approach (19), or the drop leg once the vehicle is loaded (25).
+    const moving = phase.status === 'en_route' || (towing && phase.inTransitAt !== null);
+    // The approach until the tow starts; the drop leg from then on (loading, towing, at the drop).
+    const { here, nextIndex, headingDeg } =
+      phase.startedAt === null
+        ? alongPath(APPROACH, phase.progress)
+        : alongPath(DROP_PATH, phase.dropProgress);
 
     const tracking: BookingTrackingDisplay = {
       bookingId,
@@ -178,26 +253,32 @@ export const trackingMockSource: TrackingDataSource = {
         lat: here.lat,
         lng: here.lng,
         headingDeg,
-        speedKph: phase.status === 'en_route' ? 28 : 0,
+        speedKph: moving ? 28 : 0,
         lowAccuracy: false,
         at: new Date(now - fixAge()).toISOString(),
       },
-      etaSeconds,
+      etaSeconds: mockEtaSeconds(phase, now),
       // The mock route follows a street grid (see `mockRoute`), so it is labelled
       // as a routed source and drawn as the design's solid line.
       etaSource: 'google_directions',
-      routePolyline: arrived ? null : mockRoute(here, nextIndex),
-      routeDropPolyline: null,
+      routePolyline:
+        phase.status === 'assigned' || phase.status === 'en_route'
+          ? mockRoute(APPROACH, here, nextIndex)
+          : null,
+      // The server plans the drop leg; the mock draws it from the truck while towing.
+      routeDropPolyline: towing ? mockRoute(DROP_PATH, here, nextIndex) : null,
       pickup: PICKUP,
       drop: DROP,
-      assignedAt: new Date(phase.matchedAt).toISOString(),
-      arrivedAt: phase.arrivedAt === null ? null : new Date(phase.arrivedAt).toISOString(),
-      startedAt: null,
-      completedAt: null,
+      assignedAt: iso(phase.matchedAt),
+      arrivedAt: iso(phase.arrivedAt),
+      startedAt: iso(phase.startedAt),
+      completedAt: iso(phase.completedAt),
       shared: shared !== null,
       at: new Date(now).toISOString(),
       // App-local: the contract has no en-route instant yet (19's "Driver on the way" time).
-      enRouteAt: phase.enRouteAt === null ? null : new Date(phase.enRouteAt).toISOString(),
+      enRouteAt: iso(phase.enRouteAt),
+      // App-local: nor an in-transit one (25's "In transit" time); null while loading.
+      inTransitAt: iso(phase.inTransitAt),
     };
     return tracking;
   },

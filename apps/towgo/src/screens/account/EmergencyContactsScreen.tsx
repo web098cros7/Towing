@@ -1,19 +1,51 @@
 import React, { useCallback } from 'react';
-import { Alert } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@towing/theme';
-import { Button, EmptyState, Skeleton, ErrorState } from '@towing/ui';
-import { LifeBuoy, Plus, RefreshCw, Trash2 } from '@/icons';
-import { SubScreen } from '@/components/SubScreen';
-import { SettingsList } from '@/components/SettingsList';
-import { SettingsRow } from '@/components/SettingsRow';
-import { useEmergencyContacts, useDeleteEmergencyContact } from '@/features/account/api/emergencyContacts.queries';
+import { usePressablePrimitive, ErrorState } from '@towing/ui';
+import {
+  MiScreen,
+  MiText,
+  MiNavBar,
+  MiButton,
+  MiMenuCard,
+  MiMenuRow,
+  MiInfoBanner,
+  mitowLayout,
+} from '@/design';
+import {
+  useEmergencyContacts,
+  useDeleteEmergencyContact,
+} from '@/features/account/api/emergencyContacts.queries';
 import type { RootStackParamList } from '@/navigation/types';
-import { Pressable } from '@/motion';
 
+/**
+ * Format a stored phone number for display.
+ * '+91' + exactly 10 digits → '+91 98765 00001' (5 + 5 split).
+ * Bare 10-digit number → '+91 ' + 5 + ' ' + 5.
+ * Otherwise, return as stored.
+ */
+function formatMobile(phone: string): string {
+  const stripped = phone.replace(/\s+/g, '');
+  if (/^\+91\d{10}$/.test(stripped)) {
+    const digits = stripped.slice(3);
+    return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  }
+  if (/^\d{10}$/.test(stripped)) {
+    return `+91 ${stripped.slice(0, 5)} ${stripped.slice(5)}`;
+  }
+  return phone;
+}
+
+/**
+ * Figma 51 · Emergency Contacts (296:3169).
+ */
 export function EmergencyContactsScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const Pressable = usePressablePrimitive();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: contacts, isPending, isError, refetch } = useEmergencyContacts();
   const deleteContact = useDeleteEmergencyContact();
@@ -28,53 +60,79 @@ export function EmergencyContactsScreen() {
     [deleteContact],
   );
 
+  const hasContacts = !!contacts && contacts.length > 0;
+
   return (
-    <SubScreen
-      title="Emergency Contacts"
+    <MiScreen
+      edges={['top']}
       footer={
-        <Button
-          label="Add Contact"
-          leftIcon={Plus}
-          fullWidth
-          onPress={() => navigation.navigate('AddEmergencyContact')}
-        />
+        <View
+          style={{
+            paddingHorizontal: mitowLayout.sideMargin,
+            paddingBottom: Math.max(insets.bottom, 43),
+          }}
+        >
+          {/* 296:3388 Add Contact */}
+          <MiButton
+            tone="dark"
+            label="Add Contact"
+            onPress={() => navigation.navigate('AddEmergencyContact')}
+          />
+        </View>
       }
     >
-      {isError ? (
-        <ErrorState title="Couldn't load your emergency contacts" onRetry={() => refetch()} icon={RefreshCw} />
-      ) : isPending || !contacts ? (
-        <>
-          <Skeleton width="100%" height={72} radius={12} />
-          <Skeleton width="100%" height={72} radius={12} />
-        </>
-      ) : contacts.length === 0 ? (
-        <EmptyState
-          icon={LifeBuoy}
-          title="No emergency contacts"
-          body="Add someone we can reach if you trigger SOS during a tow."
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: mitowLayout.sideMargin,
+          gap: mitowLayout.blockGap,
+          paddingBottom: 24,
+        }}
+      >
+        {/* Nav bar */}
+        <MiNavBar title="Emergency Contacts" trailing="none" onBack={() => navigation.goBack()} />
+
+        {/* 296:3336 SOS banner */}
+        <MiInfoBanner
+          tone="brand"
+          icon="verified"
+          title="Who we alert in an emergency"
+          subtitle="If you trigger SOS during a tow, we send these contacts your live location."
+          height={85}
         />
-      ) : (
-        <SettingsList>
-          {contacts.map((c) => (
-            <SettingsRow
-              key={c.id}
-              icon={LifeBuoy}
-              title={c.name}
-              subtitle={[c.phone, c.relation].filter(Boolean).join(' · ')}
-              trailing={
-                <Pressable
-                  onPress={() => confirmDelete(c.id, c.name)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${c.name}`}
-                  hitSlop={8}
-                >
-                  <Trash2 size={18} color={theme.colors.error} />
-                </Pressable>
-              }
-            />
-          ))}
-        </SettingsList>
-      )}
-    </SubScreen>
+
+        {/* 296:3345 Contacts */}
+        {isError && !hasContacts ? (
+          <ErrorState title="Couldn't load your emergency contacts" onRetry={() => refetch()} />
+        ) : hasContacts ? (
+          <View style={{ gap: 12 }}>
+            <MiText variant="heading18">Your Contacts</MiText>
+            <MiMenuCard radius={16} paddingVertical={4}>
+              {contacts!.map((c) => (
+                <MiMenuRow
+                  key={c.id}
+                  icon={{ color: 'user' }}
+                  title={c.name}
+                  subtitle={[formatMobile(c.phone), c.relation].filter(Boolean).join(' · ')}
+                  trailing={
+                    <Pressable
+                      pressScale={1}
+                      haptic="light"
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${c.name}`}
+                      onPress={() => confirmDelete(c.id, c.name)}
+                    >
+                      <MiText variant="strong14" color="danger">
+                        Remove
+                      </MiText>
+                    </Pressable>
+                  }
+                />
+              ))}
+            </MiMenuCard>
+          </View>
+        ) : null}
+      </ScrollView>
+    </MiScreen>
   );
 }

@@ -143,8 +143,15 @@ export function MapPreviewMaps({
 
   const onMapReady = useCallback(() => {
     setReady(true);
-    onMapReadyProp?.();
-  }, [onMapReadyProp]);
+  }, []);
+
+  // The caller's onMapReady runs after the render that hands `mapPadding` to the map, so a
+  // camera move it makes (Book a Tow frames the route here) already honours the padding.
+  useEffect(() => {
+    if (ready) onMapReadyProp?.();
+    // Once per ready: a new callback identity must not re-run the caller's first framing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   /**
    * The camera handle for screen-drawn map buttons (MiTow redesign). Each move
@@ -247,10 +254,13 @@ export function MapPreviewMaps({
         // without this Android draws the map over the rounded corners.
         loadingEnabled
         loadingBackgroundColor={theme.colors.mapBg}
-        // Both undefined unless a caller passes them, which is the library's own
-        // default, so existing callers render exactly as before.
+        // Only once the map is ready: Android's MapView applies `mapPadding` through
+        // GoogleMap.setPadding, and before `onMapReady` its map is still null, so an early
+        // (or changing) padding crashed with a NullPointerException in setMapPadding.
+        // Undefined until then, which is also the library's own default for callers that
+        // pass none, so existing callers render exactly as before.
         mapPadding={
-          mapPadding
+          ready && mapPadding
             ? {
                 top: mapPadding.top ?? 0,
                 right: mapPadding.right ?? 0,

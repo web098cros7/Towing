@@ -1,4 +1,5 @@
 import { env } from '@/lib/env';
+import type { CouponOffer } from '../types';
 import { paymentsMockSource } from './paymentsMockSource';
 import { paymentsRestSource } from './paymentsRestSource';
 import type {
@@ -30,11 +31,18 @@ export interface PaymentsDataSource {
    * caller. `apiFetch`'s `idempotent: true` mints one per CALL, which would
    * make a retry a second order — the `createBooking` distinction, and the
    * reason `client.ts` carries a long comment about two fare-locked bookings.
+   *
+   * `couponCode` is 28 · Apply Coupon's applied code. ⚠ ONLY THE MOCK HONOURS
+   * IT: the intent contract has no coupon field and the server applies coupons
+   * only at booking confirm (27-28 Data gap 8), so the REST source ignores it.
+   * The caller mints a NEW key whenever the coupon changes, so one key never
+   * names two different amounts.
    */
   createIntent(
     bookingId: string,
     purpose: PaymentPurpose,
     idempotencyKey: string,
+    couponCode?: string | null,
   ): Promise<PaymentIntentDto>;
 
   /** Hands the sheet's result back for verification and settlement. */
@@ -48,6 +56,12 @@ export interface PaymentsDataSource {
   getWalletTransactions(): Promise<WalletTransactionDto[]>;
 
   validateCoupon(code: string, subtotalPaise: number): Promise<CouponValidationDto>;
+
+  /**
+   * 28's "Available offers". There is no list endpoint (27-28 Data gap 7): the REST source
+   * returns none, the mock the three drawn offers.
+   */
+  getCouponOffers(): Promise<CouponOffer[]>;
 
   /** §9.1.10's invoice download — a signed URL, opened with `Linking`. */
   getInvoiceLink(bookingId: string): Promise<InvoiceLinkDto>;

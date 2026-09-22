@@ -21,10 +21,25 @@ export type MiSegmentedProps = {
    * silently does nothing is better than one that navigates somewhere unbuilt.
    */
   disabledKeys?: string[];
+  /**
+   * Instance height. Defaults to the master's `mitowLayout.segmentHeight` (40), which is what
+   * 03 Login draws. 33 / 34's Bookings filter instances are 46.
+   *
+   * MUST BE EVEN. The Segment master's label is centred by auto-layout, and 40 − 20 lands on
+   * 10 exactly; 46 − 20 lands on 13 exactly. An odd height would put a half-pixel between the
+   * label's two edges, which Android rounds asymmetrically.
+   */
+  height?: number;
 };
 
 /** Equal-width segmented control (Figma "Segment"). */
-export function MiSegmented({ options, value, onChange, disabledKeys = [] }: MiSegmentedProps) {
+export function MiSegmented({
+  options,
+  value,
+  onChange,
+  disabledKeys = [],
+  height = mitowLayout.segmentHeight,
+}: MiSegmentedProps) {
   const theme = useTheme();
   const Pressable = usePressablePrimitive();
 
@@ -46,7 +61,7 @@ export function MiSegmented({ options, value, onChange, disabledKeys = [] }: MiS
             accessibilityLabel={option.label}
             style={{
               flex: 1,
-              height: mitowLayout.segmentHeight,
+              height,
               borderRadius: mitowRadii.segment,
               alignItems: 'center',
               justifyContent: 'center',

@@ -12,13 +12,17 @@ import { bookingsKeys } from './bookings.keys';
  * `useInfiniteQuery` over the server's cursor envelope, the same shape
  * `notifications.queries.ts` already uses. `flat` is exposed because every
  * consumer wants the rows, not the pages.
+ *
+ * `enabled: false` skips the request (default on); pages already in the cache
+ * are still returned.
  */
-export function useBookings() {
+export function useBookings(options: { enabled?: boolean } = {}) {
   const query = useInfiniteQuery({
     queryKey: bookingsKeys.list(),
     queryFn: ({ pageParam }: { pageParam?: string }) => bookingsDataSource.getBookings(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: options.enabled ?? true,
   });
 
   const items = useMemo(
@@ -39,9 +43,16 @@ export function useBookings() {
  * This is what makes an in-flight trip recoverable. Before Phase 15, leaving
  * the tracking screen lost the trip entirely — nothing anywhere else in the app
  * knew it existed.
+ *
+ * `enabled: false` skips the feed request for a screen that already knows its
+ * trip (26 Emergency opened with a `bookingId`); `booking` is then whatever the
+ * cache already holds.
  */
-export function useActiveBooking(): { booking: Booking | null; isPending: boolean } {
-  const { items, isPending } = useBookings();
+export function useActiveBooking(options: { enabled?: boolean } = {}): {
+  booking: Booking | null;
+  isPending: boolean;
+} {
+  const { items, isPending } = useBookings(options);
   const booking = useMemo(() => items.find(isActiveBooking) ?? null, [items]);
   return { booking, isPending };
 }

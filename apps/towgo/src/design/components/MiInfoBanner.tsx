@@ -13,15 +13,35 @@ import { MiText } from './MiText';
  * Fill of the banner.
  * - `brand` brand/yellow-soft #FDF6DC (master default; 08, 09, 16, 18, 58).
  * - `muted` surface/muted #F3F5F8 (17 "No drivers available").
+ * - `success` status/success-soft #E4F5E9 (30 "Secure Payment" `245:1078`, a fill override on the
+ *   instance).
+ * - `danger` status/danger-soft #FDECEC (26 "Need Immediate Help?" `254:1337`, a fill override on
+ *   the instance).
  */
-export type MiInfoBannerTone = 'brand' | 'muted';
+export type MiInfoBannerTone = 'brand' | 'muted' | 'success' | 'danger';
+
+const TONE_FILL: Record<MiInfoBannerTone, string> = {
+  brand: mitowColors.brandYellowSoft,
+  muted: mitowColors.surfaceMuted,
+  success: mitowColors.successSoft,
+  danger: mitowColors.dangerSoft,
+};
 
 export type MiInfoBannerProps = {
   /** Colour icon by Figma name (preferred) or a require()d source. Drawn 49×49 by default. */
   icon: MiColorIconName | ImageSourcePropType;
   iconSize?: number;
-  /** MiTow/Strong 15.5, text/primary. Copy verbatim from the spec. */
-  title: string;
+  /**
+   * MiTow/Strong 15.5 (or `titleVariant`), text/primary. Copy verbatim from the spec. Omit it and
+   * NO title node is rendered (26's Tip `254:1443` has no title layer at all; an empty string
+   * would still take a line in RN).
+   */
+  title?: string;
+  /**
+   * Text style of the title. Default 'strong155' (the master). 26's Emergency alert and 58's Help
+   * banner set their title in MiTow/Title 20: 'title20'.
+   */
+  titleVariant?: 'strong155' | 'title20';
   /** MiTow/Body XS 13.5, text/secondary. Copy verbatim from the spec. */
   subtitle: string;
   tone?: MiInfoBannerTone;
@@ -36,17 +56,26 @@ export type MiInfoBannerProps = {
   /** Default 8. */
   paddingRight?: number;
   style?: StyleProp<ViewStyle>;
+  /**
+   * Pressable banner: the button's label (default "{title}. {subtitle}"). Static banner: when set,
+   * the banner is read as ONE element with this label (58's Help banner, 26's alert and Tip).
+   */
   accessibilityLabel?: string;
 };
 
 /**
  * Info Banner (224:14): row, items centred, gap 8, radius 14, no border, no
  * shadow; text column flex 1 with no gap; optional trailing chevron.
+ * Tones and title variants reproduce instance overrides: 29 'Your trip is safe' is the plain
+ * master at height 85; 30 is tone 'success' at 71 with the green-shield asset (`MiColorIcon` name
+ * 'verified-success'); 26's alert is tone 'danger' + titleVariant 'title20' at 106; 26's Tip is
+ * tone 'muted', no title, at 62; 58's Help banner is titleVariant 'title20' at 98.
  */
 export function MiInfoBanner({
   icon,
   iconSize = 49,
   title,
+  titleVariant = 'strong155',
   subtitle,
   tone = 'brand',
   showChevron = false,
@@ -69,7 +98,7 @@ export function MiInfoBanner({
       paddingLeft,
       paddingRight,
       borderRadius: mitowRadii.cardSm,
-      backgroundColor: tone === 'brand' ? mitowColors.brandYellowSoft : mitowColors.surfaceMuted,
+      backgroundColor: TONE_FILL[tone],
     },
     style,
   ];
@@ -81,7 +110,7 @@ export function MiInfoBanner({
         size={iconSize}
       />
       <View style={{ flex: 1, overflow: 'hidden' }}>
-        <MiText variant="strong155">{title}</MiText>
+        {title ? <MiText variant={titleVariant}>{title}</MiText> : null}
         <MiText variant="bodyXS135" color="secondary">
           {subtitle}
         </MiText>
@@ -91,6 +120,13 @@ export function MiInfoBanner({
   );
 
   if (!onPress) {
+    if (accessibilityLabel) {
+      return (
+        <View accessible accessibilityLabel={accessibilityLabel} style={containerStyle}>
+          {content}
+        </View>
+      );
+    }
     return <View style={containerStyle}>{content}</View>;
   }
 
@@ -100,7 +136,7 @@ export function MiInfoBanner({
       pressScale={theme.motion.pressScale.card}
       haptic="light"
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? `${title}. ${subtitle}`}
+      accessibilityLabel={accessibilityLabel ?? (title ? `${title}. ${subtitle}` : subtitle)}
       style={containerStyle}
     >
       {content}

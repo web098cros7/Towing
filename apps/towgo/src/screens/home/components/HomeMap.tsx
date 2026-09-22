@@ -245,7 +245,9 @@ export const HomeMap = forwardRef<HomeMapHandle, HomeMapProps>(function HomeMap(
         onMapReady={() => setReady(true)}
         onRegionChangeComplete={onRegionChangeComplete}
         customMapStyle={HOME_MAP_STYLE}
-        mapPadding={{ top: 0, right: 0, bottom: coveredBottom, left: 0 }}
+        // Not before `onMapReady`: Android applies it through GoogleMap.setPadding on a map
+        // that is still null until then, which crashed (NullPointerException in setMapPadding).
+        mapPadding={ready ? { top: 0, right: 0, bottom: coveredBottom, left: 0 } : undefined}
         showsUserLocation={false}
         showsMyLocationButton={false}
         showsCompass={false}

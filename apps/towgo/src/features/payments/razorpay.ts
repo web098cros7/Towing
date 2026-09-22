@@ -35,6 +35,33 @@ export class CheckoutDismissedError extends Error {
   }
 }
 
+/**
+ * Thrown when Razorpay's sheet reports that the payment ITSELF failed: any
+ * rejection that is not a dismissal. This is what 29 · Payment Failed shows for
+ * (29 spec D3: definitive failures only), with `reason` in its Reason row.
+ *
+ * Kept apart from the plain `Error`s below ("the development gateway did not
+ * return a checkout result", "Payments need a newer version of the app"),
+ * because those mean the payment never started and 29's "Your bank declined
+ * this payment" would be false for them.
+ *
+ * ⚠ UNVERIFIED ON A DEVICE. The code numbers are react-native-razorpay's, and
+ * no merchant account exists to see which ones a real decline produces, or
+ * whether Android hands `description` over as a JSON string (29 Data gap 2).
+ */
+export class CheckoutFailedError extends Error {
+  readonly code = 'checkout_failed';
+
+  /** Razorpay's own `description`, or null when it sent none. */
+  readonly reason: string | null;
+
+  constructor(reason: string | null) {
+    super(reason ?? 'The payment could not be completed');
+    this.name = 'CheckoutFailedError';
+    this.reason = reason;
+  }
+}
+
 interface RazorpayResult {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -97,8 +124,9 @@ export async function openCheckout(intent: PaymentIntentDto): Promise<PaymentCap
     // changed their mind that their payment failed.
     const code = (error as { code?: number })?.code;
     if (code === 0 || code === 2) throw new CheckoutDismissedError();
-    throw new Error(
-      (error as { description?: string })?.description ?? 'The payment could not be completed',
+    const description = (error as { description?: unknown })?.description;
+    throw new CheckoutFailedError(
+      typeof description === 'string' && description.trim() ? description : null,
     );
   }
 }

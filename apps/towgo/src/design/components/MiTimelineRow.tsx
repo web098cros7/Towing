@@ -2,6 +2,7 @@ import React from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import { mitowColors } from '../tokens/colors';
 import { MiText } from './MiText';
+import { SlotBar } from './SlotBar';
 
 /**
  * Figma Timeline Row set `234:293` → `state`:
@@ -15,13 +16,33 @@ export type MiTimelineRowState = 'done' | 'current' | 'upcoming' | 'pickup' | 'd
 
 export type MiTimelineRowProps = {
   state: MiTimelineRowState;
-  /** Title#234:2. MiTow/Strong 16, text/primary in EVERY state (upcoming titles are not greyed). */
-  title: string;
   /**
-   * Subtitle#234:6. Drawn only when non-empty (= "Show subtitle#238:23" true).
-   * MiTow/Body S 14, text/secondary. Hidden on 19, 20 and 21.
+   * Title#234:2. MiTow/Strong 16, text/primary in EVERY state (upcoming titles are not greyed).
+   * `null` holds the line open with a placeholder bar `titleSlotWidth` wide when the slot has a
+   * drawn width (35's stop titles, which come from a server address field); omitted, a missing
+   * title is not drawn, as before.
+   */
+  title: string | null;
+  /**
+   * Figma width of the Title text box. When it is set and `title` is null or empty, the title
+   * line is held open with a Strong 16 surface/muted bar this wide, exactly as
+   * `subtitleSlotWidth` does for the subtitle. Omitted: a missing title disappears.
+   */
+  titleSlotWidth?: number;
+  /**
+   * Subtitle#234:6. Drawn when non-empty (= "Show subtitle#238:23" true). MiTow/Body S 14,
+   * text/secondary. Hidden on 19, 20 and 21. With `subtitleSlotWidth`, a missing value keeps
+   * its line as a placeholder bar (25).
    */
   subtitle?: string | null;
+  /**
+   * Figma width of the Subtitle text box. When it is set and `subtitle` is null or empty, the
+   * subtitle line is held open with a Body S 14 surface/muted bar this wide (the same look as
+   * the time slot) instead of disappearing: 25 draws all three subtitles (132 / 167 / 144) and
+   * a slot must never vanish for missing data. Omitted (19, 20, 21): a missing subtitle is not
+   * drawn, as before.
+   */
+  subtitleSlotWidth?: number;
   /**
    * Time#234:10, MiTow/Body S 14 text/secondary, verbatim ("10:12 AM", "Est. 10:17 AM",
    * "---"). The component has no "Show time" property, so the slot is always drawn:
@@ -99,28 +120,6 @@ const STATE_WORD: Record<MiTimelineRowState, string> = {
 
 const DOT = 26;
 
-/** 18's SlotPlaceholder look, inlined so the design layer does not import from a screen. */
-function TimePlaceholder({ width }: { width: number }) {
-  return (
-    <View style={{ width, maxWidth: '100%' }}>
-      <MiText variant="bodyS14" numberOfLines={1}>
-        {' '}
-      </MiText>
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '18%',
-          bottom: '18%',
-          borderRadius: 4,
-          backgroundColor: mitowColors.surfaceMuted,
-        }}
-      />
-    </View>
-  );
-}
-
 /**
  * Timeline Row (`234:293`), identical geometry in all five variants:
  * - Row: horizontal, gap 7, items top-aligned, no padding, fixed `height`.
@@ -135,7 +134,9 @@ function TimePlaceholder({ width }: { width: number }) {
 export function MiTimelineRow({
   state,
   title,
+  titleSlotWidth,
   subtitle,
+  subtitleSlotWidth,
   time,
   timeSlotWidth = 59,
   showConnector = true,
@@ -148,7 +149,7 @@ export function MiTimelineRow({
   const readableTime = time && /[A-Za-z0-9]/.test(time) ? `, ${time}` : '';
   const label =
     accessibilityLabel ??
-    `${title}${subtitle ? `, ${subtitle}` : ''}${readableTime}, ${STATE_WORD[state]}`;
+    `${title ?? ''}${subtitle ? `, ${subtitle}` : ''}${readableTime}, ${STATE_WORD[state]}`;
 
   return (
     <View
@@ -191,13 +192,19 @@ export function MiTimelineRow({
       </View>
 
       <View style={{ flex: 1, gap: 2, overflow: 'hidden' }}>
-        <MiText variant="strong16" numberOfLines={1} ellipsizeMode="clip">
-          {title}
-        </MiText>
+        {title ? (
+          <MiText variant="strong16" numberOfLines={1} ellipsizeMode="clip">
+            {title}
+          </MiText>
+        ) : titleSlotWidth !== undefined ? (
+          <SlotBar variant="strong16" width={titleSlotWidth} />
+        ) : null}
         {subtitle ? (
           <MiText variant="bodyS14" color="secondary" numberOfLines={1} ellipsizeMode="clip">
             {subtitle}
           </MiText>
+        ) : subtitleSlotWidth !== undefined ? (
+          <SlotBar width={subtitleSlotWidth} />
         ) : null}
       </View>
 
@@ -207,7 +214,7 @@ export function MiTimelineRow({
             {time}
           </MiText>
         ) : (
-          <TimePlaceholder width={timeSlotWidth} />
+          <SlotBar width={timeSlotWidth} />
         )}
       </View>
     </View>

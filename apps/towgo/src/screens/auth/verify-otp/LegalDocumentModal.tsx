@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { mitowColors, mitowLayout, MiNavBar, MiText } from '@/design';
+import { MiModalFrame } from '@/design/components/MiModalFrame';
 import { POLICY_VERSION } from '@/lib/legal/policyVersion';
 import { legalDocuments, type LegalDocumentKey } from './legalDocuments';
 
@@ -38,7 +39,7 @@ export function LegalDocumentModal({ visible, document, onClose }: LegalDocument
       navigationBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, backgroundColor: mitowColors.surfacePage, paddingTop: insets.top }}>
+      <MiModalFrame style={{ backgroundColor: mitowColors.surfacePage, paddingTop: insets.top }}>
         <View style={{ paddingHorizontal: mitowLayout.sideMargin }}>
           <MiNavBar title={doc.title} trailing="none" onBack={onClose} />
         </View>
@@ -66,7 +67,7 @@ export function LegalDocumentModal({ visible, document, onClose }: LegalDocument
             {`Policy version ${POLICY_VERSION}`}
           </MiText>
         </ScrollView>
-      </View>
+      </MiModalFrame>
     </Modal>
   );
 }

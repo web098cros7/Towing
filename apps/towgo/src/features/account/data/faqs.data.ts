@@ -5,7 +5,7 @@ export const faqs: Faq[] = [
     id: 'f1',
     question: 'How do I book a tow?',
     answer:
-      'From Home, tap "Book a Tow", set your pickup and drop locations, choose a tow type, and confirm. We\'ll find the nearest driver for you.',
+      'Enter your pickup and drop, pick your vehicle and tap Confirm Booking. We match you with the nearest verified driver.',
   },
   {
     id: 'f2',
@@ -22,7 +22,8 @@ export const faqs: Faq[] = [
   {
     id: 'f4',
     question: 'What payment methods can I use?',
-    answer: 'You can pay via UPI, cards, or wallets through our secure checkout after the tow is completed.',
+    answer:
+      'You can pay via UPI, cards, or wallets through our secure checkout after the tow is completed.',
   },
   {
     id: 'f5',

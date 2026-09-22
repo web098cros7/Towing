@@ -116,20 +116,21 @@ appId: in.mitow.customer
 
 - tapOn: 'Bookings'
 - assertVisible: 'My Bookings'
-# The card's accessibilityLabel starts "Current trip, <status>, …".
-- assertVisible: 'Current trip.*'
-- assertVisible: 'Finding you a driver'
+# 33's Booking Cards carry one accessibility label, "<service>, <route>, <date>, <price>",
+# with an arrow (U+2192) between the two place labels. The service comes from the booking's
+# slug; the card this flow just made reports `car_tow` (see `MOCK_CREATED_SERVICE_SLUG`),
+# so it reads "Tow a Car" whether the search is live or has lapsed.
+- assertVisible: 'Tow a Car, MG Road, Bengaluru.*Koramangala, Bengaluru.*'
 
 # ── Cleanup: cancel from Booking Details (20) through Cancel Trip (21) ──────
-# The active-trip card opens Booking Details, which now pins "Cancel Booking"
-# for every live status, searching included. Cancelling here also keeps a real
-# backend's §3.8 one-active-booking guard (`active_booking_exists`) clear for
-# the next run.
+# The card opens Booking Details, which now pins "Cancel Booking" for every live status,
+# searching included. Cancelling here also keeps a real backend's §3.8
+# one-active-booking guard (`active_booking_exists`) clear for the next run.
 #
 # TIMING: this must still land inside the mock search's 30 s. Once the search
 # lapses to `no_drivers_found` the booking is no longer live and 20 hides its
 # bottom bar, so "Cancel Booking" would not be there to tap.
-- tapOn: 'Current trip.*'
+- tapOn: 'Tow a Car, MG Road, Bengaluru.*'
 - assertVisible: 'Booking Details'
 # The status card is one accessible element: "<title>. <subtitle>. Open live tracking".
 - assertVisible: 'Booking Confirmed. Finding you a driver.*'

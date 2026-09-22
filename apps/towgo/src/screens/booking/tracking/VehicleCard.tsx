@@ -2,11 +2,8 @@ import React from 'react';
 import { Image, View } from 'react-native';
 import { useTheme } from '@towing/theme';
 import { usePressablePrimitive } from '@towing/ui';
-import { MiLineIcon, MiText, mitowColors, mitowRadii } from '@/design';
+import { MiLineIcon, MiText, mitowColors, mitowRadii, towTruckArtSource } from '@/design';
 import { SlotPlaceholder } from './SlotPlaceholder';
-
-/** Tow Truck art: vector group `327:17808` exported tight at 90 × 47.58 (@1x/@2x/@3x). */
-const towTruckArt = require('./assets/vehicle-tow-truck.png');
 
 /** Figma draws the card's children from its OUTER edge; RN absolute offsets start inside the 1.2 border. */
 const BORDER = 1.2;
@@ -19,7 +16,8 @@ const MODEL_BOX_WIDTH = 119;
  * Figma Vehicle Card (`234:337`), instance `234:339` on 18 · Driver En Route.
  *
  * 74.2 tall, surface/page, 1.2 border/subtle, radius 16, no shadow. Truck art
- * 90 × 47.58 at (12, 13.31); plate (Strong 16) over model (Body S 14 secondary)
+ * (vector group `327:17808`, the design layer's `towTruckArtSource`, exported
+ * tight) 90 × 47.58 at (12, 13.31); plate (Strong 16) over model (Body S 14 secondary)
  * at (112.6, 17.1); icon/chevron-right 24 at (318.6, 25.1). The chevron makes it
  * tappable: it opens the booking's details.
  *
@@ -62,7 +60,7 @@ export function VehicleCard({
   const content = (
     <>
       <Image
-        source={towTruckArt}
+        source={towTruckArtSource}
         resizeMode="stretch"
         style={{
           position: 'absolute',

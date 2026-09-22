@@ -14,15 +14,19 @@
 # THE MOCK TRIP CLOCK. Once the mock driver accepts, one shared clock
 # (`mockTripClock.ts`) moves the trip on, and the booking and the tracking
 # mocks both read it:
-#   about 15 s `assigned`  → 18 Driver En Route
-#   about 45 s `en_route`  → 19 Driver Arriving (the truck walks to the pickup)
-#   then `arrived`, held   → 23 Driver Arrived → Confirm Pickup → 24 Collection Code
+#   about 15 s `assigned`    → 18 Driver En Route
+#   about 45 s `en_route`    → 19 Driver Arriving (the truck walks to the pickup)
+#   then `arrived`, held     → 23 Driver Arrived → Confirm Pickup → 24 Collection Code
+#   12 s after 24 FIRST shows its code (the mock driver "types it"):
+#   about 70 s `in_progress` → 25 Trip in Progress (10 s loading, then the tow)
+#   then `completed`, held   → 27 Payment (Tracking is replaced by it)
 #
 # What it proves — everything the Phase 12 screen faked:
 #   the tracking screen shows a REAL driver (it showed `assignedDriverMock` —
 #   the same "Ramesh Kumar / KA 03 AB 1234" for every trip) → an ETA that counts
 #   down → the trip moving through 18, 19 and 23 on its own → the collection
-#   OTP on 24, from `useBookingOtp` → Back from 24 landing on 23, not Home.
+#   OTP on 24, from `useBookingOtp` → Back from 24 landing on 23, not Home →
+#   the tow starting (25) → the finished trip handing over to 27 Payment.
 #
 # Share, the full timeline and cancel are no longer on these screens: the MiTow
 # redesign moved them to 20 Booking Details (the vehicle card). See "Moved off
@@ -34,7 +38,7 @@
 # asserting the placeholder would test the fallback rather than the feature.
 # That includes every map callout and chip ("Your tow truck / is on the way",
 # "On the way to / your location", "Driver has arrived", "Your location",
-# "Rakesh is here"). The interpolation and the pan-pause are covered by the
+# "Rakesh is here", "On the way to / drop location"). The interpolation and the pan-pause are covered by the
 # shared maths' unit tests; the drawing is not covered at all.
 #
 # Matches on visible copy and accessibilityLabel only — no testID convention
@@ -146,11 +150,42 @@ appId: in.mitow.customer
 - assertVisible: 'Driver has arrived\. Your driver is at the pickup location'
 - assertVisible: 'Confirm Pickup'
 
+# ── 25 Trip in Progress (`in_progress`, about 70 s) ──────────────────────────
+# The tow starts 12 s after 24 FIRST showed its code (above), whichever of 23
+# and 24 is up by then. Open 24 again if 23 is still up, so the flow walks
+# 24 → 25 as a customer would; if the tow has already started, 25 replaces 23.
+- runFlow:
+    when:
+      visible: 'Confirm Pickup'
+    commands:
+      - tapOn: 'Confirm Pickup'
+- extendedWaitUntil:
+    visible: 'Trip in Progress\. Your vehicle is being towed to the drop location'
+    timeout: 30000
+- assertNotVisible: 'Your collection code.*'
+# The trip timeline: each row is one accessible element, "<title>, <subtitle>,
+# <time>, <state> step". "In transit" has no time for its first 10 s (the truck
+# is loading), so its time is not matched; the other times are clock times,
+# matched by shape.
+- assertVisible: 'Picked up, .*\d{1,2}:\d{2} (AM|PM), completed step'
+- assertVisible: 'In transit, On the way to .*current step'
+- assertVisible: 'Drop at, .*Est\. \d{1,2}:\d{2} (AM|PM), upcoming step'
+# The ETA banner is one accessible element, "<title>. <subtitle>".
+- assertVisible: 'Estimated arrival in \d+ mins\. We''ll keep you updated\.'
+# Not drawn on 25: the driver row, the vehicle card and the banners of 18–23.
+- assertNotVisible: 'Rakesh Kumar'
+- assertNotVisible: "You're in safe hands"
+
+# ── 27 Payment (`completed`) ──────────────────────────────────────────────────
+# The finished trip hands over to 27, which replaces the tracking screen.
+- extendedWaitUntil:
+    visible: 'Choose Payment Method'
+    timeout: 100000
+
 # ── Moved off these screens: full timeline, share, cancel ───────────────────
-# Figma 18, 19, 23 and 24 draw none of them; they are on 20 Booking Details,
-# opened by the vehicle card. The app keeps them on the pre-redesign sheet for
-# `in_progress` and later until 25 onwards are rebuilt, and the mock trip clock
-# holds at `arrived`, so none of them can render here in mock mode. Their steps
-# (the "Driver assigned / On the way / Arrived at pickup" timeline, "Share trip"
-# → "Stop sharing", and the cancel fee quote with "Keep my trip") belong to the
-# Booking Details flow.
+# Figma 18, 19, 23, 24 and 25 draw none of them; they are on 20 Booking
+# Details, opened by the vehicle card on 18, 19 and 23. Their steps (the
+# "Driver assigned / On the way / Arrived at pickup" timeline, "Share trip" →
+# "Stop sharing", and the cancel fee quote with "Keep my trip") belong to the
+# Booking Details flow. The pre-redesign sheet that still carries them is kept
+# only for a re-dispatch or a dispute, which the mock trip clock never reaches.

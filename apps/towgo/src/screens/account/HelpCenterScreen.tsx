@@ -1,142 +1,135 @@
 import React, { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  LinearTransition,
-  useAnimatedStyle,
-  useDerivedValue,
-  withSpring,
-  interpolate,
-} from 'react-native-reanimated';
-import { useTheme, motion } from '@towing/theme';
-import { Text } from '@towing/ui';
-import { Search, ChevronDown, Headphones } from '@/icons';
-import { SubScreen } from '@/components/SubScreen';
-import { SettingsList } from '@/components/SettingsList';
-import { SettingsRow } from '@/components/SettingsRow';
-import { TextField } from '@/components/TextField';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  MiScreen,
+  MiText,
+  MiNavBar,
+  MiTextField,
+  MiColorIcon,
+  MiMenuCard,
+  MiMenuRow,
+  MiChip,
+} from '@/design';
+import { MiFaqRow, MiFaqCard } from '@/design/components/MiFaqRow';
 import { faqs } from '@/features/account/data/faqs.data';
 import type { RootStackParamList } from '@/navigation/types';
-import { Pressable } from '@/motion';
 
-type Faq = (typeof faqs)[number];
+type Category = 'all' | 'booking' | 'payments' | 'safety' | 'account';
 
 /**
- * One FAQ card.
- *
- * `LinearTransition` on the card is what makes the accordion grow and shrink
- * rather than jump: Reanimated measures the card before and after the answer
- * mounts and tweens the height difference. The chevron rotation is a spring on
- * the same state, so the two read as one gesture.
+ * Category per FAQ. The FAQ data does not carry a category yet, so we map it
+ * here. Reported as a decision.
  */
-function FaqRow({
-  faq,
-  expanded,
-  onToggle,
-}: {
-  faq: Faq;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const theme = useTheme();
+const CATEGORY: Record<string, 'booking' | 'payments' | 'safety' | 'account'> = {
+  f1: 'booking',
+  f2: 'payments',
+  f3: 'booking',
+  f4: 'payments',
+  f5: 'safety',
+  f6: 'account',
+};
 
-  const progress = useDerivedValue(() =>
-    withSpring(expanded ? 1 : 0, theme.motion.spring.snappy),
-  );
+const CATEGORIES: { key: Category; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'booking', label: 'Booking' },
+  { key: 'payments', label: 'Payments' },
+  { key: 'safety', label: 'Safety' },
+  { key: 'account', label: 'Account' },
+];
 
-  const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${interpolate(progress.value, [0, 1], [0, 180])}deg` }],
-  }));
+/**
+ * Help Center — Figma 59 · Help Center (296:3244).
+ */
+export function HelpCenterScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<Category>('all');
+  const [open, setOpen] = useState<string | null>('f1');
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return faqs.filter((f) => {
+      if (category !== 'all' && CATEGORY[f.id] !== category) return false;
+      if (!q) return true;
+      return f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q);
+    });
+  }, [query, category]);
 
   return (
-    <Animated.View layout={LinearTransition.duration(motion.duration.base)}>
-      <Pressable
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        accessibilityLabel={faq.question}
-        pressScale={theme.motion.pressScale.card}
-        style={{
-          backgroundColor: theme.colors.card,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          padding: 16,
-          gap: expanded ? 10 : 0,
-          ...theme.shadows.card,
+    <MiScreen edges={['top']}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          paddingHorizontal: 21,
+          gap: 16,
+          paddingBottom: Math.max(insets.bottom, 34),
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text weight="medium" style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
-            {faq.question}
-          </Text>
-          <Animated.View style={chevronStyle}>
-            <ChevronDown size={18} color={theme.colors.textTertiary} />
-          </Animated.View>
-        </View>
+        {/* 296:3244 — Nav bar */}
+        <MiNavBar title="Help Center" trailing="none" onBack={() => navigation.goBack()} />
 
-        {expanded ? (
-          <Animated.View
-            entering={FadeIn.duration(motion.duration.fast)}
-            exiting={FadeOut.duration(motion.duration.fast)}
-          >
-            <Text color="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
-              {faq.answer}
-            </Text>
-          </Animated.View>
-        ) : null}
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-export function HelpCenterScreen() {
-  const theme = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [query, setQuery] = useState('');
-  const [openId, setOpenId] = useState<string | null>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return faqs;
-    return faqs.filter(
-      (f) => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q),
-    );
-  }, [query]);
-
-  return (
-    <SubScreen title="Help Center">
-      <TextField
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search help topics"
-        autoCapitalize="none"
-        rightSlot={<Search size={18} color={theme.colors.textTertiary} />}
-      />
-
-      <View style={{ gap: 10 }}>
-        {filtered.map((f) => (
-          <FaqRow
-            key={f.id}
-            faq={f}
-            expanded={openId === f.id}
-            onToggle={() => setOpenId(openId === f.id ? null : f.id)}
-          />
-        ))}
-      </View>
-
-      <SettingsList>
-        <SettingsRow
-          icon={Headphones}
-          title="Still need help?"
-          subtitle="Reach our support team"
-          trailing="chevron"
-          onPress={() => navigation.navigate('ContactUs')}
+        {/* 296:3477 — Search */}
+        <MiTextField
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search help topics"
+          leftSlot={<MiColorIcon name="search" size={22} />}
+          returnKeyType="search"
+          autoCorrect={false}
+          accessibilityLabel="Search help topics"
         />
-      </SettingsList>
-    </SubScreen>
+
+        {/* 296:3489 — Categories */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginHorizontal: -21 }}
+          contentContainerStyle={{ paddingHorizontal: 21, gap: 8 }}
+        >
+          {CATEGORIES.map((c) => (
+            <MiChip
+              key={c.key}
+              label={c.label}
+              selected={category === c.key}
+              onPress={() => setCategory(c.key)}
+            />
+          ))}
+        </ScrollView>
+
+        {/* 296:3500 — FAQs */}
+        {visible.length > 0 ? (
+          <MiFaqCard>
+            {visible.map((f) => (
+              <MiFaqRow
+                key={f.id}
+                question={f.question}
+                answer={f.answer}
+                expanded={open === f.id}
+                onToggle={() => setOpen(open === f.id ? null : f.id)}
+              />
+            ))}
+          </MiFaqCard>
+        ) : (
+          <MiText variant="bodyM15" color="secondary">
+            No help topics match your search.
+          </MiText>
+        )}
+
+        {/* 296:3547 — Still need help */}
+        <MiMenuCard radius={16} paddingVertical={4}>
+          <MiMenuRow
+            icon={{ color: 'help' }}
+            title="Still need help?"
+            subtitle="Reach our support team, 24/7"
+            showChevron
+            onPress={() => navigation.navigate('SupportChat', {})}
+          />
+        </MiMenuCard>
+      </ScrollView>
+    </MiScreen>
   );
 }

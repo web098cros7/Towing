@@ -1,11 +1,13 @@
-# Track B Phase 19 — §9.1.9's payment, the invoice and the rating prompt.
+# Track B Phase 19 — §9.1.9's payment, rebuilt as Figma 27 Payment, 28 Apply
+# Coupon, 29 Payment Failed and 30 Payment Successful, plus the wallet.
 #
 # ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
 # Maestro flow in this repo has ever run. Reviewed against the screens as
 # written; that is all.
 #
 # Runs against `paymentsMockSource` (no backend, no gateway), the hermetic CI
-# path Phase 12 established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
+# path Phase 12 established. Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`,
+# and `EXPO_PUBLIC_MOCK_PAYMENT_STATE` / `EXPO_PUBLIC_MOCK_COUPON_STATE` unset.
 #
 # WHY IT CAN RUN AT ALL WITHOUT RAZORPAY. The mock intent returns
 # `autoSettles: true`, which is the server's way of saying "there is no vendor
@@ -15,17 +17,24 @@
 # (SETUP-CHECKLIST item 12). It is ALSO the only branch that could ever run in
 # Expo Go, where the native module does not exist.
 #
-# WHAT IT PROVES — the entire post-trip moment, which did not exist before this
-# phase. `TrackingScreen` had NO reaction to a terminal status at all: the badge
-# flipped to "Completed", the ten-second poll kept running, and the customer sat
-# on a live map of a finished trip. There was no way to pay, no invoice and no
-# rating.
+# WHY 29 IS REACHABLE. The mock declines the FIRST Pay of each booking in a
+# session and captures the next one, so one pass walks 27 → 29 → 27 → 30.
+#
+# WHAT IT PROVES:
+#   · 20's Status card opens 27 for a completed, unpaid trip (the way back to
+#     pay later);
+#   · 27's Total and "Pay ₹…" are the amount being charged, and follow a coupon
+#     applied on 28 (test mode only: the real server cannot apply one at
+#     payment time);
+#   · a decline shows 29 with the charged amount, the chosen method, the reason
+#     and the booking reference, and "Use Another Method" returns to 27's list;
+#   · a capture resets the stack to Home + 30, whose Back can only reach Home.
 #
 # WHAT IT CANNOT PROVE:
 #   · the real Razorpay sheet — a native module, never built, never opened;
 #   · that money moved — the mock settles itself, and the ledger assertions live
 #     in `payments-capture.e2e.spec.ts` where a real Postgres can be inspected;
-#   · the emailed invoice — SES has never sent anything.
+#   · the clipboard — Maestro cannot read it; the copy tap is only exercised.
 #
 # No `testID` convention exists in this repo. Every step below matches visible
 # copy or an `accessibilityLabel` as text (Maestro's `id:` selects a testID,
@@ -35,12 +44,12 @@ appId: in.mitow.customer
 ---
 - runFlow: customer-login.yaml
 
-# ── Reach a finished trip ───────────────────────────────────────────────────
+# ── Reach a finished, unpaid trip ───────────────────────────────────────────
 #
-# The bookings list's fixtures include a completed trip; opening it is cheaper
-# and more reliable than driving a whole booking to completion, which
-# `customer-booking.yaml` already covers. The tab bar reads Home, Bookings,
-# Support, Profile; there is no "Trips" tab.
+# The bookings list's fixtures include completed trips; opening one is cheaper
+# and more reliable than driving a whole booking to completion. The first
+# "Completed" card is fixture b1 (TW-B1000001, ₹1,250). The tab bar reads Home,
+# Bookings, Support, Profile.
 - tapOn: 'Bookings'
 - assertVisible: 'My Bookings'
 
@@ -48,39 +57,102 @@ appId: in.mitow.customer
 # "<pickup> to <drop>, <status>, <fare>".
 - tapOn: '.*Completed.*'
 
-# Booking Details is now Figma 20, which draws the ACTIVE trip. A finished one
-# shows the same layout with its status card reading "Completed" (one accessible
-# element, "<title>. <subtitle>"), every timeline row done, and no pinned
-# Cancel / Share bar.
-- assertVisible: 'Booking Details'
-- assertVisible: 'Completed. Your tow is complete'
+# A finished trip opens Figma 35 · Completed Trip Details (not 20): no pinned
+# Cancel / Share bar, and its own Book Again / Download Receipt bar.
+- assertVisible: 'Trip Completed'
 - assertVisible: 'Driver Details'
-- assertVisible: 'Tow Truck Details'
+- assertVisible: 'Payment Details'
 - assertNotVisible: 'Cancel Booking'
 
-# ── Moved off Booking Details: the rating entry and the invoice download ────
-# The old screen carried "Total", "Rate this trip" → "Edit your rating" and
-# "Download invoice" rows. Figma 20 draws none of them (its spec lists fare,
-# invoice and rating rows under "Not drawn"); they belong to 35 Completed Trip
-# Details, which is not rebuilt. Their steps (§9.1.9's rating entry for a
-# customer who dismissed the prompt, "How was your tow…", "5 stars", "Submit
-# rating", "You rated 5 out of 5", and §9.1.10's "Download invoice") come back
-# with 35. The invoice PDF itself stays covered by `invoice.e2e.spec.ts`.
+# The fixture is completed but not paid yet, so 35's Payment Details row opens
+# 27 Payment. It is one accessible element.
+- tapOn: 'Payment details\. Pay for this trip'
 
-# Booking Details is a root screen with no tab bar: back to the list first.
+# ── 27 Payment ──────────────────────────────────────────────────────────────
+- extendedWaitUntil:
+    visible: 'Total amount, ₹1,250'
+    timeout: 10000
+- assertVisible: 'Choose Payment Method'
+- assertVisible: 'UPI\. Pay using any UPI app'
+- assertVisible: 'Apply Coupon'
+- assertVisible: '100% Secure Payments.*'
+- assertVisible: 'Pay ₹1,250'
+
+# ── 28 Payment · Details Open (View Details expands the bill in place) ──────
+- tapOn: 'View details'
+- assertVisible: 'Base fare.*'
+- assertVisible: 'Distance charge.*'
+- tapOn: 'Hide details'
+- assertVisible: 'View details'
+
+# ── Apply Coupon sheet (test mode only: 27's Apply Coupon row opens it) ────
+- tapOn: 'Apply Coupon'
+- assertVisible: 'Apply coupon'
+- assertVisible: 'Available offers'
+- tapOn: 'Apply SAVE20'
+# 20 % of ₹1,250, under the offer's ₹300 cap.
+- extendedWaitUntil:
+    visible: 'SAVE20 applied\. You save ₹250 on this trip\.'
+    timeout: 10000
+- assertVisible: 'SAVE20 applied'
+- tapOn: 'Done'
+# The intent is re-created with the coupon, so Total and Pay follow it.
+- extendedWaitUntil:
+    visible: 'Pay ₹1,000'
+    timeout: 10000
+- assertVisible: 'Total amount, ₹1,000'
+
+# ── 29 Payment Failed (the mock declines the first attempt) ─────────────────
+- tapOn: 'Pay ₹1,000'
+- extendedWaitUntil:
+    visible: 'Payment failed'
+    timeout: 15000
+- assertVisible: 'Your trip is safe'
+- assertVisible: 'Amount, ₹1,000'
+- assertVisible: 'Payment method, UPI'
+- assertVisible: 'Reason, Declined by bank'
+- assertVisible: 'Reference ID, TW-B1000001'
+- assertVisible: 'Try Again'
+
+# Back to 27's list, same session (the coupon is still applied).
+- tapOn: 'Use Another Method'
+- assertVisible: 'Choose Payment Method'
+- tapOn: 'Credit / Debit Card\. Visa, Mastercard, RuPay'
+
+# ── 30 Payment Successful ───────────────────────────────────────────────────
+- tapOn: 'Pay ₹1,000'
+- extendedWaitUntil:
+    visible: 'Payment Successful!'
+    timeout: 15000
+- assertVisible: 'Your payment has been processed successfully\.'
+# Each Summary Row is one accessible element, "<label>, <value>"; the copy button is its own.
+- assertVisible: 'Payment Method, Credit / Debit Card'
+- assertVisible: 'Transaction ID, pay_dev_mock_.*'
+- assertVisible: 'Secure Payment'
+- tapOn: 'Copy transaction ID'
+
+# View Booking Details is pushed over 30, so its Back returns here.
+- tapOn: 'View Booking Details'
+- assertVisible: 'Booking Details'
 - tapOn: 'Go back'
+- assertVisible: 'Payment Successful!'
+
+# 30's Back goes Home: the stack under it is only the tabs.
+- tapOn: 'Go back'
+- assertNotVisible: 'Payment Successful!'
 
 # ── §9.1.9's wallet ────────────────────────────────────────────────────────
 - tapOn: 'Profile'
-- tapOn: 'Payments'
+# The redesigned Profile (Figma 38) lists Payment Methods as a menu row.
+- tapOn: '.*Manage cards, UPI and wallets.*'
 
 # The screen that showed a fictional "HDFC Visa •••• 4321" from a hardcoded
 # fixture until Phase 19, with every row wired to `const notReady = () => {}`.
-- assertVisible: 'Wallet'
-- assertVisible: '.*saved securely by our payment provider.*'
+- assertVisible: '.*MiTow Wallet.*'
+- assertVisible: '.*Saved by our payment partner.*'
 
-- tapOn: 'Wallet'
-- assertVisible: 'Balance'
+- tapOn: '.*MiTow Wallet, refunds and credits.*'
+- assertVisible: 'Available balance'
 # The first NEGATIVE money this app ever rendered. `formatPaise(-25000)`
 # produced "₹-,500" before this phase, on every engine, silently.
-- assertVisible: 'Reversed — booking refunded'
+- assertVisible: '.*Reversed — booking refunded.*'

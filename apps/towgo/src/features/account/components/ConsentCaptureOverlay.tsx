@@ -3,6 +3,7 @@ import { Modal, Platform, ScrollView, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { mitowColors, mitowLayout, mitowRadii, MiIllustration } from '@/design';
+import { MiModalFrame } from '@/design/components/MiModalFrame';
 import { haptics } from '@/motion';
 import { storage } from '@/lib/storage/storage';
 import { useRecordConsent } from '@/features/account/api/privacy.queries';
@@ -136,7 +137,7 @@ export function ConsentCaptureOverlay({ onDone }: { onDone: () => void }) {
       {/* The page is always white: dark status-bar content, also inside the
           Modal's own Android window. */}
       <StatusBar style="dark" />
-      <View style={{ flex: 1, backgroundColor: mitowColors.surfacePage, paddingTop: insets.top }}>
+      <MiModalFrame style={{ backgroundColor: mitowColors.surfacePage, paddingTop: insets.top }}>
         <ScrollView
           style={{ flex: 1 }}
           scrollEnabled={columnOverflows}
@@ -150,6 +151,7 @@ export function ConsentCaptureOverlay({ onDone }: { onDone: () => void }) {
           contentContainerStyle={{
             paddingTop: illustrationTop - insets.top,
             paddingHorizontal: mitowLayout.sideMargin,
+            paddingBottom: mitowLayout.blockGap, // keeps the card off I Agree when the column scrolls
             gap: mitowLayout.blockGap,
           }}
         >
@@ -163,8 +165,14 @@ export function ConsentCaptureOverlay({ onDone }: { onDone: () => void }) {
 
           {/* E3 Heading block (287:1945) */}
           <View style={{ gap: HEADING_GAP }}>
-            {/* "Before you continue" is a Maestro marker; do not reword. */}
-            <ExactText variant="display34" accessibilityRole="header">
+            {/* "Before you continue" is a Maestro marker; do not reword. One line, as drawn: on a phone narrower than the 393 frame the font shrinks (never below 75 %) instead of wrapping, which pushed the card into I Agree. */}
+            <ExactText
+              variant="display34"
+              accessibilityRole="header"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
               Before you continue
             </ExactText>
             <ExactText variant="bodyL155" color="secondary">
@@ -224,7 +232,7 @@ export function ConsentCaptureOverlay({ onDone }: { onDone: () => void }) {
             You can withdraw consent anytime from Settings.
           </ExactText>
         </View>
-      </View>
+      </MiModalFrame>
     </Modal>
   );
 }

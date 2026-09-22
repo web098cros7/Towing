@@ -3,7 +3,7 @@ import type { PaymentCaptureRequest, PaymentPurpose, RatingSubmit } from '@towin
 import { bookingsKeys } from '@/features/bookings/api/bookings.keys';
 import { trackingKeys } from '@/features/tracking/api/tracking.keys';
 import { paymentsDataSource } from './paymentsDataSource';
-import { invoiceKeys, ratingKeys, walletKeys } from './payments.keys';
+import { couponKeys, invoiceKeys, ratingKeys, walletKeys } from './payments.keys';
 
 /**
  * ⚠ EVERY MONEY QUERY HERE IS `staleTime: 0, gcTime: 0`.
@@ -52,11 +52,14 @@ export function useCreatePaymentIntent() {
       bookingId,
       purpose,
       idempotencyKey,
+      couponCode,
     }: {
       bookingId: string;
       purpose: PaymentPurpose;
       idempotencyKey: string;
-    }) => paymentsDataSource.createIntent(bookingId, purpose, idempotencyKey),
+      /** 28's applied code. Honoured by the mock only; see `PaymentsDataSource.createIntent`. */
+      couponCode?: string | null;
+    }) => paymentsDataSource.createIntent(bookingId, purpose, idempotencyKey, couponCode),
     // A retried intent is safe under the same key, but react-query retries on
     // TIMEOUT too — and a timed-out intent may well have opened an order.
     retry: false,
@@ -106,6 +109,23 @@ export function useValidateCoupon() {
     mutationFn: ({ code, subtotalPaise }: { code: string; subtotalPaise: number }) =>
       paymentsDataSource.validateCoupon(code, subtotalPaise),
     retry: false,
+  });
+}
+
+/**
+ * 28 · Apply Coupon's "Available offers", read while 27 is up (the sheet is
+ * mounted with it, and enables this in test mode only), so they are in before
+ * the sheet first slides in. `staleTime: 0, gcTime: 0` like the money reads
+ * above: an offer's eligibility is about THIS trip, now. The REST source has
+ * none (27-28 Data gap 7).
+ */
+export function useCouponOffers(enabled: boolean) {
+  return useQuery({
+    queryKey: couponKeys.offers(),
+    queryFn: () => paymentsDataSource.getCouponOffers(),
+    enabled,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 

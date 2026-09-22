@@ -21,6 +21,7 @@ export const bookingDetailsMock: BookingDetail[] = [
   {
     id: 'b1',
     reference: 'TW-B1000001',
+    serviceSlug: 'car_tow',
     originLabel: 'MG Road, Bengaluru',
     destinationLabel: 'Koramangala, Bengaluru',
     createdAt: iso(17, 10, 30),
@@ -58,6 +59,7 @@ export const bookingDetailsMock: BookingDetail[] = [
   {
     id: 'b4',
     reference: 'TW-B4000004',
+    serviceSlug: 'car_tow',
     originLabel: 'Whitefield, Bengaluru',
     destinationLabel: 'Electronic City, Bengaluru',
     createdAt: iso(16, 16, 20),
@@ -95,6 +97,7 @@ export const bookingDetailsMock: BookingDetail[] = [
   {
     id: 'b2',
     reference: 'TW-B2000002',
+    serviceSlug: 'car_tow',
     originLabel: 'HSR Layout, Bengaluru',
     destinationLabel: 'Jayanagar, Bengaluru',
     createdAt: iso(15, 11, 45),
@@ -132,6 +135,7 @@ export const bookingDetailsMock: BookingDetail[] = [
   {
     id: 'b3',
     reference: 'TW-B3000003',
+    serviceSlug: 'car_tow',
     originLabel: 'Indiranagar, Bengaluru',
     destinationLabel: 'Whitefield, Bengaluru',
     createdAt: iso(9, 18, 15),

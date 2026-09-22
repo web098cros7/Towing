@@ -7,6 +7,7 @@ import type { FontWeightKey } from '@towing/theme';
  * size ("Display 34" is -2.5% → -0.85px). Every value below is converted.
  *
  * Key → Figma style:
+ *   amount44   MiTow/Amount 44   Bold     44 / 52    -2.5%  -1.1
  *   display34  MiTow/Display 34   Bold     34 / 40    -2.5%  -0.85
  *   display31  MiTow/Display 31   Bold     31 / 36    -2.5%  -0.775
  *   display27  MiTow/Display 27   Bold     27 / 32    -2.5%  -0.675
@@ -27,6 +28,8 @@ import type { FontWeightKey } from '@towing/theme';
  *   bodyS14    MiTow/Body S 14    Regular  14 / 19    -1.5%  -0.21
  *   label13    MiTow/Label 13     Regular  13 / 16.5  -2%    -0.26
  *
+ * `amount44` is 27 Payment's Total (E2 `239:707`, "₹1,200") and 28's backdrop copy of it.
+ *
  * `weight` is the shared `FontWeightKey`, so `MiText` resolves the Inter family
  * through `theme.fonts[weight]` (registered in `providers/FontGate.tsx`).
  */
@@ -39,6 +42,7 @@ export type MitowTypeToken = {
 };
 
 export const mitowType = {
+  amount44: { fontSize: 44, lineHeight: 52, letterSpacing: -1.1, weight: 'bold' },
   display34: { fontSize: 34, lineHeight: 40, letterSpacing: -0.85, weight: 'bold' },
   display31: { fontSize: 31, lineHeight: 36, letterSpacing: -0.775, weight: 'bold' },
   display27: { fontSize: 27, lineHeight: 32, letterSpacing: -0.675, weight: 'bold' },

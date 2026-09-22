@@ -218,7 +218,8 @@ const config: ExpoConfig = {
    *
    * `1` was Phase 12 (MMKV, expo-location, the pickers); `2` was Phase 13
    * adding `expo-notifications`; `3` was Phase 16 adding `react-native-maps`;
-   * `4` is Phase 19 adding `react-native-razorpay`. None has ever been built.
+   * `4` is Phase 19 adding `react-native-razorpay`; `5` is the 25–30 redesign
+   * adding `expo-clipboard` (30's copy button). None has ever been built.
    *
    * ⚠ THE FOURTH RUNG, AND THE PLAN SAID THERE WOULD BE THREE. Phases 12, 13
    * and 16 were the declared rebuild points and Phase 18 went out of its way to
@@ -235,7 +236,7 @@ const config: ExpoConfig = {
    * back-filled from memory — which is exactly how an update lands on an
    * incompatible binary.
    */
-  runtimeVersion: '4',
+  runtimeVersion: '5',
   extra: {
     // Toggle mock data source vs the (future) real REST backend.
     useMocks: process.env.EXPO_PUBLIC_USE_MOCKS ?? 'true',

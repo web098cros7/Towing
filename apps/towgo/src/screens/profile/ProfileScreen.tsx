@@ -1,208 +1,266 @@
-import React, { useCallback, useMemo } from 'react';
-import { Alert, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View } from 'react-native';
+import { ScrollView } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Constants from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@towing/theme';
-import { Screen, Text, OfflineBanner, Skeleton, ErrorState } from '@towing/ui';
+import { usePressablePrimitive } from '@towing/ui';
 import {
-  CarFront,
-  MapPin,
-  CreditCard,
-  Settings,
-  CircleHelp,
-  Headphones,
-  LogOut,
-  User,
-  Bell,
-  RefreshCw,
-  LifeBuoy,
-} from '@/icons';
-import { AppHeader } from '@/components/AppHeader';
-import { useCollapsingHeader } from '@/motion';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useTabBarSpace } from '@/navigation/TabBar';
-import { useBookings } from '@/features/bookings/api/bookings.queries';
+  MiScreen,
+  MiText,
+  MiButton,
+  MiColorIcon,
+  MiLineIcon,
+  MiMenuCard,
+  MiMenuRow,
+  MiInfoBanner,
+  MiMapButton,
+  mitowLayout,
+  mitowColors,
+  avatarDefaultIllustration,
+} from '@/design';
+import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { useProfile } from '@/features/account/api/profile.queries';
-import { useVehicles } from '@/features/account/api/vehicles.queries';
-import { useAddresses } from '@/features/account/api/addresses.queries';
-import { useUnreadCount } from '@/features/notifications/api/notifications.queries';
-import { ProfileHeroCard } from '@/features/account/components/ProfileHeroCard';
-import {
-  QuickTile,
-  StatusCard,
-  MenuGroup,
-  MenuRow,
-} from '@/features/account/components/AccountCards';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useLogout } from '@/features/auth/api/auth.queries';
+import { useTabBarSpace } from '@/navigation/TabBar';
 import type { RootStackParamList } from '@/navigation/types';
+import { LogOutSheet } from './LogOutSheet';
 
-/** Shipped version, read from app.config.ts rather than retyped. */
-const APP_VERSION = Constants.expoConfig?.version ?? '';
+/**
+ * Formats a mobile number for display.
+ * '+91' followed by exactly 10 digits → '+91 98765 43210' (5 + 5 split).
+ * Otherwise returns the number as stored.
+ */
+function formatMobile(m: string): string {
+  const match = /^\+91(\d{10})$/.exec(m);
+  if (match) {
+    const digits = match[1];
+    return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  }
+  return m;
+}
 
+/**
+ * Figma 38 · Profile (238:586)
+ *
+ * Profile TAB root. The tab bar is the navigator's own and is not drawn here.
+ */
 export function ProfileScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const tabBarSpace = useTabBarSpace();
-  const { scrollY, screenProps } = useCollapsingHeader();
-  const online = useOnlineStatus();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const Pressable = usePressablePrimitive();
 
-  const { data: profile, isPending: profilePending, isError: profileError, refetch: refetchProfile } = useProfile();
-  const { data: vehicles } = useVehicles();
-  const { data: addresses } = useAddresses();
-  const unread = useUnreadCount();
-  const { items: bookings } = useBookings();
+  const { data: profile, isPending: profilePending } = useProfile();
   const refreshToken = useAuthStore((s) => s.refreshToken);
   const logout = useLogout();
 
-  const trips = bookings.length;
-  const vehicleCount = vehicles?.length ?? 0;
-  const addressCount = addresses?.length ?? 0;
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
-  /**
-   * Six real signals, so the number moves when the user actually does something.
-   * Nothing here is invented — each maps to a screen they can go and complete.
-   */
-  const completion = useMemo(() => {
-    const checks = [
-      !!profile?.name?.trim(),
-      !!profile?.mobile?.trim(),
-      !!profile?.email?.trim(),
-      vehicleCount > 0,
-      addressCount > 0,
-      // ⚠ THE SIXTH CHECK WAS `paymentMethodsMock.length > 0` — a hardcoded
-      // fixture that was ALWAYS non-empty, so this term contributed a constant
-      // 1/6 to every customer's completion percentage regardless of anything
-      // they had done. Phase 19 removed the mock (Razorpay's sheet owns saved
-      // instruments — §9.1.9's "no raw card data stored"), so the term goes
-      // with it rather than being replaced by another always-true one.
-    ];
-    const done = checks.filter(Boolean).length;
-    return Math.round((done / checks.length) * 100);
-  }, [profile, vehicleCount, addressCount]);
+  const confirmLogout = useCallback(() => setLogoutOpen(true), []);
 
-  const openProfile = useCallback(
+  const openPersonalInformation = useCallback(
     () => navigation.navigate('PersonalInformation'),
     [navigation],
   );
+  const openSettings = useCallback(() => navigation.navigate('Settings'), [navigation]);
   const openBookings = useCallback(
     () => navigation.navigate('Tabs', { screen: 'Bookings' }),
     [navigation],
   );
-  const openVehicles = useCallback(() => navigation.navigate('MyVehicles'), [navigation]);
-  const openLocations = useCallback(() => navigation.navigate('SavedLocations'), [navigation]);
-  const openPayments = useCallback(() => navigation.navigate('PaymentMethods'), [navigation]);
-  const openNotifications = useCallback(
-    () => navigation.navigate('NotificationsSettings'),
-    [navigation],
-  );
-  const openSettings = useCallback(() => navigation.navigate('Settings'), [navigation]);
-  const openEmergencyContacts = useCallback(
-    () => navigation.navigate('EmergencyContacts'),
-    [navigation],
-  );
-  const openHelp = useCallback(() => navigation.navigate('HelpCenter'), [navigation]);
-  const openContact = useCallback(() => navigation.navigate('ContactUs'), [navigation]);
+  const openSavedLocations = useCallback(() => navigation.navigate('SavedLocations'), [navigation]);
+  const openPaymentMethods = useCallback(() => navigation.navigate('PaymentMethods'), [navigation]);
+  const openNotifications = useCallback(() => navigation.navigate('Notifications'), [navigation]);
+  const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
+  const openReferEarn = useCallback(() => navigation.navigate('ReferEarn'), [navigation]);
 
-  const confirmLogout = useCallback(() => {
-    Alert.alert(
-      'Log out?',
-      'You will need to sign in again to book a tow.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log Out',
-          style: 'destructive',
-          onPress: () => logout.mutate(refreshToken ?? ''),
-        },
-      ],
-      { cancelable: true },
-    );
-  }, [logout, refreshToken]);
+  const hasName = !!profile?.name?.trim();
+  const hasEmail = !!profile?.email?.trim();
 
   return (
-    <Screen
-      scroll
-      edges={['top']}
-      banner={<OfflineBanner visible={!online} />}
-      header={<AppHeader scrollY={scrollY} title="Profile" showMenu={false} showBell={false} />}
-      contentContainerStyle={{ paddingBottom: tabBarSpace }}
-      {...screenProps}
-    >
-      <View style={{ paddingHorizontal: 20, paddingTop: theme.spacing.sm, gap: theme.spacing.md }}>
-        {profileError ? (
-          <ErrorState
-            title="Couldn't load your profile"
-            onRetry={() => refetchProfile()}
-            icon={RefreshCw}
+    <MiScreen edges={[]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingTop: Math.max(mitowLayout.contentTop, insets.top),
+          paddingHorizontal: mitowLayout.sideMargin,
+          gap: mitowLayout.blockGap,
+          paddingBottom: tabBarSpace,
+        }}
+      >
+        {/* Header 240:706 */}
+        <View
+          style={{
+            flexDirection: 'row',
+            height: 46,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <MiText variant="display27" accessibilityRole="header">
+            Profile
+          </MiText>
+          {/* Settings 240:708 */}
+          <MiMapButton
+            colorIcon="settings"
+            iconSize={24}
+            size={46}
+            accessibilityLabel="Settings"
+            onPress={openSettings}
           />
-        ) : profilePending || !profile ? (
-          <>
-            <Skeleton width="100%" height={140} radius={theme.radii.sheet} />
-            <Skeleton width="100%" height={72} radius={theme.radii.card} />
-          </>
-        ) : (
-          <>
-            <ProfileHeroCard
-              name={profile.name ?? ''}
-              email={profile.email ?? ''}
-              trips={trips}
-              vehicles={vehicleCount}
-              places={addressCount}
-              onEditProfile={openProfile}
-              onViewBookings={openBookings}
-            />
-
-            <StatusCard
-              icon={User}
-              label="Your profile"
-              badge={completion === 100 ? 'Complete' : `${completion}% completed`}
-              tone={completion === 100 ? 'success' : 'warning'}
-              onPress={openProfile}
-            />
-          </>
-        )}
-
-        <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
-          <QuickTile icon={CarFront} label="My Vehicles" onPress={openVehicles} />
-          <QuickTile icon={CreditCard} label="Payments" onPress={openPayments} />
         </View>
 
-        <StatusCard
-          icon={Bell}
-          label="Notifications"
-          badge={(unread.data?.unread ?? 0) > 0 ? `${unread.data?.unread} new` : 'Up to date'}
-          onPress={openNotifications}
+        {/* Account 240:714 */}
+        <Pressable
+          pressScale={theme.motion.pressScale.row}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel="Personal information"
+          onPress={openPersonalInformation}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 16,
+          }}
+        >
+          {/* Avatar 84×84 */}
+          <View style={{ width: 84, height: 84, position: 'relative' }}>
+            <SvgXml xml={avatarDefaultIllustration} width={84} height={84} />
+            {/* Camera badge 240:718 */}
+            <View
+              style={{
+                position: 'absolute',
+                left: 60,
+                top: 58,
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                borderWidth: 2,
+                borderColor: mitowColors.surfacePage,
+                overflow: 'hidden',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <MiColorIcon name="camera" size={26} />
+            </View>
+          </View>
+
+          {/* Details 240:720 */}
+          <View style={{ flex: 1, gap: 2 }}>
+            {profilePending || !profile ? (
+              <>
+                <SlotPlaceholder variant="title20" width={132} />
+                <SlotPlaceholder variant="bodyM15" width={122} />
+                <SlotPlaceholder variant="bodyM15" width={174} />
+              </>
+            ) : (
+              (() => {
+                const p = profile;
+                return (
+                  <>
+                    {hasName ? (
+                      <MiText variant="title20" numberOfLines={1}>
+                        {p.name}
+                      </MiText>
+                    ) : (
+                      <SlotPlaceholder variant="title20" width={132} />
+                    )}
+                    <MiText variant="bodyM15" color="secondary">
+                      {formatMobile(p.mobile)}
+                    </MiText>
+                    {hasEmail ? (
+                      <MiText variant="bodyM15" color="secondary" numberOfLines={1}>
+                        {p.email}
+                      </MiText>
+                    ) : null}
+                  </>
+                );
+              })()
+            )}
+          </View>
+
+          <MiLineIcon name="chevron-right" size={24} />
+        </Pressable>
+
+        {/* MiTow Plus 240:726 */}
+        <MiInfoBanner
+          tone="brand"
+          icon="plus-badge"
+          title="MiTow Plus"
+          subtitle="Get priority service, exclusive offers and more."
+          showChevron
+          height={84}
         />
 
-        <MenuGroup title="Account">
-          <MenuRow icon={MapPin} label="Saved Locations" onPress={openLocations} />
-          <MenuRow icon={LifeBuoy} label="Emergency Contacts" onPress={openEmergencyContacts} />
-          <MenuRow icon={Settings} label="Settings" onPress={openSettings} />
-        </MenuGroup>
+        {/* Menu 240:736 */}
+        <MiMenuCard radius={16} paddingVertical={4}>
+          <MiMenuRow
+            icon={{ color: 'calendar' }}
+            title="My Bookings"
+            subtitle="View past and upcoming bookings"
+            showChevron
+            onPress={openBookings}
+          />
+          <MiMenuRow
+            icon={{ color: 'map' }}
+            title="Saved Locations"
+            subtitle="Home, Work and more"
+            showChevron
+            onPress={openSavedLocations}
+          />
+          <MiMenuRow
+            icon={{ color: 'payment' }}
+            title="Payment Methods"
+            subtitle="Manage cards, UPI and wallets"
+            showChevron
+            onPress={openPaymentMethods}
+          />
+          <MiMenuRow
+            icon={{ color: 'bell' }}
+            title="Notifications"
+            subtitle="Manage alerts and updates"
+            showChevron
+            onPress={openNotifications}
+          />
+          <MiMenuRow
+            icon={{ color: 'help' }}
+            title="Help & Support"
+            subtitle="FAQs, chat with us"
+            showChevron
+            onPress={openSupport}
+          />
+          <MiMenuRow
+            icon={{ color: 'refer' }}
+            title="Refer & Earn"
+            subtitle="Get ₹100 for every friend"
+            showChevron
+            onPress={openReferEarn}
+          />
+        </MiMenuCard>
 
-        <MenuGroup title="Support">
-          <MenuRow icon={CircleHelp} label="Help Center" onPress={openHelp} />
-          <MenuRow icon={Headphones} label="Contact Us" onPress={openContact} />
-        </MenuGroup>
+        {/* Log Out 240:849 */}
+        <MiButton
+          tone="quiet"
+          label="Log Out"
+          onPress={confirmLogout}
+          leadingSlot={<MiColorIcon name="log-out" size={22} />}
+          loading={logout.isPending}
+        />
+      </ScrollView>
 
-        {/* Untitled: a lone destructive action needs no heading. */}
-        <MenuGroup>
-          <MenuRow icon={LogOut} label="Log Out" danger onPress={confirmLogout} />
-        </MenuGroup>
-
-        {APP_VERSION ? (
-          <Text
-            variant="caption"
-            color="tertiary"
-            align="center"
-            style={{ paddingTop: theme.spacing.xs }}
-          >
-            Version {APP_VERSION}
-          </Text>
-        ) : null}
-      </View>
-    </Screen>
+      <LogOutSheet
+        visible={logoutOpen}
+        onClose={() => setLogoutOpen(false)}
+        name={profile?.name ?? null}
+        mobile={profile?.mobile ?? null}
+        loggingOut={logout.isPending}
+        onConfirm={() => logout.mutate(refreshToken ?? '')}
+      />
+    </MiScreen>
   );
 }

@@ -11,6 +11,7 @@ import type {
   WalletTransactionDto,
 } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
+import type { CouponOffer } from '../types';
 import type { PaymentsDataSource } from './paymentsDataSource';
 
 export const paymentsRestSource: PaymentsDataSource = {
@@ -23,11 +24,19 @@ export const paymentsRestSource: PaymentsDataSource = {
    * retry". A payment is emphatically the second — the same argument
    * `createBooking` makes, and `client.ts` carries a comment about the two
    * fare-locked bookings that resulted from getting it wrong once.
+   *
+   * ⚠ `couponCode` IS IGNORED, deliberately: `paymentIntentRequestSchema` is
+   * `{ purpose }` and the server applies a coupon only inside the booking-confirm
+   * transaction (27-28 Data gap 8). Sending it would be dropped by the schema,
+   * and pretending to honour it would show a saving the charge does not include.
+   * 27 never lets a coupon reach here on the live API (28 opens in test mode
+   * only); this stays a no-op until the contract grows a payment-time coupon.
    */
   createIntent(
     bookingId: string,
     purpose: PaymentPurpose,
     idempotencyKey: string,
+    _couponCode?: string | null,
   ): Promise<PaymentIntentDto> {
     return apiFetch<PaymentIntentDto>(`payments/${bookingId}/intent`, {
       method: 'POST',
@@ -68,6 +77,14 @@ export const paymentsRestSource: PaymentsDataSource = {
       method: 'POST',
       body: JSON.stringify({ code, subtotalPaise }),
     });
+  },
+
+  /**
+   * NONE. The server has no offers list (only `POST /v1/coupons/validate`), and
+   * its `coupons` table has no title to show (27-28 Data gap 7).
+   */
+  async getCouponOffers(): Promise<CouponOffer[]> {
+    return [];
   },
 
   getInvoiceLink(bookingId: string): Promise<InvoiceLinkDto> {

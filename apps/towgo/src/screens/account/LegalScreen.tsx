@@ -1,40 +1,21 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, Modal, ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@towing/theme';
 import { Text } from '@towing/ui';
-import { Download, Trash2, X } from '@/icons';
-import { SubScreen } from '@/components/SubScreen';
-import { SettingsList } from '@/components/SettingsList';
-import { SettingsRow } from '@/components/SettingsRow';
+import { X } from '@/icons';
+import { MiFaqCard, MiFaqRow } from '@/design/components/MiFaqRow';
+import { MiMenuCard, MiMenuRow, MiNavBar, MiScreen, MiText, mitowLayout } from '@/design';
 import { ApiClientError } from '@/lib/api/errors';
 import { useDeleteAccount, useExportData } from '@/features/account/api/privacy.queries';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { POLICY_VERSION } from '@/lib/legal/policyVersion';
 import { Pressable } from '@/motion';
-
-function LegalHeading({ title }: { title: string }) {
-  return (
-    <Text variant="overline" color="tertiary" style={{ paddingHorizontal: 4 }}>
-      {title}
-    </Text>
-  );
-}
-
-function LegalSection({ title, body }: { title: string; body: string }) {
-  return (
-    <View style={{ gap: 6 }}>
-      <Text weight="semibold" style={{ fontSize: 15, lineHeight: 20 }}>
-        {title}
-      </Text>
-      <Text color="secondary" style={{ fontSize: 13, lineHeight: 19 }}>
-        {body}
-      </Text>
-    </View>
-  );
-}
+import type { RootStackParamList } from '@/navigation/types';
+import { DeleteAccountSheet } from './DeleteAccountSheet';
 
 /**
  * Placeholder legal copy — not the focus of this phase, only that the screen
@@ -43,7 +24,7 @@ function LegalSection({ title, body }: { title: string; body: string }) {
 const PRIVACY_SECTIONS = [
   {
     title: 'What we collect',
-    body: 'Your mobile number, name, saved vehicles, saved addresses and emergency contacts, plus booking and location data needed to arrange a tow.',
+    body: 'Your name, phone number, email, vehicle details and trip locations, so we can send a tow truck and bill you correctly.',
   },
   {
     title: 'How we use it',
@@ -70,14 +51,37 @@ const TERMS_SECTIONS = [
   },
 ];
 
+/** '2026-08-10' → '10 Aug 2026'. */
+function formatPolicyDate(iso: string): string {
+  const [year, month, day] = iso.split('-').map((part) => Number(part));
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return `${day} ${months[month - 1]} ${year}`;
+}
+
 export function LegalScreen() {
   const theme = useTheme();
-  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const clearSession = useAuthStore((s) => s.clearSession);
   const queryClient = useQueryClient();
   const exportData = useExportData();
   const deleteAccount = useDeleteAccount();
   const [exportResult, setExportResult] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [open, setOpen] = useState<string | null>('p0');
 
   const onDownloadData = useCallback(() => {
     exportData.mutate(undefined, {
@@ -87,85 +91,137 @@ export function LegalScreen() {
   }, [exportData]);
 
   const onDeleteAccount = useCallback(() => {
-    Alert.alert(
-      'Delete your account?',
-      'This files a deletion request for your profile, vehicles, addresses and booking history. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Account',
-          style: 'destructive',
-          onPress: () =>
-            deleteAccount.mutate(undefined, {
-              onSuccess: () => {
-                Alert.alert('Request received', 'Your account deletion request has been filed.', [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      clearSession();
-                      // The deleted user's profile/vehicles/addresses/contacts
-                      // are cached query results, not session state —
-                      // clearSession() alone leaves them sitting in the
-                      // persisted (plaintext MMKV) query cache for up to its
-                      // 24h maxAge. Same two-call pattern as useLogout.
-                      queryClient.clear();
-                    },
-                  },
-                ]);
-              },
-              onError: (error) => {
-                // 409 = `uq_deletion_requests_one_open_per_subject`; the request
-                // IS filed, so a generic failure message would be misleading.
-                if (error instanceof ApiClientError && error.status === 409) {
-                  Alert.alert('Already requested', 'Your account deletion request is already being processed.');
-                  return;
-                }
-                Alert.alert('Something went wrong', 'Could not file the deletion request right now.');
-              },
-            }),
-        },
-      ],
-    );
-  }, [deleteAccount, clearSession]);
+    setDeleteOpen(true);
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    deleteAccount.mutate(undefined, {
+      onSuccess: () => {
+        setDeleteOpen(false);
+        Alert.alert('Request received', 'Your account deletion request has been filed.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              clearSession();
+              // The deleted user's profile/vehicles/addresses/contacts
+              // are cached query results, not session state —
+              // clearSession() alone leaves them sitting in the
+              // persisted (plaintext MMKV) query cache for up to its
+              // 24h maxAge. Same two-call pattern as useLogout.
+              queryClient.clear();
+            },
+          },
+        ]);
+      },
+      onError: (error) => {
+        setDeleteOpen(false);
+        // 409 = `uq_deletion_requests_one_open_per_subject`; the request
+        // IS filed, so a generic failure message would be misleading.
+        if (error instanceof ApiClientError && error.status === 409) {
+          Alert.alert(
+            'Already requested',
+            'Your account deletion request is already being processed.',
+          );
+          return;
+        }
+        Alert.alert('Something went wrong', 'Could not file the deletion request right now.');
+      },
+    });
+  }, [deleteAccount, clearSession, queryClient]);
+
+  const toggle = useCallback((key: string) => {
+    setOpen((current) => (current === key ? null : key));
+  }, []);
 
   return (
-    <SubScreen title="Legal" gap={20}>
-      <LegalHeading title="Privacy Policy" />
-      {PRIVACY_SECTIONS.map((s) => (
-        <LegalSection key={s.title} title={s.title} body={s.body} />
-      ))}
+    <MiScreen edges={['top']}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: mitowLayout.sideMargin,
+          gap: mitowLayout.blockGap,
+          paddingBottom: Math.max(insets.bottom, 34),
+        }}
+      >
+        {/* Nav bar */}
+        <MiNavBar title="Privacy & Legal" trailing="none" onBack={() => navigation.goBack()} />
 
-      <View style={{ height: 1, backgroundColor: theme.colors.border }} />
+        {/* Privacy Policy `297:3644` */}
+        <View style={{ gap: 12 }}>
+          <View style={{ gap: 2 }}>
+            <MiText variant="heading18">Privacy Policy</MiText>
+            <MiText variant="label13" color="secondary">
+              {`Version ${POLICY_VERSION} · Updated ${formatPolicyDate(POLICY_VERSION)}`}
+            </MiText>
+          </View>
+          <MiFaqCard>
+            {PRIVACY_SECTIONS.map((s, i) => {
+              const key = `p${i}`;
+              return (
+                <MiFaqRow
+                  key={key}
+                  question={s.title}
+                  answer={s.body}
+                  expanded={open === key}
+                  onToggle={() => toggle(key)}
+                />
+              );
+            })}
+          </MiFaqCard>
+        </View>
 
-      <LegalHeading title="Terms of Service" />
-      {TERMS_SECTIONS.map((s) => (
-        <LegalSection key={s.title} title={s.title} body={s.body} />
-      ))}
+        {/* Terms of Service `297:3671` */}
+        <View style={{ gap: 12 }}>
+          <MiText variant="heading18">Terms of Service</MiText>
+          <MiFaqCard>
+            {TERMS_SECTIONS.map((s, i) => {
+              const key = `t${i}`;
+              return (
+                <MiFaqRow
+                  key={key}
+                  question={s.title}
+                  answer={s.body}
+                  expanded={open === key}
+                  onToggle={() => toggle(key)}
+                />
+              );
+            })}
+          </MiFaqCard>
+        </View>
 
-      <Text variant="caption" color="tertiary">
-        Policy version {POLICY_VERSION}
-      </Text>
+        {/* Your Data `297:3697` */}
+        <View style={{ gap: 12 }}>
+          <MiText variant="heading18">Your Data</MiText>
+          <MiMenuCard radius={16} paddingVertical={4}>
+            <MiMenuRow
+              icon={{ color: 'download' }}
+              title="Download my data"
+              subtitle="A copy of everything we hold"
+              showChevron
+              onPress={onDownloadData}
+            />
+            <MiMenuRow
+              icon={{ color: 'trash' }}
+              title="Delete my account"
+              subtitle="Permanently remove your account"
+              showChevron
+              onPress={onDeleteAccount}
+            />
+          </MiMenuCard>
+        </View>
+      </ScrollView>
 
-      <SettingsList>
-        <SettingsRow
-          icon={Download}
-          title="Download my data"
-          subtitle="Get a copy of everything we hold about you"
-          trailing="chevron"
-          onPress={onDownloadData}
-        />
-        <SettingsRow
-          icon={Trash2}
-          iconColor={theme.colors.error}
-          title="Delete my account"
-          subtitle="Permanently remove your account"
-          danger
-          trailing="chevron"
-          onPress={onDeleteAccount}
-        />
-      </SettingsList>
+      <DeleteAccountSheet
+        visible={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        deleting={deleteAccount.isPending}
+        onConfirm={confirmDelete}
+      />
 
-      <Modal visible={!!exportResult} animationType="slide" onRequestClose={() => setExportResult(null)}>
+      <Modal
+        visible={!!exportResult}
+        animationType="slide"
+        onRequestClose={() => setExportResult(null)}
+      >
         <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
           <View
             style={{
@@ -195,6 +251,6 @@ export function LegalScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
-    </SubScreen>
+    </MiScreen>
   );
 }

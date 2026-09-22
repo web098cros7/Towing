@@ -10,6 +10,16 @@ export type MiMapChipProps = {
   label: string;
   /** Master "Show icon": the 20×20 trailing arrow drawn in the component. Default false. */
   showIcon?: boolean;
+  /**
+   * Minimum width of the LABEL's box. Omit to hug the text (the master's own auto width).
+   * 35's "View on Map" (`I245:902;234:295`) draws it at 81 inside a 133-wide chip.
+   *
+   * A MINIMUM rather than a fixed width, deliberately: the master lets a label run past its box
+   * rather than clip (Whitespace=nowrap, no overflow rule), and a fixed box would cut the label
+   * off at the 1.2× accessibility font cap. So the chip is exactly the drawn 133 at normal
+   * sizes and grows instead of truncating at larger ones.
+   */
+  labelMinWidth?: number;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -17,7 +27,7 @@ export type MiMapChipProps = {
  * Map Chip (234:294): white pill, padding 7 vertical / 13 horizontal, gap 6,
  * MiTow/Elevation/Floating, 32 tall. Not interactive.
  */
-export function MiMapChip({ label, showIcon = false, style }: MiMapChipProps) {
+export function MiMapChip({ label, showIcon = false, labelMinWidth, style }: MiMapChipProps) {
   return (
     <View
       style={[
@@ -35,7 +45,11 @@ export function MiMapChip({ label, showIcon = false, style }: MiMapChipProps) {
         style,
       ]}
     >
-      <MiText variant="chip135" numberOfLines={1}>
+      <MiText
+        variant="chip135"
+        numberOfLines={1}
+        style={labelMinWidth ? { minWidth: labelMinWidth } : undefined}
+      >
         {label}
       </MiText>
       {showIcon ? (

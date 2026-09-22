@@ -34,6 +34,16 @@ export const ARRIVING_TRUCK_CALLOUT: TruckCalloutSpec = {
 };
 
 /**
+ * Figma 25's Drop callout `236:485`, 126 wide. Like 19's, it is drawn over a
+ * map placeholder with nothing under its tail, and rides on the truck with 18's
+ * offset (the owner's 19 ruling, applied to 25).
+ */
+export const IN_TRANSIT_TRUCK_CALLOUT: TruckCalloutSpec = {
+  text: 'On the way to\ndrop location',
+  width: 126,
+};
+
+/**
  * One composite map overlay for Figma 18's driver: Truck glow `229:255`, the
  * route's first stretch, Truck `229:260` and the Truck status callout `229:263`
  * (Tail=Bottom Left, 121.8 wide), back to front exactly as the Map frame stacks
@@ -43,8 +53,9 @@ export const ARRIVING_TRUCK_CALLOUT: TruckCalloutSpec = {
  * to (233.5, 256), so 186.5 × 124.8 on 18, with the truck centre at (45, 82.8)
  * inside it. The map anchors that point on the driver's coordinate, so the
  * callout follows the truck. The callout's left edge sits 19.7 right of the
- * truck centre and its top 82.8 above it (64.7, 0 in the box) on 18 and 19
- * alike; only its width, and so the box's, changes (19: 175.7 × 124.8).
+ * truck centre and its top 82.8 above it (64.7, 0 in the box) on 18, 19 and
+ * 25 alike; only its width, and so the box's, changes (19: 175.7 × 124.8; 25:
+ * 190.7 × 124.8).
  */
 export const TRUCK_CENTRE = { x: 45, y: 82.8 };
 const CALLOUT_LEFT = 64.7;
@@ -61,7 +72,7 @@ export function truckMarkerGeometry(callout: TruckCalloutSpec): {
   };
 }
 
-/** How far the callout reaches right of the truck centre (18: 141.5, 19: 130.7). */
+/** How far the callout reaches right of the truck centre (18: 141.5, 19: 130.7, 25: 145.7). */
 export function calloutReach(callout: TruckCalloutSpec): number {
   return CALLOUT_LEFT - TRUCK_CENTRE.x + callout.width;
 }
@@ -129,8 +140,8 @@ export function TruckMarker({
 
 /**
  * Map Callout `223:41`, variant Tail=Bottom Left: 18's instance `229:263` (bubble
- * 121.8 × 53, text box 105.8 × 37) or 19's `254:1541` (bubble 111 × 53, text box
- * 95 × 37). Padding 8, radius 10, surface/inverse, exactly the two centred lines,
+ * 121.8 × 53, text box 105.8 × 37), 19's `254:1541` (bubble 111 × 53, text box
+ * 95 × 37) or 25's `236:485` (bubble 126 × 53, text box 110 × 37). Padding 8, radius 10, surface/inverse, exactly the two centred lines,
  * tail row 10.5 overlapping the bubble by 1, tail 16 × 10.5 at left 8.
  *
  * Drawn here rather than with `MiMapCallout` because the marker is a fixed-size

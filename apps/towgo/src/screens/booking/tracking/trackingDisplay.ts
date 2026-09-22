@@ -18,36 +18,73 @@ export type TrackedDriverDisplay = TrackedDriver & {
 };
 
 /**
- * App-local, OPTIONAL extension of the tracking payload (Figma 19 · Driver
- * Arriving). 19's timeline draws "Driver on the way" with the time the driver
- * set off (`assigned → en_route`), and `bookingTrackingSchema` has no field for
- * it: the server keeps it only in `booking_status_history` (data gap). The mock
- * fills it; the live API leaves it absent and the row keeps its time slot with
- * a placeholder bar. `assignedAt` is NOT a stand-in: 20 draws "Driver Assigned"
- * and "Driver on the way" as two separate times.
+ * App-local, OPTIONAL extension of the tracking payload. The mock fills both;
+ * the live API leaves them absent and the rows keep their time slots with a
+ * placeholder bar.
+ *
+ * - `enRouteAt` (Figma 19 · Driver Arriving): 19's timeline draws "Driver on the
+ *   way" with the time the driver set off (`assigned → en_route`), and
+ *   `bookingTrackingSchema` has no field for it: the server keeps it only in
+ *   `booking_status_history` (data gap). `assignedAt` is NOT a stand-in: 20 draws
+ *   "Driver Assigned" and "Driver on the way" as two separate times.
+ * - `inTransitAt` (Figma 25 · Trip in Progress): 25's timeline draws "In transit"
+ *   with the time the loaded truck left the pickup, and the server has no such
+ *   instant at all (data gap). `startedAt` is NOT a stand-in: 25 draws "Picked
+ *   up" and "In transit" as two separate times.
  */
 export type BookingTrackingDisplay = BookingTracking & {
   /** ISO instant the booking entered `en_route`. */
   enRouteAt?: string | null;
+  /** ISO instant the loaded truck left the pickup; null while the vehicle is loaded. */
+  inTransitAt?: string | null;
 };
 
 /**
  * Which rebuilt design the Tracking screen draws for a status:
- * - `enRoute18`  Figma 18 · Driver En Route: `assigned`, and the first read (no status yet);
- * - `arriving19` Figma 19 · Driver Arriving: `en_route` (the backend's own "arriving"
- *                step is derived from the driver moving off, `EnRouteWatcher`);
- * - `arrived23`  Figma 23 · Driver Arrived: `arrived` (24 Collection Code is an
- *                in-screen step of it, opened by "Confirm Pickup");
- * - `legacy`     in progress, completed, paid, cancelled: the pre-redesign sheet
- *                until 25 onwards are rebuilt.
+ * - `enRoute18`   Figma 18 · Driver En Route: `assigned`, and the first read (no status yet);
+ * - `arriving19`  Figma 19 · Driver Arriving: `en_route` (the backend's own "arriving"
+ *                 step is derived from the driver moving off, `EnRouteWatcher`);
+ * - `arrived23`   Figma 23 · Driver Arrived: `arrived` (24 Collection Code is an
+ *                 in-screen step of it, opened by "Confirm Pickup");
+ * - `inTransit25` Figma 25 · Trip in Progress: `in_progress`. Also `completed` and
+ *                 `paid`, but only for the instant before the screen hands over
+ *                 (27 Payment, 20 Booking Details), so nothing else flashes; the
+ *                 screen draws it with the last `in_progress` payload then;
+ * - `legacy`      the statuses no rebuilt screen draws: `searching` and
+ *                 `no_drivers_found` after a driver drops out mid-trip (the server
+ *                 re-dispatches), and `disputed`. `cancelled` maps here too, but
+ *                 the Tracking screen never draws it: it keeps the design that was
+ *                 up for the instant before Home.
  */
-export type TrackingDesign = 'enRoute18' | 'arriving19' | 'arrived23' | 'legacy';
+export type TrackingDesign = 'enRoute18' | 'arriving19' | 'arrived23' | 'inTransit25' | 'legacy';
 
 export function trackingDesignFor(status: JobStatus | undefined): TrackingDesign {
   if (status === undefined || status === 'assigned') return 'enRoute18';
   if (status === 'en_route') return 'arriving19';
   if (status === 'arrived') return 'arrived23';
+  if (status === 'in_progress' || status === 'completed' || status === 'paid') return 'inTransit25';
   return 'legacy';
+}
+
+/**
+ * A booking address as a design slot: `null` when the server has none. The
+ * REST mapper stands "—" in for a missing address (`bookingsRestSource`); 25
+ * never draws it, because it is not the design's copy, so it is missing too.
+ */
+export function addressOrNull(label: string | null | undefined): string | null {
+  const trimmed = label?.trim();
+  return trimmed && trimmed !== '—' ? trimmed : null;
+}
+
+/**
+ * The area of 25's "On the way to Indiranagar": the first comma-separated part
+ * of the drop address ("Indiranagar, Bengaluru" → "Indiranagar"). The contract
+ * has no locality field and the drop address is free text, so this is the same
+ * kind of rule as `firstNameOf` (owner decision, data gap).
+ */
+export function areaOf(address: string | null): string | null {
+  const first = address?.split(',')[0]?.trim();
+  return first ? first : null;
 }
 
 /**

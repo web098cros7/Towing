@@ -20,6 +20,9 @@ import { MapPickerScreen } from '@/screens/booking/MapPickerScreen';
 import { SearchingScreen } from '@/screens/booking/SearchingScreen';
 import { TrackingScreen } from '@/screens/booking/TrackingScreen';
 import { ChatWithDriverScreen } from '@/screens/booking/ChatWithDriverScreen';
+import { PaymentScreen } from '@/screens/payment/PaymentScreen';
+import { PaymentSuccessScreen } from '@/screens/payment/PaymentSuccessScreen';
+import { EmergencyScreen } from '@/screens/emergency/EmergencyScreen';
 import { BookingDetailsScreen } from '@/screens/bookings/BookingDetailsScreen';
 import { PersonalInformationScreen } from '@/screens/account/PersonalInformationScreen';
 import { MyVehiclesScreen } from '@/screens/account/MyVehiclesScreen';
@@ -28,6 +31,7 @@ import { SavedLocationsScreen } from '@/screens/account/SavedLocationsScreen';
 import { AddSavedLocationScreen } from '@/screens/account/AddSavedLocationScreen';
 import { PaymentMethodsScreen } from '@/screens/account/PaymentMethodsScreen';
 import { WalletScreen } from '@/screens/account/WalletScreen';
+import { ReferEarnScreen } from '@/screens/account/ReferEarnScreen';
 import { NotificationsSettingsScreen } from '@/screens/account/NotificationsSettingsScreen';
 import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen';
 import {
@@ -37,6 +41,8 @@ import {
 import { useNotificationListeners } from '@/features/notifications/push/useNotificationListeners';
 import { usePushRegistration } from '@/features/notifications/push/usePushRegistration';
 import { SupportScreen } from '@/screens/support/SupportScreen';
+import { SupportChatScreen } from '@/screens/support/SupportChatScreen';
+import { ReportIssueScreen } from '@/screens/support/ReportIssueScreen';
 import { HelpCenterScreen } from '@/screens/account/HelpCenterScreen';
 import { ContactUsScreen } from '@/screens/account/ContactUsScreen';
 import { SettingsScreen } from '@/screens/account/SettingsScreen';
@@ -269,6 +275,37 @@ export function RootNavigator() {
                 component={ChatWithDriverScreen}
                 options={{ contentStyle: { backgroundColor: mitowColors.surfacePage } }}
               />
+              {/* Figma 27 (28 is a sheet inside it, 29 a phase of it): the default push, no
+                  tab bar. */}
+              <Stack.Screen
+                name="Payment"
+                component={PaymentScreen}
+                options={{ contentStyle: { backgroundColor: mitowColors.surfacePage } }}
+              />
+              {/*
+                Figma 30: reached by a stack RESET from 27 / 29 once a payment is
+                captured, never by a push. The fade matches Searching → Tracking's
+                status hand-off. No back swipe: nothing under 30 may be returned to
+                (27 would offer to pay again).
+              */}
+              <Stack.Screen
+                name="PaymentSuccess"
+                component={PaymentSuccessScreen}
+                options={{
+                  animation: 'fade',
+                  gestureEnabled: false,
+                  animationDuration: motion.duration.slow,
+                  contentStyle: { backgroundColor: mitowColors.surfacePage },
+                }}
+              />
+              {/*
+                Figma 26: the default push, no tab bar; signed-in only (26 Data gap 7).
+              */}
+              <Stack.Screen
+                name="Emergency"
+                component={EmergencyScreen}
+                options={{ contentStyle: { backgroundColor: mitowColors.surfacePage } }}
+              />
 
               <Stack.Screen name="PersonalInformation" component={PersonalInformationScreen} />
               <Stack.Screen name="MyVehicles" component={MyVehiclesScreen} />
@@ -277,6 +314,7 @@ export function RootNavigator() {
               <Stack.Screen name="AddSavedLocation" component={AddSavedLocationScreen} />
               <Stack.Screen name="PaymentMethods" component={PaymentMethodsScreen} />
               <Stack.Screen name="Wallet" component={WalletScreen} />
+              <Stack.Screen name="ReferEarn" component={ReferEarnScreen} />
               <Stack.Screen name="NotificationsSettings" component={NotificationsSettingsScreen} />
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
               <Stack.Screen
@@ -286,6 +324,8 @@ export function RootNavigator() {
               />
               <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />
               <Stack.Screen name="ContactUs" component={ContactUsScreen} />
+              <Stack.Screen name="SupportChat" component={SupportChatScreen} />
+              <Stack.Screen name="ReportIssue" component={ReportIssueScreen} />
               <Stack.Screen name="Settings" component={SettingsScreen} />
               <Stack.Screen name="EmergencyContacts" component={EmergencyContactsScreen} />
               <Stack.Screen name="AddEmergencyContact" component={AddEmergencyContactScreen} />

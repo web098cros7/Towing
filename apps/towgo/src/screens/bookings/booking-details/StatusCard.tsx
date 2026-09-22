@@ -23,17 +23,24 @@ const SUBTITLE_BOX_WIDTH = 106;
  * placeholder bar instead of inventing copy.
  *
  * Pressable (card press scale, light haptic) only when `onPress` is set; the
- * chevron is drawn with it. See the screen for which statuses that is.
+ * chevron is drawn with it. See the screen for which statuses that is. Its
+ * screen-reader label ends with `actionLabel`.
  */
 export function StatusCard({
   title,
   subtitle,
   onPress,
+  actionLabel = 'Open live tracking',
 }: {
   title: string;
   /** `null` holds the line open with a placeholder bar. */
   subtitle: string | null;
   onPress?: () => void;
+  /**
+   * What the press does, for screen readers (appended to the title and subtitle). Default "Open
+   * live tracking"; a completed, unpaid trip's card opens 27 Payment and says so.
+   */
+  actionLabel?: string;
 }) {
   const theme = useTheme();
   const Pressable = usePressablePrimitive();
@@ -84,7 +91,7 @@ export function StatusCard({
       pressScale={theme.motion.pressScale.card}
       haptic="light"
       accessibilityRole="button"
-      accessibilityLabel={`${label}. Open live tracking`}
+      accessibilityLabel={`${label}. ${actionLabel}`}
       style={style}
     >
       {content}

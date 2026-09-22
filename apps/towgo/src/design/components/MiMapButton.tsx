@@ -8,14 +8,12 @@ import { mitowColors } from '../tokens/colors';
 import { mitowRadii, mitowShadows } from '../tokens/layout';
 import { MiColorIcon } from './MiColorIcon';
 
-export type MiMapButtonProps = {
+type MiMapButtonBaseProps = {
   /** Line icon by Figma name ('chevron-left' Back, 'locate' Locate me, 'navigation' Recenter, 'phone', 'message'). A legacy icon component is still accepted. */
   icon?: MiLineIconName | IconComponent;
   /** A colour icon instead of a line icon (screen 10's Swap circle: 'swap' at 24). */
   colorIcon?: MiColorIconName;
   onPress?: () => void;
-  /** Required: the control is a bare glyph. */
-  accessibilityLabel: string;
   /**
    * Circle diameter. 'floating' default 50 (Map Control 223:24). Screens: Back 46,
    * Locate/Recenter 50, Home Recenter 55, screen 10 Locate/Swap 40.
@@ -33,7 +31,26 @@ export type MiMapButtonProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-/** A white circular icon control — Map Control and Icon Button (Outline). */
+export type MiMapButtonProps = MiMapButtonBaseProps &
+  (
+    | {
+        /** Required: the control is a bare glyph. */
+        accessibilityLabel: string;
+        decorative?: false;
+      }
+    | {
+        accessibilityLabel?: string;
+        /**
+         * The circle as a picture, not a control: a plain View with the same look,
+         * no touch handling, hidden from assistive tech (26's Share card draws a Map
+         * Control inside a card that takes the tap and carries the label itself).
+         * `onPress`, `disabled` and `accessibilityLabel` are ignored.
+         */
+        decorative: true;
+      }
+  );
+
+/** A white circular icon control — Map Control and Icon Button (Outline); `decorative` draws it as a picture. */
 export function MiMapButton({
   icon,
   colorIcon,
@@ -43,6 +60,7 @@ export function MiMapButton({
   size,
   iconSize,
   disabled = false,
+  decorative = false,
   style,
 }: MiMapButtonProps) {
   const theme = useTheme();
@@ -64,6 +82,35 @@ export function MiMapButton({
     );
   }
 
+  const circleStyle: StyleProp<ViewStyle> = [
+    {
+      width: diameter,
+      height: diameter,
+      borderRadius: mitowRadii.pill,
+      backgroundColor: mitowColors.surfacePage,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...(variant === 'outline'
+        ? { borderWidth: 1.2, borderColor: mitowColors.borderSubtle }
+        : mitowShadows.floating),
+    },
+    style,
+  ];
+
+  if (decorative) {
+    return (
+      <View
+        pointerEvents="none"
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+        style={circleStyle}
+      >
+        {content}
+      </View>
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
@@ -73,20 +120,7 @@ export function MiMapButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
-      style={[
-        {
-          width: diameter,
-          height: diameter,
-          borderRadius: mitowRadii.pill,
-          backgroundColor: mitowColors.surfacePage,
-          alignItems: 'center',
-          justifyContent: 'center',
-          ...(variant === 'outline'
-            ? { borderWidth: 1.2, borderColor: mitowColors.borderSubtle }
-            : mitowShadows.floating),
-        },
-        style,
-      ]}
+      style={circleStyle}
     >
       {content}
     </Pressable>

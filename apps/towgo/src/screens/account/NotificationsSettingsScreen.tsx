@@ -1,23 +1,33 @@
 import React from 'react';
-import { ActivityIndicator, Linking, View } from 'react-native';
-import { ErrorState, Text } from '@towing/ui';
+import { Linking, Platform, ScrollView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ErrorState, usePressablePrimitive } from '@towing/ui';
 import { useTheme } from '@towing/theme';
-import { SubScreen } from '@/components/SubScreen';
-import { SettingsList } from '@/components/SettingsList';
-import { SettingsRow } from '@/components/SettingsRow';
+import {
+  MiScreen,
+  MiText,
+  MiNavBar,
+  MiMenuCard,
+  MiMenuRow,
+  MiInfoBanner,
+  mitowLayout,
+} from '@/design';
 import { Toggle } from '@/components/Toggle';
 import {
   useNotificationPrefs,
   useUpdateNotificationPrefs,
 } from '@/features/notifications/api/notifications.queries';
-import { getPermission, pushAvailability, type PushPermission } from '@/features/notifications/push/pushClient';
+import {
+  getPermission,
+  pushAvailability,
+  type PushPermission,
+} from '@/features/notifications/push/pushClient';
+import type { RootStackParamList } from '@/navigation/types';
 
 /**
- * §12.3's preferences, against the SERVER model (Phase 13).
- *
- * Until now this screen drove `notificationPrefsStore` — four booleans in
- * memory that reset on every launch and never reached a server, so every toggle
- * on it was decoration.
+ * Figma 53 · Notification Settings (293:2716).
  *
  * ⚠ ONLY THE OPT-OUT-ABLE CATEGORIES GET A TOGGLE. §12.3 makes transactional
  * and safety notifications always-on, and the backend enforces that in the
@@ -25,14 +35,9 @@ import { getPermission, pushAvailability, type PushPermission } from '@/features
  * switches would be a lie the user could act on; they are rendered as
  * "Always on" rows instead, which is the honest version of the same list.
  */
-const ALWAYS_ON = [
-  { title: 'Booking updates', subtitle: 'Confirmation, driver assigned, arrival' },
-  { title: 'Trip receipts', subtitle: 'Invoices and payment confirmations' },
-  { title: 'Safety alerts', subtitle: 'SOS and account security' },
-];
-
 export function NotificationsSettingsScreen() {
-  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const prefs = useNotificationPrefs();
   const update = useUpdateNotificationPrefs();
   const [permission, setPermission] = React.useState<PushPermission | null>(null);
@@ -43,85 +48,97 @@ export function NotificationsSettingsScreen() {
     void getPermission().then(setPermission);
   }, []);
 
+  const showPermissionBanner =
+    availability.available && permission !== null && permission !== 'granted';
+
   return (
-    <SubScreen title="Notifications">
-      {/*
-        The device's own state comes first, because it overrides everything
-        below it: a preference that is on while the OS permission is denied
-        means nothing arrives, and a screen that did not say so would be
-        actively misleading.
-      */}
-      {!availability.available ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <Text variant="caption" color="secondary">
-            {availability.reason === 'expo_go'
-              ? 'Push notifications need the full app — they do not work in Expo Go.'
-              : availability.reason === 'simulator'
-                ? 'Push notifications need a physical device.'
-                : 'Push notifications are unavailable on this device.'}
-          </Text>
-        </View>
-      ) : permission === 'denied' ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <Text variant="caption" color="secondary">
-            Notifications are turned off for MiTow in your device settings.{' '}
-            <Text
-              variant="caption"
-              color="brand"
-              onPress={() => void Linking.openSettings()}
-              accessibilityRole="button"
-            >
-              Open settings
-            </Text>
-          </Text>
-        </View>
-      ) : null}
+    <MiScreen edges={['top']}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: mitowLayout.sideMargin,
+          gap: mitowLayout.blockGap,
+          paddingBottom: Math.max(insets.bottom, 34),
+        }}
+      >
+        {/* 293:2716 · Nav bar */}
+        <MiNavBar title="Notifications" trailing="none" onBack={() => navigation.goBack()} />
 
-      {prefs.isPending ? (
-        <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-          <ActivityIndicator color={theme.colors.brand} />
-        </View>
-      ) : prefs.isError ? (
-        <ErrorState
-          title="Could not load your preferences"
-          onRetry={() => void prefs.refetch()}
-        />
-      ) : (
-        <SettingsList>
-          <SettingsRow
-            title="Promotions & offers"
-            subtitle="Deals and discounts. Off by default."
-            trailing={
-              <Toggle
-                value={prefs.data?.promotions ?? false}
-                onValueChange={(value) => update.mutate({ promotions: value })}
-              />
+        {/*
+          293:3047 · Permission banner.
+          The device's own state comes first, because it overrides everything
+          below it: a preference that is on while the OS permission is denied
+          means nothing arrives, and a screen that did not say so would be
+          actively misleading.
+        */}
+        {showPermissionBanner ? (
+          <MiInfoBanner
+            tone="brand"
+            icon="bell-off"
+            title="Notifications are off"
+            subtitle={
+              Platform.OS === 'ios'
+                ? 'Turn them on in iOS Settings so you know when your driver arrives.'
+                : 'Turn them on in Android Settings so you know when your driver arrives.'
             }
+            showChevron
+            height={85}
+            onPress={() => void Linking.openSettings()}
           />
-        </SettingsList>
-      )}
+        ) : null}
 
-      <SettingsList>
-        {ALWAYS_ON.map((item) => (
-          <SettingsRow
-            key={item.title}
-            title={item.title}
-            subtitle={item.subtitle}
-            trailing={
-              <Text variant="caption" color="secondary">
-                Always on
-              </Text>
-            }
-          />
-        ))}
-      </SettingsList>
+        {/* 293:3056 · Offers */}
+        <ScrollView scrollEnabled={false} contentContainerStyle={{ gap: mitowLayout.headingGap }}>
+          <MiText variant="heading18">Offers</MiText>
+          <MiMenuCard radius={16} paddingVertical={4}>
+            <MiMenuRow
+              icon={{ color: 'tag' }}
+              title="Promotions & offers"
+              subtitle="Deals and discounts"
+              trailing={
+                <Toggle
+                  value={prefs.data?.promotions ?? false}
+                  onValueChange={(value) => update.mutate({ promotions: value })}
+                  disabled={prefs.isPending || prefs.isError}
+                />
+              }
+            />
+          </MiMenuCard>
+          {prefs.isError ? (
+            <ErrorState
+              title="Could not load your preferences"
+              onRetry={() => void prefs.refetch()}
+            />
+          ) : null}
+        </ScrollView>
 
-      <View style={{ paddingHorizontal: 16 }}>
-        <Text variant="caption" color="secondary">
-          Booking, safety and payment messages cannot be switched off — they are how we tell you
-          what is happening with a tow you have paid for.
-        </Text>
-      </View>
-    </SubScreen>
+        {/* 293:3077 · Always on */}
+        <ScrollView scrollEnabled={false} contentContainerStyle={{ gap: mitowLayout.headingGap }}>
+          <MiText variant="heading18">Always on</MiText>
+          <MiMenuCard radius={16} paddingVertical={4}>
+            <MiMenuRow
+              icon={{ color: 'tow-truck' }}
+              title="Booking updates"
+              subtitle="Confirmation, driver, arrival"
+            />
+            <MiMenuRow
+              icon={{ color: 'receipt' }}
+              title="Trip receipts"
+              subtitle="Invoices and payment confirmations"
+            />
+            <MiMenuRow
+              icon={{ color: 'verified' }}
+              title="Safety alerts"
+              subtitle="SOS and account security"
+            />
+          </MiMenuCard>
+        </ScrollView>
+
+        {/* 293:3147 · Footer note */}
+        <MiText variant="bodyS14" color="secondary">
+          Booking, safety and payment messages can't be switched off. They're how we tell you what's
+          happening with a tow you've paid for.
+        </MiText>
+      </ScrollView>
+    </MiScreen>
   );
 }

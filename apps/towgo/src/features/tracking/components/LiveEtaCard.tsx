@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import type { BookingTracking, JobStatus } from '@towing/api-contracts';
+import type { BookingTracking } from '@towing/api-contracts';
 import { MiText } from '@/design';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { trackingDesignFor } from '@/screens/booking/tracking/trackingDisplay';
@@ -19,9 +19,10 @@ import { trackingDesignFor } from '@/screens/booking/tracking/trackingDisplay';
  * yet) the count's line keeps its slot with a placeholder bar; no other title
  * is ever shown.
  *
- * 19 Driver Arriving and 23 Driver Arrived draw their own static headings (in
- * the Tracking screen). Statuses after arrived (in progress, completed, paid)
- * keep their existing copy until screens 25 onwards are rebuilt.
+ * 19 Driver Arriving, 23 Driver Arrived and 25 Trip in Progress draw their own
+ * static headings (in the Tracking screen). The only other caller is the legacy
+ * sheet, kept for the statuses no rebuilt screen draws (a re-dispatch,
+ * disputed): it gets the pre-redesign "Your trip".
  */
 
 /** Figma 18's subtitle, verbatim. */
@@ -30,11 +31,8 @@ const EN_ROUTE_SUBTITLE = 'Your driver is on the way to your location';
 /** Figma title box width ("Arriving in 5 mins", 187 × 28). */
 const TITLE_BOX_WIDTH = 187;
 
-const LATER_COPY: Partial<Record<JobStatus, { title: string; subtitle: string }>> = {
-  in_progress: { title: 'Towing your vehicle', subtitle: 'On the way to your drop-off' },
-  completed: { title: 'Trip completed', subtitle: 'Thanks for riding with us' },
-  paid: { title: 'Trip completed', subtitle: 'Payment received' },
-};
+/** The pre-redesign heading, for the statuses no rebuilt screen draws. */
+const LEGACY_TITLE = 'Your trip';
 
 export function LiveEtaCard({ tracking }: { tracking: BookingTracking | undefined }) {
   const etaSeconds = tracking?.etaSeconds ?? null;
@@ -78,41 +76,17 @@ export function LiveEtaCard({ tracking }: { tracking: BookingTracking | undefine
     );
   }
 
-  // --- Legacy statuses (unchanged until 25 onwards are rebuilt) --------------
-
-  const status = tracking?.status;
-  let title: string;
-  let subtitle: string | null;
-
-  if (status === 'in_progress' && minutes !== null) {
-    title = `Reaching drop in ${minutes} min${minutes === 1 ? '' : 's'}`;
-    subtitle = LATER_COPY.in_progress?.subtitle ?? null;
-  } else {
-    const copy = status ? LATER_COPY[status] : undefined;
-    title = copy?.title ?? 'Your trip';
-    subtitle = copy?.subtitle ?? null;
-  }
+  // --- Legacy statuses (re-dispatch, disputed): no rebuilt screen draws them --
 
   return (
     <View
       style={{ paddingLeft: 3.7, gap: 2.9, overflow: 'hidden' }}
       accessible
-      accessibilityLabel={subtitle ? `${title}. ${subtitle}` : title}
+      accessibilityLabel={LEGACY_TITLE}
     >
       <MiText variant="title23" numberOfLines={1} ellipsizeMode="clip">
-        {title}
+        {LEGACY_TITLE}
       </MiText>
-      {subtitle ? (
-        <MiText variant="bodyM15" color="secondary" numberOfLines={1} ellipsizeMode="clip">
-          {subtitle}
-        </MiText>
-      ) : null}
-
-      {status === 'in_progress' && minutes !== null && tracking?.etaSource === 'haversine' ? (
-        <MiText variant="label13" color="placeholder">
-          Estimated — live route unavailable
-        </MiText>
-      ) : null}
     </View>
   );
 }

@@ -35,9 +35,21 @@ export type MiTextFieldProps = {
   error?: boolean;
   /** "Show helper": MiTow/Body S 14 below the box (text/secondary, or status/danger-text on Error). */
   helper?: string;
+  /**
+   * Colour of the helper line. Omit it to derive it as before: status/danger-text on Error,
+   * text/secondary otherwise. 'success' = status/success-text #237A42: 28's coupon field
+   * (`299:4069`, State=Filled) overrides the helper fill to it ("SAVE20 applied. You save ₹240
+   * on this trip."). An explicit tone wins over the derived one.
+   */
+  helperTone?: 'secondary' | 'success' | 'danger';
   /** "Show action": MiTow/Strong 14 text/brand link inside the box, right (e.g. "Change"). */
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * Screen-reader label of the action. Default: `actionLabel`. 28's coupon field passes
+   * "Remove coupon", since "Remove" alone does not say what goes.
+   */
+  actionAccessibilityLabel?: string;
   /** "Show leading icon" slot, before the input (gap 12). e.g. Login's "+91" selector. */
   leftSlot?: React.ReactNode;
   /** "Show trailing icon" slot, after the input (20×20 in the master). */
@@ -45,6 +57,9 @@ export type MiTextFieldProps = {
   keyboardType?: KeyboardTypeOptions;
   autoCapitalize?: TextInputProps['autoCapitalize'];
   autoComplete?: TextInputProps['autoComplete'];
+  /** Passed straight to the TextInput; omitted = the platform default. 28's coupon code turns both off. */
+  autoCorrect?: TextInputProps['autoCorrect'];
+  spellCheck?: TextInputProps['spellCheck'];
   textContentType?: TextInputProps['textContentType'];
   returnKeyType?: TextInputProps['returnKeyType'];
   onSubmitEditing?: TextInputProps['onSubmitEditing'];
@@ -70,13 +85,17 @@ export function MiTextField({
   disabled = false,
   error = false,
   helper,
+  helperTone,
   actionLabel,
   onAction,
+  actionAccessibilityLabel,
   leftSlot,
   rightSlot,
   keyboardType,
   autoCapitalize,
   autoComplete,
+  autoCorrect,
+  spellCheck,
   textContentType,
   returnKeyType,
   onSubmitEditing,
@@ -136,6 +155,8 @@ export function MiTextField({
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
           autoComplete={autoComplete}
+          autoCorrect={autoCorrect}
+          spellCheck={spellCheck}
           textContentType={textContentType}
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
@@ -170,7 +191,7 @@ export function MiTextField({
             pressScale={theme.motion.pressScale.chip}
             haptic="light"
             accessibilityRole="button"
-            accessibilityLabel={actionLabel}
+            accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
             hitSlop={12}
           >
             <MiText variant="strong14" color="brand" numberOfLines={1}>
@@ -182,7 +203,10 @@ export function MiTextField({
       </View>
 
       {helper ? (
-        <MiText variant="bodyS14" color={resolved === 'error' ? 'danger' : 'secondary'}>
+        <MiText
+          variant="bodyS14"
+          color={helperTone ?? (resolved === 'error' ? 'danger' : 'secondary')}
+        >
           {helper}
         </MiText>
       ) : null}

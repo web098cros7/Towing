@@ -37,6 +37,7 @@ import {
 import { StatusCard } from './booking-details/StatusCard';
 import { isLiveStatus, statusCardCopy, timelineRows } from './booking-details/bookingProgress';
 import { useBookingTracking, useEtaMinutes } from './booking-details/useBookingLive';
+import { CompletedTripDetails } from './completed-trip/CompletedTripDetails';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -137,6 +138,15 @@ export function BookingDetailsScreen() {
     else navigation.navigate('Tracking', { bookingId }, { pop: true });
   }, [bookingId, navigation, status]);
 
+  /**
+   * Status card of a finished but unpaid trip (`completed`): 27 Payment, the customer's way
+   * back to pay later (27-28 Data gap 12). A paid trip's card stays inert.
+   */
+  const openPayment = useCallback(
+    () => navigation.navigate('Payment', { bookingId }),
+    [bookingId, navigation],
+  );
+
   /** Call: the same as 18, the driver's number handed to the phone's dialer. */
   const onCall = useCallback(async () => {
     try {
@@ -158,14 +168,20 @@ export function BookingDetailsScreen() {
    * Share Live Location `239:695`: mint (or reuse) the §11.7 link and hand it to
    * the phone's share sheet, as the tracking screen does. The share message is
    * the app's existing copy; Figma draws none (DATA-GAPS-20-21.md).
+   * `trip_shared` is tracked only for a completed share, as on 18 and 26.
    */
   const onShare = useCallback(async () => {
     try {
       const link = await shareTrip.mutateAsync();
-      await Share.share({ message: `Follow my tow live: ${link.url}`, url: link.url });
-      track('trip_shared');
+      const result = await Share.share({
+        message: `Follow my tow live: ${link.url}`,
+        url: link.url,
+      });
+      // Counted only when the sheet reports a share: iOS resolves `dismissedAction` for a
+      // closed sheet (Android always reports `sharedAction`, as it cannot tell).
+      if (result.action === Share.sharedAction) track('trip_shared');
     } catch {
-      // A dismissed share sheet rejects on iOS; a failed mint lives on the mutation.
+      // A failed mint lives on the mutation; a failed share sheet draws nothing.
     }
   }, [shareTrip]);
 
@@ -228,11 +244,13 @@ export function BookingDetailsScreen() {
 
     content = (
       <>
-        {/* Status `239:567`: opens the live view while the trip is live. */}
+        {/* Status `239:567`: opens the live view while the trip is live, 27 Payment once it is
+            completed and unpaid (and then says "Pay for this trip" to screen readers). */}
         <StatusCard
           title={card.title}
           subtitle={card.subtitle}
-          onPress={live ? openLiveView : undefined}
+          onPress={live ? openLiveView : status === 'completed' ? openPayment : undefined}
+          actionLabel={!live && status === 'completed' ? 'Pay for this trip' : undefined}
         />
 
         {/* Booking timeline `239:576`: six Timeline Rows, 40 tall, the last 28 with no connector. */}
@@ -302,6 +320,29 @@ export function BookingDetailsScreen() {
   }
 
   const showBar = booking != null && live;
+
+  /*
+   * A FINISHED booking is 35 · Completed Trip Details, not 20. "Finished" is the three statuses
+   * My Bookings badges "Completed": `completed`, `paid` and `disputed`. The route is decided by
+   * the STATUS rather than by a second screen, because every caller that lands here (30's "View
+   * Booking Details", the Tracking screen's paid hand-off, a My Bookings row) already knows only
+   * a `bookingId` — routing on the status is what makes them all arrive at the right screen with
+   * no changes.
+   *
+   * A `completed` trip that is not paid yet also gets 35 (owner decision, 22 Sep): 35's Payment
+   * Details row then leads to 27 · Payment, the customer's way to pay later (see
+   * `CompletedTripDetails`).
+   */
+  if (booking && (status === 'completed' || status === 'paid' || status === 'disputed')) {
+    return (
+      <CompletedTripDetails
+        booking={booking}
+        tracking={tracking}
+        onBack={goBack}
+        onHelp={openSupport}
+      />
+    );
+  }
 
   return (
     <MiScreen

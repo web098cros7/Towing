@@ -37,6 +37,7 @@ function toBooking(api: ApiBooking): Booking {
   return {
     id: api.id,
     reference: api.reference,
+    serviceSlug: api.serviceSlug,
     originLabel: api.pickupAddress ?? NO_ADDRESS,
     destinationLabel: api.dropAddress ?? NO_ADDRESS,
     pickupPoint: api.pickup,

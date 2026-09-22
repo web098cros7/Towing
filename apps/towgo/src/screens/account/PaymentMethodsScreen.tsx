@@ -1,18 +1,28 @@
 import React from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Text } from '@towing/ui';
-import { CreditCard, Wallet } from '@/icons';
-import { SubScreen } from '@/components/SubScreen';
-import { SettingsList } from '@/components/SettingsList';
-import { SettingsRow } from '@/components/SettingsRow';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePressablePrimitive } from '@towing/ui';
+import { useTheme } from '@towing/theme';
+import {
+  MiScreen,
+  MiText,
+  MiNavBar,
+  MiColorIcon,
+  MiLineIcon,
+  MiMenuCard,
+  MiMenuRow,
+  MiInfoBanner,
+  mitowColors,
+} from '@/design';
 import { useWallet } from '@/features/payments/api/payments.queries';
 import { formatPaise } from '@/utils/format';
+import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import type { RootStackParamList } from '@/navigation/types';
 
 /**
- * §9.1.9's "saved methods" — and the honest answer to it.
+ * Figma 43 · Payment Methods (295:3069).
  *
  * ⚠ THIS APP DELIBERATELY DOES NOT STORE PAYMENT INSTRUMENTS. §9.1.9's
  * acceptance criterion is "no raw card data stored", and the surest way to
@@ -30,35 +40,107 @@ import type { RootStackParamList } from '@/navigation/types';
  */
 export function PaymentMethodsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  const Pressable = usePressablePrimitive();
   const { data: wallet } = useWallet();
 
-  return (
-    <SubScreen title="Payments">
-      <View style={{ gap: 20 }}>
-        <SettingsList>
-          <SettingsRow
-            icon={Wallet}
-            title="Wallet"
-            subtitle="Refunds and credits"
-            value={wallet ? formatPaise(wallet.balancePaise) : undefined}
-            trailing="chevron"
-            onPress={() => navigation.navigate('Wallet')}
-          />
-        </SettingsList>
+  const balanceLabel = wallet ? formatPaise(wallet.balancePaise) : '';
 
-        <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <CreditCard size={16} />
-            <Text weight="medium" style={{ fontSize: 15, lineHeight: 20 }}>
-              Cards and UPI
-            </Text>
+  return (
+    <MiScreen edges={['top']}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 21,
+          gap: 16,
+          paddingBottom: Math.max(insets.bottom, 34),
+        }}
+      >
+        <MiNavBar title="Payment Methods" trailing="none" onBack={() => navigation.goBack()} />
+
+        {/* MiTow Wallet card — Figma 295:3236 */}
+        <Pressable
+          pressScale={theme.motion.pressScale.row}
+          haptic="light"
+          accessibilityRole="button"
+          accessibilityLabel={`MiTow Wallet, refunds and credits, ${balanceLabel}`}
+          onPress={() => navigation.navigate('Wallet')}
+          style={{
+            backgroundColor: mitowColors.surfaceInverse,
+            borderRadius: 16,
+            padding: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 14,
+          }}
+        >
+          {/* Icon holder — Figma 295:3237 */}
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: 'rgba(255,255,255,0.12)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <MiColorIcon name="wallet" size={34} />
           </View>
-          <Text color="secondary" style={{ fontSize: 13, lineHeight: 19 }}>
-            Your cards and UPI IDs are saved securely by our payment provider, not on this device or
-            by us. Add or change them from the payment screen when you pay for a trip.
-          </Text>
+
+          {/* Text — Figma 295:3239 */}
+          <View style={{ flex: 1, gap: 2 }}>
+            <MiText variant="strong16" color="onDark">
+              MiTow Wallet
+            </MiText>
+            <MiText variant="bodyS14" color="onDark">
+              Refunds and credits
+            </MiText>
+          </View>
+
+          {/* Balance — Figma 295:3242 */}
+          {wallet ? (
+            <MiText variant="title20" color="onDark">
+              {formatPaise(wallet.balancePaise)}
+            </MiText>
+          ) : (
+            <SlotPlaceholder variant="title20" width={50} />
+          )}
+
+          <MiLineIcon name="chevron-right" size={20} color={mitowColors.textOnDark} />
+        </Pressable>
+
+        {/* Cards and UPI — Figma 295:3245 */}
+        <View style={{ gap: 12 }}>
+          <MiText variant="heading18">Cards and UPI</MiText>
+          <MiInfoBanner
+            tone="muted"
+            icon="verified"
+            title="Saved by our payment partner"
+            subtitle="Not on your phone or by us. Add or change cards and UPI at checkout."
+            height={85}
+          />
         </View>
-      </View>
-    </SubScreen>
+
+        {/* Ways to Pay — Figma 295:3256 */}
+        <View style={{ gap: 12 }}>
+          <MiText variant="heading18">Ways to Pay</MiText>
+          <MiMenuCard radius={16} paddingVertical={4}>
+            <MiMenuRow icon={{ color: 'upi' }} title="UPI" subtitle="Pay using any UPI app" />
+            <MiMenuRow
+              icon={{ color: 'card' }}
+              title="Credit / Debit Card"
+              subtitle="Visa, Mastercard, RuPay"
+            />
+            <MiMenuRow
+              icon={{ color: 'wallet' }}
+              title="Wallet"
+              subtitle="Paytm, PhonePe, Amazon Pay"
+            />
+            <MiMenuRow icon={{ color: 'cash' }} title="Cash" subtitle="Pay directly to driver" />
+          </MiMenuCard>
+        </View>
+      </ScrollView>
+    </MiScreen>
   );
 }

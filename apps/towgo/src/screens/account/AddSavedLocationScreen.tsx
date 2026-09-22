@@ -1,12 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { useTheme } from '@towing/theme';
-import { Button, Text, Skeleton } from '@towing/ui';
-import { MapPin, Trash2, LocateFixed } from '@/icons';
-import { SubScreen } from '@/components/SubScreen';
-import { TextField } from '@/components/TextField';
+import { MapPreview } from '@towing/ui';
+import {
+  MiScreen,
+  MiText,
+  MiNavBar,
+  MiButton,
+  MiLineIcon,
+  MiStatusBadge,
+  MiMapButton,
+  MiChip,
+  MiTextField,
+  mitowColors,
+} from '@/design';
 import {
   useAddresses,
   useCreateAddress,
@@ -14,9 +25,12 @@ import {
   useDeleteAddress,
 } from '@/features/account/api/addresses.queries';
 import type { RootStackParamList } from '@/navigation/types';
-import { Pressable } from '@/motion';
+
+type LocationKind = 'home' | 'work' | 'other';
 
 /**
+ * Figma 42 · Add Location (295:3018).
+ *
  * Stopgap coordinate source: device GPS, reverse-geocoded into the address
  * text field. A real map-pin picker is a later phase's `BookLocation` rebuild
  * — out of scope here, so there is no way to type a plain address without
@@ -25,7 +39,8 @@ import { Pressable } from '@/motion';
  */
 export function AddSavedLocationScreen() {
   const theme = useTheme();
-  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'AddSavedLocation'>>();
   const locationId = route.params?.locationId;
 
@@ -36,16 +51,28 @@ export function AddSavedLocationScreen() {
 
   const existing = locationId ? addresses?.find((a) => a.id === locationId) : undefined;
 
-  const [label, setLabel] = useState('');
+  const [kind, setKind] = useState<LocationKind>('home');
+  const [otherLabel, setOtherLabel] = useState('');
   const [address, setAddress] = useState('');
+  const [landmark, setLandmark] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [seeded, setSeeded] = useState(!locationId);
   const [locating, setLocating] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
+  const [addressFocused, setAddressFocused] = useState(false);
 
   useEffect(() => {
     if (existing && !seeded) {
-      setLabel(existing.label ?? '');
+      const raw = (existing.label ?? '').trim();
+      const lower = raw.toLowerCase();
+      if (lower === 'home') {
+        setKind('home');
+      } else if (lower === 'work') {
+        setKind('work');
+      } else {
+        setKind('other');
+        setOtherLabel(raw);
+      }
       setAddress(existing.fullAddress);
       setCoords({ lat: existing.lat, lng: existing.lng });
       setSeeded(true);
@@ -88,9 +115,17 @@ export function AddSavedLocationScreen() {
   const canSave = address.trim().length > 0 && !!coords;
   const save = () => {
     if (!coords) return;
-    const data = { label: label.trim() ? label.trim() : undefined, fullAddress: address.trim(), lat: coords.lat, lng: coords.lng };
+    const label =
+      kind === 'home' ? 'Home' : kind === 'work' ? 'Work' : otherLabel.trim() || 'Other';
+    // Data gap: the saved-address contract has no landmark field, so the
+    // landmark is folded into `fullAddress` until the schema grows one.
+    const fullAddress = landmark.trim() ? `${address.trim()}, ${landmark.trim()}` : address.trim();
+    const data = { label, fullAddress, lat: coords.lat, lng: coords.lng };
     if (locationId) {
-      updateAddress.mutate({ addressId: locationId, patch: data }, { onSuccess: () => navigation.goBack() });
+      updateAddress.mutate(
+        { addressId: locationId, patch: data },
+        { onSuccess: () => navigation.goBack() },
+      );
     } else {
       createAddress.mutate(data, { onSuccess: () => navigation.goBack() });
     }
@@ -103,81 +138,183 @@ export function AddSavedLocationScreen() {
 
   if (locationId && addressesPending) {
     return (
-      <SubScreen title="Edit Location">
-        <Skeleton width="100%" height={64} radius={12} />
-        <Skeleton width="100%" height={96} radius={12} />
-      </SubScreen>
+      <MiScreen edges={['top']}>
+        <View style={{ paddingHorizontal: 21 }}>
+          <MiNavBar title="Edit Location" trailing="none" onBack={() => navigation.goBack()} />
+        </View>
+      </MiScreen>
     );
   }
 
   return (
-    <SubScreen
-      title={locationId ? 'Edit Location' : 'Add Location'}
-      footer={<Button label="Save Location" fullWidth disabled={!canSave} loading={saving} onPress={save} />}
+    <MiScreen
+      edges={['top']}
+      footer={
+        <View
+          style={{
+            paddingHorizontal: 21,
+            paddingBottom: Math.max(insets.bottom, 43),
+          }}
+        >
+          {/* Figma 295:3223 — Save Location */}
+          <MiButton
+            tone="dark"
+            label="Save Location"
+            onPress={save}
+            disabled={!canSave}
+            loading={saving}
+          />
+        </View>
+      }
     >
-      <TextField label="Label" value={label} onChangeText={setLabel} placeholder="e.g. Home" autoCapitalize="words" />
-      <TextField label="Address" value={address} onChangeText={setAddress} placeholder="Enter full address" multiline />
-
-      <Pressable
-        onPress={useCurrentLocation}
-        disabled={locating}
-        accessibilityRole="button"
-        accessibilityLabel="Use current location"
-        style={{
-          borderRadius: 12,
-          borderWidth: 1,
-          borderStyle: 'dashed',
-          borderColor: coords ? theme.colors.success : theme.colors.borderStrong,
-          paddingVertical: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          paddingHorizontal: 21,
+          gap: 16,
+          paddingBottom: 24,
         }}
       >
-        {locating ? (
-          <ActivityIndicator size="small" color={theme.colors.brand} />
-        ) : (
-          <LocateFixed size={18} color={coords ? theme.colors.success : theme.colors.textSecondary} />
-        )}
-        <Text color={coords ? 'success' : 'secondary'} style={{ fontSize: 14 }}>
-          {locating ? 'Locating…' : coords ? 'Location captured' : 'Use current location'}
-        </Text>
-      </Pressable>
+        {/* Figma 295:3018 — nav bar (Figma draws only the add state) */}
+        <MiNavBar
+          title={locationId ? 'Edit Location' : 'Add Location'}
+          trailing="none"
+          onBack={() => navigation.goBack()}
+        />
 
-      {locationDenied ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 }}>
-          <MapPin size={14} color={theme.colors.error} />
-          <Text color="error" style={{ fontSize: 12, lineHeight: 16, flex: 1 }}>
-            Location access denied — enable it in Settings, or the address can't be saved.
-          </Text>
-        </View>
-      ) : null}
-
-      {locationId ? (
-        <Pressable
-          onPress={del}
-          disabled={deleteAddress.isPending}
-          accessibilityRole="button"
-          accessibilityLabel="Delete location"
-          style={() => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            height: 48,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: theme.colors.error,
-            opacity: deleteAddress.isPending ? 0.6 : 1,
-          })}
+        {/* Figma 295:3185 — map preview */}
+        <View
+          style={{
+            height: 170,
+            width: '100%',
+            borderRadius: 16,
+            overflow: 'hidden',
+            backgroundColor: mitowColors.surfaceMuted,
+          }}
         >
-          <Trash2 size={17} color={theme.colors.error} />
-          <Text weight="semibold" style={{ fontSize: 14, color: theme.colors.error }}>
-            Delete Location
-          </Text>
-        </Pressable>
-      ) : null}
-    </SubScreen>
+          {coords ? (
+            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+              <MapPreview
+                style={StyleSheet.absoluteFill}
+                region={{
+                  latitude: coords.lat,
+                  longitude: coords.lng,
+                  latitudeDelta: 0.005,
+                  longitudeDelta: 0.005,
+                }}
+                showRecenter={false}
+                showUserLocation={false}
+                label=""
+              />
+            </View>
+          ) : null}
+
+          {/* Figma 295:3188 — centre pin */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: '50%',
+              marginLeft: -18,
+              top: 55,
+            }}
+          >
+            <MiLineIcon name="map-pin" size={36} />
+          </View>
+
+          {/* Figma 295:3190 — "Location captured" */}
+          {coords ? (
+            <View style={{ position: 'absolute', left: 12, top: 130 }}>
+              <MiStatusBadge status="completed" label="Location captured" />
+            </View>
+          ) : null}
+
+          {/* Figma 295:3192 — use current location */}
+          <View style={{ position: 'absolute', right: 12, top: 118 }}>
+            <MiMapButton
+              icon="locate"
+              size={40}
+              iconSize={24}
+              accessibilityLabel="Use current location"
+              onPress={useCurrentLocation}
+              disabled={locating}
+            />
+          </View>
+        </View>
+
+        {/* Figma 295:3197 — Save as */}
+        <View style={{ gap: 12 }}>
+          <MiText variant="medium16">Save as</MiText>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <MiChip label="Home" selected={kind === 'home'} onPress={() => setKind('home')} />
+            <MiChip label="Work" selected={kind === 'work'} onPress={() => setKind('work')} />
+            <MiChip label="Other" selected={kind === 'other'} onPress={() => setKind('other')} />
+          </View>
+        </View>
+
+        {/* Figma 295:3206 — Address (Text Area 281:1717, counter hidden) */}
+        <View style={{ gap: 8 }}>
+          <MiText variant="medium16">Address</MiText>
+          <View
+            style={{
+              height: 124,
+              borderRadius: 14,
+              borderWidth: addressFocused ? 1.5 : 1.2,
+              borderColor: addressFocused ? mitowColors.brandYellow : mitowColors.borderSubtle,
+              backgroundColor: mitowColors.surfacePage,
+              paddingTop: 12.8,
+              paddingHorizontal: 12.8,
+              paddingBottom: 10.8,
+            }}
+          >
+            <TextInput
+              multiline
+              textAlignVertical="top"
+              value={address}
+              onChangeText={setAddress}
+              onFocus={() => setAddressFocused(true)}
+              onBlur={() => setAddressFocused(false)}
+              placeholder="Enter full address"
+              placeholderTextColor={mitowColors.textPlaceholder}
+              accessibilityLabel="Address"
+              style={{
+                flex: 1,
+                fontSize: 15,
+                lineHeight: 20,
+                letterSpacing: -0.225,
+                color: mitowColors.textPrimary,
+                fontFamily: theme.fonts.regular,
+                padding: 0,
+              }}
+            />
+          </View>
+        </View>
+
+        {/* Figma 295:3211 — Landmark */}
+        <MiTextField
+          label="Landmark (optional)"
+          value={landmark}
+          onChangeText={setLandmark}
+          placeholder="e.g. Near Trinity Metro Station"
+          autoCapitalize="words"
+        />
+
+        {locationDenied ? (
+          <MiText variant="bodyS14" color="danger">
+            Location access denied — enable it in Settings, or the address can't be saved.
+          </MiText>
+        ) : null}
+
+        {/* Not drawn in Figma — kept so a saved place can still be removed. */}
+        {locationId ? (
+          <MiButton
+            tone="dangerSoft"
+            label="Delete Location"
+            onPress={del}
+            loading={deleteAddress.isPending}
+          />
+        ) : null}
+      </ScrollView>
+    </MiScreen>
   );
 }
