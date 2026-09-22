@@ -138,7 +138,7 @@ export function AddSavedLocationScreen() {
       try {
         const autocomplete = await placesDataSource.autocomplete(
           typed,
-          coords ?? undefined,
+          coords ? { latitude: coords.lat, longitude: coords.lng } : undefined,
         );
         const prediction = autocomplete.predictions[0];
         if (!prediction) {
