@@ -188,7 +188,7 @@ describe('driver jobs', () => {
       .expect(404);
   });
 
-  it('lets a driver change their own name and email, and nothing else', async () => {
+  it('lets a driver change their own email, and nothing else', async () => {
     const before = await request(app.getHttpServer())
       .get('/v1/driver/me')
       .set('Authorization', driverAuth)
@@ -197,23 +197,26 @@ describe('driver jobs', () => {
     const response = await request(app.getHttpServer())
       .put('/v1/driver/me')
       .set('Authorization', driverAuth)
-      .send({ name: 'Ravi Kumar', email: 'ravi@example.com' })
+      .send({ email: 'ravi@example.com' })
       .expect(200);
 
     expectMatchesContract(driverProfileSchema, response.body);
-    expect(response.body.name).toBe('Ravi Kumar');
+    expect(response.body.email).toBe('ravi@example.com');
 
-    // The mobile is the login identity, so no profile edit may move it.
-    expect(response.body.mobile).toBe(before.body.mobile);
-
-    // A field outside the schema is stripped, not honoured — the same rule the
-    // customer's `PUT /v1/me` follows. What matters is that it cannot land.
+    // Fields outside the schema are stripped, not honoured — the same rule the
+    // customer's `PUT /v1/me` follows. What matters is that they cannot land.
+    //
+    // The NAME is the one on the driver's licence: the identity the platform
+    // verified and shows to a customer. A driver retyping it would be a driver
+    // becoming somebody else, so it must not move through this route however
+    // it is sent. The mobile is the login and must not move either.
     const ignored = await request(app.getHttpServer())
       .put('/v1/driver/me')
       .set('Authorization', driverAuth)
-      .send({ mobile: '+919999999999' })
+      .send({ name: 'Somebody Else', mobile: '+919999999999' })
       .expect(200);
 
+    expect(ignored.body.name).toBe(before.body.name);
     expect(ignored.body.mobile).toBe(before.body.mobile);
   });
 

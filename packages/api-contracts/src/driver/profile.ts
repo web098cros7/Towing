@@ -77,17 +77,25 @@ export { driverJobPaymentSchema };
 export type { DriverJobPayment } from './jobs';
 
 /**
- * `PUT /v1/driver/me` — the only fields a driver may change about themselves.
+ * `PUT /v1/driver/me` — the only field a driver may change about themselves.
  *
- * Deliberately absent: `mobile` (it is the login identity — changing it is an
- * auth flow, not a profile edit), the truck and its plate/papers (the fleet
- * assigns and renews those from the console; a driver editing their own plate
- * would contradict the assignment the fleet made), and
- * `vehicleClass`/`longDistanceEnabled` (already editable at
- * `PUT driver/capabilities`). KYC status and documents are an admin decision.
+ * ⚠ `name` IS NOT HERE, and that is the interesting one. A driver's name is
+ * their name on their driving licence (Ehsan, 23 Sep): it is the identity the
+ * platform verified, pays against, and shows a customer who is about to get
+ * into a vehicle with them. A driver who could retype it could quietly become
+ * somebody else between two jobs. It is set when the licence is checked, and
+ * changing it is a verification decision, not a profile edit.
+ *
+ * Also absent: `mobile` (it is the login identity — changing it is an auth
+ * flow), the truck and its plate/papers (the fleet assigns and renews those
+ * from the console; a driver editing their own plate would contradict the
+ * assignment the fleet made), and `vehicleClass`/`longDistanceEnabled`
+ * (already editable at `PUT driver/capabilities`). KYC status and documents
+ * are an admin decision.
+ *
+ * The photo is not here either because it has its own presign/confirm pair.
  */
 export const driverProfileUpdateSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
   email: z.string().email().nullable().optional(),
 });
 export type DriverProfileUpdate = z.infer<typeof driverProfileUpdateSchema>;

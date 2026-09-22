@@ -111,7 +111,6 @@ export class DriverJobsService {
     const [updated] = await this.db
       .update(drivers)
       .set({
-        ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.email !== undefined ? { email: body.email } : {}),
         updatedAt: new Date(),
       })

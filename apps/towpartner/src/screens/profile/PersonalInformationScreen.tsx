@@ -21,15 +21,18 @@ const INK_SOFT = '#4B5563';
 /**
  * The driver's own record.
  *
- * PARTLY EDITABLE. Name, email and photo are the driver's own details and
- * they may change them here — the server exposes `PUT driver/me` and the
- * photo presign/confirm pair for exactly those three fields.
+ * PARTLY EDITABLE. The email and the photo are the driver's own to change.
  *
- * STILL NOT EDITABLE, deliberately: the mobile (it is the login, so changing
- * it is an identity change, not a profile edit) and the truck, its plate and
- * its papers (the fleet assigns and renews those from the MiTow console — a
- * driver editing their own plate would break the assignment the fleet made).
- * The closing line says where to go for those.
+ * NOT THE NAME, although it briefly was. A driver's name is the one on their
+ * driving licence (Ehsan, 23 Sep) — the identity the platform verified, pays
+ * against, and shows to a customer about to get into a vehicle with them. A
+ * driver who could retype it could quietly become somebody else between two
+ * jobs, so it is set when the licence is checked and changed only by support.
+ *
+ * Also not editable: the mobile (it is the login, so changing it is an
+ * identity change, not a profile edit) and the truck, its plate and its papers
+ * (the fleet assigns and renews those from the MiTow console — a driver
+ * editing their own plate would break the assignment the fleet made).
  */
 export function PersonalInformationScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -38,31 +41,25 @@ export function PersonalInformationScreen() {
   const updateMe = useUpdateDriverMe();
   const uploadPhoto = useUploadDriverPhoto();
 
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [nameDirty, setNameDirty] = useState(false);
   const [emailDirty, setEmailDirty] = useState(false);
 
   // Seed from the query only when the field is not dirty, so a refetch does
   // not clobber what the driver is typing mid-edit.
   useEffect(() => {
     if (!me) return;
-    if (!nameDirty) setName(me.name ?? '');
     if (!emailDirty) setEmail(me.email ?? '');
-  }, [me, nameDirty, emailDirty]);
+  }, [me, emailDirty]);
 
-  const trimmedName = name.trim();
   const trimmedEmail = email.trim();
-  const changed =
-    trimmedName !== (me?.name ?? '') || trimmedEmail !== (me?.email ?? '');
-  const canSave = changed && trimmedName.length > 0 && !updateMe.isPending;
+  const changed = trimmedEmail !== (me?.email ?? '');
+  const canSave = changed && !updateMe.isPending;
 
   const onSave = () => {
     updateMe.mutate(
-      { name: trimmedName, email: trimmedEmail || null },
+      { email: trimmedEmail || null },
       {
         onSuccess: () => {
-          setNameDirty(false);
           setEmailDirty(false);
           Alert.alert('Saved', 'Your details are up to date.');
         },
@@ -148,24 +145,7 @@ export function PersonalInformationScreen() {
                 </Pressable>
               </View>
 
-              <EditableRow label="Name">
-                <TextInput
-                  value={name}
-                  onChangeText={(value) => {
-                    setName(value);
-                    setNameDirty(true);
-                  }}
-                  maxLength={120}
-                  autoCapitalize="words"
-                  style={{
-                    flex: 1,
-                    fontSize: 15,
-                    lineHeight: 21,
-                    textAlign: 'right',
-                    paddingVertical: 0,
-                  }}
-                />
-              </EditableRow>
+              <InfoRow label="Name" value={me.name ?? '—'} />
 
               <EditableRow label="Email">
                 <TextInput
@@ -198,7 +178,8 @@ export function PersonalInformationScreen() {
                   paddingBottom: 10,
                 }}
               >
-                Your mobile is your login. Contact support to change it.
+                Your name is the one on your driving licence, and your mobile is your login.
+                Contact support to change either.
               </Text>
 
               <InfoRow

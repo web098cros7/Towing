@@ -31,9 +31,11 @@ import { DriverJobsService } from './driver-jobs.service';
  * `driver/jobs/current` already exists and a param route on the same prefix
  * would shadow it.
  *
- * A driver may change their name, their email and their photo and nothing
- * else — the truck and its papers belong to the fleet, and the mobile is the
- * login.
+ * A driver may change their email and their photo, and nothing else. Their
+ * NAME is the one on their driving licence — the identity the platform
+ * verified and shows to a customer — so it is set when that licence is
+ * checked, not typed in by its owner. The truck and its papers belong to the
+ * fleet, and the mobile is the login.
  */
 @Controller('driver')
 @UseGuards(JwtAuthGuard)
