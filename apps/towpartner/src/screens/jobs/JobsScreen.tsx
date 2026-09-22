@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@towing/theme';
 import { Screen, Text, ErrorState, EmptyState, OfflineBanner } from '@towing/ui';
-import { CalendarDays, SlidersHorizontal, ClipboardList, RefreshCw } from '@/icons';
+import { CalendarDays, ClipboardList, RefreshCw } from '@/icons';
 import { DriverHeader } from '@/components/DriverHeader';
 import { FilterTabs, type FilterTabOption } from '@/components/FilterTabs';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -13,18 +13,17 @@ import { useJobs } from '@/features/jobs/api/jobs.queries';
 import { JobCard, JobCardSkeleton } from '@/features/jobs/components/JobCard';
 import type { JobFilter } from '@/features/jobs/types';
 import type { RootStackParamList } from '@/navigation/types';
-import { Pressable } from '@/motion';
 
 const FILTERS: FilterTabOption<JobFilter>[] = [
   { key: 'all', label: 'All' },
-  { key: 'assigned', label: 'Assigned' },
+  { key: 'assigned', label: 'Active' },
   { key: 'completed', label: 'Completed' },
   { key: 'cancelled', label: 'Cancelled' },
 ];
 
 const SUBTITLE: Record<JobFilter, string> = {
-  all: 'Showing all past jobs',
-  assigned: 'Showing assigned jobs',
+  all: 'Showing all your jobs',
+  assigned: 'Showing jobs in progress',
   completed: 'Showing completed jobs',
   cancelled: 'Showing cancelled jobs',
 };
@@ -65,26 +64,6 @@ export function JobsScreen() {
             {SUBTITLE[filter]}
           </Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Filter jobs"
-          style={({ pressed }) => ({
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 7,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: pressed ? theme.colors.surface1 : theme.colors.card,
-          })}
-        >
-          <SlidersHorizontal size={14} color={theme.colors.textPrimary} strokeWidth={2} />
-          <Text weight="medium" style={{ fontSize: 13, lineHeight: 18 }}>
-            Filter
-          </Text>
-        </Pressable>
       </View>
 
       <View style={{ paddingHorizontal: 20, gap: 18 }}>

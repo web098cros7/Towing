@@ -157,7 +157,7 @@ export function HomeScreen() {
                     {
                       icon: Star,
                       tone: 'blue',
-                      value: data.summary.rating.toFixed(1),
+                      value: data.summary.rating === null ? '—' : data.summary.rating.toFixed(1),
                       label: 'Rating',
                       tabular: true,
                     },
@@ -206,6 +206,10 @@ export function HomeScreen() {
               <SectionHeading title="Recent Activity" actionLabel="View All" onAction={() => goToTab('Jobs')} />
               {isPending || !data ? (
                 <Skeleton width="100%" height={190} radius={16} />
+              ) : data.recentActivity.length === 0 ? (
+                <Text color="secondary" style={{ fontSize: 13 }}>
+                  Your finished jobs will show here.
+                </Text>
               ) : (
                 <DividedCard>
                   {data.recentActivity.map((item) => (

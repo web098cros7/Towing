@@ -12,7 +12,7 @@ import { isAtTheSpot, serviceLabel } from '../serviceLabels';
 import { Pressable } from '@/motion';
 
 /** A Record, not a ternary — a new payment method becomes a compile error, not a silent "Online". */
-const PAYMENT_LABEL: Record<JobPayment, string> = { online: 'Online' };
+const PAYMENT_LABEL: Record<JobPayment, string> = { online: 'Online', cash: 'Cash' };
 
 /**
  * How far the driver is from the pickup, in the terms they think in.

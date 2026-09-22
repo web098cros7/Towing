@@ -138,7 +138,9 @@ export function ProfileHeaderCard({
 
       <View style={{ gap: 11 }}>
         <ContactRow icon={Phone} value={profile.phone} label="Mobile Number" />
-        <ContactRow icon={Mail} value={profile.email} label="Email Address" />
+        {profile.email !== null ? (
+          <ContactRow icon={Mail} value={profile.email} label="Email Address" />
+        ) : null}
       </View>
     </HeroCard>
   );

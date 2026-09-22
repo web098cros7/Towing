@@ -5,7 +5,8 @@ export type DriverSummary = {
   jobsCompleted: number;
   /** INTEGER PAISE since Phase 19 — see `farePaise` below. */
   earningsPaise: number;
-  rating: number;
+  /** `null` when the driver has no ratings yet. */
+  rating: number | null;
 };
 
 /** A compact recent-activity entry (subset of a full Job). */

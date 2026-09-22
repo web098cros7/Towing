@@ -10,7 +10,7 @@ import { JOB_STATUS_META } from '../statusMeta';
 import type { Job, JobPayment } from '../types';
 
 /** A Record, not a ternary — a new payment method becomes a compile error, not a silent "Online". */
-const PAYMENT_LABEL: Record<JobPayment, string> = { online: 'Online' };
+const PAYMENT_LABEL: Record<JobPayment, string> = { online: 'Online', cash: 'Cash' };
 
 function MetaItem({
   icon: Icon,
@@ -68,12 +68,14 @@ export function JobCard({ job, onPress }: { job: Job; onPress?: () => void }) {
           <Text weight="semibold" tabular style={{ fontSize: 18, lineHeight: 25 }}>
             {formatPaise(job.farePaise)}
           </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Text color="secondary" style={{ fontSize: 15, lineHeight: 22 }}>
-              {PAYMENT_LABEL[job.payment]}
-            </Text>
-            <CreditCard size={15} color={theme.colors.textTertiary} strokeWidth={2} />
-          </View>
+          {job.payment !== null && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text color="secondary" style={{ fontSize: 15, lineHeight: 22 }}>
+                {PAYMENT_LABEL[job.payment]}
+              </Text>
+              <CreditCard size={15} color={theme.colors.textTertiary} strokeWidth={2} />
+            </View>
+          )}
         </View>
       </View>
 
@@ -88,7 +90,7 @@ export function JobCard({ job, onPress }: { job: Job; onPress?: () => void }) {
         }}
       >
         <MetaItem icon={Truck} label={job.towTypeLabel} />
-        <MetaItem icon={Route} label={`${job.distanceKm} km`} />
+        {job.distanceKm !== null && <MetaItem icon={Route} label={`${job.distanceKm} km`} />}
         <MetaItem icon={Calendar} label={job.dateTimeLabel} shrink={0} />
       </View>
     </Card>

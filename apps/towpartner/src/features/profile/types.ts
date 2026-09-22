@@ -1,9 +1,11 @@
 export type DriverProfileStats = {
   jobsCompleted: number;
-  rating: number;
+  /** `null` when the driver has no ratings yet. */
+  rating: number | null;
   /** e.g. "1.5 yrs". */
   experienceLabel: string;
-  completionPercent: number;
+  /** `null` when the server has no completion-rate figure for this driver. */
+  completionPercent: number | null;
 };
 
 export type DriverProfile = {
@@ -12,7 +14,8 @@ export type DriverProfile = {
   driverId: string;
   verified: boolean;
   phone: string;
-  email: string;
+  /** `null` when the driver record has no email — the app's driver record does not carry one. */
+  email: string | null;
   /**
    * A signed-GET URL from the server, or `null` when the driver has no photo —
    * never a bundled `require()` asset. The placeholder illustration is a

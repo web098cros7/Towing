@@ -77,7 +77,7 @@ export function ProfileScreen() {
                 {
                   icon: Star,
                   tone: 'green',
-                  value: data.stats.rating.toFixed(1),
+                  value: data.stats.rating === null ? '—' : data.stats.rating.toFixed(1),
                   label: 'Rating',
                   tabular: true,
                 },
@@ -90,7 +90,10 @@ export function ProfileScreen() {
                 {
                   icon: ShieldCheck,
                   tone: 'purple',
-                  value: `${data.stats.completionPercent}%`,
+                  value:
+                    data.stats.completionPercent === null
+                      ? '—'
+                      : `${data.stats.completionPercent}%`,
                   label: 'Completion',
                   tabular: true,
                 },
