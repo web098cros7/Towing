@@ -37,4 +37,20 @@ export const profileMockSource: ProfileDataSource = {
     mockProfile = { ...mockProfile, ...patch };
     return mockProfile;
   },
+
+  async presignPhoto() {
+    await delay(200);
+    return {
+      uploadUrl: 'mock://uploads/profile.jpg',
+      key: 'mock-photo',
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    };
+  },
+
+  async confirmPhoto(_key, localUri) {
+    await delay(300);
+    if (!mockProfile) mockProfile = seedProfile();
+    mockProfile = { ...mockProfile, photoUrl: localUri ?? mockProfile.photoUrl };
+    return mockProfile;
+  },
 };

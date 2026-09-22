@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { Alert, Image, ScrollView, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { usePressablePrimitive, ErrorState } from '@towing/ui';
 import { RefreshCw } from '@/icons';
 import {
@@ -17,7 +18,11 @@ import {
   mitowLayout,
   mitowColors,
 } from '@/design';
-import { useProfile, useUpdateProfile } from '@/features/account/api/profile.queries';
+import {
+  useProfile,
+  useUpdateProfile,
+  useUploadProfilePhoto,
+} from '@/features/account/api/profile.queries';
 import type { RootStackParamList } from '@/navigation/types';
 
 /**
@@ -51,6 +56,7 @@ export function PersonalInformationScreen() {
   const Pressable = usePressablePrimitive();
   const { data: profile, isPending, isError, refetch } = useProfile();
   const updateProfile = useUpdateProfile();
+  const uploadPhoto = useUploadProfilePhoto();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,8 +71,29 @@ export function PersonalInformationScreen() {
     }
   }, [profile, seeded]);
 
-  // No photo-upload flow exists yet for the profile avatar (only the vehicle RC upload does).
-  const notReady = useCallback(() => {}, []);
+  const changePhoto = useCallback(async () => {
+    if (uploadPhoto.isPending) return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Could not update your photo', 'Please try again.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    uploadPhoto.mutate(result.assets[0].uri, {
+      onError: () => {
+        Alert.alert('Could not update your photo', 'Please try again.');
+      },
+    });
+  }, [uploadPhoto]);
 
   const save = () => {
     updateProfile.mutate(
@@ -127,8 +154,22 @@ export function PersonalInformationScreen() {
 
         {/* Photo 293:2995 */}
         <View style={{ alignItems: 'center', gap: 10, paddingVertical: 4 }}>
-          <View style={{ position: 'relative', width: 84, height: 84 }}>
-            <SvgXml xml={avatarDefaultIllustration} width={84} height={84} />
+          <View
+            style={{
+              position: 'relative',
+              width: 84,
+              height: 84,
+              opacity: uploadPhoto.isPending ? 0.5 : 1,
+            }}
+          >
+            {profile?.photoUrl ? (
+              <Image
+                source={{ uri: profile.photoUrl }}
+                style={{ width: 84, height: 84, borderRadius: 42 }}
+              />
+            ) : (
+              <SvgXml xml={avatarDefaultIllustration} width={84} height={84} />
+            )}
             <View
               style={{
                 position: 'absolute',
@@ -148,7 +189,7 @@ export function PersonalInformationScreen() {
             </View>
           </View>
           <Pressable
-            onPress={notReady}
+            onPress={changePhoto}
             pressScale={1}
             haptic="light"
             hitSlop={8}

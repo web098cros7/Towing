@@ -184,10 +184,19 @@ const config: ExpoConfig = {
       },
     ],
     [
-      // Phase 12: the saved-vehicle RC upload picks from the photo library.
+      // Phase 12: the saved-vehicle RC upload picks from the photo library; the profile
+      // photo (37) and Report an Issue's photos (61) use it too.
       'expo-image-picker',
       {
-        photosPermission: 'MiTow needs photo library access so you can upload your vehicle RC.',
+        photosPermission:
+          'MiTow needs photo library access so you can add photos to your profile, vehicle RC and issue reports.',
+      },
+    ],
+    [
+      // Figma 51 · Add Emergency Contact: "Choose from phone contacts".
+      'expo-contacts',
+      {
+        contactsPermission: 'MiTow needs your contacts so you can pick an emergency contact.',
       },
     ],
     [

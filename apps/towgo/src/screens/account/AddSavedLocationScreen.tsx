@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +24,7 @@ import {
   useUpdateAddress,
   useDeleteAddress,
 } from '@/features/account/api/addresses.queries';
+import { placesDataSource } from '@/features/places/api/placesDataSource';
 import type { RootStackParamList } from '@/navigation/types';
 
 type LocationKind = 'home' | 'work' | 'other';
@@ -31,11 +32,12 @@ type LocationKind = 'home' | 'work' | 'other';
 /**
  * Figma 42 · Add Location (295:3018).
  *
- * Stopgap coordinate source: device GPS, reverse-geocoded into the address
- * text field. A real map-pin picker is a later phase's `BookLocation` rebuild
- * — out of scope here, so there is no way to type a plain address without
- * also fetching a device fix to back it with `lat`/`lng` (the contract
- * requires both).
+ * Coordinate source: device GPS by default, reverse-geocoded into the address
+ * text field. When the customer types an address that differs from the
+ * reverse-geocoded text, the typed text is resolved through the places search
+ * (`autocomplete` → `details`) and the resolved point is saved instead — so
+ * typing "the office" while at home saves the office, not home. A real
+ * map-pin picker is a later phase's `BookLocation` rebuild — out of scope here.
  */
 export function AddSavedLocationScreen() {
   const theme = useTheme();
@@ -60,6 +62,11 @@ export function AddSavedLocationScreen() {
   const [locating, setLocating] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
   const [addressFocused, setAddressFocused] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  // The address text that came from a GPS fix or the existing saved location.
+  // If the customer edits the field away from this, the typed text must be
+  // resolved through the places search before saving.
+  const resolvedAddressRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (existing && !seeded) {
@@ -74,6 +81,7 @@ export function AddSavedLocationScreen() {
         setOtherLabel(raw);
       }
       setAddress(existing.fullAddress);
+      resolvedAddressRef.current = existing.fullAddress;
       setCoords({ lat: existing.lat, lng: existing.lng });
       setSeeded(true);
     }
@@ -96,7 +104,11 @@ export function AddSavedLocationScreen() {
         const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
         if (place) {
           const parts = [place.name, place.street, place.city, place.region].filter(Boolean);
-          if (parts.length > 0) setAddress(parts.join(', '));
+          if (parts.length > 0) {
+            const resolved = parts.join(', ');
+            setAddress(resolved);
+            resolvedAddressRef.current = resolved;
+          }
         }
       } catch {
         // Reverse geocoding is a nicety — the coordinates are already captured either way.
@@ -112,15 +124,51 @@ export function AddSavedLocationScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationId]);
 
-  const canSave = address.trim().length > 0 && !!coords;
-  const save = () => {
-    if (!coords) return;
+  const canSave = address.trim().length > 0;
+  const save = async () => {
+    const typed = address.trim();
+    if (!typed) return;
+
+    // If the typed text matches what the GPS fix (or the existing saved
+    // location) put in the field, the current `coords` are already correct.
+    // Otherwise the customer typed somewhere else — resolve it via places.
+    let saveCoords = coords;
+    if (typed !== (resolvedAddressRef.current ?? '').trim()) {
+      setResolving(true);
+      try {
+        const autocomplete = await placesDataSource.autocomplete(
+          typed,
+          coords ?? undefined,
+        );
+        const prediction = autocomplete.predictions[0];
+        if (!prediction) {
+          Alert.alert(
+            "We couldn't find that address",
+            'Check the address, or use your current location.',
+          );
+          return;
+        }
+        const detail = await placesDataSource.details(prediction.placeId);
+        saveCoords = { lat: detail.point.lat, lng: detail.point.lng };
+      } catch {
+        Alert.alert(
+          "We couldn't find that address",
+          'Check the address, or use your current location.',
+        );
+        return;
+      } finally {
+        setResolving(false);
+      }
+    }
+
+    if (!saveCoords) return;
+
     const label =
       kind === 'home' ? 'Home' : kind === 'work' ? 'Work' : otherLabel.trim() || 'Other';
     // Data gap: the saved-address contract has no landmark field, so the
     // landmark is folded into `fullAddress` until the schema grows one.
-    const fullAddress = landmark.trim() ? `${address.trim()}, ${landmark.trim()}` : address.trim();
-    const data = { label, fullAddress, lat: coords.lat, lng: coords.lng };
+    const fullAddress = landmark.trim() ? `${typed}, ${landmark.trim()}` : typed;
+    const data = { label, fullAddress, lat: saveCoords.lat, lng: saveCoords.lng };
     if (locationId) {
       updateAddress.mutate(
         { addressId: locationId, patch: data },
@@ -134,7 +182,7 @@ export function AddSavedLocationScreen() {
     if (locationId) deleteAddress.mutate(locationId, { onSuccess: () => navigation.goBack() });
   };
 
-  const saving = createAddress.isPending || updateAddress.isPending;
+  const saving = createAddress.isPending || updateAddress.isPending || resolving;
 
   if (locationId && addressesPending) {
     return (

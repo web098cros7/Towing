@@ -306,13 +306,17 @@ export function HomeScreen() {
   );
 }
 
-/** Menu 228:255: the glyph only (no container). Opens nothing yet: no menu screen exists. */
+/**
+ * Menu 228:255: the glyph only (no container). Figma draws no menu screen, so it opens the
+ * Profile tab — the account hub every menu item would lead to (reported).
+ */
 function MenuButton({ style }: { style: React.ComponentProps<typeof View>['style'] }) {
   const theme = useTheme();
   const Pressable = usePressablePrimitive();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return (
     <Pressable
-      onPress={() => {}}
+      onPress={() => navigation.navigate('Tabs', { screen: 'Profile' })}
       pressScale={theme.motion.pressScale.chip}
       haptic="light"
       hitSlop={10}

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import { ScrollView } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
@@ -129,7 +129,14 @@ export function ProfileScreen() {
         >
           {/* Avatar 84×84 */}
           <View style={{ width: 84, height: 84, position: 'relative' }}>
-            <SvgXml xml={avatarDefaultIllustration} width={84} height={84} />
+            {profile?.photoUrl ? (
+              <Image
+                source={{ uri: profile.photoUrl }}
+                style={{ width: 84, height: 84, borderRadius: 42 }}
+              />
+            ) : (
+              <SvgXml xml={avatarDefaultIllustration} width={84} height={84} />
+            )}
             {/* Camera badge 240:718 */}
             <View
               style={{

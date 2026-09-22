@@ -5,11 +5,9 @@ import type { MiColorIconName } from '@/design';
  * top to bottom). Titles are the design's copy verbatim; `slug` is the
  * `services.slug` the booking store is seeded with when the card is tapped.
  *
- * `lockout` has NO row in the service catalogue (`GET /v1/services`), no
- * `service_type` in `serviceTypeSchema` and no fare band. The card is drawn
- * enabled in the design, so it is selectable here: tapping it seeds the store
- * with `lockout` and opens 10 · Enter Location like every other card. The
- * catalogue/pricing gap is a backend decision and is reported, not hidden.
+ * Every slug has a catalogue row and a server fare, `lockout` included (migration
+ * 0035 added it as a flat roadside service; its ₹799 fare is a placeholder until
+ * Ehsan sets it).
  */
 export type RoadsideServiceSlug =
   'flat_tyre' | 'battery' | 'fuel' | 'lockout' | 'breakdown' | 'car_tow';

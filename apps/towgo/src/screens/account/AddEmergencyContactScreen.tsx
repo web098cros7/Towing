@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Contacts from 'expo-contacts';
 import { usePressablePrimitive } from '@towing/ui';
 import { useTheme } from '@towing/theme';
 import {
@@ -32,6 +33,19 @@ import { useCreateEmergencyContact } from '@/features/account/api/emergencyConta
 const RELATION_OPTIONS = ['Spouse', 'Parent', 'Sibling', 'Friend', 'Other'] as const;
 
 type RelationOption = (typeof RELATION_OPTIONS)[number];
+
+/**
+ * Normalises a raw contact number to the 10-digit Indian mobile the phone
+ * field expects. Strips non-digits, then drops a leading '91' when 12 digits
+ * remain or a leading '0' when 11 remain. Anything else is returned as-is so
+ * the field's own validation can speak.
+ */
+function normaliseIndianMobile(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+  return digits;
+}
 
 /**
  * Figma 296:3449 · Relation chip.
@@ -94,6 +108,32 @@ export function AddEmergencyContactScreen() {
     setRelation((current) => (current === option ? null : option));
   };
 
+  const chooseFromContacts = async () => {
+    try {
+      const permission = await Contacts.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          'Contacts permission needed',
+          'Allow MiTow to read your contacts to pick one, or type the details below.',
+        );
+        return;
+      }
+
+      const contact = await Contacts.presentContactPickerAsync();
+      if (!contact) return;
+
+      const pickedName =
+        contact.name ??
+        [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
+      if (pickedName) setName(pickedName);
+
+      const rawNumber = contact.phoneNumbers?.[0]?.number;
+      if (rawNumber) setPhone(normaliseIndianMobile(rawNumber));
+    } catch {
+      Alert.alert('Could not open your contacts', 'Please type the details instead.');
+    }
+  };
+
   return (
     <MiScreen
       edges={['top']}
@@ -121,15 +161,12 @@ export function AddEmergencyContactScreen() {
 
         {/* Figma 296:3401 · Pick contact */}
         <MiMenuCard radius={16} paddingVertical={4}>
-          {/*
-           * The app has no phone-contacts module yet (expo-contacts is not
-           * installed), so this row is drawn but inert. Reported to the owner.
-           */}
           <MiMenuRow
             icon={{ color: 'user' }}
             title="Choose from phone contacts"
             subtitle="Fill name and number in one tap"
             showChevron
+            onPress={chooseFromContacts}
           />
         </MiMenuCard>
 
