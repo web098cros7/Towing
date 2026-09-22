@@ -12,6 +12,11 @@ export interface PrivacyDataSource {
   deleteAccount(reason?: string): Promise<AccountDeletionResponse>;
   exportData(): Promise<AccountExportResponse>;
   recordConsent(policyType: ConsentPolicyType, policyVersion: string): Promise<void>;
+  /**
+   * Stops marketing messages; the account carries on working. Deleting the
+   * account is `deleteAccount`, deliberately a separate thing.
+   */
+  withdrawConsent(policyType: ConsentPolicyType): Promise<void>;
 }
 
 export const privacyDataSource: PrivacyDataSource = env.useMocks ? privacyMockSource : privacyRestSource;

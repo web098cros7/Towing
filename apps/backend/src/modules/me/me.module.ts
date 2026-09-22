@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationCentreModule } from '../notification-centre/notification-centre.module';
 import { AccountPrivacyController } from './account-privacy.controller';
 import { AccountPrivacyService } from './account-privacy.service';
 import { MeAddressesController } from './me-addresses.controller';
@@ -18,7 +19,9 @@ import { MeService } from './me.service';
  * `StorageModule`, not imported here.
  */
 @Module({
-  imports: [AuthModule],
+  // `NotificationCentreModule`: withdrawing consent switches the marketing
+  // preference off, which is the part that actually stops the messages.
+  imports: [AuthModule, NotificationCentreModule],
   controllers: [
     MeController,
     MeVehiclesController,

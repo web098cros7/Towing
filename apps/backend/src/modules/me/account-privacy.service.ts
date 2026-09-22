@@ -3,13 +3,15 @@ import type {
   AccountDeletionResponse,
   AccountExportResponse,
   ConsentRecordRequest,
+  ConsentWithdrawRequest,
 } from '@towing/api-contracts';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { DeviceRegistryService } from '../../common/notifications/device-registry.service';
 import { DB, type Database } from '../../db/db.module';
 import { consentRecords, deletionRequests, drivers, users } from '../../db/schema';
+import { NotificationCentreService } from '../notification-centre/notification-centre.service';
 import { TokenService } from '../auth/token.service';
 import { buildSubjectExport } from '../privacy/subject-export';
 
@@ -17,7 +19,7 @@ export type PrivacySubjectType = 'user' | 'driver';
 
 /**
  * §20.4 DPDP, dual-realm (Phase 12) — `DELETE /v1/me`, `GET /v1/me/export`,
- * `POST /v1/me/consent`. A customer and a driver call the exact same routes;
+ * `POST /v1/me/consent` and `POST /v1/me/consent/withdraw`. A customer and a driver call the exact same routes;
  * what differs is which tables `subjectType` reads from.
  */
 @Injectable()
@@ -26,6 +28,7 @@ export class AccountPrivacyService {
     @Inject(DB) private readonly db: Database,
     private readonly devices: DeviceRegistryService,
     private readonly tokens: TokenService,
+    private readonly centre: NotificationCentreService,
   ) {}
 
   /**
@@ -118,6 +121,61 @@ export class AccountPrivacyService {
       subjectId,
       policyType: body.policyType,
       policyVersion: body.policyVersion,
+      action: 'granted',
+    });
+  }
+
+  /**
+   * §20.4's withdrawal, which the consent overlay has always promised
+   * ("You can withdraw consent anytime from Settings") and nothing could do.
+   *
+   * WITHDRAWAL STOPS MARKETING AND LEAVES THE ACCOUNT WORKING (Ehsan, 23 Sep).
+   * Booking, payment and safety messages carry on, because they are how MiTow
+   * runs a trip the customer has paid for; stopping those would be abandoning
+   * a service mid-delivery rather than honouring a preference. Ending the
+   * account entirely is `DELETE /v1/me`, and the app names that separately so
+   * one button never means two things.
+   *
+   * TWO WRITES, AND THE ORDER MATTERS. The preference is what actually silences
+   * the marketing, so it goes first; the log row is the audit trail. If the
+   * second failed we would have honoured a request we could not prove, which is
+   * the better way round — the reverse would be a promise on paper that the
+   * fan-out worker never heard about.
+   *
+   * The newest row per (subject, policy) is the current state, so a withdrawal
+   * needs no version: it withdraws whatever was last agreed to, and the version
+   * that was agreed is already on the row above it.
+   */
+  async withdrawConsent(
+    subjectType: PrivacySubjectType,
+    subjectId: string,
+    body: ConsentWithdrawRequest,
+  ): Promise<void> {
+    await this.centre.updatePrefs(subjectType, subjectId, { promotions: false });
+
+    const [latest] = await this.db
+      .select({ policyVersion: consentRecords.policyVersion })
+      .from(consentRecords)
+      .where(
+        and(
+          eq(consentRecords.subjectType, subjectType),
+          eq(consentRecords.subjectId, subjectId),
+          eq(consentRecords.policyType, body.policyType),
+        ),
+      )
+      .orderBy(desc(consentRecords.consentedAt))
+      .limit(1);
+
+    await this.db.insert(consentRecords).values({
+      subjectType,
+      subjectId,
+      policyType: body.policyType,
+      // The version they are withdrawing from. `unknown` only when a client
+      // withdraws consent it never recorded giving, which the route allows
+      // rather than 404s: refusing to honour a withdrawal on a bookkeeping
+      // technicality is not a defensible reading of §20.4.
+      policyVersion: latest?.policyVersion ?? 'unknown',
+      action: 'withdrawn',
     });
   }
 

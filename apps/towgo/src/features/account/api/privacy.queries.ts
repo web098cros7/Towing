@@ -1,5 +1,6 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ConsentPolicyType } from '@towing/api-contracts';
+import { notificationPrefKeys } from '@/features/notifications/api/notificationPrefs.keys';
 import { privacyDataSource } from './privacyDataSource';
 import { privacyKeys } from './privacy.keys';
 
@@ -23,5 +24,24 @@ export function useRecordConsent() {
   return useMutation({
     mutationFn: ({ policyType, policyVersion }: { policyType: ConsentPolicyType; policyVersion: string }) =>
       privacyDataSource.recordConsent(policyType, policyVersion),
+  });
+}
+
+/**
+ * Legal → "Withdraw consent". The overlay every customer signs promises this
+ * ("You can withdraw consent anytime from Settings") and until now nothing
+ * could do it.
+ *
+ * It stops marketing and leaves the account working, so the marketing
+ * preference is invalidated afterwards — the Notifications screen shows that
+ * switch and must not keep claiming it is on.
+ */
+export function useWithdrawConsent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (policyType: ConsentPolicyType) => privacyDataSource.withdrawConsent(policyType),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: notificationPrefKeys.detail() });
+    },
   });
 }

@@ -29,6 +29,26 @@ export const privacyMockSource: PrivacyDataSource = {
 
   async recordConsent(policyType, policyVersion) {
     await delay(300);
-    consents.push({ policyType, policyVersion, consentedAt: new Date().toISOString() });
+    consents.push({
+      policyType,
+      policyVersion,
+      action: 'granted',
+      consentedAt: new Date().toISOString(),
+    });
+  },
+
+  /**
+   * Appends a withdrawal rather than removing the agreement, exactly as the
+   * server does — the export shows the whole history, not the latest state.
+   */
+  async withdrawConsent(policyType) {
+    await delay(300);
+    const latest = [...consents].reverse().find((c) => c.policyType === policyType);
+    consents.push({
+      policyType,
+      policyVersion: latest?.policyVersion ?? 'unknown',
+      action: 'withdrawn',
+      consentedAt: new Date().toISOString(),
+    });
   },
 };

@@ -35,6 +35,7 @@ export async function buildSubjectExport(
     .select({
       policyType: consentRecords.policyType,
       policyVersion: consentRecords.policyVersion,
+      action: consentRecords.action,
       consentedAt: consentRecords.consentedAt,
     })
     .from(consentRecords)
@@ -45,6 +46,10 @@ export async function buildSubjectExport(
   const consentRows = consents.map((c) => ({
     policyType: c.policyType,
     policyVersion: c.policyVersion,
+    // Withdrawals are part of the record a subject is entitled to see, not
+    // only the agreements — the export would otherwise show someone consenting
+    // twice with no sign they had withdrawn in between.
+    action: c.action,
     consentedAt: c.consentedAt.toISOString(),
   })) as AccountExportResponse['consents'];
 

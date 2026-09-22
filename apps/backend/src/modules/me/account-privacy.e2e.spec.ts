@@ -130,6 +130,57 @@ describe('account privacy (/v1/me — DPDP §20.4, dual-realm)', () => {
         subjectId: driverId,
         policyType: 'privacy_policy',
       });
+      for (const row of rows) expect(row.action).toBe('granted');
+    });
+  });
+
+  describe('POST /me/consent/withdraw', () => {
+    it('stops marketing, leaves the account working, and logs the withdrawal', async () => {
+      const userId = await seedCustomer(db);
+      const customerAuth = await customerAuthHeaderFor(app, { userId });
+
+      await request(app.getHttpServer())
+        .post('/v1/me/consent')
+        .set('Authorization', customerAuth)
+        .send({ policyType: 'privacy_policy', policyVersion: '2026-09-01' })
+        .expect(204);
+
+      // Marketing on, so the withdrawal has something to switch off.
+      await request(app.getHttpServer())
+        .put('/v1/me/notification-prefs')
+        .set('Authorization', customerAuth)
+        .send({ promotions: true })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/v1/me/consent/withdraw')
+        .set('Authorization', customerAuth)
+        .send({ policyType: 'privacy_policy' })
+        .expect(204);
+
+      const prefs = await request(app.getHttpServer())
+        .get('/v1/me/notification-prefs')
+        .set('Authorization', customerAuth)
+        .expect(200);
+      expect(prefs.body.promotions).toBe(false);
+
+      // The account still works — withdrawal is not deletion.
+      await request(app.getHttpServer())
+        .get('/v1/me')
+        .set('Authorization', customerAuth)
+        .expect(200);
+
+      // Appended, not mutated: the original agreement is still on the record,
+      // carrying the version that was withdrawn from.
+      const rows = await db.select().from(consentRecords);
+      expect(rows).toHaveLength(2);
+      expect(rows.filter((r) => r.action === 'granted')).toHaveLength(1);
+      const withdrawn = rows.find((r) => r.action === 'withdrawn');
+      expect(withdrawn).toMatchObject({
+        subjectId: userId,
+        policyType: 'privacy_policy',
+        policyVersion: '2026-09-01',
+      });
     });
   });
 });

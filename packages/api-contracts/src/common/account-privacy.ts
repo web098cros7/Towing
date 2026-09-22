@@ -34,12 +34,32 @@ export const consentRecordRequestSchema = z.object({
 });
 export type ConsentRecordRequest = z.infer<typeof consentRecordRequestSchema>;
 
+export const consentActionSchema = z.enum(['granted', 'withdrawn']);
+export type ConsentAction = z.infer<typeof consentActionSchema>;
+
 export const consentRecordSchema = z.object({
   policyType: consentPolicyTypeSchema,
   policyVersion: z.string(),
+  action: consentActionSchema,
   consentedAt: z.iso.datetime(),
 });
 export type ConsentRecord = z.infer<typeof consentRecordSchema>;
+
+/**
+ * `POST /v1/me/consent/withdraw`.
+ *
+ * WHAT WITHDRAWAL MEANS HERE (Ehsan, 23 Sep): marketing stops; the account
+ * keeps working. Bookings, receipts and safety messages continue, because they
+ * are how MiTow runs a trip the customer has paid for — stopping those would
+ * be abandoning a service mid-delivery rather than respecting a preference.
+ * A customer who wants the account gone has `DELETE /v1/me` for that, and the
+ * app says so at the point of withdrawal rather than making this button mean
+ * two different things.
+ */
+export const consentWithdrawRequestSchema = z.object({
+  policyType: consentPolicyTypeSchema,
+});
+export type ConsentWithdrawRequest = z.infer<typeof consentWithdrawRequestSchema>;
 
 /**
  * `DELETE /v1/me` request body — a reason is optional, never required to act

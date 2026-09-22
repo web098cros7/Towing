@@ -10,7 +10,11 @@ import { X } from '@/icons';
 import { MiFaqCard, MiFaqRow } from '@/design/components/MiFaqRow';
 import { MiMenuCard, MiMenuRow, MiNavBar, MiScreen, MiText, mitowLayout } from '@/design';
 import { ApiClientError } from '@/lib/api/errors';
-import { useDeleteAccount, useExportData } from '@/features/account/api/privacy.queries';
+import {
+  useDeleteAccount,
+  useExportData,
+  useWithdrawConsent,
+} from '@/features/account/api/privacy.queries';
 import { useContentPages } from '@/features/content/api/content.queries';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { POLICY_VERSION } from '@/lib/legal/policyVersion';
@@ -132,6 +136,7 @@ export function LegalScreen() {
   const queryClient = useQueryClient();
   const exportData = useExportData();
   const deleteAccount = useDeleteAccount();
+  const withdrawConsent = useWithdrawConsent();
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [open, setOpen] = useState<string | null>('p0');
@@ -178,6 +183,37 @@ export function LegalScreen() {
   const onDeleteAccount = useCallback(() => {
     setDeleteOpen(true);
   }, []);
+
+  /**
+   * The withdrawal the consent overlay promises ("You can withdraw consent
+   * anytime from Settings"), which until now Settings could not do.
+   *
+   * CONFIRMED FIRST, AND THE COPY SAYS WHAT IT DOES NOT DO. Withdrawing stops
+   * marketing and leaves the account working; a customer who reads
+   * "withdraw consent" as "close my account" and taps it would otherwise be
+   * surprised in the wrong direction, so the sentence names deletion and
+   * points at the row below it.
+   */
+  const onWithdrawConsent = useCallback(() => {
+    Alert.alert(
+      'Withdraw consent?',
+      "We'll stop sending you offers and promotions. Your account, your trips and your receipts stay as they are — to close the account entirely, use Delete my account.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Withdraw',
+          style: 'destructive',
+          onPress: () =>
+            withdrawConsent.mutate('privacy_policy', {
+              onSuccess: () =>
+                Alert.alert('Consent withdrawn', 'You will not receive offers or promotions from MiTow.'),
+              onError: () =>
+                Alert.alert('Something went wrong', 'Could not withdraw consent right now.'),
+            }),
+        },
+      ],
+    );
+  }, [withdrawConsent]);
 
   const confirmDelete = useCallback(() => {
     deleteAccount.mutate(undefined, {
@@ -283,6 +319,13 @@ export function LegalScreen() {
               subtitle="A copy of everything we hold"
               showChevron
               onPress={onDownloadData}
+            />
+            <MiMenuRow
+              icon={{ color: 'verified' }}
+              title="Withdraw consent"
+              subtitle="Stop offers and promotions"
+              showChevron
+              onPress={onWithdrawConsent}
             />
             <MiMenuRow
               icon={{ color: 'trash' }}

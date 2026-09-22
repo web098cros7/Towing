@@ -22,4 +22,12 @@ export const privacyRestSource: PrivacyDataSource = {
       idempotent: true,
     });
   },
+
+  async withdrawConsent(policyType) {
+    await apiFetch<void>('me/consent/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ policyType }),
+      idempotent: true,
+    });
+  },
 };

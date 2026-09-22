@@ -57,6 +57,12 @@ export const consentRecords = pgTable(
     /** `'privacy_policy' | 'terms_of_service'` — plain text, not an enum: the set is app copy, not a data invariant. */
     policyType: text('policy_type').notNull(),
     policyVersion: text('policy_version').notNull(),
+    /**
+     * `'granted' | 'withdrawn'` — CHECK-constrained in 0036. An append-only
+     * log: consent can be given, withdrawn and given again, and each is a
+     * dated fact of its own. The current state is the newest row.
+     */
+    action: text('action').notNull().default('granted'),
     consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
     ...timestamps,
   },

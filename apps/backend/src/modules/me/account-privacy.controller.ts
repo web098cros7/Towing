@@ -2,8 +2,10 @@ import { Controller, Delete, Get, HttpCode, HttpStatus, Post, Req, UseGuards } f
 import {
   accountDeletionRequestSchema,
   consentRecordRequestSchema,
+  consentWithdrawRequestSchema,
   type AccountDeletionRequest,
   type ConsentRecordRequest,
+  type ConsentWithdrawRequest,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { ZodBody } from '../../common/validation/zod.decorators';
@@ -47,6 +49,21 @@ export class AccountPrivacyController {
   ): Promise<void> {
     const { subjectType, subjectId } = subjectFor(request);
     await this.privacy.recordConsent(subjectType, subjectId, body);
+  }
+
+  /**
+   * The withdrawal the consent overlay promises. Marketing stops; the account
+   * keeps working, and the app says so before the customer confirms. Deleting
+   * the account is `DELETE /v1/me`, deliberately a different button.
+   */
+  @Post('consent/withdraw')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async withdrawConsent(
+    @ZodBody(consentWithdrawRequestSchema) body: ConsentWithdrawRequest,
+    @Req() request: AuthedRequest,
+  ): Promise<void> {
+    const { subjectType, subjectId } = subjectFor(request);
+    await this.privacy.withdrawConsent(subjectType, subjectId, body);
   }
 }
 
