@@ -52,6 +52,17 @@ export class DriverKycController {
   }
 
   /**
+   * Deliberately NOT behind `KycApprovedGuard`, unlike the PUT below. The
+   * guard exists to gate a sensitive *change*; a driver whose approval has
+   * lapsed must still be able to see what they are currently set to — blanking
+   * the screen for them is how this bug looked in the first place.
+   */
+  @Get('capabilities')
+  capabilities(@Req() request: AuthedRequest) {
+    return this.kyc.capabilities(driverId(request));
+  }
+
+  /**
    * §3.1 layer 2 in miniature: changing what you're willing to drive is a
    * "sensitive action" gated on being approved, the same way going online will
    * be once Phase 16 ships that route — this is the guard's first real user.

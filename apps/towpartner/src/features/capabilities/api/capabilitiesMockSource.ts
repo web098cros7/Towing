@@ -8,6 +8,10 @@ let mockVehicleClass: 'wheel_lift' | 'flatbed' | null = null;
 let mockLongDistanceEnabled = false;
 
 export const capabilitiesMockSource: CapabilitiesDataSource = {
+  async get() {
+    await delay(200);
+    return { vehicleClass: mockVehicleClass, longDistanceEnabled: mockLongDistanceEnabled };
+  },
   async update(body) {
     await delay(300);
     // Mirrors `KycApprovedGuard`: this is the one route even a signed-in

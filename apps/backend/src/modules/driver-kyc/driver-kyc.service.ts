@@ -179,6 +179,20 @@ export class DriverKycService {
     return { kycStatus: 'pending', kycSubmittedAt: now.toISOString() };
   }
 
+  async capabilities(driverId: string): Promise<DriverCapabilitiesResponse> {
+    const [driver] = await this.db
+      .select({
+        vehicleClass: drivers.vehicleClass,
+        longDistanceEnabled: drivers.longDistanceEnabled,
+      })
+      .from(drivers)
+      .where(eq(drivers.id, driverId))
+      .limit(1);
+
+    if (!driver) throw ApiException.notFound('Driver not found');
+    return driver;
+  }
+
   async updateCapabilities(
     driverId: string,
     body: DriverCapabilitiesUpdate,

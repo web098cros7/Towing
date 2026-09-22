@@ -203,6 +203,44 @@ describe('driver KYC (/v1/driver/kyc, /v1/driver/capabilities)', () => {
     expect(licenseDocs[0].status).toBe('pending');
   });
 
+  describe('GET /v1/driver/capabilities', () => {
+    it('returns the driver\'s current capabilities, matching a prior PUT', async () => {
+      const driverId = await seedDriver(db, { kycStatus: 'approved', vehicleClass: 'wheel_lift' });
+      const auth = await driverAuthHeaderFor(app, { driverId, kycStatus: 'approved' });
+
+      await request(app.getHttpServer())
+        .put('/v1/driver/capabilities')
+        .set('Authorization', auth)
+        .send({ vehicleClass: 'flatbed', longDistanceEnabled: true })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get('/v1/driver/capabilities')
+        .set('Authorization', auth)
+        .expect(200);
+      expect(res.body).toEqual({ vehicleClass: 'flatbed', longDistanceEnabled: true });
+    });
+
+    it('200s for a driver whose kycStatus is NOT approved (guard asymmetry vs the PUT)', async () => {
+      const driverId = await seedDriver(db, { kycStatus: 'suspended', vehicleClass: 'flatbed' });
+      const auth = await driverAuthHeaderFor(app, { driverId, kycStatus: 'suspended' });
+
+      // The PUT is refused…
+      await request(app.getHttpServer())
+        .put('/v1/driver/capabilities')
+        .set('Authorization', auth)
+        .send({ longDistanceEnabled: true })
+        .expect(403);
+
+      // …but the GET still shows what they are set to.
+      const res = await request(app.getHttpServer())
+        .get('/v1/driver/capabilities')
+        .set('Authorization', auth)
+        .expect(200);
+      expect(res.body).toEqual({ vehicleClass: 'flatbed', longDistanceEnabled: false });
+    });
+  });
+
   describe('PUT /v1/driver/capabilities (KycApprovedGuard)', () => {
     it('403s an incomplete driver with reason kyc_not_approved', async () => {
       const driverId = await seedDriver(db, { kycStatus: 'incomplete', vehicleClass: null });

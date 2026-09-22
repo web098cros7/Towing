@@ -1,30 +1,42 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@towing/theme';
-import { Screen, Text, Button, Card, ListRow } from '@towing/ui';
+import { Screen, Text, Button, Card, ListRow, Skeleton, ErrorState } from '@towing/ui';
 import { ApiClientError } from '@/lib/api/errors';
 import { DriverHeader } from '@/components/DriverHeader';
 import { Toggle } from '@/components/Toggle';
-import { Route } from '@/icons';
+import { RefreshCw, Route } from '@/icons';
 import { useTabBarSpace } from '@/navigation/DriverTabBar';
-import { useUpdateCapabilities } from '@/features/capabilities/api/capabilities.queries';
+import {
+  useCapabilities,
+  useUpdateCapabilities,
+} from '@/features/capabilities/api/capabilities.queries';
 import { VEHICLE_CLASS_OPTIONS, type VehicleClass } from '@/features/capabilities/types';
 import type { RootStackParamList } from '@/navigation/types';
 
 /**
- * Replaces the `MyVehicles` placeholder. There is no read endpoint yet (see
- * `capabilities.queries.ts`), so this starts blank rather than pretending to
- * show a saved value it cannot fetch.
+ * Replaces the `MyVehicles` placeholder. Opens on the driver's current
+ * settings, fetched from `GET /driver/capabilities`.
  */
 export function CapabilitiesScreen() {
   const theme = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const tabBarSpace = useTabBarSpace();
+  const { data, isPending, isError, refetch } = useCapabilities();
   const [vehicleClass, setVehicleClass] = useState<VehicleClass | null>(null);
   const [longDistanceEnabled, setLongDistanceEnabled] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const update = useUpdateCapabilities();
+
+  // Seed from the query only while the driver has not edited anything, so a
+  // refetch never overwrites a half-made choice.
+  useEffect(() => {
+    if (!data || dirty) return;
+    setVehicleClass(data.vehicleClass);
+    setLongDistanceEnabled(data.longDistanceEnabled);
+  }, [data, dirty]);
 
   const onSave = async () => {
     if (!vehicleClass) return;
@@ -58,6 +70,19 @@ export function CapabilitiesScreen() {
       <DriverHeader leading="back" title="Capabilities" titleSize={22} showBell={false} onLeading={() => navigation.goBack()} />
 
       <View style={{ paddingHorizontal: 20, gap: 20 }}>
+        {isPending ? (
+          <View style={{ gap: 12 }}>
+            <Skeleton width="100%" height={120} radius={20} />
+            <Skeleton width="100%" height={80} radius={20} />
+          </View>
+        ) : isError ? (
+          <ErrorState
+            title="Couldn't load your settings"
+            onRetry={() => refetch()}
+            icon={RefreshCw}
+          />
+        ) : (
+          <>
         <View style={{ gap: 10 }}>
           <Text weight="semibold" style={{ fontSize: 15 }}>
             Vehicle class
@@ -68,7 +93,10 @@ export function CapabilitiesScreen() {
               return (
                 <Card
                   key={option.value}
-                  onPress={() => setVehicleClass(option.value)}
+                  onPress={() => {
+                    setVehicleClass(option.value);
+                    setDirty(true);
+                  }}
                   style={{
                     flex: 1,
                     borderColor: selected ? theme.colors.brand : theme.colors.borderSubtle,
@@ -90,7 +118,15 @@ export function CapabilitiesScreen() {
             leading={<Route size={20} color={theme.colors.textPrimary} />}
             title="Long-distance jobs"
             subtitle="Get offered long-haul tows outside your city"
-            trailing={<Toggle value={longDistanceEnabled} onValueChange={setLongDistanceEnabled} />}
+            trailing={
+              <Toggle
+                value={longDistanceEnabled}
+                onValueChange={(value) => {
+                  setLongDistanceEnabled(value);
+                  setDirty(true);
+                }}
+              />
+            }
           />
         ) : null}
 
@@ -107,6 +143,8 @@ export function CapabilitiesScreen() {
           loading={update.isPending}
           onPress={onSave}
         />
+          </>
+        )}
       </View>
     </Screen>
   );
