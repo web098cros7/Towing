@@ -10,15 +10,11 @@ import { SettingsList } from '@/components/SettingsList';
 import { SettingsRow } from '@/components/SettingsRow';
 import { TextField } from '@/components/TextField';
 import { Pressable } from '@/motion';
+import { useSupportContact } from '@/features/app-config/appConfig';
 import { useCreateSupportTicket } from '@/features/support/api/support.queries';
 import { useBooking } from '@/features/bookings/api/bookings.queries';
 import { SUPPORT_CATEGORIES } from '@/features/support/lib/categories';
 import type { RootStackParamList } from '@/navigation/types';
-
-const SUPPORT_PHONE = '+911800123456';
-const SUPPORT_PHONE_DISPLAY = '+91 1800 123 456';
-const SUPPORT_EMAIL = 'support@towgo.in';
-const SUPPORT_WHATSAPP = '911800123456';
 
 /**
  * Contact Us (W15, §9.4.12).
@@ -40,6 +36,7 @@ export function ContactUsScreen() {
   const [message, setMessage] = useState('');
   const [category, setCategory] = useState<SupportCategory>('other');
   const createTicket = useCreateSupportTicket();
+  const { phoneDial, phoneDisplay, email } = useSupportContact();
 
   // §6.6: the ticket names the trip it is about, in the requester's own words
   // rather than as a bare uuid.
@@ -48,14 +45,14 @@ export function ContactUsScreen() {
   const canSend = subject.trim().length >= 4 && message.trim().length >= 4;
 
   const callUs = useCallback(() => {
-    Linking.openURL(`tel:${SUPPORT_PHONE}`).catch(() => {});
-  }, []);
+    Linking.openURL(`tel:${phoneDial}`).catch(() => {});
+  }, [phoneDial]);
   const emailUs = useCallback(() => {
-    Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch(() => {});
-  }, []);
+    Linking.openURL(`mailto:${email}`).catch(() => {});
+  }, [email]);
   const whatsAppUs = useCallback(() => {
-    Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP}`).catch(() => {});
-  }, []);
+    Linking.openURL(`https://wa.me/${phoneDial.replace('+', '')}`).catch(() => {});
+  }, [phoneDial]);
 
   const send = useCallback(() => {
     createTicket.mutate(
@@ -97,7 +94,7 @@ export function ContactUsScreen() {
           icon={Phone}
           iconColor={theme.colors.success}
           title="Call us"
-          subtitle={SUPPORT_PHONE_DISPLAY}
+          subtitle={phoneDisplay}
           trailing="chevron"
           onPress={callUs}
         />
@@ -105,7 +102,7 @@ export function ContactUsScreen() {
           icon={Mail}
           iconColor={theme.colors.info}
           title="Email us"
-          subtitle={SUPPORT_EMAIL}
+          subtitle={email}
           trailing="chevron"
           onPress={emailUs}
         />

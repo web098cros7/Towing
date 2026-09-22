@@ -1,9 +1,8 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { SvgXml } from 'react-native-svg';
 import {
   MiChatBubble,
   MiChip,
@@ -20,20 +19,26 @@ import { usePressablePrimitive } from '@towing/ui';
 import { useTheme } from '@towing/theme';
 import { useBooking } from '@/features/bookings/api/bookings.queries';
 import { serviceTitle } from '@/features/services/data/serviceTitles';
-import { useProfile } from '@/features/account/api/profile.queries';
-import { env } from '@/lib/env';
+import { useSupportContact } from '@/features/app-config/appConfig';
+import {
+  useCreateSupportTicket,
+  useReplySupportTicket,
+  useSupportTicket,
+} from '@/features/support/api/support.queries';
+import { storage } from '@/lib/storage/storage';
 import type { RootStackParamList } from '@/navigation/types';
-import { dial, SUPPORT_PHONE_DIAL } from '@/screens/emergency/emergency.data';
+import { dial } from '@/screens/emergency/emergency.data';
 import { ChatComposer } from '@/screens/booking/chat/ChatComposer';
 import { useKeyboardOpen } from '@/screens/booking/chat/useKeyboardOpen';
 
 /**
  * Figma 60 · Support Chat (`297:3403`), route `SupportChat { bookingId? }`.
  *
- * THERE IS NO SUPPORT-CHAT BACKEND (reported). Messages live only in this screen's
- * state and are lost when the screen unmounts. In test mode (`env.useMocks`) the chat
- * opens with one incoming greeting from Ananya; with the live API it opens empty.
- * Sending appends an outgoing message; nothing replies.
+ * The conversation IS one support ticket on the W15 rail. The ticket id is kept
+ * in MMKV under `support.chatTicketId`; the ticket is polled every 5 s while the
+ * screen is focused, so replies from the support console arrive without a
+ * refresh. A `resolved`/`closed` ticket (or a 404) is forgotten so the next
+ * message starts a fresh one.
  *
  * Layout: Header `297:3576` (64 tall), optional Topic `297:3594` (12 below the
  * header, 21 side margins), Messages `297:3599` (scroll, 21 side margins, gap 8),
@@ -41,47 +46,87 @@ import { useKeyboardOpen } from '@/screens/booking/chat/useKeyboardOpen';
  * the Composer `297:3624`. The KeyboardAvoidingView is the screen's root so its frame
  * starts at the window top and needs no offset for the safe area.
  */
+const CHAT_TICKET_KEY = 'support.chatTicketId';
+
 export function SupportChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { bookingId } = useRoute<RouteProp<RootStackParamList, 'SupportChat'>>().params ?? {};
 
   const { data: booking } = useBooking(bookingId ?? '');
-  const { data: profile } = useProfile();
+  const { phoneDial } = useSupportContact();
   const keyboardOpen = useKeyboardOpen();
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (!env.useMocks) return [];
-    const firstName = profile?.name?.split(' ')[0];
-    const greeting = firstName
-      ? `Hi ${firstName}, I'm Ananya from MiTow Support. How can I help?`
-      : "Hi, I'm Ananya from MiTow Support. How can I help?";
-    return [{ id: 'greeting', side: 'incoming', text: greeting, time: formatTime(new Date()) }];
+  const [ticketId, setTicketId] = useState<string | null>(() => {
+    const stored = storage.getString(CHAT_TICKET_KEY);
+    return stored && stored.length > 0 ? stored : null;
   });
   const [draft, setDraft] = useState('');
 
+  const ticketQuery = useSupportTicket(ticketId, 5000);
+  const createTicket = useCreateSupportTicket();
+  const replyTicket = useReplySupportTicket(ticketId ?? '');
+
+  // Forget a ticket that has been resolved/closed, or that no longer exists.
+  useEffect(() => {
+    if (!ticketId) return;
+    if (ticketQuery.isError) {
+      storage.delete(CHAT_TICKET_KEY);
+      setTicketId(null);
+      return;
+    }
+    const status = ticketQuery.data?.status;
+    if (status === 'resolved' || status === 'closed') {
+      storage.delete(CHAT_TICKET_KEY);
+      setTicketId(null);
+    }
+  }, [ticketId, ticketQuery.isError, ticketQuery.data?.status]);
+
   const goBack = useCallback(() => navigation.goBack(), [navigation]);
 
-  const sendMessage = useCallback((text: string) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: `out-${Date.now()}`, side: 'outgoing', text, time: formatTime(new Date()) },
-    ]);
-  }, []);
-
-  const onComposerSend = useCallback(
-    (text: string) => {
-      sendMessage(text);
-      setDraft('');
+  const sendText = useCallback(
+    async (text: string) => {
+      if (ticketId) {
+        await replyTicket.mutateAsync(text);
+        return;
+      }
+      const body = text.length < 4 ? `Chat started: ${text}` : text;
+      const subject = booking ? `Chat with MiTow Support \u00b7 ${booking.reference}` : 'Chat with MiTow Support';
+      const created = await createTicket.mutateAsync({
+        category: 'other',
+        subject,
+        body,
+        bookingId: booking?.id,
+      });
+      storage.set(CHAT_TICKET_KEY, created.ticketId);
+      setTicketId(created.ticketId);
     },
-    [sendMessage],
+    [ticketId, replyTicket, createTicket, booking],
   );
 
-  const onShareTrip = useCallback(() => {
+  const onComposerSend = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      setDraft('');
+      try {
+        await sendText(trimmed);
+      } catch {
+        setDraft(text);
+        Alert.alert('Message not sent', 'Please try again.');
+      }
+    },
+    [sendText],
+  );
+
+  const onShareTrip = useCallback(async () => {
     if (!booking) return;
-    sendMessage(
-      `Booking ${booking.reference} · ${booking.originLabel} → ${booking.destinationLabel}`,
-    );
-  }, [booking, sendMessage]);
+    const text = `Booking ${booking.reference} · ${booking.originLabel} → ${booking.destinationLabel}`;
+    try {
+      await sendText(text);
+    } catch {
+      Alert.alert('Message not sent', 'Please try again.');
+    }
+  }, [booking, sendText]);
 
   const scrollRef = useRef<ScrollView>(null);
   const positioned = useRef(false);
@@ -93,6 +138,13 @@ export function SupportChatScreen() {
 
   const hasTopic = Boolean(bookingId && booking);
 
+  const messages: ChatMessage[] = (ticketQuery.data?.messages ?? []).map((m) => ({
+    id: m.id,
+    side: m.authorType === 'requester' ? 'outgoing' : 'incoming',
+    text: m.body,
+    time: formatTime(new Date(m.createdAt)),
+  }));
+
   return (
     <KeyboardAvoidingView
       behavior="padding"
@@ -101,7 +153,7 @@ export function SupportChatScreen() {
       <MiScreen edges={['top']}>
         <StatusBar style="dark" />
 
-        <SupportHeader onBack={goBack} />
+        <SupportHeader onBack={goBack} phoneDial={phoneDial} />
 
         {hasTopic && booking ? (
           <View
@@ -159,13 +211,13 @@ export function SupportChatScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 21, gap: 8, paddingBottom: 10 }}
           >
-            <MiChip label="Talk to an agent" onPress={() => dial(SUPPORT_PHONE_DIAL)} />
-            <MiChip label="Share trip details" onPress={onShareTrip} />
+            <MiChip label="Talk to an agent" onPress={() => dial(phoneDial)} />
+            <MiChip label="Share trip details" onPress={() => void onShareTrip()} />
             <MiChip label="End chat" onPress={goBack} />
           </ScrollView>
         ) : null}
 
-        <ChatComposer value={draft} onChangeText={setDraft} onSend={onComposerSend} />
+        <ChatComposer value={draft} onChangeText={setDraft} onSend={(t) => void onComposerSend(t)} />
       </MiScreen>
     </KeyboardAvoidingView>
   );
@@ -193,7 +245,7 @@ function formatTime(date: Date): string {
  * brandYellowSoft, headset 24), Agent `297:3586` (name + status row) and Call
  * support `297:3591` (MiMapButton outline, phone 26, 44).
  */
-function SupportHeader({ onBack }: { onBack: () => void }) {
+function SupportHeader({ onBack, phoneDial }: { onBack: () => void; phoneDial: string }) {
   const Pressable = usePressablePrimitive();
   const theme = useTheme();
 
@@ -259,7 +311,7 @@ function SupportHeader({ onBack }: { onBack: () => void }) {
         size={44}
         iconSize={26}
         accessibilityLabel="Call support"
-        onPress={() => dial(SUPPORT_PHONE_DIAL)}
+        onPress={() => dial(phoneDial)}
       />
     </View>
   );

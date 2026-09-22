@@ -21,6 +21,7 @@ export interface SupportDataSource {
   detail(ticketId: string): Promise<SupportTicketDetail>;
   create(input: SupportTicketCreateRequest): Promise<SupportTicketCreateResponse>;
   reply(ticketId: string, body: string): Promise<SupportTicketDetail>;
+  presignAttachment(): Promise<{ uploadUrl: string; key: string; expiresAt: string }>;
 }
 
 export const supportDataSource: SupportDataSource = env.useMocks

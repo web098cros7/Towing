@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type {
+  BookingMessage,
   CustomerBookingStatusEvent,
   CustomerLocationUpdateEvent,
   EtaUpdateEvent,
@@ -35,6 +36,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let attempt = 0;
 let handlers: BookingSocketHandlers | null = null;
 let listeners = new Set<(state: BookingSocketState) => void>();
+let chatListeners = new Set<(message: BookingMessage) => void>();
 
 /** What the §11.6 chip renders. */
 export type BookingSocketState = 'connecting' | 'live' | 'reconnecting' | 'polling';
@@ -144,6 +146,9 @@ async function open(bookingId: string): Promise<void> {
     handlers?.onLocationUpdate(payload),
   );
   next.on('eta:update', (payload: EtaUpdateEvent) => handlers?.onEtaUpdate(payload));
+  next.on('chat:message', (payload: BookingMessage) => {
+    for (const listener of chatListeners) listener(payload);
+  });
 
   next.on('connect_error', () => {
     // A middleware rejection (expired or replayed ticket) lands here and leaves
@@ -214,6 +219,22 @@ export function onBookingSocketState(
   listener(state);
   return () => {
     listeners.delete(listener);
+  };
+}
+
+/**
+ * Subscribe to `chat:message` pushes for the connected booking.
+ *
+ * The socket carries BOTH sides' messages, including the customer's own, so a
+ * send that lands on another device (or a second screen) still shows up here.
+ * The chat query merges each push into its cache; the 5 s poll is the fallback.
+ */
+export function onBookingChatMessage(
+  listener: (message: BookingMessage) => void,
+): () => void {
+  chatListeners.add(listener);
+  return () => {
+    chatListeners.delete(listener);
   };
 }
 

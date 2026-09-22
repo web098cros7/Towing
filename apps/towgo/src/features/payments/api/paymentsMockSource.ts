@@ -1,7 +1,9 @@
 import type {
+  CashPaymentResponse,
   CouponValidationDto,
   InvoiceLinkDto,
   PaymentCaptureRequest,
+  PaymentCouponResponse,
   PaymentIntentDto,
   PaymentPurpose,
   PaymentResultDto,
@@ -257,6 +259,48 @@ export const paymentsMockSource: PaymentsDataSource = {
     await delay(300);
     if (env.mockCouponState === 'error') throw new Error('Could not load offers');
     return OFFERS;
+  },
+
+  /**
+   * The mock applies coupons inside `createIntent` (see the header), so there
+   * is nothing to do here. Resolving `null` keeps the caller's contract: the
+   * mock has no server-side coupon state to return.
+   */
+  async applyCoupon(_bookingId: string, _code: string): Promise<PaymentCouponResponse | null> {
+    await delay(200);
+    return null;
+  },
+
+  /** The inverse of `applyCoupon`; the mock has no server-side coupon state. */
+  async removeCoupon(_bookingId: string): Promise<PaymentCouponResponse | null> {
+    await delay(200);
+    return null;
+  },
+
+  /**
+   * 27's Cash. The mock marks the booking paid immediately, the way `capture`
+   * does, so test mode shows 31 after cash. The amount is the booking's total
+   * (or 0 when the booking cannot be read).
+   */
+  async chooseCash(bookingId: string): Promise<CashPaymentResponse> {
+    await delay(400);
+    if (env.mockPaymentState === 'error') throw new Error('Could not record the cash payment');
+
+    const amountPaise = await bookingTotalPaise(bookingId);
+    paid.add(bookingId);
+    recordMockPaid(bookingId);
+
+    return {
+      paymentId: `mock-cash-${bookingId}`,
+      bookingId,
+      status: 'awaiting_cash',
+      amountPaise,
+    };
+  },
+
+  /** The mock never opens a wallet-only intent, so this is never reached. */
+  async payWithWallet(_bookingId: string): Promise<PaymentResultDto> {
+    throw new Error('The mock never opens a wallet-only intent');
   },
 
   async getInvoiceLink(bookingId: string): Promise<InvoiceLinkDto> {

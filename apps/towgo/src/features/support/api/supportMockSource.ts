@@ -137,4 +137,13 @@ export const supportMockSource: SupportDataSource = {
     tickets = tickets.map((row) => (row.id === ticketId ? next : row));
     return next;
   },
+
+  async presignAttachment() {
+    await delay(200);
+    return {
+      uploadUrl: 'mock://uploads/support/att.jpg',
+      key: `mock-att-${Date.now()}`,
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    };
+  },
 };

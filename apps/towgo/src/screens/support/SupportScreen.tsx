@@ -5,8 +5,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MiButton, MiInfoBanner, MiNavBar, MiScreen, MiSupportCard, mitowLayout } from '@/design';
+import { useSupportContact } from '@/features/app-config/appConfig';
 import type { RootStackParamList } from '@/navigation/types';
-import { supportPhoneDisplay } from './support.data';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -29,6 +29,7 @@ const CTA_BOTTOM_GAP = 34;
 export function SupportScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { phoneDisplay } = useSupportContact();
 
   // PO decision: FAQ / Help Center → HelpCenter; chat → SupportChat (60), report an issue →
   // ReportIssue (61), contact → ContactUs. Share Feedback has no designed screen: ContactUs,
@@ -95,8 +96,8 @@ export function SupportScreen() {
           <MiSupportCard
             icon="call"
             title="Call Support"
-            subtitle={supportPhoneDisplay}
-            accessibilityLabel={`Call Support, ${supportPhoneDisplay}`}
+            subtitle={phoneDisplay}
+            accessibilityLabel={`Call Support, ${phoneDisplay}`}
             onPress={openContactUs}
           />
           <MiSupportCard

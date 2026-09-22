@@ -31,4 +31,11 @@ export const supportRestSource: SupportDataSource = {
       idempotent: true,
     });
   },
+
+  presignAttachment() {
+    return apiFetch<{ uploadUrl: string; key: string; expiresAt: string }>(
+      'support/tickets/attachments/presign',
+      { method: 'POST' },
+    );
+  },
 };

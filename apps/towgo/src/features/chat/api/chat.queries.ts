@@ -1,20 +1,56 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ChatMessage } from '../types';
+import { env } from '@/lib/env';
+import { onBookingChatMessage } from '@/lib/realtime/bookingSocket';
 import { chatDataSource } from './chatDataSource';
 import { chatKeys } from './chat.keys';
+import { toChatMessage } from './chatRestSource';
 
 /**
  * One booking's conversation (Figma 22).
  *
- * NO POLLING. The mock never receives anything it did not send, so there is
- * nothing to poll for; real-time delivery of driver messages needs the chat API
- * and a socket event that do not exist yet (22 spec, Data gap 1).
+ * In live mode the `/customer` socket is the fast path: `chat:message` pushes
+ * arrive for both sides and are merged into this cache below. The 5 s poll is
+ * the fallback for a dropped socket, and it also marks the driver's messages
+ * read server-side. In mock mode there is nothing to poll for — the mock never
+ * receives anything it did not send — so polling is off.
  */
 export function useChatMessages(bookingId: string) {
-  return useQuery({
-    queryKey: chatKeys.messages(bookingId),
+  const queryClient = useQueryClient();
+  const key = chatKeys.messages(bookingId);
+
+  const query = useQuery({
+    queryKey: key,
     queryFn: () => chatDataSource.list(bookingId),
+    refetchInterval: env.useMocks ? false : 5_000,
   });
+
+  useEffect(() => {
+    if (env.useMocks) return;
+    return onBookingChatMessage((message) => {
+      if (message.bookingId !== bookingId) return;
+      const incoming = toChatMessage(message);
+      queryClient.setQueryData<ChatMessage[]>(chatKeys.messages(bookingId), (previous = []) => {
+        if (previous.some((m) => m.id === incoming.id)) return previous;
+        // Replace the optimistic local copy of the customer's own message.
+        const localIndex = previous.findIndex(
+          (m) =>
+            m.id.startsWith('local-') &&
+            m.sender === 'customer' &&
+            m.text === incoming.text,
+        );
+        if (localIndex !== -1) {
+          const next = previous.slice();
+          next[localIndex] = { ...incoming, localId: previous[localIndex].id };
+          return next;
+        }
+        return [...previous, incoming];
+      });
+    });
+  }, [bookingId, queryClient]);
+
+  return query;
 }
 
 let localCount = 0;

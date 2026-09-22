@@ -3,9 +3,11 @@ import type { CouponOffer } from '../types';
 import { paymentsMockSource } from './paymentsMockSource';
 import { paymentsRestSource } from './paymentsRestSource';
 import type {
+  CashPaymentResponse,
   CouponValidationDto,
   InvoiceLinkDto,
   PaymentCaptureRequest,
+  PaymentCouponResponse,
   PaymentIntentDto,
   PaymentPurpose,
   PaymentResultDto,
@@ -33,10 +35,11 @@ export interface PaymentsDataSource {
    * reason `client.ts` carries a long comment about two fare-locked bookings.
    *
    * `couponCode` is 28 · Apply Coupon's applied code. ⚠ ONLY THE MOCK HONOURS
-   * IT: the intent contract has no coupon field and the server applies coupons
-   * only at booking confirm (27-28 Data gap 8), so the REST source ignores it.
-   * The caller mints a NEW key whenever the coupon changes, so one key never
-   * names two different amounts.
+   * IT: the intent contract has no coupon field, and the live API applies a
+   * coupon through `applyCoupon` (which folds it into the booking's fare and
+   * closes any open intent) BEFORE the intent is created. The caller mints a
+   * NEW key whenever the coupon changes, so one key never names two different
+   * amounts.
    */
   createIntent(
     bookingId: string,
@@ -58,10 +61,32 @@ export interface PaymentsDataSource {
   validateCoupon(code: string, subtotalPaise: number): Promise<CouponValidationDto>;
 
   /**
-   * 28's "Available offers". There is no list endpoint (27-28 Data gap 7): the REST source
-   * returns none, the mock the three drawn offers.
+   * 28's "Available offers". The live API serves `GET coupons/offers`; the mock
+   * returns the three drawn offers.
    */
   getCouponOffers(): Promise<CouponOffer[]>;
+
+  /**
+   * 28's Apply: folds the coupon into the booking's fare server-side and closes
+   * any open intent, so the NEXT intent charges the new total. The mock applies
+   * coupons inside `createIntent` instead and resolves `null` here.
+   */
+  applyCoupon(bookingId: string, code: string): Promise<PaymentCouponResponse | null>;
+
+  /** 28's Remove: the inverse of `applyCoupon`. The mock resolves `null`. */
+  removeCoupon(bookingId: string): Promise<PaymentCouponResponse | null>;
+
+  /**
+   * 27's Cash: the booking becomes `paid` when the DRIVER confirms the cash.
+   * The mock marks it paid immediately, the way its `capture` does.
+   */
+  chooseCash(bookingId: string): Promise<CashPaymentResponse>;
+
+  /**
+   * Confirms a wallet-only intent (`intent.walletOnly`): the wallet covers the
+   * whole bill, so no gateway sheet opens. The mock never opens one.
+   */
+  payWithWallet(bookingId: string): Promise<PaymentResultDto>;
 
   /** §9.1.10's invoice download — a signed URL, opened with `Linking`. */
   getInvoiceLink(bookingId: string): Promise<InvoiceLinkDto>;

@@ -5,7 +5,6 @@ import type { CouponValidationDto } from '@towing/api-contracts';
 import { MiButton, MiColorIcon, MiSheet, MiText, MiTextField } from '@/design';
 import { useCouponOffers, useValidateCoupon } from '@/features/payments/api/payments.queries';
 import { couponMessage } from '@/features/payments/couponMessage';
-import { env } from '@/lib/env';
 import { formatPaise } from '@/utils/format';
 import { OfferRow } from './OfferRow';
 
@@ -24,9 +23,7 @@ const sameCode = (a: string | null | undefined, b: string | null | undefined) =>
  * once the (undrawn) keyboard is up. Top to bottom: the heading, the coupon field, "Available
  * offers" and Done.
  *
- * TEST MODE ONLY. 27's Apply Coupon row (`253:1153`) opens it, in test mode only.
- * With the live API it is never opened: the server applies coupons only at booking confirm, so a
- * payment-time coupon would promise a saving the charge does not include (27-28 D2).
+ * 27's Apply Coupon row (`253:1153`) opens it.
  *
  * A code is applied through `useValidateCoupon`, from an offer's "Apply" or the keyboard's return
  * key (no Apply button is drawn beside the field). One coupon per trip: a new one replaces the
@@ -52,8 +49,8 @@ export function ApplyCouponSheet({
   onRemoved: () => void;
 }) {
   // Read from the moment 27 mounts (this sheet is mounted with it), not from the open: offers
-  // landing after the slide-in made the sheet jump 258 pt taller. Test mode only, like the sheet.
-  const { data: offers } = useCouponOffers(env.useMocks);
+  // landing after the slide-in made the sheet jump 258 pt taller.
+  const { data: offers } = useCouponOffers(true);
   const validate = useValidateCoupon();
 
   const [draft, setDraft] = useState(applied?.code ?? '');

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Linking, ScrollView, TextInput, View } from 'react-native';
+import { Alert, Image, ScrollView, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -25,6 +25,8 @@ import {
 } from '@/design';
 import { useBookings } from '@/features/bookings/api/bookings.queries';
 import type { Booking } from '@/features/bookings/types';
+import { useCreateSupportTicket } from '@/features/support/api/support.queries';
+import { uploadSupportPhotos } from '@/features/support/api/uploadAttachments';
 import { serviceTitle } from '@/features/services/data/serviceTitles';
 import type { RootStackParamList } from '@/navigation/types';
 import { areaOf } from '@/screens/booking/tracking/trackingDisplay';
@@ -33,11 +35,10 @@ import { formatPaise } from '@/utils/format';
 /**
  * Figma 61 · Report an Issue (`297:3352`), route `ReportIssue`.
  *
- * THERE IS NO SUPPORT-TICKET BACKEND. "Submit Report" composes an email to support with
- * `Linking.openURL('mailto:support@mitow.in?subject=...&body=...')` — the subject carries the
- * trip reference, the body the trip reference, the chosen issue type and the description.
- * Photos cannot ride along in a mailto link (reported). If `openURL` rejects, an `Alert` tells
- * the customer to write to support@mitow.in directly.
+ * "Submit Report" files a real support ticket through the W15 rail
+ * (`useCreateSupportTicket`). The chosen issue chip maps to a ticket category,
+ * the description becomes the ticket body, and any picked photos are uploaded
+ * first (`uploadSupportPhotos`) and passed as attachment keys.
  *
  * DATA: `useBookings()` (`items: Booking[]`, newest first). The chosen trip is the one with
  * `bookingId` if given, else the newest booking. "Change" (`297:3522`) cycles to the next
@@ -61,6 +62,16 @@ const ISSUE_TYPES = [
 ] as const;
 
 type IssueType = (typeof ISSUE_TYPES)[number];
+
+/** The ticket category each chip files under. */
+const ISSUE_CATEGORY: Record<IssueType, 'booking' | 'payment' | 'kyc' | 'app' | 'safety' | 'other'> = {
+  'Driver behaviour': 'safety',
+  'Late arrival': 'booking',
+  'Vehicle damage': 'booking',
+  'Payment or fare': 'payment',
+  'App problem': 'app',
+  Other: 'other',
+};
 
 const MAX_DESCRIPTION = 500;
 const MAX_PHOTOS = 3;
@@ -147,12 +158,14 @@ export function ReportIssueScreen() {
   const Pressable = usePressablePrimitive();
 
   const { items } = useBookings();
+  const createTicket = useCreateSupportTicket();
 
   const [issue, setIssue] = useState<IssueType | null>(null);
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [focused, setFocused] = useState(false);
   const [changeIndex, setChangeIndex] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
 
   /**
    * Tracks whether we've already applied the initial `bookingId` match to `changeIndex`, so
@@ -216,26 +229,34 @@ export function ReportIssueScreen() {
   }, []);
 
   const submit = useCallback(async () => {
+    if (submitting) return;
     if (!issue || !description.trim()) return;
-    const reference = booking?.reference ?? 'no trip';
-    const subject = `Issue report \u00b7 ${reference}`;
-    const body = [
-      `Trip reference: ${reference}`,
-      `Issue type: ${issue}`,
-      '',
-      description.trim(),
-    ].join('\n');
-    const url = `mailto:support@mitow.in?subject=${encodeURIComponent(
-      subject,
-    )}&body=${encodeURIComponent(body)}`;
+    setSubmitting(true);
     try {
-      await Linking.openURL(url);
+      const trimmed = description.trim();
+      const body = trimmed.length < 4 ? `${trimmed} (reported from the app)` : trimmed;
+      const subject = booking ? `${issue} \u00b7 ${booking.reference}` : `${issue}`;
+      const attachments = photos.length > 0 ? await uploadSupportPhotos(photos) : undefined;
+      const result = await createTicket.mutateAsync({
+        category: ISSUE_CATEGORY[issue],
+        subject,
+        body,
+        bookingId: booking?.id,
+        attachments,
+      });
+      Alert.alert(
+        'Report sent',
+        `We've logged ${result.reference}. Our team will get back to you soon.`,
+        [{ text: 'OK', onPress: () => navigation.goBack() }],
+      );
     } catch {
-      Alert.alert('Could not open email', 'Please write to support@mitow.in.');
+      Alert.alert('Could not send your report', 'Please check your connection and try again.');
+    } finally {
+      setSubmitting(false);
     }
-  }, [issue, description, booking]);
+  }, [submitting, issue, description, booking, photos, createTicket, navigation]);
 
-  const canSubmit = Boolean(issue) && description.trim().length > 0;
+  const canSubmit = Boolean(issue) && description.trim().length > 0 && !submitting;
 
   return (
     <MiScreen
@@ -247,7 +268,13 @@ export function ReportIssueScreen() {
             paddingBottom: Math.max(insets.bottom, 43),
           }}
         >
-          <MiButton tone="dark" label="Submit Report" onPress={submit} disabled={!canSubmit} />
+          <MiButton
+            tone="dark"
+            label="Submit Report"
+            onPress={submit}
+            disabled={!canSubmit}
+            loading={submitting}
+          />
         </View>
       }
     >

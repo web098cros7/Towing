@@ -149,14 +149,10 @@ export function PaymentScreen() {
     // 'stay': nothing drawn; 27 (or 29, after a dismissed Try Again) stays as it is.
   }, [bookingId, method, payWith]);
 
-  /**
-   * A tap selects a row. Cash can be picked in test mode only: with the live API there is no
-   * cash settlement path (Data gap 1c), so the row does nothing there.
-   */
+  /** A tap selects a row. */
   const selectMethod = useCallback(
     (kind: PaymentMethodKind) => {
       if (paying) return;
-      if (kind === 'cash' && !env.useMocks) return;
       setMethod(kind);
     },
     [paying],
@@ -167,12 +163,9 @@ export function PaymentScreen() {
   /** View Details / Hide Details: 27 ↔ 28 · Details Open. Free while a Pay is in flight; nothing is charged by it. */
   const toggleDetails = useCallback(() => setDetailsOpen((open) => !open), []);
 
-  /**
-   * Apply Coupon `253:1153`: 28 · Apply Coupon, in test mode only. The live API applies a coupon
-   * only when a trip is booked (27-28 Data gap 8), so the row does nothing there.
-   */
+  /** Apply Coupon `253:1153`: 28 · Apply Coupon. */
   const applyCoupon = useCallback(() => {
-    if (env.useMocks && !paying) setCouponOpen(true);
+    if (!paying) setCouponOpen(true);
   }, [paying]);
 
   /**
@@ -180,13 +173,13 @@ export function PaymentScreen() {
    * The session refuses while a Pay is in flight; the coupon then stays as it was.
    */
   const onCouponApplied = useCallback(
-    (applied: CouponValidationDto) => {
-      if (changeCoupon(applied.code)) setCoupon(applied);
+    async (applied: CouponValidationDto) => {
+      if (await changeCoupon(applied.code)) setCoupon(applied);
     },
     [changeCoupon],
   );
-  const onCouponRemoved = useCallback(() => {
-    if (changeCoupon(null)) setCoupon(null);
+  const onCouponRemoved = useCallback(async () => {
+    if (await changeCoupon(null)) setCoupon(null);
   }, [changeCoupon]);
 
   // --- Render ------------------------------------------------------------------------------
@@ -194,7 +187,16 @@ export function PaymentScreen() {
   const amount = intent ? formatPaise(intent.amountPaise) : null;
   const totalPaise = booking?.breakdown.totalPaise ?? null;
   const title = serviceTitle(booking?.serviceSlug);
-  const bill = buildPaymentBill(booking, coupon);
+  const bill = buildPaymentBill(booking, coupon, {
+    couponInBooking: !env.useMocks,
+    walletAppliedPaise: intent?.walletAppliedPaise ?? 0,
+  });
+  // The sheet's subtotal is the PRE-coupon subtotal. In live mode the server folds the coupon
+  // into the booking's discount, so add it back when a coupon is applied.
+  const subtotalPaise =
+    !env.useMocks && coupon && totalPaise !== null
+      ? totalPaise + (booking?.breakdown.discountPaise ?? 0)
+      : totalPaise;
 
   if (failure) {
     return (
@@ -230,7 +232,7 @@ export function PaymentScreen() {
       <ApplyCouponSheet
         visible={couponOpen}
         onClose={() => setCouponOpen(false)}
-        subtotalPaise={totalPaise}
+        subtotalPaise={subtotalPaise}
         applied={coupon}
         onApplied={onCouponApplied}
         onRemoved={onCouponRemoved}

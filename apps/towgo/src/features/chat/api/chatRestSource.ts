@@ -1,22 +1,45 @@
+import type { BookingMessage } from '@towing/api-contracts';
+import { apiFetch } from '@/lib/api/client';
 import type { ChatMessage } from '../types';
 import type { ChatDataSource } from './chatDataSource';
 
 /**
- * The live side of the driver chat: there is NO chat API to call (22 spec, Data
- * gap 1). No endpoint, no contract, no socket event, and no chat in the driver app.
+ * The live side of the driver chat (Figma 22 · Chat with Driver).
  *
- * The screen is not reachable with mocks off (`openDriverChat` opens the phone's
- * messages app instead), so this only matters if something opens 22 directly:
- * - `list` returns an empty conversation, which the screen draws as a white list;
- * - `send` REJECTS, loudly and by name, so a live build never looks like it sent
- *   a message nobody will receive.
+ * `GET bookings/:id/messages` returns the whole conversation oldest first and
+ * marks the driver's messages read as a side effect; `POST bookings/:id/messages`
+ * appends one customer message and 409s when the trip is not active (no driver
+ * assigned, or already finished).
+ *
+ * The `/customer` socket pushes `chat:message` for BOTH sides' messages, so the
+ * screen's fast path is the socket and this REST source is the fallback (the
+ * 5 s poll in `useChatMessages`) plus the write path.
  */
 export const chatRestSource: ChatDataSource = {
-  async list(): Promise<ChatMessage[]> {
-    return [];
+  async list(bookingId: string): Promise<ChatMessage[]> {
+    const { items } = await apiFetch<{ items: BookingMessage[] }>(
+      `bookings/${bookingId}/messages`,
+    );
+    return items.map(toChatMessage);
   },
 
-  async send(): Promise<ChatMessage> {
-    throw new Error('Chat with the driver is not available: the server has no chat API yet.');
+  async send(bookingId: string, text: string): Promise<ChatMessage> {
+    const message = await apiFetch<BookingMessage>(`bookings/${bookingId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body: text }),
+      idempotent: true,
+    });
+    return toChatMessage(message);
   },
 };
+
+/** Maps the wire contract onto the app's `ChatMessage`. Exported for the socket merge. */
+export function toChatMessage(message: BookingMessage): ChatMessage {
+  return {
+    id: message.id,
+    bookingId: message.bookingId,
+    sender: message.senderType,
+    text: message.body,
+    sentAt: message.createdAt,
+  };
+}

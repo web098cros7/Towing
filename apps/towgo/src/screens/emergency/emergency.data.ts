@@ -1,6 +1,5 @@
 import { Linking, Platform } from 'react-native';
 import type { LatLng } from '@/types/geo';
-import { SUPPORT_PHONE_DISPLAY } from '@/screens/support/supportContact';
 
 /**
  * The public emergency numbers screen 26 draws. They are static copy AND what each
@@ -20,11 +19,11 @@ export const EMERGENCY_NUMBERS = {
 } as const;
 
 /**
- * The MiTow Support card (5.2, `409:18846`) dials the same line it shows:
- * SUPPORT_PHONE_DISPLAY with its spaces removed ('+911800123456'), so display and
- * dial come from one constant. Still unconfirmed as MiTow's real line (DATA-GAPS-26).
+ * The MiTow Support card (5.2, `409:18846`) dials the same line it shows. The live
+ * value comes from app-config (`useSupportContact`); this re-export keeps the
+ * offline fallback available to other importers.
  */
-export const SUPPORT_PHONE_DIAL: string = SUPPORT_PHONE_DISPLAY.replace(/[^\d+]/g, '');
+export { SUPPORT_PHONE_DIAL } from '@/screens/support/supportContact';
 
 /**
  * Hands the number to the phone's dialer (Android fills it in, the user presses Call;

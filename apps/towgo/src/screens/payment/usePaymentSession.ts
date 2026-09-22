@@ -8,8 +8,12 @@ import {
 import { bookingsKeys } from '@/features/bookings/api/bookings.keys';
 import { bookingsDataSource } from '@/features/bookings/api/bookingsDataSource';
 import {
+  useApplyPaymentCoupon,
   useCapturePayment,
+  useChooseCash,
   useCreatePaymentIntent,
+  useRemovePaymentCoupon,
+  useWalletPay,
 } from '@/features/payments/api/payments.queries';
 import {
   CheckoutDismissedError,
@@ -19,6 +23,7 @@ import {
 import type { PaymentMethodKind } from '@/features/payments/types';
 import { ApiClientError } from '@/lib/api/errors';
 import { newIdempotencyKey } from '@/lib/api/idempotency';
+import { env } from '@/lib/env';
 
 /** What 29 · Payment Failed shows for a declined attempt. */
 export type PaymentFailure = {
@@ -81,6 +86,10 @@ export function usePaymentSession(bookingId: string) {
   // `mutateAsync` is the observer's bound method, stable across renders.
   const { mutateAsync: createIntent } = useCreatePaymentIntent();
   const { mutateAsync: capture } = useCapturePayment();
+  const { mutateAsync: applyCoupon } = useApplyPaymentCoupon();
+  const { mutateAsync: removeCoupon } = useRemovePaymentCoupon();
+  const { mutateAsync: chooseCash } = useChooseCash();
+  const { mutateAsync: payWithWallet } = useWalletPay();
 
   const [attempt, setAttempt] = useState<Attempt>(() => ({
     key: newIdempotencyKey(),
@@ -123,12 +132,28 @@ export function usePaymentSession(bookingId: string) {
    * 28's Apply / Remove: a new intent under a new key (see the header). Refused while a Pay is
    * in flight, since that checkout is already charging the current intent: it returns false and
    * changes nothing, and the caller must not show the coupon as applied or removed.
+   *
+   * In LIVE mode the coupon is applied (or removed) on the server FIRST: the server folds it
+   * into the booking's fare and closes any open intent, so the new intent charges the new total.
+   * A failed call returns false and changes nothing. In mock mode the coupon rides on the intent
+   * itself (`createIntent` honours `couponCode`), so nothing is called here.
    */
-  const changeCoupon = useCallback((couponCode: string | null): boolean => {
-    if (payingRef.current) return false;
-    setAttempt({ key: newIdempotencyKey(), couponCode });
-    return true;
-  }, []);
+  const changeCoupon = useCallback(
+    async (couponCode: string | null): Promise<boolean> => {
+      if (payingRef.current) return false;
+      if (!env.useMocks) {
+        try {
+          if (couponCode) await applyCoupon({ bookingId, code: couponCode });
+          else await removeCoupon({ bookingId });
+        } catch {
+          return false;
+        }
+      }
+      setAttempt({ key: newIdempotencyKey(), couponCode });
+      return true;
+    },
+    [applyCoupon, bookingId, removeCoupon],
+  );
 
   /** Read the booking again after an unclear capture: it may have been paid after all. */
   const settleFromBooking = useCallback(
@@ -153,13 +178,38 @@ export function usePaymentSession(bookingId: string) {
   );
 
   /**
-   * 27's Pay and 29's Try Again: the checkout on the session's intent, then the capture under
-   * the session's key. With no intent yet it only asks for one again (after a failed request),
-   * and reports `stay`: the amount has to be on screen before anything is charged.
+   * 27's Pay and 29's Try Again. Three paths:
+   * - Cash: `chooseCash`, then poll the booking until the DRIVER confirms it (`paid`).
+   * - Wallet-only intent: `payWithWallet`; on error re-request a fresh intent (the server may
+   *   have closed it) and stay.
+   * - Otherwise: the gateway checkout on the session's intent, then the capture under the
+   *   session's key. With no intent yet it only asks for one again (after a failed request),
+   *   and reports `stay`: the amount has to be on screen before anything is charged.
    */
   const pay = useCallback(
     async (method: PaymentMethodKind): Promise<PaymentOutcome> => {
       if (payingRef.current) return { kind: 'stay' };
+
+      // Cash: no gateway, no intent. The booking becomes `paid` when the DRIVER confirms.
+      if (method === 'cash') {
+        payingRef.current = true;
+        setPaying(true);
+        let outcome: PaymentOutcome = { kind: 'stay' };
+        try {
+          const cash = await chooseCash({ bookingId });
+          const paid = await pollBookingPaid(bookingId);
+          if (paid) outcome = paidOutcome('cash', null, cash.amountPaise);
+          return outcome;
+        } catch {
+          return outcome;
+        } finally {
+          if (outcome.kind !== 'paid') {
+            payingRef.current = false;
+            setPaying(false);
+          }
+        }
+      }
+
       if (!intent) {
         if (intentFailed) void requestIntent(current.current);
         return { kind: 'stay' };
@@ -170,6 +220,20 @@ export function usePaymentSession(bookingId: string) {
       setPaying(true);
       let outcome: PaymentOutcome = { kind: 'stay' };
       try {
+        // Wallet-only: the wallet covers the whole bill, so no gateway sheet opens.
+        if (intent.walletOnly) {
+          try {
+            const result = await payWithWallet({ bookingId });
+            if (result.status === 'captured') {
+              outcome = paidOutcome('wallet', null, intent.walletAppliedPaise);
+            }
+          } catch {
+            // The server may have closed the intent; ask for a fresh one and stay.
+            void requestIntent(current.current);
+          }
+          return outcome;
+        }
+
         let checkout: PaymentCaptureRequest;
         try {
           // `autoSettles` (dev gateway, test mode) skips the native sheet entirely.
@@ -207,7 +271,16 @@ export function usePaymentSession(bookingId: string) {
         }
       }
     },
-    [bookingId, capture, intent, intentFailed, requestIntent, settleFromBooking],
+    [
+      bookingId,
+      capture,
+      chooseCash,
+      intent,
+      intentFailed,
+      payWithWallet,
+      requestIntent,
+      settleFromBooking,
+    ],
   );
 
   return {
@@ -225,8 +298,27 @@ function paidOutcome(
   transactionId: string | null,
   amountPaise: number,
 ): PaymentOutcome {
-  // The contract returns no `paidAt` (30 Data gap 1): the device clock at capture stands in.
+  // The booking now carries `paidAt`, but 30 reads it from the route: the device clock at the
+  // instant of hand-off stands in, so the success screen shows the moment the customer saw it.
   return { kind: 'paid', method, transactionId, paidAt: new Date().toISOString(), amountPaise };
+}
+
+/**
+ * Polls the booking until it turns `paid`, every 3 s, up to 10 minutes. Used after `chooseCash`:
+ * the booking becomes `paid` when the DRIVER confirms the cash, which can take a while.
+ */
+async function pollBookingPaid(bookingId: string): Promise<boolean> {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < deadline) {
+    try {
+      const booking = await bookingsDataSource.getBooking(bookingId);
+      if (booking?.status === 'paid') return true;
+    } catch {
+      // A transient read failure is not a "not paid": keep polling.
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 3_000));
+  }
+  return false;
 }
 
 function failedOutcome(

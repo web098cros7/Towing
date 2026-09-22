@@ -114,10 +114,9 @@ export function useValidateCoupon() {
 
 /**
  * 28 · Apply Coupon's "Available offers", read while 27 is up (the sheet is
- * mounted with it, and enables this in test mode only), so they are in before
- * the sheet first slides in. `staleTime: 0, gcTime: 0` like the money reads
- * above: an offer's eligibility is about THIS trip, now. The REST source has
- * none (27-28 Data gap 7).
+ * mounted with it), so they are in before the sheet first slides in.
+ * `staleTime: 0, gcTime: 0` like the money reads above: an offer's eligibility
+ * is about THIS trip, now.
  */
 export function useCouponOffers(enabled: boolean) {
   return useQuery({
@@ -126,6 +125,73 @@ export function useCouponOffers(enabled: boolean) {
     enabled,
     staleTime: 0,
     gcTime: 0,
+  });
+}
+
+/**
+ * 28's Apply. The server folds the coupon into the booking's fare and closes
+ * any open intent, so the booking detail is invalidated: the bill re-reads the
+ * recomputed fare, and the next intent charges the new total.
+ */
+export function useApplyPaymentCoupon() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ bookingId, code }: { bookingId: string; code: string }) =>
+      paymentsDataSource.applyCoupon(bookingId, code),
+    retry: false,
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: bookingsKeys.detail(variables.bookingId) });
+    },
+  });
+}
+
+/** 28's Remove. Same invalidation as `useApplyPaymentCoupon`. */
+export function useRemovePaymentCoupon() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ bookingId }: { bookingId: string }) =>
+      paymentsDataSource.removeCoupon(bookingId),
+    retry: false,
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: bookingsKeys.detail(variables.bookingId) });
+    },
+  });
+}
+
+/**
+ * 27's Cash. The booking becomes `paid` when the DRIVER confirms the cash, so
+ * the booking detail is invalidated: the caller polls it until it does.
+ */
+export function useChooseCash() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ bookingId }: { bookingId: string }) =>
+      paymentsDataSource.chooseCash(bookingId),
+    retry: false,
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: bookingsKeys.detail(variables.bookingId) });
+    },
+  });
+}
+
+/**
+ * Confirms a wallet-only intent. Invalidates the booking and the wallet, since
+ * the wallet balance moves and the booking becomes `paid`.
+ */
+export function useWalletPay() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ bookingId }: { bookingId: string }) =>
+      paymentsDataSource.payWithWallet(bookingId),
+    retry: false,
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: bookingsKeys.detail(variables.bookingId) });
+      void queryClient.invalidateQueries({ queryKey: walletKeys.all });
+    },
   });
 }
 

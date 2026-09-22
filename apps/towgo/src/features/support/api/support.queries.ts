@@ -18,11 +18,12 @@ export function useSupportTickets(enabled = true) {
   });
 }
 
-export function useSupportTicket(ticketId: string | null) {
+export function useSupportTicket(ticketId: string | null, refetchInterval?: number) {
   return useQuery({
     queryKey: supportKeys.detail(ticketId ?? ''),
     queryFn: () => supportDataSource.detail(ticketId as string),
     enabled: Boolean(ticketId),
+    refetchInterval,
   });
 }
 

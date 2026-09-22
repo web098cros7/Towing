@@ -6,11 +6,9 @@ import { chatRestSource } from './chatRestSource';
 /**
  * The customer ↔ driver conversation of one booking (Figma 22 · Chat with Driver).
  *
- * THERE IS NO CHAT BACKEND (22 spec, Data gap 1), so only the mock does anything.
- * That is also why the screen is reachable in mock mode only: `openDriverChat`
- * opens 22 when `env.useMocks` is on and hands the driver's number to the phone's
- * messages app otherwise. The REST source exists so the switch below has two
- * sides and a live build fails loudly on send instead of pretending.
+ * Mock mode runs on an app-local conversation; live mode talks to
+ * `bookings/:id/messages` and receives pushes over the `/customer` socket
+ * (`chat:message`), with a 5 s poll as the fallback.
  */
 export interface ChatDataSource {
   /** The whole conversation, oldest first, in the order the messages were sent. */

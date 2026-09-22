@@ -21,21 +21,28 @@ import type { PaymentBillLine } from './PaymentReview';
  *   the bill always adds up to its Total.
  * - Discount already on the booking (a coupon applied at confirm): when
  *   `breakdown.discountPaise > 0`, label "Discount", value `'−' + formatPaise(discountPaise)`,
- *   tone 'discount'.
+ *   tone 'discount'. When `options.couponInBooking` is true (live mode, the server folded the
+ *   coupon into the booking's discount), the label is `Discount (${coupon.code})` if a coupon is
+ *   applied, and the separate coupon line is NOT added.
  * - Discount from the coupon applied on 27 (the `coupon` argument): when `coupon` is non-null and
- *   `coupon.discountPaise > 0`: label `coupon.code ? `Discount (${coupon.code})` : 'Discount'`,
- *   value `'−' + formatPaise(coupon.discountPaise)`, tone 'discount', slotWidth 45.
+ *   `coupon.discountPaise > 0` and `options.couponInBooking` is not true: label
+ *   `coupon.code ? `Discount (${coupon.code})` : 'Discount'`, value
+ *   `'−' + formatPaise(coupon.discountPaise)`, tone 'discount', slotWidth 45.
+ * - Wallet credit: when `options.walletAppliedPaise > 0`, a last line
+ *   `{ key: 'wallet', label: 'Wallet credit', value: MINUS + formatPaise(walletAppliedPaise),
+ *   tone: 'discount' }`.
  * - The minus is U+2212 (as Figma draws "−₹100"), never a hyphen.
  * - While `booking` is undefined: return just Base fare and Distance charge, both with value null
  *   (label "Distance charge").
  * - keys: 'base', 'distance', 'night', 'highway', 'accident', 'surge', 'booking-discount',
- *   'coupon-discount'.
+ *   'coupon-discount', 'wallet'.
  *
  * Pure: no side effects, no reads outside its arguments.
  */
 export function buildPaymentBill(
   booking: BookingDetail | undefined,
   coupon: CouponValidationDto | null,
+  options?: { couponInBooking?: boolean; walletAppliedPaise?: number },
 ): PaymentBillLine[] {
   // U+2212 MINUS SIGN, as Figma draws "−₹100" (never a hyphen).
   const MINUS = '\u2212';
@@ -106,24 +113,36 @@ export function buildPaymentBill(
     });
   }
 
-  // Discount already on the booking (a coupon applied at confirm).
+  // Discount already on the booking (a coupon applied at confirm). In live mode the server folds
+  // the coupon into this line, so it is labelled with the coupon's code.
   if (breakdown.discountPaise > 0) {
     lines.push({
       key: 'booking-discount',
-      label: 'Discount',
+      label: options?.couponInBooking && coupon?.code ? `Discount (${coupon.code})` : 'Discount',
       value: MINUS + formatPaise(breakdown.discountPaise),
       tone: 'discount',
     });
   }
 
-  // Discount from the coupon applied on 27 (the `coupon` argument).
-  if (coupon && coupon.discountPaise > 0) {
+  // Discount from the coupon applied on 27 (the `coupon` argument). Skipped when the server
+  // already folded the coupon into the booking's discount.
+  if (!options?.couponInBooking && coupon && coupon.discountPaise > 0) {
     lines.push({
       key: 'coupon-discount',
       label: coupon.code ? `Discount (${coupon.code})` : 'Discount',
       value: MINUS + formatPaise(coupon.discountPaise),
       tone: 'discount',
       slotWidth: 45,
+    });
+  }
+
+  // Wallet credit: the wallet covered part (or all) of the bill.
+  if (options?.walletAppliedPaise && options.walletAppliedPaise > 0) {
+    lines.push({
+      key: 'wallet',
+      label: 'Wallet credit',
+      value: MINUS + formatPaise(options.walletAppliedPaise),
+      tone: 'discount',
     });
   }
 

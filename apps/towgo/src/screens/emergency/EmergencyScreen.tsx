@@ -14,13 +14,13 @@ import {
   mitowLayout,
 } from '@/design';
 import { useEmergencyContacts } from '@/features/account/api/emergencyContacts.queries';
+import { useSupportContact } from '@/features/app-config/appConfig';
 import { useActiveBooking } from '@/features/bookings/api/bookings.queries';
 import { useLocationStore } from '@/features/location/locationStore';
 import { useShareTrip } from '@/features/tracking/api/tracking.queries';
 import { track } from '@/lib/analytics/analytics';
 import type { RootStackParamList } from '@/navigation/types';
-import { SUPPORT_PHONE_DISPLAY } from '@/screens/support/supportContact';
-import { EMERGENCY_NUMBERS, SUPPORT_PHONE_DIAL, dial, mapsLink, smsUrl } from './emergency.data';
+import { EMERGENCY_NUMBERS, dial, mapsLink, smsUrl } from './emergency.data';
 import { QuickActionTile } from './QuickActionTile';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -106,6 +106,7 @@ export function EmergencyScreen() {
   const { mutateAsync: mintShareLink } = useShareTrip(tripId ?? '');
   // Loaded on mount so Notify knows at tap time whether a contact is saved.
   const { data: contacts, refetch: refetchContacts } = useEmergencyContacts();
+  const { phoneDial, phoneDisplay } = useSupportContact();
   // One action at a time: Share and Notify ignore taps while one is running
   // (at most `NETWORK_TIMEOUT_MS` per network call, so a hung request cannot
   // lock them).
@@ -153,7 +154,7 @@ export function EmergencyScreen() {
   }, [liveLink]);
 
   /** MiTow Support (409:18846): dials the number the card shows (owner decision). */
-  const onCallSupport = useCallback(() => dial(SUPPORT_PHONE_DIAL), []);
+  const onCallSupport = useCallback(() => dial(phoneDial), [phoneDial]);
 
   /**
    * Notify Emergency Contact (254:1426). No contact saved: 52 Add Emergency Contact.
@@ -285,8 +286,8 @@ export function EmergencyScreen() {
               icon="tow-truck"
               shadow="cardSm"
               title="MiTow Support"
-              subtitle={SUPPORT_PHONE_DISPLAY}
-              accessibilityLabel={`MiTow Support, ${SUPPORT_PHONE_DISPLAY}`}
+              subtitle={phoneDisplay}
+              accessibilityLabel={`MiTow Support, ${phoneDisplay}`}
               onPress={onCallSupport}
             />
             <MiSupportCard
