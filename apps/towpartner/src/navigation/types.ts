@@ -83,4 +83,6 @@ export type RootStackParamList = {
   /** Privacy/terms copy plus the §20.4 DPDP export + account-deletion actions. */
   Legal: undefined;
   Notifications: undefined;
+  /** §12.3 opt-outs, plus the device's own permission state. */
+  NotificationSettings: undefined;
 };

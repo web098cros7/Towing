@@ -6,6 +6,7 @@
 export {
   Menu,
   Bell,
+  BellOff,
   MapPin,
   LocateFixed,
   Navigation,

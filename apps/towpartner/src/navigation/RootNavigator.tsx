@@ -7,6 +7,7 @@ import { BottomTabs } from './BottomTabs';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useKycStatus } from '@/features/kyc/api/kyc.queries';
 import { NotificationsScreen } from '@/screens/notifications/NotificationsScreen';
+import { NotificationSettingsScreen } from '@/screens/notifications/NotificationSettingsScreen';
 import { useNotificationListeners } from '@/features/notifications/push/useNotificationListeners';
 import { usePushRegistration } from '@/features/notifications/push/usePushRegistration';
 import { SplashScreen } from '@/screens/auth/SplashScreen';
@@ -186,6 +187,7 @@ export function RootNavigator() {
               <Stack.Screen name="SupportNewTicket" component={SupportNewTicketScreen} />
               <Stack.Screen name="Legal" component={LegalScreen} />
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
+              <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
               <Stack.Screen name="Payouts" component={PayoutsScreen} />
               <Stack.Screen name="WeeklyEarnings" component={WeeklyEarningsScreen} />
               <Stack.Screen name="EarningsTrips" component={EarningsTripsScreen} />

@@ -13,6 +13,7 @@ import {
   FileText,
   Wallet,
   Headphones,
+  Bell,
   LogOut,
   RefreshCw,
 } from '@/icons';
@@ -140,6 +141,13 @@ export function ProfileScreen() {
               title="Insurance & papers"
               subtitle="Your truck's insurance, RC, PUC and permit"
               onPress={() => navigation.navigate('Insurance')}
+            />
+            <MenuRow
+              icon={Bell}
+              tone="indigo"
+              title="Notifications"
+              subtitle="Choose what MiTow can send you"
+              onPress={() => navigation.navigate('NotificationSettings')}
             />
           </MenuCard>
         </View>

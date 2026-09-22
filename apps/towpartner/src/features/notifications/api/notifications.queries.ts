@@ -1,6 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { SubjectNotificationPrefsUpdate } from '@towing/api-contracts';
 import { notificationsDataSource } from './notificationsDataSource';
 import { notificationKeys } from './notifications.keys';
+import { notificationPrefsDataSource } from './notificationPrefsDataSource';
+import { notificationPrefKeys } from './notificationPrefs.keys';
 
 /** The driver's notification centre feed (§12.1) — the bell in `DriverHeader`. */
 export function useNotifications() {
@@ -32,6 +35,26 @@ export function useMarkNotificationsRead() {
     onSuccess: (result) => {
       queryClient.setQueryData(notificationKeys.unread(), { unread: result.unread });
       void queryClient.invalidateQueries({ queryKey: notificationKeys.list() });
+    },
+  });
+}
+
+/** §12.3 opt-outs. The always-on categories are not in here by design. */
+export function useNotificationPrefs() {
+  return useQuery({
+    queryKey: notificationPrefKeys.detail(),
+    queryFn: () => notificationPrefsDataSource.get(),
+  });
+}
+
+export function useUpdateNotificationPrefs() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (patch: SubjectNotificationPrefsUpdate) =>
+      notificationPrefsDataSource.update(patch),
+    onSuccess: (prefs) => {
+      queryClient.setQueryData(notificationPrefKeys.detail(), prefs);
     },
   });
 }
