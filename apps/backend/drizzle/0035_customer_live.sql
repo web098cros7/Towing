@@ -98,6 +98,18 @@ ALTER TABLE "payments" ADD CONSTRAINT "ck_payments_amount_positive" CHECK ("amou
 ALTER TABLE "refunds" ADD COLUMN "gateway_amount" numeric(12, 2) DEFAULT '0' NOT NULL;--> statement-breakpoint
 ALTER TABLE "refunds" ADD COLUMN "wallet_amount" numeric(12, 2) DEFAULT '0' NOT NULL;--> statement-breakpoint
 UPDATE "refunds" SET "gateway_amount" = "amount";--> statement-breakpoint
+-- A refund written without a split (older code paths, fixtures) is what every
+-- refund meant before this migration: all of it back through the gateway.
+CREATE OR REPLACE FUNCTION refunds_default_split() RETURNS trigger AS $$
+BEGIN
+  IF NEW.gateway_amount = 0 AND NEW.wallet_amount = 0 THEN
+    NEW.gateway_amount := NEW.amount;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;--> statement-breakpoint
+CREATE TRIGGER trg_refunds_default_split BEFORE INSERT ON "refunds"
+  FOR EACH ROW EXECUTE FUNCTION refunds_default_split();--> statement-breakpoint
 ALTER TABLE "refunds" ADD CONSTRAINT "ck_refunds_split" CHECK ("gateway_amount" >= 0 AND "wallet_amount" >= 0 AND "gateway_amount" + "wallet_amount" = "amount");--> statement-breakpoint
 
 -- A cash trip debits the driver the full fare they collected; their share is
