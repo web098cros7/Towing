@@ -139,6 +139,13 @@ export class AdminDriversService implements OnModuleInit {
         // stale approver.
         approvedBy: approving ? adminId : null,
         approvedAt: approving ? now : null,
+        // The licence name, when the reviewing admin typed one. APPROVE ONLY:
+        // it is the name read off the document being approved, so a rejection
+        // or a reactivation has no licence in front of it to read. Spread, not
+        // a ternary to `before.name`, so that omitting it leaves the column
+        // untouched rather than rewriting it with its own value on every
+        // decision.
+        ...(approving && body.licenceName ? { name: body.licenceName } : {}),
         rejectionReason: ['reject', 'request_info'].includes(body.decision)
           ? (body.reason ?? null)
           : null,
@@ -160,6 +167,11 @@ export class AdminDriversService implements OnModuleInit {
       .where(eq(drivers.id, driverId))
       .returning({
         id: drivers.id,
+        // Returned so the audit row's `after` carries it: renaming a driver on
+        // the strength of a document is exactly the kind of change that must be
+        // answerable later, and `before` already selects `name`, so including
+        // it here makes the diff show the rename instead of hiding it.
+        name: drivers.name,
         kycStatus: drivers.kycStatus,
         rejectionReason: drivers.rejectionReason,
         approvedBy: drivers.approvedBy,
@@ -244,7 +256,10 @@ export class AdminDriversService implements OnModuleInit {
       try {
         await this.notifications.emit(event, {
           driverId,
-          driverName: before.name,
+          // The name AFTER the decision: an approval that corrected the name
+          // from the licence must greet the driver by the corrected one, or the
+          // first message they get from us disagrees with their own account.
+          driverName: after?.name ?? before.name,
           reason: body.reason ?? null,
           auditId,
         });

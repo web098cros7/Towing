@@ -100,6 +100,28 @@ export const adminKycDecisionSchema = z
      * while a live booking exists (the reassign/cancel disposition is W8).
      */
     mode: z.enum(['after_current_job', 'immediate']).optional(),
+    /**
+     * The driver's name EXACTLY AS PRINTED ON THE LICENCE, typed by the admin
+     * who is looking at the scan. Only meaningful with `decision: 'approve'`;
+     * ignored on every other decision, because no other decision involves
+     * anyone reading the document.
+     *
+     * WHY THIS FIELD EXISTS (Ehsan, 23 Sep). A driver's name comes from their
+     * driving licence — drivers cannot edit it themselves, which is why
+     * `driverProfileUpdateSchema` carries only `email`. But until now nothing
+     * ever READ the name off the licence: the account carried whatever the
+     * fleet typed at invite, so "the name comes from the licence" was a rule
+     * with no mechanism behind it. The admin reviewing the document is the only
+     * party who has both the licence and the authority, so the moment of
+     * approval is the only honest place to capture it.
+     *
+     * OPTIONAL, NOT REQUIRED, and that is a real limitation rather than a
+     * preference: `POST /kyc/bulk` approves many drivers in one call and cannot
+     * carry a name per driver, so requiring it here would either break bulk
+     * approval or push a fake value through it. A driver approved without this
+     * keeps the invited name, unchanged and unverified — see ToBeDoneEhsan.md.
+     */
+    licenceName: z.string().trim().min(1).max(120).optional(),
   })
   .refine((body) => !['reject', 'request_info'].includes(body.decision) || Boolean(body.reason), {
     message: 'A reason is required',

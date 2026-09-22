@@ -9,6 +9,7 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
+  Input,
   RelativeTime,
   Select,
   Switch,
@@ -89,6 +90,14 @@ export function DriverKycDrawer({
     'after_current_job',
   );
   const [reason, setReason] = useState('');
+  /**
+   * The name as printed on the licence. `null` means "the operator has not
+   * touched this", and the field then MIRRORS the account name — it is not
+   * seeded into state, because the driver row arrives from a query that has
+   * not resolved on first render, and a `useState` initial value read then
+   * would latch an empty string and never catch up.
+   */
+  const [licenceNameEdit, setLicenceNameEdit] = useState<string | null>(null);
   const [docReasonFor, setDocReasonFor] = useState<string | null>(null);
   const [docReason, setDocReason] = useState('');
   const [viewer, setViewer] = useState<ViewerTarget>(null);
@@ -130,6 +139,7 @@ export function DriverKycDrawer({
   const close = () => {
     setPendingDecision(null);
     setReason('');
+    setLicenceNameEdit(null);
     setDocReasonFor(null);
     setDocReason('');
     setViewer(null);
@@ -145,7 +155,15 @@ export function DriverKycDrawer({
     mode?: 'after_current_job' | 'immediate',
   ) => {
     decideKyc.mutate(
-      { driverId: driver.id, decision, reason: withReason, mode },
+      {
+        driverId: driver.id,
+        decision,
+        reason: withReason,
+        mode,
+        // Only on approval, and only when it actually says something: an empty
+        // box must not blank a driver's name.
+        licenceName: decision === 'approve' ? licenceName.trim() || undefined : undefined,
+      },
       {
         onSuccess: (result) => {
           if (decision === 'suspend') {
@@ -166,6 +184,9 @@ export function DriverKycDrawer({
   };
 
   const location = driver.lastKnownLocation;
+
+  /** What the licence-name box shows: the operator's edit, else the account name. */
+  const licenceName = licenceNameEdit ?? driver.name ?? '';
 
   return (
     <Drawer open onClose={close} labelledBy="kyc-drawer-title">
@@ -462,6 +483,31 @@ export function DriverKycDrawer({
         <div className="border-t border-border pt-4">
           <NotesPanel subjectType="driver" subjectId={driver.id} />
         </div>
+
+        {/*
+          The one place the platform reads a driver's name off their licence.
+          Drivers cannot edit their own name, and the fleet's invite is only a
+          guess — so until this field existed, "the name comes from the licence"
+          was a rule nothing enforced. Shown while a decision is still open, and
+          only then: after the verdict there is nothing left to correct here.
+        */}
+        {!pendingDecision && !suspendedJustNow ? (
+          <div className="flex flex-col gap-2 rounded-card border border-border p-3">
+            <label className="text-xs font-medium text-text-secondary" htmlFor="licence-name">
+              Name on the licence
+            </label>
+            <Input
+              id="licence-name"
+              data-testid="kyc-licence-name"
+              value={licenceName}
+              onChange={(event) => setLicenceNameEdit(event.target.value)}
+            />
+            <p className="text-xs text-text-tertiary">
+              Type it exactly as printed. Approving saves it to the driver&apos;s account, replacing
+              the name their fleet entered.
+            </p>
+          </div>
+        ) : null}
 
         {pendingDecision ? (
           <div className="flex flex-col gap-2 rounded-card border border-border p-3">

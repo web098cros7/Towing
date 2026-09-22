@@ -77,6 +77,65 @@ describe('admin drivers (/v1/admin/drivers)', () => {
       expect(action!.after).toMatchObject({ kycStatus: 'approved' });
     });
 
+    /**
+     * The mechanism behind "a driver's name comes from their licence" (Ehsan,
+     * 23 Sep). Before this, that rule held only at the driver's end — they
+     * cannot edit their own name — while the value itself was whatever the
+     * fleet typed at invite and nothing ever checked it against the document.
+     */
+    it('approving with a licence name replaces the name the fleet typed at invite', async () => {
+      const admin = await seedAdmin(db, { subRole: 'operations' });
+      const driverId = await seedDriver(db, { name: 'Ravi K', kycStatus: 'pending' });
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/drivers/${driverId}/kyc`)
+        .set('Authorization', await adminAuthHeaderFor(app, { adminId: admin.id }))
+        .send({ decision: 'approve', licenceName: 'Ravi Kumar Sharma' })
+        .expect(200);
+
+      const [driver] = await db.select().from(drivers).where(eq(drivers.id, driverId));
+      expect(driver!.name).toBe('Ravi Kumar Sharma');
+
+      // The rename is answerable later, not silent: renaming a person on the
+      // strength of a document is the kind of change an audit trail is for.
+      const [action] = await db.select().from(adminActions);
+      expect(action!.before).toMatchObject({ name: 'Ravi K' });
+      expect(action!.after).toMatchObject({ name: 'Ravi Kumar Sharma' });
+    });
+
+    it('approving WITHOUT a licence name leaves the invited name untouched', async () => {
+      const admin = await seedAdmin(db, { subRole: 'operations' });
+      const driverId = await seedDriver(db, { name: 'Ravi K', kycStatus: 'pending' });
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/drivers/${driverId}/kyc`)
+        .set('Authorization', await adminAuthHeaderFor(app, { adminId: admin.id }))
+        .send({ decision: 'approve' })
+        .expect(200);
+
+      const [driver] = await db.select().from(drivers).where(eq(drivers.id, driverId));
+      expect(driver!.name).toBe('Ravi K');
+    });
+
+    /**
+     * A licence is read at APPROVAL. A rejection has no approved document
+     * behind it, so a name sent alongside one must not land — otherwise the
+     * field becomes a general-purpose rename endpoint wearing a KYC label.
+     */
+    it('a licence name sent with a rejection is ignored', async () => {
+      const admin = await seedAdmin(db, { subRole: 'operations' });
+      const driverId = await seedDriver(db, { name: 'Ravi K', kycStatus: 'pending' });
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/drivers/${driverId}/kyc`)
+        .set('Authorization', await adminAuthHeaderFor(app, { adminId: admin.id }))
+        .send({ decision: 'reject', reason: 'Licence is illegible', licenceName: 'Someone Else' })
+        .expect(200);
+
+      const [driver] = await db.select().from(drivers).where(eq(drivers.id, driverId));
+      expect(driver!.name).toBe('Ravi K');
+    });
+
     it('a SUPPORT admin cannot approve KYC (§4.2 RBAC)', async () => {
       const support = await seedAdmin(db, { subRole: 'support' });
       const driverId = await seedDriver(db);

@@ -12,13 +12,16 @@ export function useDecideKyc() {
       decision,
       reason,
       mode,
+      licenceName,
     }: {
       driverId: string;
       decision: KycDecision;
       reason?: string;
       /** A14, `suspend` only: shelf until the live job ends (default) or apply now. */
       mode?: 'after_current_job' | 'immediate';
-    }) => adminDriversDataSource.decideKyc(driverId, decision, reason, mode),
+      /** `approve` only: the name as printed on the licence the admin just read. */
+      licenceName?: string;
+    }) => adminDriversDataSource.decideKyc(driverId, decision, reason, mode, licenceName),
     onSuccess: () => {
       // Every decision changes whether the driver still belongs in the queue —
       // and the queue is paged now, so the whole family is invalidated.

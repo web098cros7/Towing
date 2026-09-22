@@ -37,6 +37,8 @@ export interface AdminDriversDataSource {
     decision: KycDecision,
     reason?: string,
     mode?: 'after_current_job' | 'immediate',
+    /** `approve` only: the name exactly as printed on the licence being approved. */
+    licenceName?: string,
   ): Promise<AdminKycResult>;
   /** W7 — per-item results, never all-or-nothing. */
   bulkDecide(
@@ -186,7 +188,7 @@ const restSource: AdminDriversDataSource = {
       )
     ).items,
 
-  decideKyc: (driverId, decision, reason, mode) =>
+  decideKyc: (driverId, decision, reason, mode, licenceName) =>
     adminApiFetch<AdminKycResult>(`drivers/${driverId}/kyc`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -194,6 +196,10 @@ const restSource: AdminDriversDataSource = {
         decision,
         ...(reason ? { reason } : {}),
         ...(mode ? { mode } : {}),
+        // Sent on approval only. The backend ignores it on every other
+        // decision, but not sending it keeps the request honest about what
+        // the admin was actually looking at.
+        ...(decision === 'approve' && licenceName ? { licenceName } : {}),
       }),
     }),
 
