@@ -8,6 +8,7 @@ import type {
 import { queryClient } from '@/providers/queryClient';
 import { offersKeys } from '../api/offers.keys';
 import { markJobEnded } from '../store/jobEndedStore';
+import { markChatUnread } from '../store/chatUnreadStore';
 import type { JobOffer } from '../types';
 
 /**
@@ -72,6 +73,13 @@ export function applyJobRevoked(event: JobRevokedEvent): void {
 /**
  * A `chat:message` frame, merged into the transcript for its booking.
  *
+ * THE UNREAD MARK COMES FIRST, AND BEFORE THE "ONLY IF THE QUERY EXISTS"
+ * RETURN. A customer message that arrives while the chat screen is closed has
+ * no cache entry to merge into — that is the whole point of the early return —
+ * but it is exactly the message the driver needs a badge for. The store
+ * ignores the mark when the chat is open, so a frame for the screen the driver
+ * is reading is a no-op and the badge does not flicker on and off.
+ *
  * ONLY IF THE QUERY EXISTS. A frame for a booking whose chat screen was never
  * opened — or was closed — must not create a cache entry: the next open would
  * then render a one-message transcript that the GET is about to overwrite
@@ -83,6 +91,10 @@ export function applyJobRevoked(event: JobRevokedEvent): void {
  * later; without the check the driver would see their own line twice.
  */
 export function applyChatMessage(message: BookingMessage): void {
+  if (message.senderType === 'customer') {
+    markChatUnread(message.bookingId);
+  }
+
   const key = offersKeys.messages(message.bookingId);
   const existing = queryClient.getQueryData<BookingMessage[]>(key);
   if (!existing) return;
@@ -109,6 +121,6 @@ export function applyJobPayment(event: JobPaymentEvent): void {
   const detailKey = offersKeys.detail(event.bookingId);
   const detail = queryClient.getQueryData<DriverJob>(detailKey);
   if (detail) {
-    queryClient.setQueryData<DriverJob>(detailKey, { ...detail, payment: event.payment });
+    queryClient.setQueryData(detailKey, { ...detail, payment: event.payment });
   }
 }

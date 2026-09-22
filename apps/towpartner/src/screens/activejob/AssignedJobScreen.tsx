@@ -19,6 +19,7 @@ import {
   markJobEnded,
   type JobEndedReason,
 } from '@/features/offers/store/jobEndedStore';
+import { useChatUnreadStore } from '@/features/offers/store/chatUnreadStore';
 import { driverColors } from '@/theme/driverColors';
 import { formatPaise } from '@/utils/format';
 import { JOB_STATUS_META, statusBadgeTone } from '@/features/jobs/statusMeta';
@@ -54,6 +55,9 @@ export function AssignedJobScreen() {
   const { data: job, isPending, isError, refetch } = useCurrentJob();
   const ended = useJobEndedStore((s) => s.ended);
   const clear = useJobEndedStore((s) => s.clear);
+  // Scoped to the held booking: a badge for a job the driver no longer holds
+  // would be a lie, and the store is keyed by booking id for exactly this.
+  const unread = useChatUnreadStore((s) => (job ? s.unread[job.bookingId] ?? 0 : 0));
 
   /**
    * The last ACTIVE job this screen saw.
@@ -328,6 +332,8 @@ export function AssignedJobScreen() {
                 <ActionChip
                   icon={MessageCircle}
                   label="Message"
+                  accessibilityLabel={unread > 0 ? 'Message (new)' : undefined}
+                  badge={unread > 0}
                   onPress={() => navigation.navigate('JobChat', { bookingId: job.bookingId })}
                 />
                 <ActionChip icon={Navigation} label="Navigate" onPress={onNavigate} />
@@ -502,11 +508,15 @@ function endedTitle(reason: JobEndedReason): string {
 function ActionChip({
   icon: Icon,
   label,
+  accessibilityLabel,
+  badge = false,
   onPress,
   disabled = false,
 }: {
   icon: typeof Phone;
   label: string;
+  accessibilityLabel?: string;
+  badge?: boolean;
   onPress: () => void;
   disabled?: boolean;
 }) {
@@ -516,7 +526,7 @@ function ActionChip({
       disabled={disabled}
       haptic="light"
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
       style={() => ({ alignItems: 'center', gap: 4, opacity: disabled ? 0.4 : 1 })}
     >
@@ -528,9 +538,25 @@ function ActionChip({
           backgroundColor: driverColors.chip.green.bg,
           alignItems: 'center',
           justifyContent: 'center',
+          position: 'relative',
         }}
       >
         <Icon size={18} color={driverColors.chip.green.fg} strokeWidth={2.2} />
+        {badge ? (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              backgroundColor: '#DC2626',
+              borderWidth: 2,
+              borderColor: '#FFFFFF',
+            }}
+          />
+        ) : null}
       </View>
       <Text style={{ fontSize: 12, lineHeight: 16, color: INK_SOFT }}>{label}</Text>
     </Pressable>

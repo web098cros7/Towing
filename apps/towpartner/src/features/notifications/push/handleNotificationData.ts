@@ -5,6 +5,7 @@ import { useAuthStore } from '@/features/auth/store/authStore';
 import { kycKeys } from '@/features/kyc/api/kyc.queries';
 import { offersKeys } from '@/features/offers/api/offers.keys';
 import { markJobEnded } from '@/features/offers/store/jobEndedStore';
+import { markChatUnread } from '@/features/offers/store/chatUnreadStore';
 import { notificationKeys } from '../api/notifications.keys';
 
 /**
@@ -98,6 +99,43 @@ export function applyNotificationData(
     }
     void queryClient.invalidateQueries({ queryKey: offersKeys.all });
     return { kind: 'navigate', route: 'towpartner://job' };
+  }
+
+  /**
+   * A CUSTOMER MESSAGE ARRIVED WHILE THE CHAT SCREEN WAS CLOSED.
+   *
+   * The socket frame (`applyChatMessage`) is the fast path and marks unread
+   * too, but a push is the only signal when the socket is down — and the
+   * driver must not lose the message just because the socket happened to be
+   * reconnecting. The store ignores the mark when the chat is open, so a
+   * foreground receive while the driver is reading the thread is a no-op.
+   *
+   * The held booking id is read from the cache rather than trusted from the
+   * payload: a push for a booking the driver no longer holds must not paint a
+   * badge on the job screen for a job that is not there.
+   */
+  if (data.event === 'chat.message_to_driver') {
+    const held = queryClient.getQueryData<DriverJob | null>(offersKeys.job());
+    if (held) markChatUnread(held.bookingId);
+    if (data.route) return { kind: 'navigate', route: data.route };
+    return { kind: 'none' };
+  }
+
+  /**
+   * SUPPORT REPLIES AND RESOLUTIONS.
+   *
+   * The server sends these with `action: 'open'` and NO route — the ticket id
+   * is not in the payload, and the driver's support inbox is the only screen
+   * that can show them which ticket moved. The generic `invalidate` branch
+   * below would refetch the list but leave the driver on whatever screen they
+   * were on; the tap has to land on Help & Support for the notification to
+   * mean anything.
+   */
+  if (data.event === 'support.reply' || data.event === 'support.resolved') {
+    if (data.invalidate) {
+      void queryClient.invalidateQueries({ queryKey: data.invalidate.split('.') });
+    }
+    return { kind: 'navigate', route: 'towpartner://support' };
   }
 
   // `invalidate` is a query-key NAMESPACE the server names — dot-separated so a

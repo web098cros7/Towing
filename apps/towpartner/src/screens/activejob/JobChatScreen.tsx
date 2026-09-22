@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@towing/theme';
@@ -19,6 +19,7 @@ import { ApiClientError } from '@/lib/api/errors';
 import { Pressable } from '@/motion';
 import { driverColors } from '@/theme/driverColors';
 import { useJobMessages, useSendJobMessage } from '@/features/offers/api/offers.queries';
+import { useChatUnreadStore } from '@/features/offers/store/chatUnreadStore';
 import type { RootStackParamList } from '@/navigation/types';
 
 const HAIRLINE = '#E5E7EB';
@@ -38,6 +39,14 @@ function formatTime(iso: string): string {
  * poll write into, so a message the driver sends appears the instant the POST
  * returns and a message the customer sends appears either on the socket frame or
  * on the next poll — whichever lands first.
+ *
+ * THE UNREAD MARKER IS CLEARED ON FOCUS, NOT ON MOUNT. A driver who opens the
+ * chat, backgrounds the app to take a call, and comes back has not seen the
+ * message that arrived while they were away — the screen was mounted the whole
+ * time. `useFocusEffect` is what distinguishes "the screen exists" from "the
+ * driver is looking at it", and the store's `openBookingId` is set from the
+ * same signal so a frame arriving while the driver is reading does not paint a
+ * badge on the job screen behind them.
  */
 export function JobChatScreen() {
   const theme = useTheme();
@@ -48,8 +57,23 @@ export function JobChatScreen() {
   const { data: messages } = useJobMessages(bookingId);
   const send = useSendJobMessage(bookingId);
 
+  const setOpen = useChatUnreadStore((s) => s.setOpen);
+  const clear = useChatUnreadStore((s) => s.clear);
+
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+
+  // Focus/blur, not mount/unmount: the driver is "reading" the chat only while
+  // it is the focused screen, and the store's open flag has to track that.
+  useFocusEffect(
+    useCallback(() => {
+      setOpen(bookingId);
+      clear(bookingId);
+      return () => {
+        setOpen(null);
+      };
+    }, [bookingId, setOpen, clear]),
+  );
 
   // Auto-scroll to the end whenever the transcript grows. `onContentSizeChange`
   // on the ScrollView is what actually fires this reliably across platforms;
