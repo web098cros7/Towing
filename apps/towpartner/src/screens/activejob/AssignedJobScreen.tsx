@@ -8,6 +8,7 @@ import { MapPin, MessageCircle, Navigation, Phone, RefreshCw, Truck, Lock } from
 import { DriverHeader } from '@/components/DriverHeader';
 import { Pill } from '@/components/Pill';
 import { useCurrentJob } from '@/features/offers/api/offers.queries';
+import { SERVICE_ICON, isAtTheSpot, serviceLabel } from '@/features/offers/serviceLabels';
 import { JobActionRail } from '@/features/offers/components/JobActionRail';
 import { JobMapCard } from '@/features/offers/components/JobMapCard';
 import { WaitingChargeCard } from '@/features/offers/components/WaitingChargeCard';
@@ -182,6 +183,16 @@ export function AssignedJobScreen() {
                     pill
                     icon={JOB_STATUS_META[job.status].icon}
                   />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {React.createElement(SERVICE_ICON[job.serviceType], {
+                      size: 14,
+                      color: INK_SOFT,
+                      strokeWidth: 2,
+                    })}
+                    <Text style={{ fontSize: 13, lineHeight: 18, color: INK_SOFT }}>
+                      {serviceLabel(job)}
+                    </Text>
+                  </View>
                   <Text color="secondary" style={{ fontSize: 13, lineHeight: 18 }}>
                     You earn
                   </Text>
@@ -232,7 +243,7 @@ export function AssignedJobScreen() {
               </View>
             </Card>
 
-            {/* Pickup → drop, as a timeline. */}
+            {/* Pickup → drop, as a timeline. At-the-spot jobs have no drop leg. */}
             <Card padding={18} style={{ borderRadius: 20, borderColor: HAIRLINE, gap: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
                 <View
@@ -246,7 +257,7 @@ export function AssignedJobScreen() {
                 />
                 <View style={{ flex: 1 }}>
                   <Text color="secondary" style={{ fontSize: 12, lineHeight: 16 }}>
-                    Pickup
+                    {isAtTheSpot(job) ? 'Service location' : 'Pickup'}
                   </Text>
                   <Text style={{ fontSize: 16, lineHeight: 23 }}>
                     {job.pickupAddress ?? 'Location shared by the customer'}
@@ -254,33 +265,41 @@ export function AssignedJobScreen() {
                 </View>
               </View>
 
-              <View
-                style={{
-                  height: 18,
-                  width: 1,
-                  marginLeft: 5,
-                  borderLeftWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: '#9CA3AF',
-                }}
-              />
+              {isAtTheSpot(job) ? (
+                <Text style={{ fontSize: 13, lineHeight: 18, color: INK_SOFT }}>
+                  Roadside service — done where the car is, no towing.
+                </Text>
+              ) : (
+                <>
+                  <View
+                    style={{
+                      height: 18,
+                      width: 1,
+                      marginLeft: 5,
+                      borderLeftWidth: 1,
+                      borderStyle: 'dashed',
+                      borderColor: '#9CA3AF',
+                    }}
+                  />
 
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                <MapPin
-                  size={13}
-                  color={theme.colors.error}
-                  strokeWidth={2.4}
-                  style={{ marginTop: 6 }}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text color="secondary" style={{ fontSize: 12, lineHeight: 16 }}>
-                    Drop
-                  </Text>
-                  <Text style={{ fontSize: 16, lineHeight: 23 }}>
-                    {job.dropAddress ?? 'No destination set'}
-                  </Text>
-                </View>
-              </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                    <MapPin
+                      size={13}
+                      color={theme.colors.error}
+                      strokeWidth={2.4}
+                      style={{ marginTop: 6 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text color="secondary" style={{ fontSize: 12, lineHeight: 16 }}>
+                        Drop
+                      </Text>
+                      <Text style={{ fontSize: 16, lineHeight: 23 }}>
+                        {job.dropAddress ?? 'No destination set'}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
 
               {job.distanceKm !== null ? (
                 <View style={{ flexDirection: 'row', paddingTop: 2 }}>

@@ -2,6 +2,7 @@ import type {
   BookingMessage,
   DriverJob,
   JobOfferEvent,
+  JobPaymentEvent,
   JobRevokedEvent,
 } from '@towing/api-contracts';
 import { queryClient } from '@/providers/queryClient';
@@ -73,4 +74,26 @@ export function applyChatMessage(message: BookingMessage): void {
   if (existing.some((m) => m.id === message.id)) return;
 
   queryClient.setQueryData<BookingMessage[]>(key, [...existing, message]);
+}
+
+/**
+ * A `job:payment` frame, patched into the cached job and its detail entry.
+ *
+ * NEVER CREATES CACHE ENTRIES. The frame is the fast half of the pair — the
+ * durable half is `useJobDetail`'s poll — so a frame for a booking whose detail
+ * query was never opened must not seed one: the next open would then render a
+ * partial object the GET is about to overwrite anyway.
+ */
+export function applyJobPayment(event: JobPaymentEvent): void {
+  const held = queryClient.getQueryData<DriverJob | null>(offersKeys.job());
+  if (held && held.bookingId === event.bookingId) {
+    const patched: DriverJob = { ...held, payment: event.payment };
+    queryClient.setQueryData(offersKeys.job(), patched);
+  }
+
+  const detailKey = offersKeys.detail(event.bookingId);
+  const detail = queryClient.getQueryData<DriverJob>(detailKey);
+  if (detail) {
+    queryClient.setQueryData<DriverJob>(detailKey, { ...detail, payment: event.payment });
+  }
 }

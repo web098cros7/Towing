@@ -36,7 +36,7 @@ const REASONS: { value: JobUnableReason; label: string; detail: string }[] = [
   },
   {
     value: 'customer_refused',
-    label: 'Customer declined the tow',
+    label: 'Customer declined the service',
     detail: 'They changed their mind after you arrived.',
   },
   {

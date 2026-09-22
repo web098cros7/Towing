@@ -3,7 +3,7 @@ import { Alert, View } from 'react-native';
 import type { DriverJob, JobUnableReason } from '@towing/api-contracts';
 import { useTheme } from '@towing/theme';
 import { Button, Card, OtpInput, Text } from '@towing/ui';
-import { Lock, TriangleAlert } from '@/icons';
+import { Check, Lock, TriangleAlert } from '@/icons';
 import { ApiClientError } from '@/lib/api/errors';
 import { useLastFixStore } from '@/lib/location/lastFixStore';
 import { haptics, Pressable } from '@/motion';
@@ -14,6 +14,7 @@ import {
   useArriveAtJob,
   useCashCollected,
   useCompleteJob,
+  useJobDetail,
   useStartJob,
   useUnableToDeliver,
 } from '../api/offers.queries';
@@ -69,6 +70,19 @@ export function JobActionRail({ job }: { job: DriverJob }) {
   const [unableOpen, setUnableOpen] = useState(false);
 
   const fix = useLastFixStore((s) => s.fix);
+
+  /**
+   * The durable half of the payment card. Called unconditionally — hooks cannot
+   * be conditional — with `undefined` when the job is not finished, which
+   * disables the query. The `job:payment` frame is the fast half; this is what
+   * makes a missed frame a five-second delay rather than a card that never
+   * updates.
+   */
+  const finished = job.status === 'completed' || job.status === 'paid';
+  const detail = useJobDetail(finished ? job.bookingId : undefined, {
+    poll: finished && job.payment.status !== 'paid',
+  });
+  const payment = detail.data?.payment ?? job.payment;
 
   /**
    * §11.5's arrival assist.
@@ -167,7 +181,7 @@ export function JobActionRail({ job }: { job: DriverJob }) {
    * the server's, and the "Done" link below is the way out for that trip.
    */
   const onCashCollected = useCallback(() => {
-    const amount = formatPaise(job.earnings.grossPaise);
+    const amount = formatPaise(payment.amountDuePaise);
     Alert.alert('Cash collected?', `Confirm you received ${amount} in cash.`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -194,7 +208,7 @@ export function JobActionRail({ job }: { job: DriverJob }) {
         },
       },
     ]);
-  }, [cashCollected, job.bookingId, job.earnings.grossPaise]);
+  }, [cashCollected, job.bookingId, payment.amountDuePaise]);
 
   /**
    * The app-paid exit. Clears the held job without a server call — the booking
@@ -204,7 +218,8 @@ export function JobActionRail({ job }: { job: DriverJob }) {
    */
   const onDone = useCallback(() => {
     queryClient.setQueryData(offersKeys.job(), null);
-  }, [queryClient]);
+    queryClient.removeQueries({ queryKey: offersKeys.detail(job.bookingId) });
+  }, [queryClient, job.bookingId]);
 
   const onUnable = useCallback(
     (reason: JobUnableReason, note?: string) => {
@@ -290,7 +305,13 @@ export function JobActionRail({ job }: { job: DriverJob }) {
 
       {job.status === 'in_progress' ? (
         <Button
-          label={complete.isPending ? 'Completing…' : 'Complete job'}
+          label={
+            complete.isPending
+              ? 'Completing…'
+              : job.drop === null
+                ? 'Complete service'
+                : 'Complete job'
+          }
           onPress={onComplete}
           disabled={complete.isPending}
           fullWidth
@@ -299,38 +320,95 @@ export function JobActionRail({ job }: { job: DriverJob }) {
       ) : null}
 
       {/*
-        §9.2.4's cash collection, shown only once the trip is completed. The
-        amount is the GROSS — what the customer owes — not the driver's net;
-        the commission is settled separately and the driver is collecting the
-        customer's money, not their own.
+        The finished card, driven by the customer's payment choice. The amount
+        shown is what the CUSTOMER owes after any coupon — `amountDuePaise` —
+        not the driver's gross; the commission is settled separately and the
+        driver is collecting the customer's money, not their own.
       */}
-      {job.status === 'completed' ? (
+      {finished ? (
         <Card padding={16} style={{ borderRadius: 20, gap: 12, borderColor: '#E5E7EB' }}>
-          <Text style={{ fontSize: 14, lineHeight: 20 }}>
-            Collect cash if the customer chose cash
-          </Text>
-          <Button
-            label={
-              cashCollected.isPending
-                ? 'Recording…'
-                : `Cash collected · ${formatPaise(job.earnings.grossPaise)}`
-            }
-            onPress={onCashCollected}
-            disabled={cashCollected.isPending}
-            fullWidth
-            accessibilityLabel="Cash collected"
-          />
-          <Pressable
-            onPress={onDone}
-            haptic="light"
-            accessibilityRole="button"
-            accessibilityLabel="Done"
-            style={() => ({ alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16 })}
-          >
-            <Text style={{ fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary }}>
-              Done
-            </Text>
-          </Pressable>
+          {payment.status === 'paid' ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Check size={18} color={driverColors.online} strokeWidth={2.4} />
+                <Text style={{ fontSize: 16, lineHeight: 22, fontWeight: '600' }}>Paid</Text>
+              </View>
+              <Text style={{ fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary }}>
+                {payment.method === 'cash' ? 'Cash received' : 'Paid in the app'}
+              </Text>
+              <Text style={{ fontSize: 14, lineHeight: 20 }}>
+                You earned {formatPaise(job.earnings.netPaise)}
+              </Text>
+              <Button
+                label="Done"
+                onPress={onDone}
+                fullWidth
+                accessibilityLabel="Done"
+              />
+            </>
+          ) : null}
+
+          {payment.status === 'awaiting_cash' ? (
+            <>
+              <Text style={{ fontSize: 16, lineHeight: 22, fontWeight: '500' }}>
+                Collect {formatPaise(payment.amountDuePaise)} in cash
+              </Text>
+              {payment.discountPaise > 0 ? (
+                <Text
+                  style={{ fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary }}
+                >
+                  Includes a {formatPaise(payment.discountPaise)} discount the customer applied
+                </Text>
+              ) : null}
+              <Button
+                label={
+                  cashCollected.isPending
+                    ? 'Recording…'
+                    : `Cash collected · ${formatPaise(payment.amountDuePaise)}`
+                }
+                onPress={onCashCollected}
+                disabled={cashCollected.isPending}
+                fullWidth
+                accessibilityLabel="Cash collected"
+              />
+            </>
+          ) : null}
+
+          {payment.status === 'pending' && payment.method === 'online' ? (
+            <>
+              <Text style={{ fontSize: 14, lineHeight: 20 }}>
+                The customer is paying in the MiTow app
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary }}>
+                This updates by itself when the payment lands.
+              </Text>
+            </>
+          ) : null}
+
+          {payment.status === 'pending' && payment.method === null ? (
+            <>
+              <Text style={{ fontSize: 14, lineHeight: 20 }}>
+                Waiting for the customer to choose how to pay
+              </Text>
+              <Text style={{ fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary }}>
+                Cash or online — you will see it here.
+              </Text>
+            </>
+          ) : null}
+
+          {payment.status !== 'paid' ? (
+            <Pressable
+              onPress={onDone}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="Back to home"
+              style={() => ({ alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16 })}
+            >
+              <Text style={{ fontSize: 13, lineHeight: 18, color: theme.colors.textSecondary }}>
+                Back to home
+              </Text>
+            </Pressable>
+          ) : null}
         </Card>
       ) : null}
 

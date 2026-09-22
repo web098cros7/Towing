@@ -15,6 +15,8 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /** Survives an accept so the assigned-job screen has something to show. */
 let acceptedJob: DriverJob | null = null;
+/** The last job the driver finished — what `getJob` serves once `acceptedJob` is cleared. */
+let finishedJob: DriverJob | null = null;
 let declined = false;
 /** §9.2.3's attempt cap, mirrored so the capped branch is reachable in mock mode. */
 let otpAttempts = 0;
@@ -83,6 +85,13 @@ export const offersMockSource: OffersDataSource = {
     return acceptedJob;
   },
 
+  async getJob(bookingId: string): Promise<DriverJob> {
+    await delay(300);
+    if (acceptedJob && acceptedJob.bookingId === bookingId) return acceptedJob;
+    if (finishedJob && finishedJob.bookingId === bookingId) return finishedJob;
+    throw new Error('Not found');
+  },
+
   async accept(bookingId: string): Promise<DriverJob> {
     await delay(500);
     const offer = buildOfferMock();
@@ -113,6 +122,12 @@ export const offersMockSource: OffersDataSource = {
       etaSeconds: 540,
       routePolyline: null,
       routeDropPolyline: null,
+      payment: {
+        method: null,
+        status: 'pending',
+        amountDuePaise: offer.earnings.grossPaise,
+        discountPaise: 0,
+      },
     };
     return acceptedJob;
   },
@@ -171,10 +186,28 @@ export const offersMockSource: OffersDataSource = {
     if (!acceptedJob) throw new Error('No active job');
     acceptedJob = { ...acceptedJob, status: 'completed', etaSeconds: null };
     const finished = acceptedJob;
+    finishedJob = finished;
     // The driver is idle again, exactly as they are against the real server —
     // `GET /driver/jobs/current` is scoped to active statuses.
     acceptedJob = null;
     declined = false;
+
+    // Simulate the customer choosing CASH six seconds later, so test mode shows
+    // the collect-cash card without a second device.
+    setTimeout(() => {
+      if (finishedJob && finishedJob.bookingId === finished.bookingId) {
+        finishedJob = {
+          ...finishedJob,
+          payment: {
+            method: 'cash',
+            status: 'awaiting_cash',
+            amountDuePaise: finished.earnings.grossPaise,
+            discountPaise: 0,
+          },
+        };
+      }
+    }, 6_000);
+
     return finished;
   },
 
@@ -237,6 +270,13 @@ export const offersMockSource: OffersDataSource = {
 
   async cashCollected(bookingId: string): Promise<{ bookingId: string; bookingStatus: string }> {
     await delay(400);
+    if (finishedJob && finishedJob.bookingId === bookingId) {
+      finishedJob = {
+        ...finishedJob,
+        status: 'paid',
+        payment: { ...finishedJob.payment, method: 'cash', status: 'paid' },
+      };
+    }
     return { bookingId, bookingStatus: 'paid' };
   },
 };

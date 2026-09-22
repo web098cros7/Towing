@@ -7,6 +7,7 @@ import { connectDriverSocket, disconnectDriverSocket } from '@/lib/realtime/driv
 import {
   applyChatMessage,
   applyJobOffer,
+  applyJobPayment,
   applyJobRevoked,
 } from '@/features/offers/realtime/offerFrames';
 import { storage } from '@/lib/storage/storage';
@@ -104,6 +105,8 @@ export function usePresence() {
         // Trip chat, same reasoning: the merge is a cache write, not a UI
         // callback, so it survives this component unmounting.
         onChatMessage: applyChatMessage,
+        // The customer's payment choice, same reasoning again.
+        onJobPayment: applyJobPayment,
       });
 
       if (!storage.getString(FIRST_ONLINE_KEY)) {

@@ -8,6 +8,7 @@ import { driverColors } from '@/theme/driverColors';
 import { formatPaise } from '@/utils/format';
 import type { JobPayment } from '@/features/jobs/types';
 import type { JobOffer } from '../types';
+import { isAtTheSpot, serviceLabel } from '../serviceLabels';
 import { Pressable } from '@/motion';
 
 /** A Record, not a ternary — a new payment method becomes a compile error, not a silent "Online". */
@@ -26,11 +27,6 @@ const PAYMENT_LABEL: Record<JobPayment, string> = { online: 'Online' };
 function distanceToPickupLabel(meters: number): string {
   if (meters < 1_000) return `${Math.round(meters / 50) * 50} m away`;
   return `${(meters / 1_000).toFixed(1)} km away`;
-}
-
-/** A readable service name when the wire did not carry a display label. */
-function towTypeLabel(offer: JobOffer): string {
-  return offer.vehicleClass === 'flatbed' ? 'Flatbed Tow' : 'Wheel-Lift Tow';
 }
 
 const carImage = require('@/assets/illustrations/offer-car.png');
@@ -85,7 +81,7 @@ function Separator() {
   return <View style={{ height: 1, backgroundColor: HAIRLINE }} />;
 }
 
-/** The incoming tow request card on the New Job screen (Figma 78:234). */
+/** The incoming job request card on the New Job screen (Figma 78:234). */
 export function OfferCard({
   offer,
   expiresLabel,
@@ -98,6 +94,7 @@ export function OfferCard({
   onDecline: () => void;
 }) {
   const theme = useTheme();
+  const atTheSpot = isAtTheSpot(offer);
 
   return (
     <Card
@@ -145,7 +142,7 @@ export function OfferCard({
         </View>
         <View style={{ flex: 1 }}>
           <Text weight="medium" numberOfLines={1} style={{ fontSize: 20, lineHeight: 27 }}>
-            {offer.vehicleName ?? offer.towTypeLabel ?? 'Tow request'}
+            {offer.vehicleName ?? offer.towTypeLabel ?? serviceLabel(offer)}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 7 }}>
             <View
@@ -155,30 +152,41 @@ export function OfferCard({
               {offer.pickupAddress ?? 'Pickup'}
             </Text>
           </View>
-          <View
-            style={{
-              height: 14,
-              width: 1,
-              marginLeft: 5,
-              borderLeftWidth: 1,
-              borderStyle: 'dashed',
-              borderColor: '#9CA3AF',
-            }}
-          />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-            <MapPin size={14} color={theme.colors.error} strokeWidth={2.4} />
-            <Text numberOfLines={1} style={{ fontSize: 16, lineHeight: 25, flex: 1 }}>
-              {offer.dropAddress ?? 'No destination'}
-            </Text>
-          </View>
+          {atTheSpot ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 7 }}>
+              <MapPin size={14} color={theme.colors.error} strokeWidth={2.4} />
+              <Text numberOfLines={1} style={{ fontSize: 16, lineHeight: 25, flex: 1 }}>
+                Service at the pickup — no drop
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View
+                style={{
+                  height: 14,
+                  width: 1,
+                  marginLeft: 5,
+                  borderLeftWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: '#9CA3AF',
+                }}
+              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <MapPin size={14} color={theme.colors.error} strokeWidth={2.4} />
+                <Text numberOfLines={1} style={{ fontSize: 16, lineHeight: 25, flex: 1 }}>
+                  {offer.dropAddress ?? 'No destination'}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
       </View>
 
       <Separator />
 
-      {/* Tow type · distance · expiry countdown */}
+      {/* Service · distance · expiry countdown */}
       <View style={{ flexDirection: 'row', alignItems: 'stretch', paddingVertical: 4 }}>
-        <MetaCol icon={Truck} label="Tow Type" value={offer.towTypeLabel ?? towTypeLabel(offer)} />
+        <MetaCol icon={Truck} label="Service" value={offer.towTypeLabel ?? serviceLabel(offer)} />
         <View style={{ width: 1, backgroundColor: HAIRLINE }} />
         <MetaCol icon={Route} label="Distance" value={offer.distanceKm === null ? '—' : `${offer.distanceKm} km`} />
         <View style={{ width: 1, backgroundColor: HAIRLINE }} />

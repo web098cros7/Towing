@@ -25,6 +25,10 @@ export const offersRestSource: OffersDataSource = {
     return job;
   },
 
+  async getJob(bookingId: string): Promise<DriverJob> {
+    return apiFetch<DriverJob>(`driver/job-history/${bookingId}`);
+  },
+
   /**
    * NO `Idempotency-Key`, and NOT enqueued on failure.
    *

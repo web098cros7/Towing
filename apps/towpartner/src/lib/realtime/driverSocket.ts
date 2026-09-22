@@ -3,6 +3,7 @@ import type {
   BookingMessage,
   DriverConfigUpdateEvent,
   JobOfferEvent,
+  JobPaymentEvent,
   JobRevokedEvent,
   WsTicketResponse,
 } from '@towing/api-contracts';
@@ -46,6 +47,12 @@ export interface DriverSocketHandlers {
    * not a UI callback, and a missing one is a no-op rather than a crash.
    */
   onChatMessage?: (message: BookingMessage) => void;
+  /**
+   * The customer's payment choice (Phase 21). Optional for the same reason as
+   * `onChatMessage`: the handler is a cache merge, not a UI callback, and a
+   * missing one is a no-op rather than a crash.
+   */
+  onJobPayment?: (event: JobPaymentEvent) => void;
 }
 
 let socket: Socket | null = null;
@@ -124,6 +131,15 @@ export async function connectDriverSocket(next: DriverSocketHandlers): Promise<v
    */
   connection.on(DRIVER_EVENT.CHAT_MESSAGE, (message: BookingMessage) =>
     handlers?.onChatMessage?.(message),
+  );
+
+  /**
+   * The customer's payment choice, on the fast path. The durable half is the
+   * `useJobDetail` poll — a missed frame is a five-second delay, not a card
+   * that never updates.
+   */
+  connection.on(DRIVER_EVENT.JOB_PAYMENT, (event: JobPaymentEvent) =>
+    handlers?.onJobPayment?.(event),
   );
 
   connection.on('disconnect', () => {

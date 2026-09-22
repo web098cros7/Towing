@@ -25,6 +25,11 @@ export interface OffersDataSource {
   getCurrentOffer(): Promise<JobOffer | null>;
   /** `null` when the driver is idle. */
   getCurrentJob(): Promise<DriverJob | null>;
+  /**
+   * Any job this driver held, incl. finished ones — the completed card and Job
+   * Details read it.
+   */
+  getJob(bookingId: string): Promise<DriverJob>;
   accept(bookingId: string): Promise<DriverJob>;
   reject(bookingId: string, body?: JobReject): Promise<void>;
 

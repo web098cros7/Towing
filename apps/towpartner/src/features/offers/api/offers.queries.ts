@@ -70,6 +70,29 @@ const ACTIVE_JOB_STATUSES: ReadonlySet<string> = new Set([
   'in_progress',
 ]);
 
+/**
+ * One held/finished job by id, from `GET /v1/driver/job-history/:id`.
+ *
+ * THE DURABLE HALF FOR THE PAYMENT CARD. The `job:payment` frame is the fast
+ * half and can be missed — a backgrounded app, a dropped connection, a choice
+ * made while the screen was not mounted — so the card refetches on an interval
+ * while the payment is still outstanding. `poll` is false once the payment is
+ * `paid`, because there is nothing left to learn.
+ */
+const JOB_DETAIL_POLL_MS = 5_000;
+
+export function useJobDetail(bookingId: string | undefined, options?: { poll?: boolean }) {
+  return useQuery({
+    queryKey: offersKeys.detail(bookingId ?? ''),
+    queryFn: () => offersDataSource.getJob(bookingId!),
+    enabled: !!bookingId,
+    // Stops by itself once the fetched payment is `paid`, even if the caller's
+    // copy of the job has not caught up yet.
+    refetchInterval: (query) =>
+      options?.poll && query.state.data?.payment.status !== 'paid' ? JOB_DETAIL_POLL_MS : false,
+  });
+}
+
 export function useCurrentJob() {
   return useQuery({
     queryKey: offersKeys.job(),
@@ -258,17 +281,35 @@ export function useSendJobMessage(bookingId: string) {
 /**
  * §9.2.4's cash-collected confirmation.
  *
- * CLEARS THE HELD JOB ON SUCCESS, the same way `useUnableToDeliver` does and for
- * the same reason: the booking is now `paid` and belongs to nobody, so leaving
- * the completed job in the cache would show the driver a job they are no longer
- * on and let them tap "Cash collected" a second time.
+ * PATCHES THE CACHED JOB RATHER THAN CLEARING IT. The booking is now `paid`, but
+ * the driver is still looking at the completed card — clearing the job would
+ * flip the screen to "No active job" the instant the cash was recorded, which is
+ * the one moment the driver wants to see "Paid". The card shows the paid state
+ * and the driver leaves with Done.
  */
 export function useCashCollected() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (bookingId: string) => offersDataSource.cashCollected(bookingId),
-    onSuccess: () => {
-      queryClient.setQueryData(offersKeys.job(), null);
+    onSuccess: (_result, bookingId) => {
+      queryClient.setQueryData<DriverJob | null>(offersKeys.job(), (previous) =>
+        previous && previous.bookingId === bookingId
+          ? {
+              ...previous,
+              status: 'paid',
+              payment: { ...previous.payment, method: 'cash', status: 'paid' },
+            }
+          : previous,
+      );
+      queryClient.setQueryData<DriverJob>(offersKeys.detail(bookingId), (previous) =>
+        previous
+          ? {
+              ...previous,
+              status: 'paid',
+              payment: { ...previous.payment, method: 'cash', status: 'paid' },
+            }
+          : previous,
+      );
     },
   });
 }
