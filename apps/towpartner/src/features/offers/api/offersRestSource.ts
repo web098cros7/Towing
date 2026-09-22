@@ -9,6 +9,9 @@ import type {
   JobTransitionResponse,
   JobUnable,
   JobUnableResponse,
+  RatingDto,
+  RatingStateDto,
+  RatingSubmit,
 } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import type { JobOffer } from '../types';
@@ -153,5 +156,25 @@ export const offersRestSource: OffersDataSource = {
         idempotent: true,
       },
     );
+  },
+
+  /**
+   * Rating the customer.
+   *
+   * NO `Idempotency-Key`, and the route is the reason: it UPSERTS. A retry
+   * after a dropped response amends the same row rather than creating a
+   * second one, so a key would only cache a 200 for a request that is already
+   * safe to repeat. The 409 is a state guard, not a duplicate guard — the
+   * booking must be `completed` or `paid` before the driver can rate.
+   */
+  async rateCustomer(bookingId: string, body: RatingSubmit): Promise<RatingDto> {
+    return apiFetch<RatingDto>(`driver/jobs/${bookingId}/rate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async customerRating(bookingId: string): Promise<RatingStateDto> {
+    return apiFetch<RatingStateDto>(`driver/jobs/${bookingId}/rating`);
   },
 };

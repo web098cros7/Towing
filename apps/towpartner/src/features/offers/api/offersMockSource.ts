@@ -4,6 +4,9 @@ import type {
   DriverJob,
   JobUnable,
   JobUnableResponse,
+  RatingDto,
+  RatingStateDto,
+  RatingSubmit,
 } from '@towing/api-contracts';
 import { env } from '@/lib/env';
 import { ApiClientError } from '@/lib/api/errors';
@@ -43,6 +46,16 @@ const MOCK_MAX_ATTEMPTS = 5;
  */
 const mockMessages = new Map<string, BookingMessage[]>();
 let mockMessageSeq = 0;
+
+/**
+ * The driver's rating of the customer, per booking.
+ *
+ * A MAP RATHER THAN A SINGLE SLOT, because the endpoint upserts per booking and
+ * the mock should behave the same way: rating one trip must not erase the
+ * rating of another. `customerRating` reads it back so the sheet can show the
+ * amend state on reopen.
+ */
+const mockRatings = new Map<string, RatingDto>();
 
 function nextMessageId(): string {
   mockMessageSeq += 1;
@@ -277,6 +290,29 @@ export const offersMockSource: OffersDataSource = {
       };
     }
     return { bookingId, bookingStatus: 'paid' };
+  },
+
+  async customerRating(bookingId: string): Promise<RatingStateDto> {
+    await delay(250);
+    return { mine: mockRatings.get(bookingId) ?? null, canRate: true };
+  },
+
+  async rateCustomer(bookingId: string, body: RatingSubmit): Promise<RatingDto> {
+    await delay(400);
+    const now = new Date().toISOString();
+    const existing = mockRatings.get(bookingId);
+    const rating: RatingDto = {
+      bookingId,
+      direction: 'driver_to_customer',
+      rating: body.rating,
+      review: body.review ?? null,
+      // Upsert semantics: the first submit sets both stamps, an amend moves
+      // only `updatedAt` — the same shape the server returns.
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    mockRatings.set(bookingId, rating);
+    return rating;
   },
 };
 

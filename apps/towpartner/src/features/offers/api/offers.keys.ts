@@ -8,4 +8,6 @@ export const offersKeys = {
   detail: (bookingId: string) => ['offers', 'detail', bookingId] as const,
   /** Trip chat, per booking. Oldest first. */
   messages: (bookingId: string) => ['offers', 'messages', bookingId] as const,
+  /** This driver's rating of one booking's customer. */
+  rating: (bookingId: string) => ['offers', 'rating', bookingId] as const,
 };

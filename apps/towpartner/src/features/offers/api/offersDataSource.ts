@@ -5,6 +5,9 @@ import type {
   JobReject,
   JobUnable,
   JobUnableResponse,
+  RatingDto,
+  RatingStateDto,
+  RatingSubmit,
 } from '@towing/api-contracts';
 import { env } from '@/lib/env';
 import type { JobOffer } from '../types';
@@ -57,6 +60,13 @@ export interface OffersDataSource {
   sendMessage(bookingId: string, body: string): Promise<BookingMessage>;
   /** 200 = paid; 409 when the customer is paying in the app. */
   cashCollected(bookingId: string): Promise<{ bookingId: string; bookingStatus: string }>;
+
+  // --- Rating the customer -------------------------------------------------
+
+  /** Upserts — rating again amends. 409 until the booking is completed or paid. */
+  rateCustomer(bookingId: string, body: RatingSubmit): Promise<RatingDto>;
+  /** `mine` is null until this driver has rated this booking. */
+  customerRating(bookingId: string): Promise<RatingStateDto>;
 }
 
 export const offersDataSource: OffersDataSource = env.useMocks

@@ -4,6 +4,8 @@ import type {
   DriverJob,
   JobReject,
   JobUnableReason,
+  RatingDto,
+  RatingSubmit,
 } from '@towing/api-contracts';
 import { useDriverStatusStore } from '@/features/dashboard/store/driverStatusStore';
 import { track } from '@/lib/analytics/analytics';
@@ -314,6 +316,55 @@ export function useCashCollected() {
             }
           : previous,
       );
+    },
+  });
+}
+
+/**
+ * Rating the customer.
+ *
+ * THE DRIVER'S RATING IS AN OPS SIGNAL, NOT A PUBLIC SCORE. The server's
+ * `recomputeDriverRating` rolls up only the customer→driver direction, so what
+ * the driver writes here never reaches the customer's profile — it goes to
+ * MiTow's ops team. The sheet says so in as many words, because a driver who
+ * believes the rating is public rates differently from one who knows it is a
+ * private note.
+ *
+ * OPT-IN, NEVER AUTOMATIC. The customer app opens its rating sheet by itself on
+ * the payment-success screen; the driver's equivalent card is read at a kerbside
+ * with the next job waiting, so nothing may slide over it uninvited. The rail
+ * renders a button and the driver taps it if they want to.
+ */
+
+/** Whether this driver has already rated this booking's customer. */
+export function useCustomerRatingState(bookingId: string | undefined) {
+  return useQuery({
+    queryKey: offersKeys.rating(bookingId!),
+    queryFn: () => offersDataSource.customerRating(bookingId!),
+    enabled: !!bookingId,
+  });
+}
+
+/**
+ * Rate the customer.
+ *
+ * UPSERTS, SO A RETRY IS SAFE — the endpoint amends rather than duplicating, so
+ * `retry: false` is about not hammering a 409 (the booking is not yet
+ * `completed`/`paid`) rather than about duplicate protection. On success the
+ * cache is written directly from the returned `RatingDto` so the rail's button
+ * flips to "You rated N★ · Change" without a refetch.
+ */
+export function useRateCustomer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, body }: { bookingId: string; body: RatingSubmit }) =>
+      offersDataSource.rateCustomer(bookingId, body),
+    retry: false,
+    onSuccess: (data: RatingDto) => {
+      queryClient.setQueryData(offersKeys.rating(data.bookingId), {
+        mine: data,
+        canRate: true,
+      });
     },
   });
 }

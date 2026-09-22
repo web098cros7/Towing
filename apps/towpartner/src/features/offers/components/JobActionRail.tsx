@@ -14,11 +14,13 @@ import {
   useArriveAtJob,
   useCashCollected,
   useCompleteJob,
+  useCustomerRatingState,
   useJobDetail,
   useStartJob,
   useUnableToDeliver,
 } from '../api/offers.queries';
 import { offersKeys } from '../api/offers.keys';
+import { RateCustomerSheet } from './RateCustomerSheet';
 import { UnableSheet } from './UnableSheet';
 
 /**
@@ -68,6 +70,7 @@ export function JobActionRail({ job }: { job: DriverJob }) {
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
   const [unableOpen, setUnableOpen] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
 
   const fix = useLastFixStore((s) => s.fix);
 
@@ -83,6 +86,13 @@ export function JobActionRail({ job }: { job: DriverJob }) {
     poll: finished && job.payment.status !== 'paid',
   });
   const payment = detail.data?.payment ?? job.payment;
+
+  /**
+   * The driver's rating of this booking's customer. Only fetched once the job
+   * is finished — the endpoint 409s before then, and the rail does not render
+   * the button until `finished` anyway.
+   */
+  const ratingState = useCustomerRatingState(finished ? job.bookingId : undefined);
 
   /**
    * §11.5's arrival assist.
@@ -339,6 +349,37 @@ export function JobActionRail({ job }: { job: DriverJob }) {
               <Text style={{ fontSize: 14, lineHeight: 20 }}>
                 You earned {formatPaise(job.earnings.netPaise)}
               </Text>
+              {/*
+                The rating is OPT-IN — a visible button, never a sheet that
+                slides over the card uninvited. Nothing renders while the state
+                is still loading, so the label never flashes the wrong thing.
+              */}
+              {!ratingState.isPending ? (
+                <Pressable
+                  onPress={() => setRateOpen(true)}
+                  haptic="light"
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    ratingState.data?.mine == null
+                      ? 'Rate the customer'
+                      : `You rated ${ratingState.data.mine.rating} stars. Change`
+                  }
+                  style={() => ({ alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16 })}
+                >
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 20,
+                      color: theme.colors.textSecondary,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {ratingState.data?.mine == null
+                      ? 'Rate the customer'
+                      : `You rated ${ratingState.data.mine.rating}★ · Change`}
+                  </Text>
+                </Pressable>
+              ) : null}
               <Button
                 label="Done"
                 onPress={onDone}
@@ -409,6 +450,14 @@ export function JobActionRail({ job }: { job: DriverJob }) {
               </Text>
             </Pressable>
           ) : null}
+
+          <RateCustomerSheet
+            visible={rateOpen}
+            onDismiss={() => setRateOpen(false)}
+            bookingId={job.bookingId}
+            customerName={job.customerName}
+            existing={ratingState.data?.mine ?? null}
+          />
         </Card>
       ) : null}
 
