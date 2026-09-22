@@ -1,6 +1,5 @@
 import type {
   SubjectNotificationPrefs,
-  SubjectNotificationPrefsUpdate,
 } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import type { NotificationPrefsDataSource } from './notificationPrefsDataSource';

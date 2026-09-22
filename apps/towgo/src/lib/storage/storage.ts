@@ -29,6 +29,7 @@ function createStorage(): KVStorage {
     // Deferred require, not a static import: Expo Go has no MMKV native
     // module, and a static import would throw at module-load time (before
     // this try/catch runs) rather than at first construction.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose; see the comment above
     const { MmkvStorage } = require('./mmkv') as typeof import('./mmkv');
     return new MmkvStorage();
   } catch {

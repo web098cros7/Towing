@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Figma 34 · My Bookings · Empty's illustration `387:18517` (300.08 × 207), exported as SVG
  * with the Figma MCP `download_assets` tool.
  *

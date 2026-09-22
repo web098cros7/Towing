@@ -66,7 +66,7 @@ export function useLocationEditing({
   const swapAddresses = useBookingStore((s) => s.swapAddresses);
 
   const devicePoint = useLocationStore((s) => s.pickup.coords);
-  const requestCurrentLocation = useLocationStore((s) => s.useCurrentLocation);
+  const requestCurrentLocation = useLocationStore((s) => s.resolveCurrentLocation);
   const addRecent = useRecentPlacesStore((s) => s.addRecent);
 
   const [drafts, setDrafts] = useState<Drafts>({ pickup: null, drop: null });

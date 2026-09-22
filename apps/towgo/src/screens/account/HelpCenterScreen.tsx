@@ -66,7 +66,9 @@ export function HelpCenterScreen() {
   const [open, setOpen] = useState<string | null | undefined>(undefined);
 
   const content = useContentPages('faq');
-  const serverItems = content.data?.items ?? [];
+  // Memoised, not `?? []` inline: the fallback would be a NEW array on every
+  // render, so the `useMemo` below re-ran every time and memoised nothing.
+  const serverItems = useMemo(() => content.data?.items ?? [], [content.data?.items]);
 
   const list = useMemo(() => {
     if (serverItems.length > 0) {

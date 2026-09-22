@@ -375,6 +375,12 @@ importers:
       babel-preset-expo:
         specifier: ~57.0.6
         version: 57.0.6(@babel/core@7.29.7)(@babel/runtime@7.29.7)(expo@57.0.15)(react-refresh@0.14.2)
+      eslint:
+        specifier: ^9.39.5
+        version: 9.39.5(jiti@2.7.0)
+      eslint-config-expo:
+        specifier: ~10.0.0
+        version: 10.0.0(eslint@9.39.5(jiti@2.7.0))(typescript@6.0.3)
       jest:
         specifier: ^30.5.2
         version: 30.5.2(@types/node@24.13.3)
@@ -526,6 +532,12 @@ importers:
       babel-preset-expo:
         specifier: ~57.0.6
         version: 57.0.6(@babel/core@7.29.7)(@babel/runtime@7.29.7)(expo@57.0.15)(react-refresh@0.14.2)
+      eslint:
+        specifier: ^9.39.5
+        version: 9.39.5(jiti@2.7.0)
+      eslint-config-expo:
+        specifier: ~10.0.0
+        version: 10.0.0(eslint@9.39.5(jiti@2.7.0))(typescript@6.0.3)
       jest:
         specifier: ^30.5.2
         version: 30.5.2(@types/node@24.13.3)

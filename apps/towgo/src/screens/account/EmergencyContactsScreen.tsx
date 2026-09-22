@@ -3,7 +3,6 @@ import { Alert, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '@towing/theme';
 import { usePressablePrimitive, ErrorState } from '@towing/ui';
 import {
   MiScreen,
@@ -43,11 +42,10 @@ function formatMobile(phone: string): string {
  * Figma 51 · Emergency Contacts (296:3169).
  */
 export function EmergencyContactsScreen() {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const Pressable = usePressablePrimitive();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { data: contacts, isPending, isError, refetch } = useEmergencyContacts();
+  const { data: contacts, isError, refetch } = useEmergencyContacts();
   const deleteContact = useDeleteEmergencyContact();
 
   const confirmDelete = useCallback(

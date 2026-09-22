@@ -1,4 +1,4 @@
-import type { PricingEstimateRequest, PricingEstimateResponse } from '@towing/api-contracts';
+import type { PricingEstimateResponse } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import type { PricingDataSource } from './pricingDataSource';
 

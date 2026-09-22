@@ -42,7 +42,8 @@ jest.mock('@/lib/env', () => {
 });
 
 function loadStore() {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+   
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose; see the comment above
   return require('./recentPlacesStore') as typeof import('./recentPlacesStore');
 }
 

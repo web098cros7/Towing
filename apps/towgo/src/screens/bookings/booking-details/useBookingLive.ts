@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { BookingTracking } from '@towing/api-contracts';
 import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import { trackingKeys } from '@/features/tracking/api/tracking.keys';
 

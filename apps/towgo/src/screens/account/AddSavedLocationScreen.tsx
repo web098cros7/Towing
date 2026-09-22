@@ -87,7 +87,7 @@ export function AddSavedLocationScreen() {
     }
   }, [existing, seeded]);
 
-  const useCurrentLocation = async () => {
+  const resolveCurrentLocation = async () => {
     setLocating(true);
     setLocationDenied(false);
     try {
@@ -120,8 +120,8 @@ export function AddSavedLocationScreen() {
 
   // A create screen defaults to the device fix so most saves need zero manual location work.
   useEffect(() => {
-    if (!locationId) useCurrentLocation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!locationId) resolveCurrentLocation();
+     
   }, [locationId]);
 
   const canSave = address.trim().length > 0;
@@ -284,7 +284,7 @@ export function AddSavedLocationScreen() {
               size={40}
               iconSize={24}
               accessibilityLabel="Use current location"
-              onPress={useCurrentLocation}
+              onPress={resolveCurrentLocation}
               disabled={locating}
             />
           </View>

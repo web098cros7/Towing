@@ -86,7 +86,7 @@ export function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   const pickup = useLocationStore((s) => s.pickup);
-  const useCurrentLocation = useLocationStore((s) => s.useCurrentLocation);
+  const resolveCurrentLocation = useLocationStore((s) => s.resolveCurrentLocation);
   const setServiceSlug = useBookingStore((s) => s.setServiceSlug);
 
   // Always a partner once the pickup is known: the design never drops the group.
@@ -142,14 +142,14 @@ export function HomeScreen() {
   const useMyLocation = useCallback(() => {
     // Resolves the device fix as pickup (permission prompt included) while
     // step 10 opens; the location store feeds that screen's Pickup field.
-    void useCurrentLocation();
+    void resolveCurrentLocation();
     navigation.navigate('BookLocation');
-  }, [navigation, useCurrentLocation]);
+  }, [navigation, resolveCurrentLocation]);
 
   const recenter = useCallback(() => {
-    void useCurrentLocation();
+    void resolveCurrentLocation();
     map.current?.frame(true);
-  }, [useCurrentLocation]);
+  }, [resolveCurrentLocation]);
 
   const openService = useCallback(
     (slug: string) => {

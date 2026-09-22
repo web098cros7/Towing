@@ -11,8 +11,6 @@ import {
   MiBookingCard,
   MiButton,
   MiColorIcon,
-  MiMenuCard,
-  MiMenuRow,
   MiNavBar,
   MiScreen,
   MiText,

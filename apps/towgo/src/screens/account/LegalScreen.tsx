@@ -141,7 +141,9 @@ export function LegalScreen() {
   // sections below rather than to an empty screen — a user being asked to
   // accept terms must be able to read them.
   const legal = useContentPages('legal');
-  const legalPages = legal.data?.items ?? [];
+  // Memoised for the same reason as `serverItems` in Help Centre: an inline
+  // `?? []` is a new array each render, which defeats every `useMemo` below.
+  const legalPages = useMemo(() => legal.data?.items ?? [], [legal.data?.items]);
 
   const privacyPage = useMemo(
     () => legalPages.find((p) => p.slug.toLowerCase().includes('privacy')) ?? null,

@@ -70,7 +70,7 @@ const CURVE_STEPS = 12;
 type Pt = readonly [number, number];
 
 /** The path as points from the customer's dot, x east and y NORTH, curves sampled smoothly. */
-const DESIGN_ROUTE: ReadonlyArray<Pt> = (() => {
+const DESIGN_ROUTE: readonly Pt[] = (() => {
   const up = (x: number, y: number): Pt => [x, ROUTE_END.y - y];
   const points: Pt[] = [up(0, 85.8), up(22.7, 72.5), up(117.7, 45.5)];
   const cubic = (p0: Pt, p1: Pt, p2: Pt, p3: Pt) => {

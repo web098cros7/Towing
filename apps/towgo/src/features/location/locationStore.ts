@@ -11,15 +11,22 @@ type LocationState = {
   status: LocationStatus;
   pickup: PickupLocation;
   setPickup: (pickup: PickupLocation) => void;
-  /** Resolve the device GPS as pickup, subject to the OS permission prompt. */
-  useCurrentLocation: () => Promise<void>;
+  /**
+   * Resolve the device GPS as pickup, subject to the OS permission prompt.
+   *
+   * NOT named `useCurrentLocation`. It is a store action, not a hook, and the
+   * `use` prefix made both React's lint rule and a reader believe otherwise —
+   * calling it inside a `useCallback` read as a hook in a callback, which is
+   * the one thing hooks may never do.
+   */
+  resolveCurrentLocation: () => Promise<void>;
 };
 
 export const useLocationStore = create<LocationState>((set) => ({
   status: 'ready',
   pickup: DEFAULT_PICKUP,
   setPickup: (pickup) => set({ pickup }),
-  useCurrentLocation: async () => {
+  resolveCurrentLocation: async () => {
     set({ status: 'locating' });
 
     const permission = await Location.requestForegroundPermissionsAsync();

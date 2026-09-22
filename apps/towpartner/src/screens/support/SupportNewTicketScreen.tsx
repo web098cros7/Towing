@@ -3,7 +3,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Pressable as RNPressable,
   ScrollView,
   TextInput,
   View,
@@ -22,7 +21,7 @@ import type { RootStackParamList } from '@/navigation/types';
 const HAIRLINE = '#E5E7EB';
 const INK_SOFT = '#4B5563';
 
-const CATEGORIES: Array<{ value: SupportTicketCategory; label: string }> = [
+const CATEGORIES: { value: SupportTicketCategory; label: string }[] = [
   { value: 'booking', label: 'A job' },
   { value: 'payment', label: 'Payment' },
   { value: 'kyc', label: 'Documents' },

@@ -10,7 +10,7 @@ export type VehicleClass = NonNullable<DriverCapabilitiesUpdate['vehicleClass']>
  * in `zod` here just to read `.options` off it isn't worth a new app
  * dependency for two literals. Update both if the schema's enum ever changes.
  */
-export const VEHICLE_CLASS_OPTIONS: ReadonlyArray<{ value: VehicleClass; label: string }> = [
+export const VEHICLE_CLASS_OPTIONS: readonly { value: VehicleClass; label: string }[] = [
   { value: 'wheel_lift', label: 'Wheel Lift' },
   { value: 'flatbed', label: 'Flatbed' },
 ];

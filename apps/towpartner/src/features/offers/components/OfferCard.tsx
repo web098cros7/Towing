@@ -230,7 +230,7 @@ export function OfferCard({
         onPress={onAccept}
         accessibilityRole="button"
         accessibilityLabel="Accept job"
-        style={({ pressed }) => ({
+        style={() => ({
           backgroundColor: driverColors.amber,
           borderRadius: 11,
           paddingVertical: 14,

@@ -2,7 +2,6 @@ import { Image } from 'react-native';
 import {
   encodePolyline,
   type BookingShareResponse,
-  type BookingTracking,
   type CallContact,
   type CancellationQuote,
 } from '@towing/api-contracts';

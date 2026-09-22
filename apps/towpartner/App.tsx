@@ -6,9 +6,6 @@ import { RootNavigator } from '@/navigation/RootNavigator';
 import { initOnlineManager } from '@/lib/network/onlineManager';
 import { env } from '@/lib/env';
 
-// Bridge connectivity into TanStack Query once, at module load.
-initOnlineManager();
-
 /**
  * IMPORTED FOR ITS SIDE EFFECT, and that is the whole point.
  *
@@ -21,6 +18,9 @@ initOnlineManager();
  * registration depend on which screen the app happened to open.
  */
 import '@/lib/location/driverLocationService';
+
+// Bridge connectivity into TanStack Query once, at module load.
+initOnlineManager();
 
 /**
  * Tells `@towing/ui` whether `<MapPreview />` can render a real map (Phase 16).

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useTheme } from '@towing/theme';
 import { Screen, Text, Skeleton, ErrorState, OfflineBanner } from '@towing/ui';
 import { ClipboardList, Wallet, Star, IndianRupee, CarFront, User, RefreshCw } from '@/icons';
 import { DriverHeader } from '@/components/DriverHeader';
@@ -36,7 +35,6 @@ const DARK_ICON = '#1F2937';
 const INDIGO_ICON = '#312E81';
 
 export function HomeScreen() {
-  const theme = useTheme();
   const online = useOnlineStatus();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isOnline = useDriverStatusStore((s) => s.isOnline);

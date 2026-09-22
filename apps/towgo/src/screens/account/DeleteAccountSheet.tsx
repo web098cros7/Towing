@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { MiButton, MiColorIcon, MiSheet, MiText, mitowColors, mitowRadii } from '@/design';
+import { MiButton, MiColorIcon, MiSheet, MiText, mitowColors } from '@/design';
 
 /**
  * Figma 57 · Delete Account — bottom sheet `298:3705`.

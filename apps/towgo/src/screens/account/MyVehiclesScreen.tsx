@@ -1,10 +1,9 @@
 import React from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, ScrollView, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePressablePrimitive } from '@towing/ui';
-import { ErrorState } from '@towing/ui';
+import { usePressablePrimitive , ErrorState } from '@towing/ui';
 import { useTheme } from '@towing/theme';
 import type { VehicleCategory } from '@towing/api-contracts';
 import {
@@ -16,7 +15,6 @@ import {
   MiLineIcon,
   mitowColors,
   mitowLayout,
-  mitowRadii,
   mitowShadows,
 } from '@/design';
 import { useVehicles } from '@/features/account/api/vehicles.queries';

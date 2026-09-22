@@ -5,7 +5,7 @@ import type { LatLng } from '@/types/geo';
  * The device position for screen 13's Locate me, or null when permission is
  * refused or no fix is available (the design draws no state for either).
  *
- * Read here rather than through `useLocationStore.useCurrentLocation`, which
+ * Read here rather than through `useLocationStore.resolveCurrentLocation`, which
  * also rewrites the store's pickup ("Current Location") and status that other
  * screens read. Locate me only moves this screen's camera.
  */

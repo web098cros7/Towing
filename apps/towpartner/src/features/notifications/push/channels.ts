@@ -42,6 +42,7 @@ function notificationsModule(): NotificationsModule | null {
   if (isExpoGo()) return null;
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose; see the comment above
     return require('expo-notifications') as NotificationsModule;
   } catch {
     return null;

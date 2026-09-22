@@ -54,7 +54,7 @@ export function PersonalInformationScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const Pressable = usePressablePrimitive();
-  const { data: profile, isPending, isError, refetch } = useProfile();
+  const { data: profile, isError, refetch } = useProfile();
   const updateProfile = useUpdateProfile();
   const uploadPhoto = useUploadProfilePhoto();
 

@@ -1,7 +1,6 @@
 import type {
   SupportTicketCreateRequest,
   SupportTicketDetail,
-  SupportTicketSummary,
   SupportTicketsResponse,
 } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';

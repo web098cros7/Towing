@@ -25,11 +25,11 @@ import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { useLineBox } from '../paymentDisplay';
 
 /** Methods `239:723`, in drawn order: Icon#238:15 and Subtitle#238:12 VERBATIM (titles: labels.ts). */
-const METHOD_ROWS: ReadonlyArray<{
+const METHOD_ROWS: readonly {
   kind: PaymentMethodKind;
   icon: MiColorIconName;
   subtitle: string;
-}> = [
+}[] = [
   { kind: 'upi', icon: 'upi', subtitle: 'Pay using any UPI app' },
   { kind: 'card', icon: 'card', subtitle: 'Visa, Mastercard, RuPay' },
   { kind: 'wallet', icon: 'wallet', subtitle: 'Paytm, PhonePe, Amazon Pay' },
@@ -102,7 +102,7 @@ export function PaymentReview({
   /** View Details / Hide Details. */
   onToggleDetails: () => void;
   /** The bill's line items, in order. */
-  bill: ReadonlyArray<PaymentBillLine>;
+  bill: readonly PaymentBillLine[];
   /** The bill's Total value, formatted ("₹1,200"); null = placeholder bar. */
   billTotal: string | null;
   /** The Apply Coupon row. */
@@ -248,7 +248,7 @@ function ServiceSummary({
   price: string | null;
   open: boolean;
   onToggle: () => void;
-  bill: ReadonlyArray<PaymentBillLine>;
+  bill: readonly PaymentBillLine[];
   billTotal: string | null;
 }) {
   const theme = useTheme();
@@ -308,7 +308,7 @@ function BillDetails({
   lines,
   total,
 }: {
-  lines: ReadonlyArray<PaymentBillLine>;
+  lines: readonly PaymentBillLine[];
   total: string | null;
 }) {
   return (

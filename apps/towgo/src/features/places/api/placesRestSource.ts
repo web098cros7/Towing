@@ -1,6 +1,5 @@
 import type { PlaceAutocompleteResponse, PlaceDetail } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
-import type { LatLng } from '@/types/geo';
 import type { PlacesDataSource } from './placesDataSource';
 
 export const placesRestSource: PlacesDataSource = {

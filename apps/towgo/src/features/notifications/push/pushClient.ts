@@ -61,6 +61,7 @@ function notificationsModule(): NotificationsModule | null {
   if (isExpoGo()) return null;
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose; see the comment above
     return require('expo-notifications') as NotificationsModule;
   } catch {
     return null;
@@ -69,6 +70,7 @@ function notificationsModule(): NotificationsModule | null {
 
 function deviceModule(): DeviceModule | null {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose; see the comment above
     return require('expo-device') as DeviceModule;
   } catch {
     return null;
@@ -160,6 +162,7 @@ export async function requestOsPermission(): Promise<PushPermission> {
     // Expo Go on iOS: warnOfExpoGoPushUsage only console.warns there, so the
     // module loads. Used for the permission ONLY; notificationsModule() still
     // returns null in Expo Go, so no listener or token path changes.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose; see the comment above
     const notifications = require('expo-notifications') as NotificationsModule;
     const { status } = await notifications.requestPermissionsAsync();
     return status as PushPermission;

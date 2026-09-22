@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { Image, View } from 'react-native';
-import { ScrollView } from 'react-native';
+import { Image, View , ScrollView } from 'react-native';
+
 import { SvgXml } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';

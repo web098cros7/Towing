@@ -67,6 +67,7 @@ function mintIdempotencyKey(options?: ApiFetchOptions): string | null {
   if (!options?.idempotent) return null;
   // Deferred import: idempotency.ts pulls in expo-crypto, which client.ts's
   // callers don't all need loaded just to make a GET request.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose; see the comment above
   const { newIdempotencyKey } = require('./idempotency') as typeof import('./idempotency');
   return newIdempotencyKey();
 }

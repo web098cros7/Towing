@@ -1,10 +1,9 @@
 import React from 'react';
-import { Linking, Platform, ScrollView, StyleSheet } from 'react-native';
+import { Linking, Platform, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ErrorState, usePressablePrimitive } from '@towing/ui';
-import { useTheme } from '@towing/theme';
+import { ErrorState } from '@towing/ui';
 import {
   MiScreen,
   MiText,

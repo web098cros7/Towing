@@ -1,6 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
-import type { DriverJob } from '@towing/api-contracts';
-import { pushDataPayloadSchema, type PushDataPayload } from '@towing/api-contracts';
+import { pushDataPayloadSchema, type DriverJob, type PushDataPayload } from '@towing/api-contracts';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { kycKeys } from '@/features/kyc/api/kyc.queries';
 import { offersKeys } from '@/features/offers/api/offers.keys';
