@@ -194,13 +194,20 @@ export function ProfileScreen() {
           <MiLineIcon name="chevron-right" size={24} />
         </Pressable>
 
-        {/* MiTow Plus 240:726 */}
+        {/*
+          MiTow Plus 240:726 — DRAWN WITHOUT ITS CHEVRON, deliberately.
+
+          Screen 40 does not exist, and the banner has no `onPress`. With the
+          chevron it read as a row that goes somewhere, so every tap was a tap
+          on nothing. Ehsan's call (23 Sep): keep the idea on the Profile, stop
+          it advertising a destination. The chevron goes back when the
+          subscription does.
+        */}
         <MiInfoBanner
           tone="brand"
           icon="plus-badge"
           title="MiTow Plus"
           subtitle="Get priority service, exclusive offers and more."
-          showChevron
           height={84}
         />
 
