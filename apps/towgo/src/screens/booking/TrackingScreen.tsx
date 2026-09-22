@@ -410,9 +410,8 @@ export function TrackingScreen() {
    * design draws no dialog, warning or error, so none is added: a failed lookup
    * or a missing number leaves the screen as it is (data gap 9).
    *
-   * Message (icon/message) is drawn as opening 22 Chat with Driver on every
-   * screen here: `openDriverChat` opens it in test mode and keeps the messages
-   * app with the live API until a chat backend exists.
+   * Message (icon/message) opens 22 Chat with Driver on every screen here,
+   * through `openDriverChat` — the in-app trip chat, live and in test mode.
    */
   const callDriver = useCallback(async () => {
     try {

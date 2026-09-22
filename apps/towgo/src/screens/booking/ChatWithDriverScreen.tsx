@@ -24,8 +24,9 @@ import { displayDriver } from './tracking/trackingDisplay';
 
 /**
  * Figma 22 · Chat with Driver (`292:2471`), root route `ChatWithDriver { bookingId }`.
- * Opened by every driver Message button through `openDriverChat`, which only comes
- * here in mock mode: there is no chat backend (22 spec, Data gap 1 and Decision 1).
+ * Opened by every driver Message button through `openDriverChat`. Live, it talks to
+ * `bookings/:id/messages` and the `chat:message` socket; the driver replies from
+ * TowPartner's job chat.
  *
  * Pinned top: the Header and, 12 below it, the Trip status strip. Pinned bottom, as
  * one block: the Quick replies row, a 9.6 gap and the Composer. Between them the
