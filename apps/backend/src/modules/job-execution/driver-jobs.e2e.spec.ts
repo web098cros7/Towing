@@ -188,6 +188,62 @@ describe('driver jobs', () => {
       .expect(404);
   });
 
+  it('lets a driver change their own name and email, and nothing else', async () => {
+    const before = await request(app.getHttpServer())
+      .get('/v1/driver/me')
+      .set('Authorization', driverAuth)
+      .expect(200);
+
+    const response = await request(app.getHttpServer())
+      .put('/v1/driver/me')
+      .set('Authorization', driverAuth)
+      .send({ name: 'Ravi Kumar', email: 'ravi@example.com' })
+      .expect(200);
+
+    expectMatchesContract(driverProfileSchema, response.body);
+    expect(response.body.name).toBe('Ravi Kumar');
+
+    // The mobile is the login identity, so no profile edit may move it.
+    expect(response.body.mobile).toBe(before.body.mobile);
+
+    // A field outside the schema is stripped, not honoured — the same rule the
+    // customer's `PUT /v1/me` follows. What matters is that it cannot land.
+    const ignored = await request(app.getHttpServer())
+      .put('/v1/driver/me')
+      .set('Authorization', driverAuth)
+      .send({ mobile: '+919999999999' })
+      .expect(200);
+
+    expect(ignored.body.mobile).toBe(before.body.mobile);
+  });
+
+  it('refuses a photo key that was issued to another driver', async () => {
+    const presign = await request(app.getHttpServer())
+      .post('/v1/driver/photo/presign')
+      .set('Authorization', driverAuth)
+      .expect(200);
+
+    expect(typeof presign.body.key).toBe('string');
+
+    const otherAuth = await driverAuthHeaderFor(app, { driverId: otherDriverId });
+    await request(app.getHttpServer())
+      .post('/v1/driver/photo/confirm')
+      .set('Authorization', otherAuth)
+      .send({ key: presign.body.key })
+      .expect(403);
+
+    // The driver it was minted for can claim it, and reads back fetchable.
+    const confirmed = await request(app.getHttpServer())
+      .post('/v1/driver/photo/confirm')
+      .set('Authorization', driverAuth)
+      .send({ key: presign.body.key })
+      .expect(200);
+
+    expectMatchesContract(driverProfileSchema, confirmed.body);
+    expect(confirmed.body.photoUrl).toBeTruthy();
+    expect(confirmed.body.photoUrl.startsWith('local://')).toBe(false);
+  });
+
   it('returns no truck and no documents for a driver with nothing assigned', async () => {
     const response = await request(app.getHttpServer())
       .get('/v1/driver/truck')

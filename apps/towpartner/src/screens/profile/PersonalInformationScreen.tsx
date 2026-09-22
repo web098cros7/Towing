@@ -1,27 +1,89 @@
-import React from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Image, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Card, ErrorState, Screen, Skeleton, Text } from '@towing/ui';
+import { Button, Card, ErrorState, Screen, Skeleton, Text } from '@towing/ui';
+import { Pressable } from '@/motion';
 import { RefreshCw } from '@/icons';
 import { DriverHeader } from '@/components/DriverHeader';
-import { useDriverMe } from '@/features/profile/api/profile.queries';
+import { driverColors } from '@/theme/driverColors';
+import {
+  useDriverMe,
+  useUpdateDriverMe,
+  useUploadDriverPhoto,
+} from '@/features/profile/api/profile.queries';
+import { DocPickCancelled } from '@/features/kyc/api/kyc.queries';
 import type { RootStackParamList } from '@/navigation/types';
 
 const HAIRLINE = '#E5E7EB';
 const INK_SOFT = '#4B5563';
 
 /**
- * The driver's own record, read-only.
+ * The driver's own record.
  *
- * NOT EDITABLE, deliberately. Name, mobile and truck are the identity the
- * platform pays against and the fleet assigns — a driver editing their own
- * plate would break the assignment the fleet console made. The last line says
- * where to go instead, which is the only honest answer this screen can give.
+ * PARTLY EDITABLE. Name, email and photo are the driver's own details and
+ * they may change them here — the server exposes `PUT driver/me` and the
+ * photo presign/confirm pair for exactly those three fields.
+ *
+ * STILL NOT EDITABLE, deliberately: the mobile (it is the login, so changing
+ * it is an identity change, not a profile edit) and the truck, its plate and
+ * its papers (the fleet assigns and renews those from the MiTow console — a
+ * driver editing their own plate would break the assignment the fleet made).
+ * The closing line says where to go for those.
  */
 export function PersonalInformationScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: me, isPending, isError, refetch } = useDriverMe();
+
+  const updateMe = useUpdateDriverMe();
+  const uploadPhoto = useUploadDriverPhoto();
+
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [nameDirty, setNameDirty] = useState(false);
+  const [emailDirty, setEmailDirty] = useState(false);
+
+  // Seed from the query only when the field is not dirty, so a refetch does
+  // not clobber what the driver is typing mid-edit.
+  useEffect(() => {
+    if (!me) return;
+    if (!nameDirty) setName(me.name ?? '');
+    if (!emailDirty) setEmail(me.email ?? '');
+  }, [me, nameDirty, emailDirty]);
+
+  const trimmedName = name.trim();
+  const trimmedEmail = email.trim();
+  const changed =
+    trimmedName !== (me?.name ?? '') || trimmedEmail !== (me?.email ?? '');
+  const canSave = changed && trimmedName.length > 0 && !updateMe.isPending;
+
+  const onSave = () => {
+    updateMe.mutate(
+      { name: trimmedName, email: trimmedEmail || null },
+      {
+        onSuccess: () => {
+          setNameDirty(false);
+          setEmailDirty(false);
+          Alert.alert('Saved', 'Your details are up to date.');
+        },
+        onError: () => {
+          Alert.alert("Couldn't save", 'Try again in a moment.');
+        },
+      },
+    );
+  };
+
+  const onChangePhoto = () => {
+    uploadPhoto.mutate(undefined, {
+      onError: (error) => {
+        if (error instanceof DocPickCancelled) return;
+        Alert.alert(
+          'Could not update your photo',
+          error instanceof Error ? error.message : 'Try again in a moment.',
+        );
+      },
+    });
+  };
 
   return (
     <Screen scroll edges={['top']} contentContainerStyle={{ paddingBottom: 28 }}>
@@ -43,8 +105,102 @@ export function PersonalInformationScreen() {
               <Text weight="medium" style={{ fontSize: 15, lineHeight: 21, marginBottom: 4 }}>
                 You
               </Text>
-              <InfoRow label="Name" value={me.name ?? '—'} />
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: HAIRLINE,
+                }}
+              >
+                {me.photoUrl ? (
+                  <Image
+                    source={{ uri: me.photoUrl }}
+                    style={{ width: 64, height: 64, borderRadius: 32 }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 32,
+                      backgroundColor: driverColors.avatarRing,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 24, lineHeight: 30 }}>
+                      {(me.name ?? '?').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <Pressable
+                  haptic="light"
+                  onPress={onChangePhoto}
+                  disabled={uploadPhoto.isPending}
+                >
+                  <Text style={{ fontSize: 14, lineHeight: 20, color: driverColors.accent }}>
+                    {uploadPhoto.isPending ? 'Uploading…' : 'Change photo'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <EditableRow label="Name">
+                <TextInput
+                  value={name}
+                  onChangeText={(value) => {
+                    setName(value);
+                    setNameDirty(true);
+                  }}
+                  maxLength={120}
+                  autoCapitalize="words"
+                  style={{
+                    flex: 1,
+                    fontSize: 15,
+                    lineHeight: 21,
+                    textAlign: 'right',
+                    paddingVertical: 0,
+                  }}
+                />
+              </EditableRow>
+
+              <EditableRow label="Email">
+                <TextInput
+                  value={email}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    setEmailDirty(true);
+                  }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="Add an email (optional)"
+                  placeholderTextColor={INK_SOFT}
+                  style={{
+                    flex: 1,
+                    fontSize: 15,
+                    lineHeight: 21,
+                    textAlign: 'right',
+                    paddingVertical: 0,
+                  }}
+                />
+              </EditableRow>
+
               <InfoRow label="Mobile" value={me.mobile} />
+              <Text
+                style={{
+                  fontSize: 12,
+                  lineHeight: 17,
+                  color: INK_SOFT,
+                  paddingBottom: 10,
+                }}
+              >
+                Your mobile is your login. Contact support to change it.
+              </Text>
+
               <InfoRow
                 label="Member since"
                 value={new Date(me.memberSince).toLocaleDateString('en-IN', {
@@ -57,6 +213,18 @@ export function PersonalInformationScreen() {
                 label="Documents"
                 value={me.kycStatus === 'approved' ? 'Verified' : capitalise(me.kycStatus)}
               />
+
+              {changed ? (
+                <View style={{ paddingTop: 14 }}>
+                  <Button
+                    label="Save"
+                    fullWidth
+                    onPress={onSave}
+                    disabled={!canSave}
+                    loading={updateMe.isPending}
+                  />
+                </View>
+              ) : null}
             </Card>
 
             <Card padding={18} style={{ borderRadius: 20, borderColor: HAIRLINE }}>
@@ -90,7 +258,8 @@ export function PersonalInformationScreen() {
             </Card>
 
             <Text style={{ fontSize: 13, lineHeight: 19, color: INK_SOFT, paddingHorizontal: 4 }}>
-              To change these details, contact MiTow support from Help & Support.
+              Your truck and its papers are set by your fleet from the MiTow console. Contact MiTow
+              support from Help & Support for anything else.
             </Text>
           </>
         )}
@@ -118,6 +287,25 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     >
       <Text style={{ fontSize: 13, lineHeight: 18, color: INK_SOFT }}>{label}</Text>
       <Text style={{ fontSize: 15, lineHeight: 21 }}>{value}</Text>
+    </View>
+  );
+}
+
+function EditableRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: HAIRLINE,
+        gap: 12,
+      }}
+    >
+      <Text style={{ fontSize: 13, lineHeight: 18, color: INK_SOFT }}>{label}</Text>
+      {children}
     </View>
   );
 }

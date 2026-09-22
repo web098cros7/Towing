@@ -55,11 +55,12 @@ export function useSubmitKyc() {
 }
 
 /** Backend's raw-PUT size cap (`FilesController.MAX_UPLOAD_BYTES`) — compress comfortably under it. */
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
-class DocPickCancelled extends Error {}
+/** Callers check `error instanceof DocPickCancelled` to no-op a cancelled picker instead of surfacing a toast. */
+export class DocPickCancelled extends Error {}
 
-async function pickAndCompress(): Promise<{ uri: string; blob: Blob }> {
+export async function pickAndCompress(): Promise<{ uri: string; blob: Blob }> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
     throw new Error('Photo library access is needed to upload this document.');
@@ -111,6 +112,3 @@ export function useUploadDocument() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: kycKeys.status() }),
   });
 }
-
-/** Callers check `error instanceof DocPickCancelled` to no-op a cancelled picker instead of surfacing a toast. */
-export { DocPickCancelled };

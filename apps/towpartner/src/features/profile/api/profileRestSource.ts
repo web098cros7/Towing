@@ -1,4 +1,9 @@
-import type { DriverProfile as DriverMe, DriverTruck } from '@towing/api-contracts';
+import type {
+  DriverPhotoPresignResponse,
+  DriverProfile as DriverMe,
+  DriverProfileUpdate,
+  DriverTruck,
+} from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import type { ProfileDataSource } from './profileDataSource';
 import type { DriverProfile } from '../types';
@@ -21,6 +26,26 @@ export const profileRestSource: ProfileDataSource = {
 
   async getTruck(): Promise<DriverTruck> {
     return apiFetch<DriverTruck>('driver/truck');
+  },
+
+  async updateMe(patch: DriverProfileUpdate): Promise<DriverMe> {
+    return apiFetch<DriverMe>('driver/me', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+  },
+
+  async presignPhoto(): Promise<DriverPhotoPresignResponse> {
+    return apiFetch<DriverPhotoPresignResponse>('driver/photo/presign', {
+      method: 'POST',
+    });
+  },
+
+  async confirmPhoto(key: string): Promise<DriverMe> {
+    return apiFetch<DriverMe>('driver/photo/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    });
   },
 };
 

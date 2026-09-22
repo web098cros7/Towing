@@ -1,5 +1,10 @@
 import { env } from '@/lib/env';
-import type { DriverProfile as DriverMe, DriverTruck } from '@towing/api-contracts';
+import type {
+  DriverPhotoPresignResponse,
+  DriverProfile as DriverMe,
+  DriverProfileUpdate,
+  DriverTruck,
+} from '@towing/api-contracts';
 import type { DriverProfile } from '../types';
 import { profileMockSource } from './profileMockSource';
 import { profileRestSource } from './profileRestSource';
@@ -15,6 +20,10 @@ export interface ProfileDataSource {
   getMe(): Promise<DriverMe>;
   /** The driver's truck and its papers, for Insurance. */
   getTruck(): Promise<DriverTruck>;
+  /** The three fields a driver may change about themselves. */
+  updateMe(patch: DriverProfileUpdate): Promise<DriverMe>;
+  presignPhoto(): Promise<DriverPhotoPresignResponse>;
+  confirmPhoto(key: string): Promise<DriverMe>;
 }
 
 export const profileDataSource: ProfileDataSource = env.useMocks

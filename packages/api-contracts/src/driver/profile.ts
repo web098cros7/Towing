@@ -17,6 +17,8 @@ export const driverProfileSchema = z.object({
   id: z.uuid(),
   name: z.string().nullable(),
   mobile: z.string(),
+  /** Optional, and the driver's own to set — MiTow never requires one. */
+  email: z.string().nullable(),
   photoUrl: z.string().nullable(),
   rating: z.number().nullable(),
   totalTrips: z.number().int().nonnegative(),
@@ -73,3 +75,31 @@ export type DriverJobHistoryResponse = z.infer<typeof driverJobHistoryResponseSc
 // import path; the shape is the same DriverJob the execution routes return.
 export { driverJobPaymentSchema };
 export type { DriverJobPayment } from './jobs';
+
+/**
+ * `PUT /v1/driver/me` — the only fields a driver may change about themselves.
+ *
+ * Deliberately absent: `mobile` (it is the login identity — changing it is an
+ * auth flow, not a profile edit), the truck and its plate/papers (the fleet
+ * assigns and renews those from the console; a driver editing their own plate
+ * would contradict the assignment the fleet made), and
+ * `vehicleClass`/`longDistanceEnabled` (already editable at
+ * `PUT driver/capabilities`). KYC status and documents are an admin decision.
+ */
+export const driverProfileUpdateSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  email: z.string().email().nullable().optional(),
+});
+export type DriverProfileUpdate = z.infer<typeof driverProfileUpdateSchema>;
+
+/** `POST /v1/driver/photo/presign` — a slot to PUT the profile photo bytes to. */
+export const driverPhotoPresignResponseSchema = z.object({
+  uploadUrl: z.string(),
+  key: z.string(),
+  expiresAt: z.iso.datetime(),
+});
+export type DriverPhotoPresignResponse = z.infer<typeof driverPhotoPresignResponseSchema>;
+
+/** `POST /v1/driver/photo/confirm` — the key from the presign response, once uploaded. */
+export const driverPhotoConfirmSchema = z.object({ key: z.string().min(1).max(300) });
+export type DriverPhotoConfirm = z.infer<typeof driverPhotoConfirmSchema>;

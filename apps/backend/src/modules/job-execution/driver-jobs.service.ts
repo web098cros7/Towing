@@ -4,10 +4,15 @@ import type {
   DriverJobHistoryItem,
   DriverJobHistoryQuery,
   DriverJobHistoryResponse,
+  DriverPhotoPresignResponse,
   DriverProfile,
+  DriverProfileUpdate,
   DriverTruck,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
+import { keyFromFileUrl } from '../../common/storage/file-url';
+import { PresignedUploadService } from '../../common/storage/presigned-upload.helper';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { DB, type Database } from '../../db/db.module';
 import { bookings } from '../../db/schema/bookings';
 import { drivers } from '../../db/schema/drivers';
@@ -21,6 +26,11 @@ import { JobExecutionRepo } from './job-execution.repo';
 /** Insurance leads: an expired one is what makes the truck `non_compliant` and stops offers. */
 const DOC_ORDER = ['insurance', 'rc', 'puc', 'permit'] as const;
 
+export const DRIVER_PHOTO_KEY_PREFIX = 'driver-photos';
+
+/** One day — long enough for a slow client to render the avatar on next launch. */
+const PHOTO_GET_TTL_SECONDS = 86_400;
+
 /**
  * The driver's own card and their job history — the two reads the driver app's
  * Home, Jobs tab, Profile and Personal Information screens need and which had
@@ -33,6 +43,8 @@ const DOC_ORDER = ['insurance', 'rc', 'puc', 'permit'] as const;
 export class DriverJobsService {
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(STORAGE) private readonly storage: StoragePort,
+    private readonly uploads: PresignedUploadService,
     private readonly repo: JobExecutionRepo,
   ) {}
 
@@ -42,6 +54,7 @@ export class DriverJobsService {
         id: drivers.id,
         name: drivers.name,
         mobile: drivers.mobile,
+        email: drivers.email,
         photoUrl: drivers.photoUrl,
         rating: drivers.rating,
         totalTrips: drivers.totalTrips,
@@ -69,7 +82,8 @@ export class DriverJobsService {
       id: row.id,
       name: row.name,
       mobile: row.mobile,
-      photoUrl: row.photoUrl,
+      email: row.email,
+      photoUrl: await this.readablePhotoUrl(row.photoUrl),
       rating: row.rating === null ? null : Number(row.rating),
       totalTrips: row.totalTrips,
       acceptanceRatePct: row.acceptanceRate === null ? null : Number(row.acceptanceRate),
@@ -91,6 +105,64 @@ export class DriverJobsService {
             }
           : null,
     };
+  }
+
+  async updateProfile(driverId: string, body: DriverProfileUpdate): Promise<DriverProfile> {
+    const [updated] = await this.db
+      .update(drivers)
+      .set({
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.email !== undefined ? { email: body.email } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(drivers.id, driverId))
+      .returning({ id: drivers.id });
+
+    if (!updated) throw ApiException.notFound('Driver not found');
+    // One shape for the client, and it re-reads the fleet and truck joins the
+    // update does not touch.
+    return this.profile(driverId);
+  }
+
+  /** Mints a slot for the driver's own profile photo. */
+  presignPhoto(driverId: string): Promise<DriverPhotoPresignResponse> {
+    return this.uploads.presign(DRIVER_PHOTO_KEY_PREFIX, driverId, 'photo');
+  }
+
+  /**
+   * Records the uploaded photo. The key must be one this service minted for
+   * THIS driver — a key from someone else's presign response would otherwise
+   * let a driver claim another driver's upload as their avatar.
+   */
+  async confirmPhoto(driverId: string, key: string): Promise<DriverProfile> {
+    if (!this.uploads.isOwnKey(key, DRIVER_PHOTO_KEY_PREFIX, driverId, 'photo')) {
+      throw ApiException.forbidden('This key was not issued to you');
+    }
+
+    const [updated] = await this.db
+      .update(drivers)
+      .set({ photoUrl: `local://${key}`, updatedAt: new Date() })
+      .where(eq(drivers.id, driverId))
+      .returning({ id: drivers.id });
+
+    if (!updated) throw ApiException.notFound('Driver not found');
+    return this.profile(driverId);
+  }
+
+  /**
+   * `photoUrl` is stored as `local://<key>`; the client needs a fetchable URL,
+   * so a stored local key is presigned on read. Any other non-null value
+   * (an external URL, a future `s3://…`) is passed through untouched.
+   */
+  private async readablePhotoUrl(photoUrl: string | null): Promise<string | null> {
+    if (photoUrl && photoUrl.startsWith('local://')) {
+      const presigned = await this.storage.presignGet(
+        keyFromFileUrl(photoUrl),
+        PHOTO_GET_TTL_SECONDS,
+      );
+      return presigned.url;
+    }
+    return photoUrl;
   }
 
   async truck(driverId: string): Promise<DriverTruck> {

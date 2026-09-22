@@ -1,10 +1,18 @@
 import { env } from '@/lib/env';
-import type { DriverProfile as DriverMe, DriverTruck } from '@towing/api-contracts';
+import type {
+  DriverPhotoPresignResponse,
+  DriverProfile as DriverMe,
+  DriverProfileUpdate,
+  DriverTruck,
+} from '@towing/api-contracts';
 import type { ProfileDataSource } from './profileDataSource';
 import type { DriverProfile } from '../types';
 import { profileMock } from '../mocks/profile.mock';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Edits made through the mock stick across reads, so a save is visible on refetch. */
+let mockOverrides: Partial<DriverMe> = {};
 
 /**
  * Mock profile with realistic latency. `EXPO_PUBLIC_MOCK_PROFILE_STATE`
@@ -33,6 +41,36 @@ export const profileMockSource: ProfileDataSource = {
       throw new Error('Failed to load profile');
     }
     return mockTruck();
+  },
+
+  async updateMe(patch: DriverProfileUpdate): Promise<DriverMe> {
+    await delay(500);
+    if (env.mockProfileState === 'error') {
+      throw new Error('Failed to load profile');
+    }
+    mockOverrides = { ...mockOverrides, ...patch };
+    return mockMe();
+  },
+
+  async presignPhoto(): Promise<DriverPhotoPresignResponse> {
+    await delay(500);
+    if (env.mockProfileState === 'error') {
+      throw new Error('Failed to load profile');
+    }
+    return {
+      uploadUrl: 'mock://driver-photos/photo',
+      key: 'mock-photo-key',
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+  },
+
+  async confirmPhoto(_key: string): Promise<DriverMe> {
+    await delay(500);
+    if (env.mockProfileState === 'error') {
+      throw new Error('Failed to load profile');
+    }
+    mockOverrides.photoUrl = 'https://mock.towing.dev/driver-photo.jpg';
+    return mockMe();
   },
 };
 
@@ -99,6 +137,7 @@ function mockMe(): DriverMe {
     id: '11111111-1111-4111-8111-111111111111',
     name: profileMock.name,
     mobile: profileMock.phone,
+    email: null,
     photoUrl: profileMock.avatar,
     rating: profileMock.stats.rating,
     totalTrips: profileMock.stats.jobsCompleted,
@@ -114,5 +153,6 @@ function mockMe(): DriverMe {
       model: 'Ultra',
       vehicleClass: 'flatbed',
     },
+    ...mockOverrides,
   };
 }
