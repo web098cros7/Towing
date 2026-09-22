@@ -29,22 +29,36 @@ function sinceMs(at: string | undefined): number {
  *
  * A later `null` ETA keeps the last known estimate; before any, `null`, and the
  * row's slot holds its placeholder bar.
+ *
+ * A CHANGE OF LEG DROPS THE ESTIMATE rather than carrying it over, for the same
+ * reason `useEtaMinutes` clears its count: the instant a tow starts, the
+ * arrival time in hand is the one computed for the pickup, and 25's "Drop at"
+ * would confidently name it. The row holds its placeholder until the server
+ * sends an estimate for the journey now under way.
  */
 export function useEstimatedArrival(tracking: BookingTracking | undefined): string | null {
   const etaSeconds = tracking?.etaSeconds ?? null;
   const at = tracking?.at;
+  const status = tracking?.status;
   const [arrivalMs, setArrivalMs] = useState<number | null>(() =>
     etaSeconds === null ? null : sinceMs(at) + etaSeconds * 1000,
   );
   /** The `at` and ETA last read, to tell a poll from a socket patch. */
   const seen = useRef({ at, etaSeconds });
+  /** The status the current estimate was computed for. */
+  const estimatedFor = useRef(status);
   useEffect(() => {
     const previous = seen.current;
     seen.current = { at, etaSeconds };
+    if (estimatedFor.current !== status) {
+      estimatedFor.current = status;
+      setArrivalMs(null);
+      return;
+    }
     if (etaSeconds === null) return;
     if (at !== previous.at) setArrivalMs(sinceMs(at) + etaSeconds * 1000);
     else if (etaSeconds !== previous.etaSeconds) setArrivalMs(Date.now() + etaSeconds * 1000);
-  }, [at, etaSeconds]);
+  }, [at, etaSeconds, status]);
 
   return arrivalMs === null
     ? null

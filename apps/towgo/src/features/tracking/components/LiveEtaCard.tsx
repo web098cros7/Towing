@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View } from 'react-native';
 import type { BookingTracking } from '@towing/api-contracts';
 import { MiText } from '@/design';
+import { useEtaMinutes } from '@/features/tracking/hooks/useEtaMinutes';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { trackingDesignFor } from '@/screens/booking/tracking/trackingDisplay';
 
@@ -35,24 +36,7 @@ const TITLE_BOX_WIDTH = 187;
 const LEGACY_TITLE = 'Your trip';
 
 export function LiveEtaCard({ tracking }: { tracking: BookingTracking | undefined }) {
-  const etaSeconds = tracking?.etaSeconds ?? null;
-  const [remaining, setRemaining] = useState<number | null>(etaSeconds);
-
-  // Re-seed on every new server value; a `null` keeps the last known count.
-  useEffect(() => {
-    if (etaSeconds !== null) setRemaining(etaSeconds);
-  }, [etaSeconds, tracking?.at]);
-
-  const counting = remaining !== null;
-  useEffect(() => {
-    if (!counting) return;
-    const timer = setInterval(() => {
-      setRemaining((previous) => (previous === null ? null : Math.max(0, previous - 1)));
-    }, 1_000);
-    return () => clearInterval(timer);
-  }, [counting]);
-
-  const minutes = remaining === null ? null : Math.max(1, Math.round(remaining / 60));
+  const minutes = useEtaMinutes(tracking);
 
   if (trackingDesignFor(tracking?.status) === 'enRoute18') {
     const title = minutes === null ? null : `Arriving in ${minutes} mins`;

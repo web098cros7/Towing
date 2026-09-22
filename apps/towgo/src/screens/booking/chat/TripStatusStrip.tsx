@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { View } from 'react-native';
 import type { BookingTracking, JobStatus } from '@towing/api-contracts';
 import { MiColorIcon, MiText, mitowColors } from '@/design';
+import { useEtaMinutes } from '@/features/tracking/hooks/useEtaMinutes';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 
 /** Figma 22's status label, verbatim, for `assigned` / `en_route`. */
@@ -38,40 +39,11 @@ const OTHER_LABELS: Record<Exclude<JobStatus, 'assigned' | 'en_route'>, string> 
   disputed: 'Trip under review',
 };
 
-/**
- * The same count as 18's heading (`LiveEtaCard`): the server's `etaSeconds`, ticked
- * down locally every second and re-seeded on every server value; a later `null`
- * keeps the last count going. `N = max(1, round(remaining / 60))`, always "mins"
- * (only the plural is drawn, 22 Data gap 5). `null` until an ETA is known.
+/*
+ * The count this strip shows is the shared `useEtaMinutes`. A private copy used
+ * to live here — the only one of the three that noticed a leg change at all,
+ * though it re-seeded from the outgoing leg's payload rather than clearing.
  */
-function useEtaMinutes(tracking: BookingTracking | undefined): number | null {
-  const etaSeconds = tracking?.etaSeconds ?? null;
-  const status = tracking?.status;
-  const [remaining, setRemaining] = useState<number | null>(etaSeconds);
-  const countedStatus = useRef(status);
-
-  useEffect(() => {
-    // A new status starts a new count: `etaSeconds` is the pickup leg, then the
-    // drop leg after `start`, and the two must never run into each other.
-    if (countedStatus.current !== status) {
-      countedStatus.current = status;
-      setRemaining(etaSeconds);
-      return;
-    }
-    if (etaSeconds !== null) setRemaining(etaSeconds);
-  }, [etaSeconds, tracking?.at, status]);
-
-  const counting = remaining !== null;
-  useEffect(() => {
-    if (!counting) return;
-    const timer = setInterval(() => {
-      setRemaining((previous) => (previous === null ? null : Math.max(0, previous - 1)));
-    }, 1_000);
-    return () => clearInterval(timer);
-  }, [counting]);
-
-  return remaining === null ? null : Math.max(1, Math.round(remaining / 60));
-}
 
 /**
  * Trip status `292:2641`: 351 wide, height HUG, brand/yellow-soft, radius 12, padding

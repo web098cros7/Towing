@@ -25,30 +25,11 @@ export function useBookingTracking(bookingId: string, enabled: boolean, live: bo
 
 /**
  * The minute count behind "Arriving in 5 mins" (status card) and "…reach you in
- * about 5 mins." (21's body). ONE count for both, so 20 and 21 always agree.
+ * about 5 mins." (21's body).
  *
- * Exactly 18's heading rule (`LiveEtaCard`): the server's `etaSeconds`, ticked down
- * every second between polls and re-seeded on every new server value; a later
- * `null` keeps the last known count. The design draws only the plural and no
- * "arriving now", so the count floors at 1 and stays "mins". `null` until an ETA
- * is known.
+ * Re-exported, not defined here: three copies of this count had drifted apart —
+ * this one and `LiveEtaCard`'s had no leg reset at all, and `TripStatusStrip`'s
+ * re-seeded from the outgoing leg's payload. One hook now, in the tracking
+ * feature it belongs to.
  */
-export function useEtaMinutes(tracking: BookingTracking | undefined): number | null {
-  const etaSeconds = tracking?.etaSeconds ?? null;
-  const [remaining, setRemaining] = useState<number | null>(etaSeconds);
-
-  useEffect(() => {
-    if (etaSeconds !== null) setRemaining(etaSeconds);
-  }, [etaSeconds, tracking?.at]);
-
-  const counting = remaining !== null;
-  useEffect(() => {
-    if (!counting) return;
-    const timer = setInterval(() => {
-      setRemaining((previous) => (previous === null ? null : Math.max(0, previous - 1)));
-    }, 1_000);
-    return () => clearInterval(timer);
-  }, [counting]);
-
-  return remaining === null ? null : Math.max(1, Math.round(remaining / 60));
-}
+export { useEtaMinutes } from '@/features/tracking/hooks/useEtaMinutes';
