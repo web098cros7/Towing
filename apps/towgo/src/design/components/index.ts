@@ -12,6 +12,7 @@ export { MiMapButton, type MiMapButtonProps } from './MiMapButton';
 export { MiMapCallout, type MiMapCalloutProps, type MiMapCalloutTail } from './MiMapCallout';
 export { MiMapChip, type MiMapChipProps } from './MiMapChip';
 export { MiInfoBanner, type MiInfoBannerProps, type MiInfoBannerTone } from './MiInfoBanner';
+export { MiListSkeleton } from './MiListSkeleton';
 export {
   MiSheet,
   MiSheetPanel,

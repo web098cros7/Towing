@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -10,6 +9,7 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useTheme } from '@towing/theme';
 import { Button, StatusBadge, Text } from '@towing/ui';
+import { MiListSkeleton } from '@/design';
 import { SubScreen } from '@/components/SubScreen';
 import { TextField } from '@/components/TextField';
 import { useReplySupportTicket, useSupportTicket } from '@/features/support/api/support.queries';
@@ -59,9 +59,7 @@ export function TicketThreadScreen() {
   return (
     <SubScreen title={ticket?.subject ?? 'Ticket'} gap={14}>
       {isLoading ? (
-        <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-          <ActivityIndicator color={theme.colors.brand} />
-        </View>
+        <MiListSkeleton rows={4} height={72} />
       ) : isError || !ticket ? (
         <View style={{ gap: 12, paddingVertical: 16 }}>
           <Text color="secondary">We could not load this ticket just now.</Text>

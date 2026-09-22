@@ -1,9 +1,10 @@
 import React from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@towing/theme';
 import { Button, StatusBadge, Text } from '@towing/ui';
+import { MiListSkeleton } from '@/design';
 import { ChevronRight } from '@/icons';
 import { SubScreen } from '@/components/SubScreen';
 import { SettingsList } from '@/components/SettingsList';
@@ -30,9 +31,7 @@ export function MyTicketsScreen() {
   return (
     <SubScreen title="My Tickets" gap={16}>
       {isLoading ? (
-        <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-          <ActivityIndicator color={theme.colors.brand} />
-        </View>
+        <MiListSkeleton rows={3} height={84} />
       ) : isError ? (
         <View style={{ gap: 12, paddingVertical: 16 }}>
           <Text color="secondary">

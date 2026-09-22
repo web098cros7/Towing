@@ -11,6 +11,7 @@ import {
   MiNavBar,
   MiScreen,
   MiText,
+  MiListSkeleton,
   mitowColors,
   mitowLayout,
   mitowRadii,
@@ -236,7 +237,9 @@ export function NotificationsScreen() {
           ) : null}
         </View>
 
-        {query.isPending ? null : query.isError && items.length === 0 ? (
+        {query.isPending ? (
+          <MiListSkeleton rows={4} height={76} />
+        ) : query.isError && items.length === 0 ? (
           <ErrorState
             title="Could not load notifications"
             body="Check your connection and try again."

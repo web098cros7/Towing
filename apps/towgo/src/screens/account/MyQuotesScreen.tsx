@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { Quote } from '@towing/api-contracts';
-import { useTheme } from '@towing/theme';
 import { Button, StatusBadge, Text } from '@towing/ui';
+import { MiListSkeleton } from '@/design';
 import { SubScreen } from '@/components/SubScreen';
 import { SettingsList } from '@/components/SettingsList';
 import { SettingsRow } from '@/components/SettingsRow';
@@ -23,7 +23,6 @@ import { formatPaise, formatRelativeTime } from '@/utils/format';
  * not be able to tell which path created it.
  */
 export function MyQuotesScreen() {
-  const theme = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data, isLoading, isError, refetch, isRefetching } = useMyQuotes();
   const accept = useAcceptQuote();
@@ -52,9 +51,7 @@ export function MyQuotesScreen() {
   return (
     <SubScreen title="My Quotes" gap={16}>
       {isLoading ? (
-        <View style={{ paddingVertical: 32, alignItems: 'center' }}>
-          <ActivityIndicator color={theme.colors.brand} />
-        </View>
+        <MiListSkeleton rows={3} height={96} />
       ) : isError ? (
         <View style={{ gap: 12, paddingVertical: 16 }}>
           <Text color="secondary">

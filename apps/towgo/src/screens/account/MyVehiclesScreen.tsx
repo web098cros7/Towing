@@ -13,6 +13,7 @@ import {
   MiButton,
   MiColorIcon,
   MiLineIcon,
+  MiListSkeleton,
   mitowColors,
   mitowLayout,
   mitowShadows,
@@ -74,7 +75,9 @@ export function MyVehiclesScreen() {
 
         {isError && !vehicles ? (
           <ErrorState title="Couldn't load your vehicles" onRetry={() => refetch()} />
-        ) : isPending ? null : hasVehicles ? (
+        ) : isPending ? (
+          <MiListSkeleton rows={2} height={92} />
+        ) : hasVehicles ? (
           <>
             {/* Figma 294:3036 — Vehicles */}
             <View style={{ gap: 12 }}>
