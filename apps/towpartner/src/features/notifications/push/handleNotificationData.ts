@@ -1,7 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
+import type { DriverJob } from '@towing/api-contracts';
 import { pushDataPayloadSchema, type PushDataPayload } from '@towing/api-contracts';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { kycKeys } from '@/features/kyc/api/kyc.queries';
+import { offersKeys } from '@/features/offers/api/offers.keys';
+import { markJobEnded } from '@/features/offers/store/jobEndedStore';
 import { notificationKeys } from '../api/notifications.keys';
 
 /**
@@ -21,6 +24,14 @@ export function parsePushData(raw: Record<string, unknown>): PushDataPayload | n
   const parsed = pushDataPayloadSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
+
+/**
+ * The statuses that mean the driver is still holding the job. A push that
+ * arrives after the job has already been completed or paid must not overwrite
+ * the completed state with a "cancelled" explanation — the driver finished it,
+ * and the ended store is for jobs that were taken away mid-flight.
+ */
+const ACTIVE_STATUSES = new Set(['assigned', 'en_route', 'arrived', 'in_progress']);
 
 export function applyNotificationData(
   raw: Record<string, unknown>,
@@ -58,6 +69,35 @@ export function applyNotificationData(
     void queryClient.invalidateQueries({ queryKey: kycKeys.all });
     if (data.route) return { kind: 'navigate', route: data.route };
     return { kind: 'none' };
+  }
+
+  /**
+   * THE CUSTOMER CANCELLED THE JOB THE DRIVER IS HOLDING.
+   *
+   * Handled BEFORE the generic `invalidate` branch because the generic branch
+   * only refetches — and a refetch of `driver/jobs/current` returns null, which
+   * the job screen renders as "No active job". That is the wrong sentence: the
+   * driver did not fail to find a job, they had one and the customer took it
+   * back. The ended store carries the reason so the screen can say so.
+   *
+   * The held job is read from the cache rather than assumed: a push can arrive
+   * for a booking the driver already finished (the customer cancelled after
+   * completion, or the push was delayed), and overwriting a completed job with
+   * a cancellation would be a lie. Only an ACTIVE status is treated as "the
+   * driver is holding this".
+   *
+   * `offersKeys.all` is invalidated unconditionally — the jobs list, the
+   * dashboard and the current-job query all need to see the cancellation, and
+   * the driver is free for the next offer either way.
+   */
+  if (data.event === 'job.cancelled') {
+    const held = queryClient.getQueryData<DriverJob | null>(offersKeys.job());
+    if (held && ACTIVE_STATUSES.has(held.status)) {
+      markJobEnded({ bookingId: held.bookingId, reason: 'cancelled' });
+      queryClient.setQueryData<DriverJob | null>(offersKeys.job(), null);
+    }
+    void queryClient.invalidateQueries({ queryKey: offersKeys.all });
+    return { kind: 'navigate', route: 'towpartner://job' };
   }
 
   // `invalidate` is a query-key NAMESPACE the server names — dot-separated so a

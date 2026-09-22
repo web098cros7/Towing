@@ -1,10 +1,10 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Alert, Linking, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '@towing/theme';
-import { Card, EmptyState, ErrorState, Screen, Skeleton, StatusBadge, Text } from '@towing/ui';
-import { MapPin, MessageCircle, Navigation, Phone, RefreshCw, Truck, Lock } from '@/icons';
+import { Button, Card, EmptyState, ErrorState, Screen, Skeleton, StatusBadge, Text } from '@towing/ui';
+import { MapPin, MessageCircle, Navigation, Phone, RefreshCw, Truck, Lock, TriangleAlert } from '@/icons';
 import { DriverHeader } from '@/components/DriverHeader';
 import { Pill } from '@/components/Pill';
 import { useCurrentJob } from '@/features/offers/api/offers.queries';
@@ -13,6 +13,11 @@ import { JobActionRail } from '@/features/offers/components/JobActionRail';
 import { JobMapCard } from '@/features/offers/components/JobMapCard';
 import { WaitingChargeCard } from '@/features/offers/components/WaitingChargeCard';
 import { offersDataSource } from '@/features/offers/api/offersDataSource';
+import {
+  useJobEndedStore,
+  markJobEnded,
+  type JobEndedReason,
+} from '@/features/offers/store/jobEndedStore';
 import { driverColors } from '@/theme/driverColors';
 import { formatPaise } from '@/utils/format';
 import { JOB_STATUS_META, statusBadgeTone } from '@/features/jobs/statusMeta';
@@ -46,6 +51,52 @@ export function AssignedJobScreen() {
   const theme = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: job, isPending, isError, refetch } = useCurrentJob();
+  const ended = useJobEndedStore((s) => s.ended);
+  const clear = useJobEndedStore((s) => s.clear);
+
+  /**
+   * The last ACTIVE job this screen saw.
+   *
+   * The 15 s poll is the only thing that notices a job vanishing when no push
+   * or socket frame arrives — a customer cancelling from a flaky network, an
+   * admin reassigning without the socket connected. When the poll returns null
+   * the screen has no way to know whether the driver finished the job (and
+   * tapped Done) or the job was taken away; the ref is what distinguishes the
+   * two. If it held an id and the job is now null, the job was taken away.
+   */
+  const lastActiveBookingId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (job && ACTIVE_STATUSES.has(job.status)) {
+      lastActiveBookingId.current = job.bookingId;
+    }
+  }, [job]);
+
+  useEffect(() => {
+    // Only when the query has actually settled to "no job" — not while it is
+    // still loading, and not on an error (an error is not a cancellation).
+    if (isPending || isError) return;
+    if (job !== null) return;
+    const previous = lastActiveBookingId.current;
+    if (!previous) return;
+    // A named reason already arrived (push or socket frame) — do not overwrite
+    // it with the poll's vaguer "gone".
+    if (ended) {
+      lastActiveBookingId.current = null;
+      return;
+    }
+    markJobEnded({ bookingId: previous, reason: 'gone' });
+    lastActiveBookingId.current = null;
+  }, [job, isPending, isError, ended]);
+
+  // A new job (different bookingId) means the previous ended reason is stale —
+  // the driver has moved on, and the ended store must not colour the new job's
+  // screen if it ever falls back to the empty state.
+  useEffect(() => {
+    if (job && ended && ended.bookingId !== job.bookingId) {
+      clear();
+    }
+  }, [job, ended, clear]);
 
   /**
    * §9.2.3's call button, through `TelephonyPort` (Phase 18).
@@ -150,14 +201,53 @@ export function AssignedJobScreen() {
         ) : !job ? (
           /*
            * Reachable and NOT an error: the customer cancelled, or an admin
-           * reassigned. Saying "no active job" is the honest answer, and the way
-           * back to work is the home screen.
+           * reassigned. When the ended store knows WHY, say so — "No active
+           * job" is the honest answer to "is there a job?" and a useless answer
+           * to "where did MY job go?". When it does not, the generic empty
+           * state is still the right thing.
            */
-          <EmptyState
-            icon={Truck}
-            title="No active job"
-            body="You're not on a job right now. New requests will appear when you're online."
-          />
+          ended ? (
+            <Card
+              padding={18}
+              style={{
+                borderRadius: 20,
+                borderColor: HAIRLINE,
+                backgroundColor: driverColors.noticeBg,
+                gap: 12,
+              }}
+            >
+              <View style={{ flexDirection: 'row', gap: 11, alignItems: 'flex-start' }}>
+                <TriangleAlert
+                  size={20}
+                  color={driverColors.amber}
+                  strokeWidth={2.2}
+                  style={{ marginTop: 2 }}
+                />
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text weight="medium" style={{ fontSize: 16, lineHeight: 23 }}>
+                    {endedTitle(ended.reason)}
+                  </Text>
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: INK_SOFT }}>
+                    You're free for the next request. If a cancellation fee applies to you, it
+                    shows in Earnings.
+                  </Text>
+                </View>
+              </View>
+              <Button
+                label="Back to home"
+                onPress={() => {
+                  clear();
+                  navigation.navigate('Tabs', { screen: 'Home' });
+                }}
+              />
+            </Card>
+          ) : (
+            <EmptyState
+              icon={Truck}
+              title="No active job"
+              body="You're not on a job right now. New requests will appear when you're online."
+            />
+          )
         ) : (
           <>
             {/* Status + money. The net repeated here on purpose: it is what they
@@ -373,6 +463,29 @@ export function AssignedJobScreen() {
       </View>
     </Screen>
   );
+}
+
+/**
+ * The statuses that mean the driver is still holding the job. Anything else —
+ * completed, paid, cancelled — is not "active" for the purposes of the ref
+ * that distinguishes a finished job from a taken-away one.
+ */
+const ACTIVE_STATUSES = new Set(['assigned', 'en_route', 'arrived', 'in_progress']);
+
+/** The sentence the ended card shows, per reason. */
+function endedTitle(reason: JobEndedReason): string {
+  switch (reason) {
+    case 'cancelled':
+      return 'The customer cancelled this job';
+    case 'reassigned':
+      return 'This job was reassigned';
+    case 'fleet_suspended':
+      return 'Your fleet paused your jobs';
+    case 'gone':
+      return 'This job is no longer yours';
+    case 'unable':
+      return 'You ended this job';
+  }
 }
 
 /** A round icon button with a caption — Call / Navigate. */

@@ -27,6 +27,27 @@ import { presenceDataSource } from './presenceDataSource';
 /** Set once the driver has been online at least once. §22.1's `driver_first_online`. */
 const FIRST_ONLINE_KEY = 'presence.hasBeenOnline';
 
+/**
+ * The driver's INTENT to be online, persisted across restarts.
+ *
+ * NOT THE ONLINE STATE. `isOnline` in the store is the server's answer, and it
+ * is deliberately not persisted — a driver who was online when the app was
+ * killed is not online now, because the server evicted them within the stale
+ * window. What survives is the driver's DECISION: they chose to be online, and
+ * a restart should not silently undo that choice. `resume()` reads this and
+ * re-runs `goOnline`, which is what actually flips the state — after the server
+ * agrees.
+ *
+ * The OS location prompt will not re-show once granted, so `resume()` does not
+ * need to re-run the disclosure: the driver already accepted it the first time.
+ */
+const WANTS_ONLINE_KEY = 'presence.wantsOnline';
+
+/** Whether the driver has expressed an intent to be online that a restart should honour. */
+export function wantsToBeOnline(): boolean {
+  return storage.getString(WANTS_ONLINE_KEY) === '1';
+}
+
 export type GoOnlineFailure =
   | { kind: 'permission-denied' }
   | { kind: 'no-fix' }
@@ -89,6 +110,10 @@ export function usePresence() {
       resetSeq(presence.seq);
       setZoneName(presence.zoneName);
       setOnline(true);
+      // Persist the INTENT, not the state. `isOnline` above is the server's
+      // answer for this session; this key is what `resume()` reads on the next
+      // launch to know the driver wanted to be online.
+      storage.set(WANTS_ONLINE_KEY, '1');
 
       if (presence.pingIntervalMs !== null) {
         await locationService.start(presence.pingIntervalMs);
@@ -147,6 +172,8 @@ export function usePresence() {
     disconnectDriverSocket();
     setOnline(false);
     setZoneName(null);
+    // The driver chose to go offline — a restart must not undo that either.
+    storage.delete(WANTS_ONLINE_KEY);
 
     try {
       await presenceDataSource.goOffline();
@@ -159,5 +186,32 @@ export function usePresence() {
     }
   }, [setOnline]);
 
-  return { goOnline, goOffline, busy, failure, zoneName, clearFailure: () => setFailure(null) };
+  /**
+   * Re-run `goOnline` if the driver had chosen to be online before the restart.
+   *
+   * NO DISCLOSURE. The driver already accepted the location disclosure the
+   * first time they went online, and the OS prompt will not re-show once
+   * granted — re-running the sheet would be a modal the driver has already
+   * dismissed, for a permission they have already given.
+   *
+   * Guarded on the store saying offline and not busy: if the driver is already
+   * online (a fast restart, or a resume that raced a manual toggle), there is
+   * nothing to do, and a second `goOnline` would double-connect the socket.
+   */
+  const resume = useCallback(async (): Promise<void> => {
+    if (!wantsToBeOnline()) return;
+    if (useDriverStatusStore.getState().isOnline) return;
+    if (busy) return;
+    await goOnline();
+  }, [busy, goOnline]);
+
+  return {
+    goOnline,
+    goOffline,
+    resume,
+    busy,
+    failure,
+    zoneName,
+    clearFailure: () => setFailure(null),
+  };
 }

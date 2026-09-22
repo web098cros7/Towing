@@ -9,6 +9,7 @@ import { useDriverStatusStore } from '@/features/dashboard/store/driverStatusSto
 import { track } from '@/lib/analytics/analytics';
 import { offersDataSource } from './offersDataSource';
 import { offersKeys } from './offers.keys';
+import { markJobEnded } from '../store/jobEndedStore';
 
 /**
  * §6.3's twenty-second window has to survive a dropped socket.
@@ -223,7 +224,10 @@ export function useUnableToDeliver() {
   return useMutation({
     mutationFn: ({ bookingId, reason, note }: { bookingId: string; reason: JobUnableReason; note?: string }) =>
       offersDataSource.unable(bookingId, { reason, ...(note ? { note } : {}) }),
-    onSuccess: () => {
+    onSuccess: (_result, { bookingId }) => {
+      // Named before the job is cleared, so the job screen says the driver
+      // ended it rather than reading the empty cache as "taken away".
+      markJobEnded({ bookingId, reason: 'unable' });
       queryClient.setQueryData(offersKeys.job(), null);
       // The driver is available again, so an offer may already be waiting.
       void queryClient.invalidateQueries({ queryKey: offersKeys.current() });

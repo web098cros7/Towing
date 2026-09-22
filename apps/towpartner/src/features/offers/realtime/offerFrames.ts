@@ -7,6 +7,7 @@ import type {
 } from '@towing/api-contracts';
 import { queryClient } from '@/providers/queryClient';
 import { offersKeys } from '../api/offers.keys';
+import { markJobEnded } from '../store/jobEndedStore';
 import type { JobOffer } from '../types';
 
 /**
@@ -46,10 +47,24 @@ export function applyJobRevoked(event: JobRevokedEvent): void {
   // until something else refetches. Scoped to the held booking: a revoked
   // offer for a searching booking the driver never held must not evict their
   // active job.
-  if (event.reason === 'cancelled') {
+  //
+  // The three reasons that mean "you no longer hold this job" are handled by
+  // SETTING the held job to null rather than invalidating it: an invalidation
+  // leaves the stale job on screen until the refetch lands, and the driver
+  // would keep reading an address for a job that is already gone. The ended
+  // store records WHY, so the job screen can say so instead of falling back to
+  // a generic empty state. `offersKeys.current()` is invalidated too — the
+  // driver is free, and the next offer must not be blocked by a stale one.
+  if (
+    event.reason === 'cancelled' ||
+    event.reason === 'reassigned' ||
+    event.reason === 'fleet_suspended'
+  ) {
     const held = queryClient.getQueryData<DriverJob | null>(offersKeys.job());
     if (held?.bookingId === event.bookingId) {
-      void queryClient.invalidateQueries({ queryKey: offersKeys.job() });
+      markJobEnded({ bookingId: event.bookingId, reason: event.reason });
+      queryClient.setQueryData<DriverJob | null>(offersKeys.job(), null);
+      void queryClient.invalidateQueries({ queryKey: offersKeys.current() });
     }
   }
 }

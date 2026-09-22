@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,6 +16,8 @@ import { useDashboard } from '@/features/dashboard/api/dashboard.queries';
 import { useDriverStatusStore } from '@/features/dashboard/store/driverStatusStore';
 import { OnlineStatusCard } from '@/features/dashboard/components/OnlineStatusCard';
 import { usePresence } from '@/features/presence/api/presence.queries';
+import { ActiveJobBanner } from '@/features/offers/components/ActiveJobBanner';
+import { useResumeActiveJob } from '@/features/offers/hooks/useResumeActiveJob';
 import { LocationDisclosureSheet } from '@/features/presence/components/LocationDisclosureSheet';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { RecentActivityRow } from '@/features/dashboard/components/RecentActivityRow';
@@ -38,7 +40,7 @@ export function HomeScreen() {
   const online = useOnlineStatus();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isOnline = useDriverStatusStore((s) => s.isOnline);
-  const { goOnline, goOffline, busy, failure, zoneName, clearFailure } = usePresence();
+  const { goOnline, goOffline, busy, failure, zoneName, clearFailure, resume } = usePresence();
   const [disclosureVisible, setDisclosureVisible] = useState(false);
   // RootNavigator keeps this synced off the authoritative `/kyc/status` read
   // (`useKycStatus`'s own comment) — reading it here rather than re-deriving
@@ -49,6 +51,16 @@ export function HomeScreen() {
   // an unconfirmed value even for the brief window before the fetch settles.
   const approved = useAuthStore((s) => s.identity?.kycStatus) === 'approved';
   const kycVerified = useAuthStore((s) => s.kycVerified);
+  // Lands a driver who restarted the app back on the job they hold.
+  useResumeActiveJob(approved && kycVerified);
+  const resumeOnceRef = useRef(false);
+  useEffect(() => {
+    if (!approved || !kycVerified) return;
+    if (resumeOnceRef.current) return;
+    resumeOnceRef.current = true;
+    // Brings back online a driver who never went offline (their intent is persisted, not the state).
+    void resume();
+  }, [approved, kycVerified, resume]);
   const tabBarSpace = useTabBarSpace();
   const { data, isPending, isError, refetch } = useDashboard();
 
@@ -108,6 +120,8 @@ export function HomeScreen() {
           zoneName={zoneName}
           failure={failure}
         />
+
+        <ActiveJobBanner />
 
         {isError ? (
           <ErrorState
