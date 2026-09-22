@@ -5,16 +5,21 @@ import type {
   DriverJobHistoryQuery,
   DriverJobHistoryResponse,
   DriverProfile,
+  DriverTruck,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { DB, type Database } from '../../db/db.module';
 import { bookings } from '../../db/schema/bookings';
 import { drivers } from '../../db/schema/drivers';
 import { fleets } from '../../db/schema/fleets';
-import { fleetTrucks } from '../../db/schema/trucks';
+import { complianceDocuments, fleetTrucks } from '../../db/schema/trucks';
 import { projectEarnings } from '../money/settlement';
 import { decodeCursor, encodeCursor } from '../jobs/jobs.cursor';
+import { toComplianceDtos } from '../trucks/trucks.mapper';
 import { JobExecutionRepo } from './job-execution.repo';
+
+/** Insurance leads: an expired one is what makes the truck `non_compliant` and stops offers. */
+const DOC_ORDER = ['insurance', 'rc', 'puc', 'permit'] as const;
 
 /**
  * The driver's own card and their job history — the two reads the driver app's
@@ -85,6 +90,52 @@ export class DriverJobsService {
               vehicleClass: row.truckClass,
             }
           : null,
+    };
+  }
+
+  async truck(driverId: string): Promise<DriverTruck> {
+    const [row] = await this.db
+      .select({
+        truckId: fleetTrucks.id,
+        truckPlate: fleetTrucks.plate,
+        truckMake: fleetTrucks.make,
+        truckModel: fleetTrucks.model,
+        truckClass: fleetTrucks.type,
+        truckStatus: fleetTrucks.status,
+        fleetName: fleets.businessName,
+      })
+      .from(drivers)
+      .leftJoin(fleetTrucks, eq(drivers.assignedTruckId, fleetTrucks.id))
+      .leftJoin(fleets, eq(drivers.fleetId, fleets.id))
+      .where(eq(drivers.id, driverId))
+      .limit(1);
+
+    if (!row) throw ApiException.notFound('Driver not found');
+
+    if (!row.truckId) {
+      return { truck: null, fleetName: row.fleetName ?? null, documents: [] };
+    }
+
+    const docs = await this.db
+      .select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.truckId, row.truckId));
+
+    const documents = toComplianceDtos(row.truckId, docs).sort(
+      (a, b) => DOC_ORDER.indexOf(a.docType) - DOC_ORDER.indexOf(b.docType),
+    );
+
+    return {
+      truck: {
+        id: row.truckId,
+        plate: row.truckPlate!,
+        make: row.truckMake,
+        model: row.truckModel,
+        vehicleClass: row.truckClass!,
+        status: row.truckStatus!,
+      },
+      fleetName: row.fleetName ?? null,
+      documents,
     };
   }
 

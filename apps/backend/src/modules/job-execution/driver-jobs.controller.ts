@@ -4,6 +4,7 @@ import {
   type DriverJobHistoryQuery,
   type DriverJobHistoryResponse,
   type DriverProfile,
+  type DriverTruck,
 } from '@towing/api-contracts';
 import { z } from 'zod';
 import { ZodParam, ZodQuery } from '../../common/validation/zod.decorators';
@@ -18,7 +19,9 @@ import { DriverJobsService } from './driver-jobs.service';
  *
  * NOT behind `KycApprovedGuard`: a driver whose KYC is still pending must be
  * able to see their own profile (Home greeting, Personal Information) — the
- * guard exists to gate job execution, not identity.
+ * guard exists to gate job execution, not identity. The truck route is here
+ * for the same reason `me` is — identity, not job execution — and so it is
+ * likewise not behind `KycApprovedGuard`.
  *
  * The detail route is `job-history/:id`, deliberately NOT `jobs/:id`:
  * `driver/jobs/current` already exists and a param route on the same prefix
@@ -33,6 +36,11 @@ export class DriverJobsController {
   @Get('me')
   async me(@Req() request: AuthedRequest): Promise<DriverProfile> {
     return this.jobs.profile(driverId(request));
+  }
+
+  @Get('truck')
+  async truck(@Req() request: AuthedRequest): Promise<DriverTruck> {
+    return this.jobs.truck(driverId(request));
   }
 
   @Get('job-history')

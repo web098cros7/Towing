@@ -2,7 +2,9 @@ import type { INestApplication } from '@nestjs/common';
 import {
   driverJobHistoryResponseSchema,
   driverProfileSchema,
+  driverTruckSchema,
 } from '@towing/api-contracts';
+import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -11,14 +13,17 @@ import {
   driverAuthHeaderFor,
 } from '../../test/app';
 import { expectMatchesContract } from '../../test/contracts';
+import { complianceDocuments } from '../../db/schema/trucks';
+import { drivers } from '../../db/schema/drivers';
 import {
   seedCustomer,
   seedDriver,
+  seedFleet,
   setupTestDatabase,
   truncateAll,
   type TestDatabase,
 } from '../../test/db';
-import { seedBooking } from '../../test/fixtures';
+import { seedBooking, seedTruck } from '../../test/fixtures';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
 
 /**
@@ -181,6 +186,56 @@ describe('driver jobs', () => {
       .get(`/v1/driver/job-history/${other}`)
       .set('Authorization', driverAuth)
       .expect(404);
+  });
+
+  it('returns no truck and no documents for a driver with nothing assigned', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/v1/driver/truck')
+      .set('Authorization', driverAuth)
+      .expect(200);
+
+    expectMatchesContract(driverTruckSchema, response.body);
+    expect(response.body.truck).toBeNull();
+    expect(response.body.documents).toEqual([]);
+  });
+
+  it('returns the assigned truck with insurance first and missing papers filled in', async () => {
+    const { fleetId } = await seedFleet(db, 'Compliance Fleet');
+    const truckId = await seedTruck(db, fleetId, { plate: 'KA-01-AB-1234', make: 'Tata' });
+    const expiresAt = new Date('2027-06-30T00:00:00Z');
+    await db.insert(complianceDocuments).values({
+      truckId,
+      docType: 'rc',
+      expiresAt,
+      status: 'valid',
+    });
+    await db
+      .update(drivers)
+      .set({ fleetId, assignedTruckId: truckId })
+      .where(eq(drivers.id, driverId));
+
+    const response = await request(app.getHttpServer())
+      .get('/v1/driver/truck')
+      .set('Authorization', driverAuth)
+      .expect(200);
+
+    expectMatchesContract(driverTruckSchema, response.body);
+    expect(response.body.truck.plate).toBe('KA-01-AB-1234');
+    expect(response.body.fleetName).toBe('Compliance Fleet');
+
+    // Always the full checklist, insurance leading — it is the one that makes
+    // the truck `non_compliant` and stops offers reaching the driver.
+    expect(response.body.documents.map((d: { docType: string }) => d.docType)).toEqual([
+      'insurance',
+      'rc',
+      'puc',
+      'permit',
+    ]);
+    const byType = Object.fromEntries(
+      response.body.documents.map((d: { docType: string; status: string }) => [d.docType, d.status]),
+    );
+    expect(byType.rc).toBe('valid');
+    expect(byType.insurance).toBe('missing');
   });
 
   it('refuses a customer token on the driver realm', async () => {

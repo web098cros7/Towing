@@ -1,4 +1,4 @@
-import type { DriverProfile as DriverMe } from '@towing/api-contracts';
+import type { DriverProfile as DriverMe, DriverTruck } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import type { ProfileDataSource } from './profileDataSource';
 import type { DriverProfile } from '../types';
@@ -17,6 +17,10 @@ export const profileRestSource: ProfileDataSource = {
 
   async getMe(): Promise<DriverMe> {
     return apiFetch<DriverMe>('driver/me');
+  },
+
+  async getTruck(): Promise<DriverTruck> {
+    return apiFetch<DriverTruck>('driver/truck');
   },
 };
 

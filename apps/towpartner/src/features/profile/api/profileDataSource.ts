@@ -1,5 +1,5 @@
 import { env } from '@/lib/env';
-import type { DriverProfile as DriverMe } from '@towing/api-contracts';
+import type { DriverProfile as DriverMe, DriverTruck } from '@towing/api-contracts';
 import type { DriverProfile } from '../types';
 import { profileMockSource } from './profileMockSource';
 import { profileRestSource } from './profileRestSource';
@@ -13,6 +13,8 @@ export interface ProfileDataSource {
   getProfile(): Promise<DriverProfile>;
   /** The raw `driver/me` contract, for Personal Information. */
   getMe(): Promise<DriverMe>;
+  /** The driver's truck and its papers, for Insurance. */
+  getTruck(): Promise<DriverTruck>;
 }
 
 export const profileDataSource: ProfileDataSource = env.useMocks

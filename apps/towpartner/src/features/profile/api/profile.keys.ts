@@ -4,4 +4,6 @@ export const profileKeys = {
   card: () => ['profile', 'card'] as const,
   /** The raw `driver/me` contract. A separate key: the two shapes must never share a cache entry. */
   me: () => ['profile', 'me'] as const,
+  /** The driver's truck and its papers. */
+  truck: () => ['profile', 'truck'] as const,
 };

@@ -25,19 +25,15 @@ export function parseCapacityTons(capacity: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function toTruckDto(
-  truck: TruckRow,
-  docs: ComplianceRow[],
-  assignedDriverName: string | null,
-): TruckDto {
-  const present = docs.filter((d) => d.truckId === truck.id).map(toDocDto);
+export function toComplianceDtos(truckId: string, docs: ComplianceRow[]): ComplianceDocDto[] {
+  const present = docs.filter((d) => d.truckId === truckId).map(toDocDto);
   const presentTypes = new Set(present.map((d) => d.docType));
 
   // Docs that were never uploaded have no row — the console still shows the
   // full 4-item checklist, so synthesize `missing` entries (§9.3.4).
   const missing: ComplianceDocDto[] = ALL_DOC_TYPES.filter((t) => !presentTypes.has(t)).map(
     (docType) => ({
-      id: `${truck.id}:${docType}`,
+      id: `${truckId}:${docType}`,
       docType,
       issuedAt: null,
       expiresAt: null,
@@ -45,6 +41,14 @@ export function toTruckDto(
     }),
   );
 
+  return [...present, ...missing];
+}
+
+export function toTruckDto(
+  truck: TruckRow,
+  docs: ComplianceRow[],
+  assignedDriverName: string | null,
+): TruckDto {
   return {
     id: truck.id,
     plate: truck.plate,
@@ -54,7 +58,7 @@ export function toTruckDto(
     assignedDriverName,
     currentLocation: truck.currentLocation,
     lastPingAt: truck.lastPingAt?.toISOString() ?? null,
-    compliance: [...present, ...missing],
+    compliance: toComplianceDtos(truck.id, docs),
   };
 }
 

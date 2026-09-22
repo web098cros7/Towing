@@ -16,7 +16,6 @@ import { KycWizardScreen } from '@/screens/kyc/KycWizardScreen';
 import { KycStatusScreen } from '@/screens/kyc/KycStatusScreen';
 import { CapabilitiesScreen } from '@/screens/capabilities/CapabilitiesScreen';
 import { LegalScreen } from '@/screens/account/LegalScreen';
-import { PlaceholderScreen } from '@/screens/placeholder/PlaceholderScreen';
 // §9.2.4 money (Phase 19). `BankDetails` was a `PlaceholderScreen` for seven
 // phases because there was nowhere for the money to go.
 import { BankDetailsScreen } from '@/screens/earnings/BankDetailsScreen';
@@ -28,6 +27,7 @@ import { AssignedJobScreen } from '@/screens/activejob/AssignedJobScreen';
 import { JobChatScreen } from '@/screens/activejob/JobChatScreen';
 import { JobDetailsScreen } from '@/screens/jobs/JobDetailsScreen';
 import { PersonalInformationScreen } from '@/screens/profile/PersonalInformationScreen';
+import { InsuranceScreen } from '@/screens/profile/InsuranceScreen';
 import { HelpSupportScreen } from '@/screens/support/HelpSupportScreen';
 import { SupportTicketScreen } from '@/screens/support/SupportTicketScreen';
 import { SupportNewTicketScreen } from '@/screens/support/SupportNewTicketScreen';
@@ -41,9 +41,6 @@ import { navLightTheme, navDarkTheme } from './navTheme';
 import { track } from '@/lib/analytics/analytics';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-
-// Module-scope wrapper so the remaining placeholder route has a stable component identity.
-const InsuranceScreen = () => <PlaceholderScreen title="Insurance" />;
 
 export function RootNavigator() {
   const theme = useTheme();

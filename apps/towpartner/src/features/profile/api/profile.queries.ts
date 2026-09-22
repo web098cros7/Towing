@@ -17,3 +17,11 @@ export function useDriverMe() {
     queryFn: () => profileDataSource.getMe(),
   });
 }
+
+/** The driver's truck and its papers, for Insurance. */
+export function useDriverTruck() {
+  return useQuery({
+    queryKey: profileKeys.truck(),
+    queryFn: () => profileDataSource.getTruck(),
+  });
+}

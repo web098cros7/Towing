@@ -137,8 +137,8 @@ export function ProfileScreen() {
             <MenuRow
               icon={ShieldCheck}
               tone="orange"
-              title="Insurance"
-              subtitle="View your insurance details"
+              title="Insurance & papers"
+              subtitle="Your truck's insurance, RC, PUC and permit"
               onPress={() => navigation.navigate('Insurance')}
             />
           </MenuCard>
