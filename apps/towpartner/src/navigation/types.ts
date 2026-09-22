@@ -28,7 +28,8 @@ export type RootStackParamList = {
 
   Tabs: NavigatorScreenParams<DriverTabParamList> | undefined;
 
-  JobDetails: { jobId: string } | undefined;
+  /** A job by booking id, from Jobs/Home. */
+  JobDetails: { jobId: string };
 
   /**
    * §6.3's offer, full-screen (Phase 17).
@@ -73,7 +74,12 @@ export type RootStackParamList = {
   /** §9.2.4's per-trip gross → commission → net feed — the "View All". */
   EarningsTrips: undefined;
   Insurance: undefined;
+  /** The driver's support tickets. */
   HelpSupport: undefined;
+  /** Help & Support thread. */
+  SupportTicket: { ticketId: string };
+  /** New ticket. */
+  SupportNewTicket: { bookingId?: string } | undefined;
   /** Privacy/terms copy plus the §20.4 DPDP export + account-deletion actions. */
   Legal: undefined;
   Notifications: undefined;

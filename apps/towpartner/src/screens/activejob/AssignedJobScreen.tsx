@@ -11,6 +11,7 @@ import { useCurrentJob } from '@/features/offers/api/offers.queries';
 import { SERVICE_ICON, isAtTheSpot, serviceLabel } from '@/features/offers/serviceLabels';
 import { JobActionRail } from '@/features/offers/components/JobActionRail';
 import { JobMapCard } from '@/features/offers/components/JobMapCard';
+import { SosButton } from '@/features/sos/components/SosButton';
 import { WaitingChargeCard } from '@/features/offers/components/WaitingChargeCard';
 import { offersDataSource } from '@/features/offers/api/offersDataSource';
 import {
@@ -458,6 +459,15 @@ export function AssignedJobScreen() {
               of the screen to them and puts nothing there now."
             */}
             <JobActionRail job={job} />
+
+            {/*
+              §19's SOS, last in the scroller and only while the driver is
+              actually holding the job. A driver with no active job has no
+              booking to attach the alert to, and the safety desk's context
+              would be empty — the button is for the driver who is out there
+              with a customer waiting, not for the one at home.
+            */}
+            {ACTIVE_STATUSES.has(job.status) ? <SosButton bookingId={job.bookingId} /> : null}
           </>
         )}
       </View>

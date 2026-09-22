@@ -26,6 +26,11 @@ import { WeeklyEarningsScreen } from '@/screens/earnings/WeeklyEarningsScreen';
 import { OfferTakeoverScreen } from '@/screens/newjob/OfferTakeoverScreen';
 import { AssignedJobScreen } from '@/screens/activejob/AssignedJobScreen';
 import { JobChatScreen } from '@/screens/activejob/JobChatScreen';
+import { JobDetailsScreen } from '@/screens/jobs/JobDetailsScreen';
+import { PersonalInformationScreen } from '@/screens/profile/PersonalInformationScreen';
+import { HelpSupportScreen } from '@/screens/support/HelpSupportScreen';
+import { SupportTicketScreen } from '@/screens/support/SupportTicketScreen';
+import { SupportNewTicketScreen } from '@/screens/support/SupportNewTicketScreen';
 import { useOfferTakeover } from '@/features/offers/hooks/useOfferTakeover';
 import { navigationRef } from './navigationRef';
 import {
@@ -37,11 +42,8 @@ import { track } from '@/lib/analytics/analytics';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-// Module-scope wrappers so each placeholder route has a stable component identity.
-const JobDetailsScreen = () => <PlaceholderScreen title="Job Details" />;
-const PersonalInformationScreen = () => <PlaceholderScreen title="Personal Information" />;
+// Module-scope wrapper so the remaining placeholder route has a stable component identity.
 const InsuranceScreen = () => <PlaceholderScreen title="Insurance" />;
-const HelpSupportScreen = () => <PlaceholderScreen title="Help & Support" />;
 
 export function RootNavigator() {
   const theme = useTheme();
@@ -183,6 +185,8 @@ export function RootNavigator() {
               <Stack.Screen name="BankDetails" component={BankDetailsScreen} />
               <Stack.Screen name="Insurance" component={InsuranceScreen} />
               <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+              <Stack.Screen name="SupportTicket" component={SupportTicketScreen} />
+              <Stack.Screen name="SupportNewTicket" component={SupportNewTicketScreen} />
               <Stack.Screen name="Legal" component={LegalScreen} />
               <Stack.Screen name="Notifications" component={NotificationsScreen} />
               <Stack.Screen name="Payouts" component={PayoutsScreen} />
