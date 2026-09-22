@@ -51,11 +51,13 @@ export class AdminDispatchService {
       .from(serviceZones)
       .orderBy(asc(serviceZones.name));
 
-    const [pausedZoneIds, longDistanceDisabled, forcePolling] = await Promise.all([
-      this.killSwitch.pausedZoneIds(),
-      this.killSwitch.isLongDistanceDisabled(),
-      this.killSwitch.isPollingForced(),
-    ]);
+    const [pausedZoneIds, longDistanceDisabled, forcePolling, sosStandaloneDisabled] =
+      await Promise.all([
+        this.killSwitch.pausedZoneIds(),
+        this.killSwitch.isLongDistanceDisabled(),
+        this.killSwitch.isPollingForced(),
+        this.killSwitch.isSosStandaloneEnabled().then((enabled) => !enabled),
+      ]);
 
     return {
       global: globalRow
@@ -69,6 +71,12 @@ export class AdminDispatchService {
             stalePingSeconds: globalRow.stalePingSeconds,
             oneActiveBookingPerCustomer: globalRow.oneActiveBookingPerCustomer,
             blockOnUnpaidBalance: globalRow.blockOnUnpaidBalance,
+            // ── W12 ──
+            redispatchPriority: globalRow.redispatchPriority as 'front' | 'normal',
+            pingOnJobMs: globalRow.pingOnJobMs,
+            pingIdleMs: globalRow.pingIdleMs,
+            perServiceMaxOffers: (globalRow.perServiceMaxOffers ??
+              null) as AdminDispatchConfig['global']['perServiceMaxOffers'],
           }
         : // A fresh or half-seeded database reports the documented defaults
           // rather than 500ing. `DispatchConfigRepo` takes the same view, so the
@@ -88,6 +96,7 @@ export class AdminDispatchService {
         pausedZoneIds: [...pausedZoneIds],
         longDistanceDisabled,
         forcePolling,
+        sosStandaloneDisabled,
       },
     };
   }
@@ -117,7 +126,11 @@ export class AdminDispatchService {
       body.weights ||
       body.stalePingSeconds !== undefined ||
       body.oneActiveBookingPerCustomer !== undefined ||
-      body.blockOnUnpaidBalance !== undefined
+      body.blockOnUnpaidBalance !== undefined ||
+      body.redispatchPriority !== undefined ||
+      body.pingOnJobMs !== undefined ||
+      body.pingIdleMs !== undefined ||
+      body.perServiceMaxOffers !== undefined
     ) {
       await this.updateGlobal(body);
     }
@@ -133,12 +146,16 @@ export class AdminDispatchService {
     }
 
     if (body.killSwitches) {
-      const { pausedZoneIds, longDistanceDisabled, forcePolling } = body.killSwitches;
+      const { pausedZoneIds, longDistanceDisabled, forcePolling, sosStandaloneDisabled } =
+        body.killSwitches;
       if (pausedZoneIds) await this.killSwitch.setPausedZones(pausedZoneIds);
       if (longDistanceDisabled !== undefined) {
         await this.killSwitch.setLongDistanceDisabled(longDistanceDisabled);
       }
       if (forcePolling !== undefined) await this.killSwitch.setPollingForced(forcePolling);
+      if (sosStandaloneDisabled !== undefined) {
+        await this.killSwitch.setSosStandaloneDisabled(sosStandaloneDisabled);
+      }
     }
 
     // §6.7 means "no deploy", not "no deploy but wait for a TTL" — the same
@@ -186,6 +203,16 @@ export class AdminDispatchService {
         : {}),
       ...(body.blockOnUnpaidBalance !== undefined
         ? { blockOnUnpaidBalance: body.blockOnUnpaidBalance }
+        : {}),
+      // ── W12. `null` is a VALUE here ("no platform per-service offers"), not an
+      // omission, which is why it is checked against `undefined` explicitly.
+      ...(body.redispatchPriority !== undefined
+        ? { redispatchPriority: body.redispatchPriority }
+        : {}),
+      ...(body.pingOnJobMs !== undefined ? { pingOnJobMs: body.pingOnJobMs } : {}),
+      ...(body.pingIdleMs !== undefined ? { pingIdleMs: body.pingIdleMs } : {}),
+      ...(body.perServiceMaxOffers !== undefined
+        ? { perServiceMaxOffers: body.perServiceMaxOffers }
         : {}),
       updatedAt: new Date(),
     };

@@ -9,7 +9,16 @@ import type { NextResponse } from 'next/server';
 export const ADMIN_SESSION_COOKIE = 'admin_session';
 export const ADMIN_REFRESH_COOKIE = 'admin_refresh';
 
-const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+/**
+ * G15 (W1 §3.6): the admin realm's absolute window is 12 hours — the backend's
+ * `ADMIN_SESSION_LIMITS.absoluteMs` — and the cookie must not outlive it.
+ * Before W1 this pair carried the shared 30-day value; a refresh cookie still
+ * in the browser at hour 13 would offer a session `TokenService.rotate` has
+ * already been told to refuse, and the console would flake between "signed in"
+ * (identity still cached) and 401s. The backend wins; this keeps the browser
+ * honest.
+ */
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 12;
 
 const baseOptions = {
   httpOnly: true as const,

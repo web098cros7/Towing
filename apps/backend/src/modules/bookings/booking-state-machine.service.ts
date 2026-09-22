@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ErrorCodes, type JobStatus } from '@towing/api-contracts';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { FleetEventsService } from '../../common/events/fleet-events.service';
+import { OpsEventsService } from '../../common/events/ops-events.service';
 import type { DatabaseExecutor } from '../../db/db.module';
 import { bookingStatusHistory, bookings } from '../../db/schema';
+import { trackEvent } from '../analytics/analytics-events';
 
 /**
  * §5.1's customer booking state machine — THE single place a booking's status
@@ -19,7 +21,8 @@ import { bookingStatusHistory, bookings } from '../../db/schema';
  *
  * Three things happen together or not at all: the guard, the status write, and
  * the `booking_status_history` row. A history row written outside this service
- * is a history that can lie.
+ * is a history that can lie. (W17 adds a fourth — §22.1's tracker row, in the
+ * same transaction; see the call at the end of `transition`.)
  */
 
 /**
@@ -51,8 +54,13 @@ export const OPEN_BOOKING_STATUSES = ['searching', ...ACTIVE_JOB_STATUSES] as co
  * what preserves the fare locked at confirm — making the customer start a new
  * booking would re-quote them, potentially at a higher surge, for the
  * platform's own failure to find anyone.
+ *
+ * `paid` is deliberately NOT among them either (A8). A full refund must move a
+ * paid booking to `disputed`, but `RefundsService.refundBooking` runs the
+ * gateway refund and the compensating ledger legs BEFORE the transition — a
+ * terminal `paid` made it throw 409 after the money had already moved.
  */
-export const TERMINAL_BOOKING_STATUSES = ['paid', 'cancelled'] as const satisfies readonly JobStatus[];
+export const TERMINAL_BOOKING_STATUSES = ['cancelled'] as const satisfies readonly JobStatus[];
 
 /**
  * §5.1's transition table, transcribed.
@@ -74,6 +82,19 @@ export const TERMINAL_BOOKING_STATUSES = ['paid', 'cancelled'] as const satisfie
  * Phase 20 needs a way back out. `no_drivers_found` keeps an edge back to
  * `searching` for §9.1.6's "retry / widen" prompt, which is the loop the
  * diagram draws at the top.
+ *
+ * The `disputed → paid` edge is CONDITIONAL (A9): `transition()` refuses it
+ * unless the booking settled first (captured payment plus settlement legs).
+ * The table alone cannot express that, so the table stays permissive and the
+ * guard enforces it — `isLegal()` answers the static question, the guard the
+ * financial one.
+ *
+ * A8 ADDS TWO EDGES. `paid → disputed` lets a full refund land: the refund
+ * path refunds the gateway and posts compensating legs first, so the booking
+ * must be able to leave `paid` afterwards (A9 guards the reverse,
+ * `disputed → paid`, against ledger drift). `no_drivers_found → cancelled`
+ * lets an unmatchable search be closed out instead of lingering; the retry
+ * loop back to `searching` is unchanged.
  *
  * PHASE 18 ADDS THREE EDGES BACK TO `searching`, and they are the only ones this
  * table gained after Phase 15. §5.2's `unable_to_deliver` branch — customer not
@@ -109,10 +130,11 @@ export const LEGAL_TRANSITIONS: Record<JobStatus, readonly JobStatus[]> = {
   in_progress: ['completed', 'disputed', 'cancelled'],
   completed: ['paid', 'disputed'],
   disputed: ['completed', 'paid', 'cancelled'],
+  // `paid` is NOT terminal: A8's refund path lands on `disputed` from here.
+  paid: ['disputed'],
   // Terminal.
-  paid: [],
   cancelled: [],
-  no_drivers_found: ['searching'],
+  no_drivers_found: ['searching', 'cancelled'],
 };
 
 export type BookingActor = 'customer' | 'driver' | 'fleet_owner' | 'admin' | 'system';
@@ -121,6 +143,14 @@ export interface TransitionParams {
   bookingId: string;
   to: JobStatus;
   actor: BookingActor;
+  /**
+   * W8: which admin wrote this row, when the actor is `admin` — written to
+   * `booking_status_history.actor_id` (migration 0020 added the column and
+   * named W8 as its first caller). Null for every non-admin actor: a customer
+   * id or driver id in this column would be a half-truth, since the column is
+   * an FK to `admin_users`.
+   */
+  actorId?: string | null;
   note?: string | null;
   /** Extra columns to write in the same UPDATE — cancellation details, OTP flags. */
   patch?: Partial<typeof bookings.$inferInsert>;
@@ -131,16 +161,47 @@ export interface TransitionResult {
   from: JobStatus;
   to: JobStatus;
   fleetId: string | null;
+  /** A18: the ops feed needs the full routing, not just the tenant. */
+  zoneId: string | null;
+  driverId: string | null;
+  userId: string;
 }
 
 @Injectable()
 export class BookingStateMachineService {
   private readonly logger = new Logger(BookingStateMachineService.name);
 
-  constructor(private readonly fleetEvents: FleetEventsService) {}
+  constructor(
+    private readonly fleetEvents: FleetEventsService,
+    private readonly opsEvents: OpsEventsService,
+  ) {}
 
   static isLegal(from: JobStatus, to: JobStatus): boolean {
     return LEGAL_TRANSITIONS[from].includes(to);
+  }
+
+  /**
+   * Whether the booking settled before the dispute: a captured `booking`
+   * payment plus at least one settlement credit leg. Raw SQL on the caller's
+   * `tx`, deliberately — the machine takes no repository dependencies (the
+   * money module already depends on it; the reverse would be circular), and
+   * the check must see the same snapshot as the status write.
+   */
+  private async wasSettled(tx: DatabaseExecutor, bookingId: string): Promise<boolean> {
+    const [payment] = (await tx.execute(sql`
+      select 1 as one from payments
+       where booking_id = ${bookingId}::uuid
+         and purpose = 'booking' and status = 'captured' limit 1
+    `)) as unknown as Array<{ one: number }>;
+    if (!payment) return false;
+
+    const [leg] = (await tx.execute(sql`
+      select 1 as one from wallet_transactions
+       where ref_id = ${bookingId}::uuid
+         and type in ('driver_share_credit', 'fleet_share_credit', 'fare_credit')
+       limit 1
+    `)) as unknown as Array<{ one: number }>;
+    return Boolean(leg);
   }
 
   /**
@@ -157,9 +218,17 @@ export class BookingStateMachineService {
 
     // FOR UPDATE, not a bare read: two dispatch workers racing to accept the
     // same booking must serialise here, or both read `searching` and both
-    // believe they won.
+    // believe they won. A18 widens the read with the ops feed's routing —
+    // columns, not joins, on an already-locked row.
     const [current] = await tx
-      .select({ id: bookings.id, status: bookings.status, fleetId: bookings.fleetId })
+      .select({
+        id: bookings.id,
+        status: bookings.status,
+        fleetId: bookings.fleetId,
+        zoneId: bookings.zoneId,
+        driverId: bookings.driverId,
+        userId: bookings.userId,
+      })
       .from(bookings)
       .where(eq(bookings.id, bookingId))
       .for('update');
@@ -173,6 +242,23 @@ export class BookingStateMachineService {
         ErrorCodes.INVALID_BOOKING_STATE,
         `A booking cannot go from ${from} to ${to}`,
         { from, to, allowed: LEGAL_TRANSITIONS[from] },
+      );
+    }
+
+    // A9: `disputed → paid` is the one edge that can manufacture ledger drift.
+    // A booking that reached `disputed` from `in_progress` or `completed` has
+    // no settlement behind it; resolving it to `paid` makes `ledgerDrift`
+    // non-zero forever, because that invariant compares a paid booking's
+    // credit legs to its recorded payout. The edge stays for disputes opened
+    // from `paid` — proven by a captured payment AND settlement legs, read in
+    // the caller's transaction so the check cannot race the money.
+    if (from === 'disputed' && to === 'paid' && !(await this.wasSettled(tx, bookingId))) {
+      throw new ApiException(
+        409,
+        ErrorCodes.DISPUTE_NOT_SETTLED,
+        'Only a dispute opened from a paid booking can resolve back to paid: ' +
+          'no captured payment and settlement legs were found for this booking',
+        { from, to },
       );
     }
 
@@ -193,23 +279,67 @@ export class BookingStateMachineService {
       bookingId,
       status: to,
       actor,
+      actorId: params.actorId ?? null,
       note: params.note ?? null,
     });
 
-    return { id: bookingId, from, to, fleetId: current.fleetId };
+    // §22.1's tracker (W17/19vi), AT THE CHOKE POINT. Every completion and
+    // cancellation in the repo moves through this method, so each fact is
+    // recorded exactly once with no path able to bypass it — and in THIS
+    // transaction, so a rolled-back transition leaves no event behind and a
+    // redelivered one cannot double-write (the status guard runs first).
+    //
+    // `completed → paid` is `payment_success`: payments.service commits the
+    // ledger BEFORE this transition on purpose, so by the time this edge runs
+    // the money has landed — the ledger truth point, not the app's claim.
+    // (`disputed → paid` is excluded: it resolves a dispute, it does not take
+    // a payment.)
+    if (to === 'completed') {
+      await trackEvent(tx, { name: 'booking_completed', bookingId, props: { from } });
+    } else if (to === 'cancelled') {
+      await trackEvent(tx, { name: 'booking_cancelled', bookingId, props: { from } });
+    } else if (to === 'paid' && from === 'completed') {
+      await trackEvent(tx, { name: 'payment_success', bookingId, props: { from } });
+    }
+
+    return {
+      id: bookingId,
+      from,
+      to,
+      fleetId: current.fleetId,
+      zoneId: current.zoneId,
+      driverId: current.driverId,
+      userId: current.userId,
+    };
   }
 
   /**
-   * Tell the fleet console a booking moved. Call AFTER the caller's transaction
+   * Tell the consoles a booking moved. Call AFTER the caller's transaction
    * commits — a socket message about a change that then rolls back is worse
    * than no message.
    *
-   * A `searching` booking has no `fleet_id` (nothing is assigned until Phase
-   * 17), so in Phase 15 this is correct-by-construction dead code. It is wired
-   * now because the alternative is Phase 17 remembering to add it to a
-   * transition service it did not write.
+   * TWO FEEDS, and the order is the point. The platform-wide `ops:events`
+   * publish goes FIRST, before the fleet-only early return (A18): an admin
+   * subscriber sees every status change regardless of fleet, including
+   * `searching` bookings that have no `fleet_id` yet (nothing is assigned
+   * until Phase 17). The fleet feed keeps its existing shape and tenants.
    */
   async announce(result: TransitionResult): Promise<void> {
+    try {
+      await this.opsEvents.publish({
+        kind: 'booking_status',
+        bookingId: result.id,
+        from: result.from,
+        to: result.to,
+        zoneId: result.zoneId,
+        driverId: result.driverId,
+        userId: result.userId,
+        fleetId: result.fleetId,
+      });
+    } catch (error) {
+      this.logger.warn(`ops event publish failed for ${result.id}: ${String(error)}`);
+    }
+
     if (!result.fleetId) return;
     try {
       await this.fleetEvents.emit(result.fleetId, {

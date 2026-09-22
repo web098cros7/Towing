@@ -48,7 +48,13 @@ import { ReportsService } from './reports.service';
  */
 @Module({
   imports: [AuthModule, BookingsModule, PricingModule, PaymentGatewayModule],
-  controllers: [EarningsController, ReportsController, PayoutsController, PaymentsController, DriverMoneyController],
+  controllers: [
+    EarningsController,
+    ReportsController,
+    PayoutsController,
+    PaymentsController,
+    DriverMoneyController,
+  ],
   providers: [
     EarningsProjectorService,
     EarningsService,
@@ -76,13 +82,19 @@ import { ReportsService } from './reports.service';
     {
       provide: PAYOUT_PROVIDER,
       inject: [ENV, DevPayoutAdapter, RazorpayRouteAdapter],
-      useFactory: (env: Env, dev: DevPayoutAdapter, razorpay: RazorpayRouteAdapter): PayoutProviderPort =>
-        env.PAYOUT_PROVIDER === 'razorpay_route' ? razorpay : dev,
+      useFactory: (
+        env: Env,
+        dev: DevPayoutAdapter,
+        razorpay: RazorpayRouteAdapter,
+      ): PayoutProviderPort => (env.PAYOUT_PROVIDER === 'razorpay_route' ? razorpay : dev),
     },
   ],
   // `DevPayoutAdapter` is exported alongside the token — the `QueueModule`
   // pattern — so specs can reach the concrete adapter without widening the port.
   exports: [
+    EarningsService,
+    // W6: the admin app-view renders the customer wallet through this service.
+    WalletService,
     EarningsProjectorService,
     PayoutsService,
     PayoutsRepo,

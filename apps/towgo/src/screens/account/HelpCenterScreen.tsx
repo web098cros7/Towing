@@ -15,6 +15,7 @@ import {
 } from '@/design';
 import { MiFaqRow, MiFaqCard } from '@/design/components/MiFaqRow';
 import { faqs } from '@/features/account/data/faqs.data';
+import { useContentPages } from '@/features/content/api/content.queries';
 import type { RootStackParamList } from '@/navigation/types';
 
 type Category = 'all' | 'booking' | 'payments' | 'safety' | 'account';

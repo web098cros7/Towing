@@ -1,8 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Download } from 'lucide-react';
-import { Badge, Button, DataTable, buttonVariants, cn, type ColumnDef } from '@towing/web-ui';
+import {
+  Badge,
+  Button,
+  DataTable,
+  FilterBar,
+  SearchInput,
+  buttonVariants,
+  cn,
+  type ColumnDef,
+} from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { jobsExportUrl } from '@/features/jobs/api/jobsDataSource';
 import { useJobs } from '@/features/jobs/api/jobs.queries';
@@ -113,8 +123,31 @@ const columns: ColumnDef<Job, unknown>[] = [
 ];
 
 export default function JobsPage() {
+  return (
+    <Suspense>
+      <JobsList />
+    </Suspense>
+  );
+}
+
+function JobsList() {
   const [status, setStatus] = useState<JobStatus | 'all'>('all');
   const { data, isLoading, isError, refetch } = useJobs({ status });
+  // Palette deep-link (`/jobs?q=TF-…`) seeds the filter; typing afterwards
+  // stays local so the back button keeps working.
+  const searchParams = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return data ?? [];
+    return (data ?? []).filter((j) =>
+      [j.code, j.driverName ?? '', j.truckPlate ?? '', j.pickupArea, j.dropArea ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [data, q]);
 
   return (
     <div>
@@ -138,11 +171,22 @@ export default function JobsPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-1">
+      <FilterBar className="mb-4">
+        <SearchInput
+          value={q}
+          onValueChange={setQ}
+          placeholder="Code, driver, plate or area"
+          className="w-72"
+          data-testid="jobs-search"
+        />
+      </FilterBar>
+
+      <div className="mb-4 flex flex-wrap gap-1" role="group" aria-label="Status filter">
         {FILTERS.map((f) => (
           <button
             key={f.value}
             onClick={() => setStatus(f.value)}
+            aria-pressed={status === f.value}
             className={cn(
               'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors',
               status === f.value
@@ -157,12 +201,16 @@ export default function JobsPage() {
 
       <DataTable
         columns={columns}
-        data={data ?? []}
+        data={filtered}
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}
-        emptyTitle="No jobs match this filter"
-        emptyDescription="Jobs dispatched to your trucks will appear here in real time."
+        emptyTitle={q ? 'No jobs match' : 'No jobs match this filter'}
+        emptyDescription={
+          q
+            ? 'Clear the search or widen the status filter.'
+            : 'Jobs dispatched to your trucks will appear here in real time.'
+        }
       />
     </div>
   );

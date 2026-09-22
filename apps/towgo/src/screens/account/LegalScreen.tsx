@@ -11,6 +11,7 @@ import { MiFaqCard, MiFaqRow } from '@/design/components/MiFaqRow';
 import { MiMenuCard, MiMenuRow, MiNavBar, MiScreen, MiText, mitowLayout } from '@/design';
 import { ApiClientError } from '@/lib/api/errors';
 import { useDeleteAccount, useExportData } from '@/features/account/api/privacy.queries';
+import { useContentPages } from '@/features/content/api/content.queries';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { POLICY_VERSION } from '@/lib/legal/policyVersion';
 import { Pressable } from '@/motion';
@@ -18,8 +19,12 @@ import type { RootStackParamList } from '@/navigation/types';
 import { DeleteAccountSheet } from './DeleteAccountSheet';
 
 /**
- * Placeholder legal copy — not the focus of this phase, only that the screen
- * exists and the DPDP action rows below are wired to the real `/me` endpoints.
+ * Placeholder legal copy — the FALLBACK now (W15): the canonical text lives in
+ * `content_pages` and is editable from the admin console, and this copy answers
+ * only when that read fails, so Legal is never a blank screen.
+ *
+ * The DPDP action rows below are unaffected either way: they hit the real
+ * `/me/privacy/*` endpoints.
  */
 const PRIVACY_SECTIONS = [
   {
@@ -82,6 +87,13 @@ export function LegalScreen() {
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [open, setOpen] = useState<string | null>('p0');
+
+  // The published legal pages, when they can be read. Empty (offline, or an
+  // operator unpublished everything by mistake) falls through to the bundled
+  // sections below rather than to an empty screen — a user being asked to
+  // accept terms must be able to read them.
+  const legal = useContentPages('legal');
+  const legalPages = legal.data?.items ?? [];
 
   const onDownloadData = useCallback(() => {
     exportData.mutate(undefined, {

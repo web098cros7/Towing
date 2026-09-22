@@ -27,6 +27,18 @@ import { devices } from './devices';
 /** `'user' | 'driver' | 'fleet'` — the three things that can receive a §12.2 row. */
 export type NotificationSubjectType = 'user' | 'driver' | 'fleet';
 
+/**
+ * The runtime companion to migration 0010's `ck_notifications_subject_type`.
+ *
+ * Since W14 the recipient union also carries `contact` (an SOS contact
+ * snapshot) and `ops` (an on-call admin) — delivery-only kinds with no in-app
+ * centre. This is what the inbox writer and the dispatcher consult instead of
+ * maintaining their own copies of the three literal names.
+ */
+export function isInboxSubjectType(subjectType: string): subjectType is NotificationSubjectType {
+  return subjectType === 'user' || subjectType === 'driver' || subjectType === 'fleet';
+}
+
 export const notificationEvents = pgTable(
   'notification_events',
   {

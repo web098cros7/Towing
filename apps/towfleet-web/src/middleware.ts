@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { safeAdminNext } from './lib/adminNext';
 
 /**
  * Realm-prefixed session cookies (§4.1 — separate web realms). Two realms
@@ -34,7 +35,12 @@ function redirectTo(request: NextRequest, pathname: string, preserveNext = false
  * shape and the API validates it again; a middleware that tried to would be a
  * third place the format lives.
  */
-const PUBLIC_PREFIXES = ['/t/'];
+/**
+ * Public brand assets (`/brand/logo.svg`) — the login pages themselves render
+ * the wordmark while unauthenticated, so the asset must bypass the
+ * deny-by-default redirect like the share-trip page does.
+ */
+const PUBLIC_PREFIXES = ['/t/', '/brand/'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -48,7 +54,12 @@ export function middleware(request: NextRequest) {
     const isLogin = pathname === '/admin/login';
 
     if (!hasSession && !isLogin) return redirectTo(request, '/admin/login', true);
-    if (hasSession && isLogin) return redirectTo(request, '/admin/drivers');
+    // A6: everyone lands on /admin (neutral landing, not a queue). Middleware
+    // cannot read the sub-role out of the opaque session cookie, so role
+    // routing waits for A7's identity provider. Preserve a valid ?next=.
+    if (hasSession && isLogin) {
+      return redirectTo(request, safeAdminNext(request.nextUrl.searchParams.get('next')));
+    }
     return NextResponse.next();
   }
 

@@ -1,6 +1,17 @@
-import { boolean, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { money, primaryId, timestamps } from './columns';
+import { adminUsers } from './admin';
 import { users } from './users';
 import { bookings } from './bookings';
 
@@ -95,3 +106,36 @@ export const couponRedemptions = pgTable(
     index('idx_coupon_redemptions_user').on(t.couponId, t.userId),
   ],
 );
+
+/**
+ * §9.4.11's banner manager (W16, migration 0031) — the home carousel's
+ * content, scheduled and ordered by an operator.
+ *
+ * NOT `app_config`'s SEV banner: that one is an ops status line the console
+ * previews (W12). This is marketing content with an image, a CTA and an
+ * audience, and it has its own editor at `/admin/promotions`.
+ *
+ * `audience` is a plain text column with a CHECK (`customer|driver`) — the
+ * `ck_banners_audience` constraint is the union, pinned by
+ * `migration-0031.spec.ts` against `BANNER_AUDIENCES`.
+ *
+ * The live-read index (`idx_banners_live`, partial on `is_active`) is
+ * hand-written in the migration — drizzle-kit emits neither partial indexes
+ * nor GIST, the same reason `deletion_requests`' partial unique index lives
+ * in SQL only.
+ */
+export const banners = pgTable('banners', {
+  id: primaryId(),
+  title: text('title').notNull(),
+  /** Storage key minted by `PresignedUploadService` (`banner-images/<admin>/banner-<uuid>.<ext>`). */
+  imageKey: text('image_key').notNull(),
+  ctaLink: text('cta_link'),
+  ctaLabel: text('cta_label'),
+  audience: text('audience').notNull().default('customer'),
+  startsAt: timestamp('starts_at', { withTimezone: true }),
+  endsAt: timestamp('ends_at', { withTimezone: true }),
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdBy: uuid('created_by').references(() => adminUsers.id),
+  ...timestamps,
+});

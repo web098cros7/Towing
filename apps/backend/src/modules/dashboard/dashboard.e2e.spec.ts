@@ -118,7 +118,7 @@ describe('dashboard e2e (/v1/fleet/dashboard)', () => {
     expect(types).toEqual(['doc_expired', 'payout_failed']);
     const docAlert = res.body.alerts.find((a: { type: string }) => a.type === 'doc_expired');
     expect(docAlert.message).toContain('KA-DB-0001');
-    expect(docAlert.href).toBe('/trucks');
+    expect(docAlert.href).toMatch(/^\/trucks\?truck=[0-9a-f-]{36}$/);
   });
 
   it('serves from the 15s cache within the TTL', async () => {

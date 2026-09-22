@@ -1,0 +1,45 @@
+# M6 (W20) — the manual-quote flow (§7.3), hermetic.
+#
+# Runs against `quotesMockSource` + `pricingMockSource` (no backend): the
+# estimate is forced into the >600 km refusal with
+# `EXPO_PUBLIC_MOCK_PRICING_STATE=manual_quote`, which is the ONLY way to reach
+# the flow's entry point in mock mode — no seeded mock zone is 600 km wide.
+# Requires `EXPO_PUBLIC_USE_MOCKS` unset or `true`.
+#
+# What it proves: a long trip does not dead-end on a fare skeleton. The
+# estimate refusal renders the manual-quote bar with the distance the server
+# sent, the notes sheet files the request, My Quotes shows the row (the mock
+# starts with one QUOTED offer so Accept is reachable), and accepting hands the
+# customer to the same Searching screen a normal booking uses.
+#
+# ⚠ NEVER EXECUTED. No EAS or dev-client build exists for this app, so no
+# Maestro flow in this repo has ever run. Reviewed against the screens as
+# written; that is all.
+#
+# NAVIGATION NOTE: this flow deliberately does NOT `runFlow` the booking walk —
+# that flow CONFIRMS a booking at its end, and with pricing forced into
+# `manual_quote` its confirm step would fail here for the right reason and the
+# wrong place. A real run reuses the booking walk's steps to reach BookTow by
+# hand (Book → pickup → drop → service), then continues below.
+appId: in.mitow.customer
+---
+- runFlow: customer-login.yaml
+
+# The refusal, named — with the distance from `error.details.distanceKm`.
+- assertVisible: "Trips over 600 km are priced by our team"
+- assertVisible: "About 812 km"
+
+- tapOn: "Request a Manual Quote"
+- assertVisible: "Request a manual quote"
+- tapOn: "Details for the quote"
+- inputText: "Sedan, non-runner, basement parking"
+- tapOn: "Request quote"
+
+# Lands on the quote list: the quoted fixture offer, plus the row just filed.
+- assertVisible: "My Quotes"
+- assertVisible: "₹85,000"
+- assertVisible: "Accept & Book"
+
+# Accepting IS the booking: the mock returns a booking id and the screen
+# replaces itself with Searching, the same hand-off `POST /v1/bookings` makes.
+- tapOn: "Accept & Book"

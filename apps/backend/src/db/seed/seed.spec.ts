@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { verifyPassword } from '../../modules/auth/password';
 import { setupTestDatabase, type TestDatabase } from '../../test/db';
 import { FLEETS, SEED_PASSWORD } from './fixtures';
-import { runSeed, verifySeedInvariants, type SeedSummary } from './seed';
+import { APP_TABLES, runSeed, verifySeedInvariants, type SeedSummary } from './seed';
 
 /**
  * Runs the real seed against the throwaway stack, then audits it. This is the
@@ -19,6 +19,29 @@ describe('seed (deterministic dataset + §14 invariants)', () => {
     const [row] = (await db.execute(query)) as unknown as [{ count: number }];
     return row.count;
   }
+
+  /**
+   * The reset list is the seed's own precondition, and a table missing from it
+   * is a table whose rows survive `runSeed(reset)`. The M4 gate found exactly
+   * that (`app_config`, a singleton the migration seeds, absent from the list,
+   * so the second reset collided with the first run's row). Comparing against
+   * `pg_tables` rather than against a hand-kept copy of the schema means the
+   * failure arrives with a new migration, not six milestones later.
+   */
+  it('resets every table the schema owns', async () => {
+    const rows = (await db.execute(sql`
+      select tablename from pg_tables
+      where schemaname = 'public' and tablename <> 'spatial_ref_sys'
+      order by 1
+    `)) as unknown as Array<{ tablename: string }>;
+
+    const known = new Set<string>(APP_TABLES);
+    // Drizzle's own bookkeeping, not the app's.
+    known.add('__drizzle_migrations');
+    const missing = rows.map((row) => row.tablename).filter((name) => !known.has(name));
+
+    expect(missing).toEqual([]);
+  });
 
   beforeAll(async () => {
     db = await setupTestDatabase();
@@ -179,9 +202,7 @@ describe('seed (deterministic dataset + §14 invariants)', () => {
       select email, password_hash from fleet_owner_credentials order by email
     `)) as unknown as Array<{ email: string; password_hash: string }>;
 
-    expect(rows.map((r) => r.email).sort()).toEqual(
-      FLEETS.map((f) => f.owner.email).sort(),
-    );
+    expect(rows.map((r) => r.email).sort()).toEqual(FLEETS.map((f) => f.owner.email).sort());
     for (const row of rows) {
       await expect(verifyPassword(SEED_PASSWORD, row.password_hash)).resolves.toBe(true);
     }

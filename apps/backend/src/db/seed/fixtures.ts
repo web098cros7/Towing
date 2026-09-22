@@ -30,10 +30,30 @@ export interface AdminFixture {
  * the gate would be untestable on a freshly seeded database.
  */
 export const ADMIN_FIXTURES: readonly AdminFixture[] = [
-  { email: 'super@towing.local', mobile: '+919845990001', name: 'Ananya Iyer', subRole: 'super_admin' },
-  { email: 'ops@towing.local', mobile: '+919845990002', name: 'Rohit Menon', subRole: 'operations' },
-  { email: 'support@towing.local', mobile: '+919845990003', name: 'Fatima Sheikh', subRole: 'support' },
-  { email: 'finance@towing.local', mobile: '+919845990004', name: 'Deepak Rao', subRole: 'finance' },
+  {
+    email: 'super@towing.local',
+    mobile: '+919845990001',
+    name: 'Ananya Iyer',
+    subRole: 'super_admin',
+  },
+  {
+    email: 'ops@towing.local',
+    mobile: '+919845990002',
+    name: 'Rohit Menon',
+    subRole: 'operations',
+  },
+  {
+    email: 'support@towing.local',
+    mobile: '+919845990003',
+    name: 'Fatima Sheikh',
+    subRole: 'support',
+  },
+  {
+    email: 'finance@towing.local',
+    mobile: '+919845990004',
+    name: 'Deepak Rao',
+    subRole: 'finance',
+  },
 ];
 
 export interface FleetFixture {
@@ -365,18 +385,150 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
     },
   ],
   chr: [
-    { plate: 'TN-01-AA-1001', type: 'flatbed', capacity: '7t', active: true, compliance: [['insurance', 210], ['rc', 500], ['puc', 120], ['permit', 180]] },
-    { plate: 'TN-02-BB-2002', type: 'wheel_lift', capacity: '2.5t', active: true, compliance: [['insurance', 90], ['rc', 400], ['puc', 18], ['permit', 200]] },
-    { plate: 'TN-09-CC-3003', type: 'flatbed', capacity: '5t', active: true, compliance: [['insurance', -10], ['rc', 300], ['puc', 60], ['permit', 90]] },
-    { plate: 'TN-10-DD-4004', type: 'wheel_lift', capacity: '3t', active: true, compliance: [['insurance', 150], ['rc', 600], ['puc', 240], ['permit', 45]] },
-    { plate: 'TN-11-EE-5005', type: 'flatbed', capacity: '8t', active: true, compliance: [['insurance', 300], ['rc', 700], ['puc', 130], ['permit', 260]] },
-    { plate: 'TN-04-FF-6006', type: 'wheel_lift', capacity: '2.5t', active: true, compliance: [['insurance', 60], ['rc', 350], ['puc', 9], ['permit', 110]] },
-    { plate: 'TN-05-GG-7007', type: 'flatbed', capacity: '5t', active: true, compliance: [['insurance', 190], ['rc', 550], ['puc', 85], ['permit', -2]] },
-    { plate: 'TN-12-HH-8008', type: 'wheel_lift', capacity: '3t', active: true, compliance: [['insurance', 230], ['rc', 480], ['puc', 170], ['permit', 210]] },
-    { plate: 'TN-14-JJ-9009', type: 'flatbed', capacity: '7t', active: true, compliance: [['insurance', 130], ['rc', 420], ['puc', 75], ['permit', 160]] },
-    { plate: 'TN-18-KK-1010', type: 'wheel_lift', capacity: '2.5t', active: false, compliance: [['insurance', 100], ['rc', 380], ['puc', 55], ['permit', 140]] },
-    { plate: 'TN-20-LL-1111', type: 'flatbed', capacity: '5t', active: true, compliance: [['insurance', 280], ['rc', 640], ['puc', 110], ['permit', 230]] },
-    { plate: 'TN-22-MM-1212', type: 'wheel_lift', capacity: '3t', active: true, compliance: [['insurance', 170], ['rc', 520], ['puc', 145], ['permit', 190]] },
+    {
+      plate: 'TN-01-AA-1001',
+      type: 'flatbed',
+      capacity: '7t',
+      active: true,
+      compliance: [
+        ['insurance', 210],
+        ['rc', 500],
+        ['puc', 120],
+        ['permit', 180],
+      ],
+    },
+    {
+      plate: 'TN-02-BB-2002',
+      type: 'wheel_lift',
+      capacity: '2.5t',
+      active: true,
+      compliance: [
+        ['insurance', 90],
+        ['rc', 400],
+        ['puc', 18],
+        ['permit', 200],
+      ],
+    },
+    {
+      plate: 'TN-09-CC-3003',
+      type: 'flatbed',
+      capacity: '5t',
+      active: true,
+      compliance: [
+        ['insurance', -10],
+        ['rc', 300],
+        ['puc', 60],
+        ['permit', 90],
+      ],
+    },
+    {
+      plate: 'TN-10-DD-4004',
+      type: 'wheel_lift',
+      capacity: '3t',
+      active: true,
+      compliance: [
+        ['insurance', 150],
+        ['rc', 600],
+        ['puc', 240],
+        ['permit', 45],
+      ],
+    },
+    {
+      plate: 'TN-11-EE-5005',
+      type: 'flatbed',
+      capacity: '8t',
+      active: true,
+      compliance: [
+        ['insurance', 300],
+        ['rc', 700],
+        ['puc', 130],
+        ['permit', 260],
+      ],
+    },
+    {
+      plate: 'TN-04-FF-6006',
+      type: 'wheel_lift',
+      capacity: '2.5t',
+      active: true,
+      compliance: [
+        ['insurance', 60],
+        ['rc', 350],
+        ['puc', 9],
+        ['permit', 110],
+      ],
+    },
+    {
+      plate: 'TN-05-GG-7007',
+      type: 'flatbed',
+      capacity: '5t',
+      active: true,
+      compliance: [
+        ['insurance', 190],
+        ['rc', 550],
+        ['puc', 85],
+        ['permit', -2],
+      ],
+    },
+    {
+      plate: 'TN-12-HH-8008',
+      type: 'wheel_lift',
+      capacity: '3t',
+      active: true,
+      compliance: [
+        ['insurance', 230],
+        ['rc', 480],
+        ['puc', 170],
+        ['permit', 210],
+      ],
+    },
+    {
+      plate: 'TN-14-JJ-9009',
+      type: 'flatbed',
+      capacity: '7t',
+      active: true,
+      compliance: [
+        ['insurance', 130],
+        ['rc', 420],
+        ['puc', 75],
+        ['permit', 160],
+      ],
+    },
+    {
+      plate: 'TN-18-KK-1010',
+      type: 'wheel_lift',
+      capacity: '2.5t',
+      active: false,
+      compliance: [
+        ['insurance', 100],
+        ['rc', 380],
+        ['puc', 55],
+        ['permit', 140],
+      ],
+    },
+    {
+      plate: 'TN-20-LL-1111',
+      type: 'flatbed',
+      capacity: '5t',
+      active: true,
+      compliance: [
+        ['insurance', 280],
+        ['rc', 640],
+        ['puc', 110],
+        ['permit', 230],
+      ],
+    },
+    {
+      plate: 'TN-22-MM-1212',
+      type: 'wheel_lift',
+      capacity: '3t',
+      active: true,
+      compliance: [
+        ['insurance', 170],
+        ['rc', 520],
+        ['puc', 145],
+        ['permit', 190],
+      ],
+    },
   ],
 };
 
@@ -419,11 +571,61 @@ export interface DriverFixture {
 
 export const FLEET_DRIVERS: Record<FleetFixture['key'], readonly DriverFixture[]> = {
   lakshmi: [
-    { name: 'Suresh Kumar', mobile: '+919845100001', kycStatus: 'approved', vehicleClass: 'flatbed', longDistance: true, rating: '4.8', totalTrips: 412, level: 'gold', driverSharePct: 80 },
-    { name: 'Manoj Pillai', mobile: '+919845100002', kycStatus: 'approved', vehicleClass: 'wheel_lift', longDistance: false, rating: '4.6', totalTrips: 287, level: 'silver', driverSharePct: 80 },
-    { name: 'Abdul Rasheed', mobile: '+919845100003', kycStatus: 'approved', vehicleClass: 'flatbed', longDistance: true, rating: '4.9', totalTrips: 655, level: 'platinum', driverSharePct: 85 },
-    { name: 'Ravi Shetty', mobile: '+919845100004', kycStatus: 'approved', vehicleClass: 'flatbed', longDistance: false, rating: '4.4', totalTrips: 198, level: 'silver', driverSharePct: 80 },
-    { name: 'Imran Sait', mobile: '+919845100005', kycStatus: 'approved', vehicleClass: 'wheel_lift', longDistance: false, rating: '4.7', totalTrips: 344, level: 'gold', driverSharePct: 80 },
+    {
+      name: 'Suresh Kumar',
+      mobile: '+919845100001',
+      kycStatus: 'approved',
+      vehicleClass: 'flatbed',
+      longDistance: true,
+      rating: '4.8',
+      totalTrips: 412,
+      level: 'gold',
+      driverSharePct: 80,
+    },
+    {
+      name: 'Manoj Pillai',
+      mobile: '+919845100002',
+      kycStatus: 'approved',
+      vehicleClass: 'wheel_lift',
+      longDistance: false,
+      rating: '4.6',
+      totalTrips: 287,
+      level: 'silver',
+      driverSharePct: 80,
+    },
+    {
+      name: 'Abdul Rasheed',
+      mobile: '+919845100003',
+      kycStatus: 'approved',
+      vehicleClass: 'flatbed',
+      longDistance: true,
+      rating: '4.9',
+      totalTrips: 655,
+      level: 'platinum',
+      driverSharePct: 85,
+    },
+    {
+      name: 'Ravi Shetty',
+      mobile: '+919845100004',
+      kycStatus: 'approved',
+      vehicleClass: 'flatbed',
+      longDistance: false,
+      rating: '4.4',
+      totalTrips: 198,
+      level: 'silver',
+      driverSharePct: 80,
+    },
+    {
+      name: 'Imran Sait',
+      mobile: '+919845100005',
+      kycStatus: 'approved',
+      vehicleClass: 'wheel_lift',
+      longDistance: false,
+      rating: '4.7',
+      totalTrips: 344,
+      level: 'gold',
+      driverSharePct: 80,
+    },
     {
       name: 'Prakash Naik',
       mobile: '+919845100006',
@@ -462,10 +664,50 @@ export const FLEET_DRIVERS: Record<FleetFixture['key'], readonly DriverFixture[]
     },
   ],
   chr: [
-    { name: 'Senthil Kumar', mobile: '+919845200001', kycStatus: 'approved', vehicleClass: 'flatbed', longDistance: true, rating: '4.7', totalTrips: 389, level: 'gold', driverSharePct: 80 },
-    { name: 'Arun Prakash', mobile: '+919845200002', kycStatus: 'approved', vehicleClass: 'wheel_lift', longDistance: false, rating: '4.5', totalTrips: 240, level: 'silver', driverSharePct: 80 },
-    { name: 'Karthik Raja', mobile: '+919845200003', kycStatus: 'approved', vehicleClass: 'flatbed', longDistance: false, rating: '4.6', totalTrips: 301, level: 'silver', driverSharePct: 80 },
-    { name: 'Velu Muthu', mobile: '+919845200004', kycStatus: 'approved', vehicleClass: 'wheel_lift', longDistance: false, rating: '4.3', totalTrips: 152, level: 'bronze', driverSharePct: 80 },
+    {
+      name: 'Senthil Kumar',
+      mobile: '+919845200001',
+      kycStatus: 'approved',
+      vehicleClass: 'flatbed',
+      longDistance: true,
+      rating: '4.7',
+      totalTrips: 389,
+      level: 'gold',
+      driverSharePct: 80,
+    },
+    {
+      name: 'Arun Prakash',
+      mobile: '+919845200002',
+      kycStatus: 'approved',
+      vehicleClass: 'wheel_lift',
+      longDistance: false,
+      rating: '4.5',
+      totalTrips: 240,
+      level: 'silver',
+      driverSharePct: 80,
+    },
+    {
+      name: 'Karthik Raja',
+      mobile: '+919845200003',
+      kycStatus: 'approved',
+      vehicleClass: 'flatbed',
+      longDistance: false,
+      rating: '4.6',
+      totalTrips: 301,
+      level: 'silver',
+      driverSharePct: 80,
+    },
+    {
+      name: 'Velu Muthu',
+      mobile: '+919845200004',
+      kycStatus: 'approved',
+      vehicleClass: 'wheel_lift',
+      longDistance: false,
+      rating: '4.3',
+      totalTrips: 152,
+      level: 'bronze',
+      driverSharePct: 80,
+    },
     {
       name: 'Vijay Anand',
       mobile: '+919845200005',
@@ -546,6 +788,86 @@ export const SERVICE_MIX: ReadonlyArray<
   ['fuel', 7],
   ['breakdown', 10],
   ['accident_recovery', 10],
+];
+
+/**
+ * W15 — the FAQ and legal pages the apps fetch (`GET /v1/content/:kind`).
+ *
+ * These replace the customer app's hardcoded help copy and its dead legal
+ * links. Kept deliberately plain: the console can edit every word without a
+ * release, which is the point, and the seed only has to be plausible.
+ */
+export const CONTENT_PAGES: ReadonlyArray<{
+  slug: string;
+  kind: 'faq' | 'legal';
+  title: string;
+  bodyMd: string;
+  sortOrder: number;
+}> = [
+  {
+    slug: 'booking-a-tow',
+    kind: 'faq',
+    title: 'How do I book a tow?',
+    bodyMd:
+      'Open the app, drop a pin where your vehicle is, and confirm the vehicle class. We price the trip before you book, then find the nearest available driver. You will see the driver and the truck once one accepts.',
+    sortOrder: 1,
+  },
+  {
+    slug: 'fare-calculation',
+    kind: 'faq',
+    title: 'How is the fare calculated?',
+    bodyMd:
+      'The fare is a base charge plus a distance charge for your vehicle class, with a night surcharge where it applies. The app shows the full breakdown before you confirm, and the driver cannot change it afterwards.',
+    sortOrder: 2,
+  },
+  {
+    slug: 'cancel-booking',
+    kind: 'faq',
+    title: 'Can I cancel a booking?',
+    bodyMd:
+      'Yes, any time before the job starts. If a driver is already on the way, a cancellation fee may apply and the app shows it before you confirm the cancellation.',
+    sortOrder: 3,
+  },
+  {
+    slug: 'payments',
+    kind: 'faq',
+    title: 'How do I pay?',
+    bodyMd:
+      'Pay in the app by UPI or card after the trip completes. The receipt appears under Bookings, and the invoice can be downloaded for expense claims.',
+    sortOrder: 4,
+  },
+  {
+    slug: 'track-driver',
+    kind: 'faq',
+    title: 'Where is my driver?',
+    bodyMd:
+      'The tracking screen follows the driver live once a job is assigned, with an ETA that updates along the route. Share the trip from that screen if somebody is waiting with the vehicle.',
+    sortOrder: 5,
+  },
+  {
+    slug: 'emergency-help',
+    kind: 'faq',
+    title: 'What if I need urgent help?',
+    bodyMd:
+      'Use the SOS button in the app — it alerts our operations desk and your emergency contacts with your location. Add emergency contacts in Account → Emergency contacts before you need them.',
+    sortOrder: 6,
+  },
+  {
+    slug: 'privacy-policy',
+    kind: 'legal',
+    title: 'Privacy Policy',
+    bodyMd:
+      "We collect what a recovery job needs: your account details, the pickup and drop locations, and the driver's progress. Location is shared with the assigned driver only while the job is active. You can export or delete your data from Account → Privacy. This is the seeded copy — replace it with the reviewed policy before launch.",
+    sortOrder: 1,
+  },
+  {
+    slug: 'terms-of-service',
+    kind: 'legal',
+    title: 'Terms of Service',
+    bodyMd:
+      'By booking a recovery you confirm the vehicle is yours or that you are authorised to move it, and that the details you gave us are accurate. Fares, cancellation fees and the service limitations are described in the app before you confirm. This is the seeded copy — replace it with the reviewed terms before launch.',
+    sortOrder: 2,
+  },
 ];
 
 export function centroid(areas: FleetFixture['areas']): LatLng {

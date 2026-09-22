@@ -24,11 +24,28 @@ import { ENV, type Env } from './config/env';
 import { DbModule } from './db/db.module';
 import { LedgerModule } from './db/ledger/ledger.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
+import { AdminUsersModule } from './modules/admin-users/admin-users.module';
+import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
+import { AdminNotesModule } from './modules/admin-notes/admin-notes.module';
 import { AdminConfigModule } from './modules/admin-config/admin-config.module';
+import { AdminZonesModule } from './modules/admin-zones/admin-zones.module';
+import { AppConfigModule } from './modules/app-config/app-config.module';
 import { AdminDriversModule } from './modules/admin-drivers/admin-drivers.module';
+import { AdminFleetsModule } from './modules/admin-fleets/admin-fleets.module';
+import { AdminDirectoryModule } from './modules/admin-directory/admin-directory.module';
+import { AdminBookingsModule } from './modules/admin-bookings/admin-bookings.module';
 import { AdminFinanceModule } from './modules/admin-finance/admin-finance.module';
+import { AdminOpsModule } from './modules/admin-ops/admin-ops.module';
+import { SosModule } from './modules/sos/sos.module';
+import { SupportModule } from './modules/support/support.module';
+import { ContentModule } from './modules/content/content.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
+import { BannersModule } from './modules/banners/banners.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { AdminNotificationsModule } from './modules/admin-notifications/admin-notifications.module';
+import { PrivacyModule } from './modules/privacy/privacy.module';
+import { QuotesModule } from './modules/quotes/quotes.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthPublicModule } from './modules/auth-public/auth-public.module';
@@ -54,6 +71,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { TrucksModule } from './modules/trucks/trucks.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { AdminRealtimeModule } from './realtime/admin-realtime.module';
 import { RedisModule } from './redis/redis.module';
 
 @Module({
@@ -83,12 +101,29 @@ import { RedisModule } from './redis/redis.module';
     AuthModule,
     AuthPublicModule,
     AdminAuthModule,
+    AdminUsersModule,
+    AdminAuditModule,
+    AdminNotesModule,
     AdminDriversModule,
+    AdminFleetsModule,
+    AdminDirectoryModule,
+    AdminBookingsModule,
     AdminFinanceModule,
+    AdminOpsModule,
+    SosModule,
+    SupportModule,
+    ContentModule,
     RatingsModule,
     CouponsModule,
+    BannersModule,
+    AnalyticsModule,
+    AdminNotificationsModule,
+    PrivacyModule,
+    QuotesModule,
     InvoicesModule,
     AdminConfigModule,
+    AdminZonesModule,
+    AppConfigModule,
     TrucksModule,
     DriversModule,
     DriverKycModule,
@@ -110,6 +145,7 @@ import { RedisModule } from './redis/redis.module';
     SettingsModule,
     WebhooksModule,
     RealtimeModule,
+    AdminRealtimeModule,
     HealthModule,
     MetricsModule,
   ],

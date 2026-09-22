@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@towing/web-ui';
 import type { AdminPayoutDto } from '@towing/api-contracts';
+import { NotesPanel } from '@/features/admin-notes/components/NotesPanel';
 import { formatPaise } from '@/lib/money';
 import { useApprovePayout, useRejectPayout } from '../api/adminFinance.mutations';
 
@@ -108,9 +109,9 @@ export function PayoutDecisionDrawer({
         </dl>
 
         {decidable ? (
-          <p className="mt-4 rounded-lg bg-surface-2 p-3 text-xs text-text-secondary">
-            The payee&apos;s wallet was already debited when they requested this. Approving sends the
-            money to their bank; rejecting returns it to their wallet with a compensating entry.
+          <p className="mt-4 rounded-lg bg-surface1 p-3 text-xs text-text-secondary">
+            The payee&apos;s wallet was already debited when they requested this. Approving sends
+            the money to their bank; rejecting returns it to their wallet with a compensating entry.
           </p>
         ) : null}
 
@@ -132,6 +133,13 @@ export function PayoutDecisionDrawer({
         ) : null}
 
         {error ? <p className="mt-3 text-sm text-error">{error.message}</p> : null}
+
+        {/* W21: the same panel every detail screen carries. Payout notes are
+            `finance.read`-gated server-side, so this drawer's audience is
+            exactly who may see them. */}
+        <div className="mt-5 border-t border-border pt-4">
+          <NotesPanel subjectType="payout" subjectId={payout.id} />
+        </div>
       </DialogBody>
 
       <DialogFooter>
@@ -149,7 +157,10 @@ export function PayoutDecisionDrawer({
                 // server checking.
                 disabled={busy || reason.trim().length < 5}
                 onClick={() =>
-                  reject.mutate({ payoutId: payout.id, reason: reason.trim() }, { onSuccess: close })
+                  reject.mutate(
+                    { payoutId: payout.id, reason: reason.trim() },
+                    { onSuccess: close },
+                  )
                 }
               >
                 {reject.isPending ? 'Rejecting…' : 'Confirm rejection'}

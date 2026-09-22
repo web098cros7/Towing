@@ -49,11 +49,37 @@ export function useCurrentOffer(options?: { enabled?: boolean }) {
  * in the cache: a job can also end from the other side (a customer cancels, an
  * admin reassigns) and the driver's phone learns that here.
  */
+const JOB_POLL_MS = 15_000;
+
+/**
+ * The statuses in which a held job is still alive. `useCompleteJob`
+ * deliberately caches the COMPLETED job so the net-pay screen can render —
+ * and because that data is non-null, an unguarded "poll while held" check
+ * would keep polling, get `null` back from the ACTIVE-scoped endpoint, and
+ * flip the completion screen to "No active job" fifteen seconds later.
+ */
+const ACTIVE_JOB_STATUSES: ReadonlySet<string> = new Set([
+  'assigned',
+  'en_route',
+  'arrived',
+  'in_progress',
+]);
+
 export function useCurrentJob() {
   return useQuery({
     queryKey: offersKeys.job(),
     queryFn: () => offersDataSource.getCurrentJob(),
     refetchOnWindowFocus: true,
+    // A13: the §19.2 fallback rung for a job taken away — a missed
+    // `job:revoked` still resolves within fifteen seconds. Only while a job
+    // is held: polling an idle handset would burn battery to learn `null`,
+    // the same reason the offer poll is gated on online state above.
+    // M0-F5: "held" means an ACTIVE status, not merely non-null data — the
+    // completion screen's cached `completed` job must not poll.
+    refetchInterval: (query) => {
+      const job = query.state.data;
+      return job && ACTIVE_JOB_STATUSES.has(job.status) ? JOB_POLL_MS : false;
+    },
   });
 }
 

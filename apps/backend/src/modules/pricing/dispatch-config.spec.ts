@@ -79,15 +79,46 @@ describe('resolveDispatchConfig — overrides actually apply', () => {
       DISPATCH_CONFIG_DEFAULTS.radiusLadderKm,
     );
   });
+
+  describe('the PLATFORM per-service layer (W12)', () => {
+    it('applies to a zone that overrides nothing', () => {
+      const resolved = resolveDispatchConfig(null, 'fuel', { fuel: 1 });
+      expect(resolved.offersPerWave).toBe(1);
+      // Only `offersPerWave` has a platform per-service layer; everything else
+      // still comes from the code defaults.
+      expect(resolved.offerTimeoutSeconds).toBe(DISPATCH_CONFIG_DEFAULTS.offerTimeoutSeconds);
+    });
+
+    it('is overridden by the zone, which is the point of the order', () => {
+      const zone = resolveDispatchConfig({ offersPerWave: 5 }, 'fuel', { fuel: 1 });
+      expect(zone.offersPerWave).toBe(5);
+
+      const perService = resolveDispatchConfig(
+        { perService: { fuel: { offersPerWave: 3 } } },
+        'fuel',
+        { fuel: 1 },
+      );
+      expect(perService.offersPerWave).toBe(3);
+    });
+
+    it('does nothing for a service it does not name', () => {
+      const resolved = resolveDispatchConfig(null, 'tow', { fuel: 1 });
+      expect(resolved.offersPerWave).toBe(DISPATCH_CONFIG_DEFAULTS.offersPerWave);
+    });
+  });
 });
 
 describe('dispatchConfigOverrideSchema — what an admin may write', () => {
   it('rejects a ladder that is not strictly ascending', () => {
     // A descending rung means wave 3 searches a SMALLER circle than wave 2, so
     // the search narrows as it is supposed to widen.
-    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 3] }).success).toBe(false);
+    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 3] }).success).toBe(
+      false,
+    );
     expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 2] }).success).toBe(false);
-    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 7] }).success).toBe(true);
+    expect(dispatchConfigOverrideSchema.safeParse({ radiusLadderKm: [2, 4, 7] }).success).toBe(
+      true,
+    );
   });
 
   it('rejects an empty ladder and a negative radius', () => {
@@ -134,7 +165,9 @@ describe('every seeded dispatch_config validates', () => {
 
 describe('scorerWeightsSchema (§6.2)', () => {
   it('accepts the launch weights', () => {
-    expect(scorerWeightsSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS.weights).success).toBe(true);
+    expect(scorerWeightsSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS.weights).success).toBe(
+      true,
+    );
   });
 
   it('rejects weights that do not sum to 100', () => {
@@ -157,10 +190,14 @@ describe('scorerWeightsSchema (§6.2)', () => {
 
 describe('globalDispatchConfigSchema', () => {
   it('accepts the defaults and rejects an unusable stale-ping threshold', () => {
-    expect(globalDispatchConfigSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS).success).toBe(true);
+    expect(globalDispatchConfigSchema.safeParse(GLOBAL_DISPATCH_CONFIG_DEFAULTS).success).toBe(
+      true,
+    );
     expect(
-      globalDispatchConfigSchema.safeParse({ ...GLOBAL_DISPATCH_CONFIG_DEFAULTS, stalePingSeconds: 1 })
-        .success,
+      globalDispatchConfigSchema.safeParse({
+        ...GLOBAL_DISPATCH_CONFIG_DEFAULTS,
+        stalePingSeconds: 1,
+      }).success,
     ).toBe(false);
   });
 });

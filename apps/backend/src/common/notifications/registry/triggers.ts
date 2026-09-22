@@ -1,4 +1,12 @@
-import type { DeferredTrigger, Recipient, RegisteredTrigger } from './trigger.types';
+import { and, eq, inArray } from 'drizzle-orm';
+import { adminUsers } from '../../../db/schema/admin';
+import { sosAlertContacts } from '../../../db/schema/sos';
+import type {
+  DeferredTrigger,
+  Recipient,
+  RegisteredTrigger,
+  TriggerContext,
+} from './trigger.types';
 
 /**
  * THE §12.2 REGISTRY — the durable half of Phase 13.
@@ -86,6 +94,13 @@ export interface DriverInvitePayload extends Record<string, unknown> {
   businessName: string;
 }
 
+/** A15 / G6: one of the suspended fleet's drivers, told why their offers stopped. */
+export interface FleetSuspendedPayload extends Record<string, unknown> {
+  driverId: string;
+  fleetId: string;
+  businessName: string;
+}
+
 export interface BookingConfirmedPayload extends Record<string, unknown> {
   bookingId: string;
   userId: string;
@@ -133,11 +148,154 @@ export interface OpsLedgerDriftPayload extends Record<string, unknown> {
   opsEmail: string;
 }
 
+/** W8 — §12.2's *Dispute update* row, both events, customer AND driver. */
+/**
+ * W9 — the capture-after-cancel conflict (§14.2's money edge, decision (2)).
+ * The gateway captured a payment on a booking that was already cancelled: the
+ * money is real, recorded, and refundable — and nobody else will notice.
+ */
+export interface SettlementConflictPayload extends Record<string, unknown> {
+  paymentId: string;
+  bookingId: string;
+  amountPaise: number;
+  opsEmail: string;
+}
+
+export interface DisputeUpdatePayload extends Record<string, unknown> {
+  disputeId: string;
+  bookingId: string;
+  userId: string;
+  driverId: string | null;
+  status: 'open' | 'resolved';
+  /** Present on the resolve event only. */
+  resolution?: string;
+}
+
+/** W8 — §14.2's unpaid-booking nudge (row `payment_status`). */
+export interface PaymentReminderPayload extends Record<string, unknown> {
+  bookingId: string;
+  userId: string;
+  amountPaise: number;
+  /** `bookingId:IST-day` — one reminder per booking per day. */
+  reminderKey: string;
+}
+
+/**
+ * W14 — §13's SOS fan-out to the emergency contacts. The payload carries
+ * SNAPSHOT IDS AND NAMES, never phone numbers: the resolver re-reads the
+ * `sos_alert_contacts` row, so the address is the one taken at trigger time —
+ * deterministic across fan-out and every delivery retry (invariant 69).
+ */
+export interface SosTriggeredPayload extends Record<string, unknown> {
+  alertId: string;
+  subjectType: 'user' | 'driver';
+  subjectId: string;
+  /** Rows written in the trigger transaction: `{ id, name }` each. */
+  contacts: Array<{ id: string; name: string }>;
+  lat: number;
+  lng: number;
+}
+
+/**
+ * W14 — the ops alert (G17): the on-call admins plus the ops mailbox. Admins
+ * have no push devices, so the delivery surface is email/SMS and the console's
+ * socket frame — the frame is what meets the 2-second budget.
+ */
+export interface SosOpsAlertPayload extends Record<string, unknown> {
+  alertId: string;
+  subjectType: 'user' | 'driver';
+  /** Resolved display label ("Ramesh K") — a name, not an address. */
+  subjectLabel: string;
+  lat: number;
+  lng: number;
+  opsEmail: string;
+}
+
+/**
+ * W14 — G12's nearest-driver broadcast. Only the explicit ops action emits
+ * this; nothing broadcast automatically, ever.
+ */
+export interface SosBroadcastPayload extends Record<string, unknown> {
+  alertId: string;
+  driverIds: string[];
+  lat: number;
+  lng: number;
+  radiusKm: number;
+}
+
+/**
+ * W15 — a public reply on a support ticket. The requester is `user` or
+ * `driver` or `fleet`; `resolveWalletOwner` is the resolver that already
+ * speaks all three.
+ */
+export interface SupportReplyPayload extends Record<string, unknown> {
+  ticketId: string;
+  reference: string;
+  requesterType: 'user' | 'driver' | 'fleet';
+  requesterId: string;
+  /** The `support_ticket_messages` row — the collapse key. */
+  messageId: string;
+}
+
+/** W15 — the ticket moved to `resolved`. */
+export interface SupportResolvedPayload extends Record<string, unknown> {
+  ticketId: string;
+  reference: string;
+  requesterType: 'user' | 'driver' | 'fleet';
+  requesterId: string;
+  /** ISO instant of the resolution — makes the dedupe key per-occurrence. */
+  resolvedAt: string;
+}
+
+/**
+ * W17 — the weekly marketplace digest. `summary` is pre-formatted TEXT by the
+ * producer (`AnalyticsRollupService`): the numbers are computed there from the
+ * rollup rows, and the template stays a template.
+ */
+export interface AnalyticsReportPayload extends Record<string, unknown> {
+  /** `YYYY-MM-DD to YYYY-MM-DD` — the dedupe key, one digest per week. */
+  week: string;
+  reportEmail: string;
+  summary: string;
+}
+
+/**
+ * The location link every SOS channel carries. Coordinates only — reverse
+ * geocoding at 03:00 is a dependency this must not have.
+ */
+const mapsLink = (lat: number, lng: number): string => `https://maps.google.com/?q=${lat},${lng}`;
+
+/**
+ * The synthetic ops-mailbox recipient id, the same trick `ops.ledger_drift`
+ * uses. Type `ops` rather than `fleet` since W14 widened the union — the two
+ * shapes are no longer conflated.
+ */
+const SOS_OPS_MAILBOX_ID = '00000000-0000-0000-0000-000000000000';
+
 // ---------------------------------------------------------------------------
 // Registered
 // ---------------------------------------------------------------------------
 
 const one = (recipient: Recipient | null): Recipient[] => (recipient ? [recipient] : []);
+
+/**
+ * W8: §12.2's *Dispute update* row addresses BOTH parties — the customer whose
+ * fare is in question and the driver whose work is. Each resolve is
+ * independent; a dispute opened before a driver was assigned has only the
+ * customer to tell, which is why the driver side is optional rather than
+ * awaited unconditionally.
+ */
+const withDisputeCounterparties = async (
+  ctx: TriggerContext,
+  userId: string,
+  driverId: string | null,
+): Promise<Recipient[]> => {
+  const [customer, driver] = await Promise.all([
+    ctx.resolver.resolveUser(userId),
+    driverId ? ctx.resolver.resolveDriver(driverId) : Promise.resolve(null),
+  ]);
+  return [...one(customer), ...one(driver)];
+};
 
 /**
  * Type-checks each trigger against its OWN payload at the definition site, then
@@ -336,7 +494,6 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     resolve: async () => [],
     variables: () => ({}),
   }),
-
 
   // --- Phase 17: dispatch -----------------------------------------------------
 
@@ -601,6 +758,108 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     variables: (p: NoDriversFoundPayload) => ({ reference: p.reference }),
   }),
 
+  // ── W8: money and disputes ──────────────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * §12.2 row *Dispute update* — the row W8 exists to register (it has sat in
+     * `DEFERRED_TRIGGERS` since the spine shipped, waiting for the route that
+     * can reach `DISPUTED`).
+     *
+     * ALWAYS ON: a dispute is the customer's money or the driver's work being
+     * questioned, not a progress update they can mute. The dedupe key is
+     * `(disputeId, status)` — stable across a double-submitted open, distinct
+     * across the open and the resolve.
+     */
+    event: 'dispute.opened',
+    matrixRow: 'dispute_update',
+    channels: ['push', 'whatsapp'],
+    template: 'dispute_opened',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'towgo://bookings' },
+    dedupeKey: (p: DisputeUpdatePayload) => `${p.disputeId}:opened`,
+    resolve: (p: DisputeUpdatePayload, ctx) => withDisputeCounterparties(ctx, p.userId, p.driverId),
+    variables: (p: DisputeUpdatePayload) => ({
+      reference: `TW-${p.bookingId.slice(0, 8).toUpperCase()}`,
+    }),
+  }),
+
+  defineTrigger({
+    /** The other half of the same row — the exit, whatever it was. */
+    event: 'dispute.resolved',
+    matrixRow: 'dispute_update',
+    channels: ['push', 'whatsapp'],
+    template: 'dispute_resolved',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'bookings', route: 'towgo://bookings' },
+    dedupeKey: (p: DisputeUpdatePayload) => `${p.disputeId}:resolved`,
+    resolve: (p: DisputeUpdatePayload, ctx) => withDisputeCounterparties(ctx, p.userId, p.driverId),
+    variables: (p: DisputeUpdatePayload) => ({
+      reference: `TW-${p.bookingId.slice(0, 8).toUpperCase()}`,
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * §14.2's unpaid-booking reminder, under the existing *Payment status* row.
+     *
+     * `money`, not `transactional` — a nudge is exactly the kind of money
+     * message §12.3's preference toggle exists for (a receipt is not; that is
+     * why the receipt trigger is `alwaysOn` and this one is not). The dedupe
+     * key is `bookingId:IST-day`: a double-tapped button collapses, tomorrow's
+     * deliberate nudge does not.
+     */
+    event: 'payment.reminder',
+    matrixRow: 'payment_status',
+    channels: ['push', 'sms'],
+    template: 'payment_reminder',
+    category: 'money',
+    alwaysOn: false,
+    dedupeKey: (p: PaymentReminderPayload) => p.reminderKey,
+    resolve: (p: PaymentReminderPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
+    variables: (p: PaymentReminderPayload) => ({
+      amount: (p.amountPaise / 100).toFixed(2),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * W9's capture-after-cancel alarm — an OPERATIONAL event like
+     * `ops.ledger_drift`, not a §12.2 product row: its recipient is the ops
+     * mailbox, and it writes no inbox row (the synthetic `fleet` recipient
+     * with the all-zero id is the same trick the ledger alarm uses).
+     *
+     * DEDUPED PER PAYMENT, and that is the load-bearing part: the conflict is
+     * detected on every webhook redelivery and every sweep pass that sees the
+     * capture, and one stale checkout must not page the same human twelve
+     * times. The email names the booking and the amount; the action it asks
+     * for is the finance refund (`POST /finance/refunds`, money-only path).
+     */
+    event: 'finance.settlement_conflict',
+    matrixRow: '',
+    channels: ['email'],
+    template: 'finance_settlement_conflict',
+    category: 'transactional',
+    alwaysOn: true,
+    dedupeKey: (p: SettlementConflictPayload) => p.paymentId,
+    resolve: async (p: SettlementConflictPayload) => [
+      {
+        subjectType: 'fleet' as const,
+        subjectId: '00000000-0000-0000-0000-000000000000',
+        mobile: null,
+        email: p.opsEmail,
+        pushTokens: [],
+        prefs: {},
+      },
+    ],
+    variables: (p: SettlementConflictPayload) => ({
+      reference: `TW-${p.bookingId.slice(0, 8).toUpperCase()}`,
+      amount: (p.amountPaise / 100).toFixed(2),
+    }),
+  }),
+
   // --- Operational templates -------------------------------------------------
   // Not §12.2 rows. They carry no `matrixRow` claim, and `registry.spec.ts`
   // counts them neither for nor against completeness — the registry has to
@@ -615,6 +874,27 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     alwaysOn: true,
     resolve: (p: DriverInvitePayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
     variables: (p: DriverInvitePayload) => ({ businessName: p.businessName }),
+  }),
+
+  defineTrigger({
+    /**
+     * A15's missing half (G6 carry-forward): a suspended fleet's drivers are
+     * told, instead of watching offers dry up with no explanation. One event
+     * per driver — each is the recipient, not the fleet.
+     *
+     * Push-only on purpose: SMS is the BLOCKED-EXTERNAL channel and the driver
+     * app is where the lost earning opportunity matters. No dedupe key per
+     * fleet: a re-suspend is idempotent at the service (no second emission),
+     * and a re-activated-then-suspended-again fleet SHOULD notify again.
+     */
+    event: 'fleet.suspended',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'fleet_suspended',
+    category: 'transactional',
+    alwaysOn: true,
+    resolve: (p: FleetSuspendedPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
+    variables: (p: FleetSuspendedPayload) => ({ businessName: p.businessName }),
   }),
 
   defineTrigger({
@@ -765,26 +1045,217 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
       weekLabel: p.weekLabel,
     }),
   }),
+  // ── W14: safety (§13) ──────────────────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * §12.2 row *SOS triggered* → the emergency contacts.
+     *
+     * SMS + WhatsApp only (the row's channels less the ops push, which has no
+     * device to land on). `alwaysOn` because `category: 'safety'` forces it —
+     * §12.3 says a preference must never suppress an SOS, and the contacts are
+     * snapshot rows with no preferences at all. The WhatsApp attempt is the
+     * DESIGNED degradation while template approval is pending: the catalog has
+     * no `waTemplateName`, so the attempt fails loudly in
+     * `notification_deliveries.last_error` and the console says so.
+     *
+     * Deduped on the alert id: a second panic tap re-pings the console but
+     * must not message the contacts twice.
+     */
+    event: 'sos.triggered',
+    matrixRow: 'sos',
+    channels: ['sms', 'whatsapp'],
+    template: 'sos_triggered',
+    category: 'safety',
+    alwaysOn: true,
+    priority: 'high',
+    dedupeKey: (p: SosTriggeredPayload) => p.alertId,
+    resolve: async (p: SosTriggeredPayload, ctx) => {
+      if (p.contacts.length === 0) return [];
+      // RE-READ the snapshot rows, never the live `emergency_contacts` table:
+      // a contact edited mid-incident must still be reached at the number the
+      // snapshot recorded, and re-resolution at delivery time must find exactly
+      // the same recipient (the delivery key is `contact:<rowId>`).
+      const rows = await ctx.db
+        .select({ id: sosAlertContacts.id, phone: sosAlertContacts.phone })
+        .from(sosAlertContacts)
+        .where(
+          inArray(
+            sosAlertContacts.id,
+            p.contacts.map((contact) => contact.id),
+          ),
+        );
+      return rows.map((row): Recipient => ({
+        subjectType: 'contact',
+        subjectId: row.id,
+        mobile: row.phone,
+        email: null,
+        pushTokens: [],
+        prefs: {},
+      }));
+    },
+    variables: (p: SosTriggeredPayload, recipient) => ({
+      name: p.contacts.find((contact) => contact.id === recipient.subjectId)?.name ?? 'there',
+      link: mapsLink(p.lat, p.lng),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * The ops alert — operational, not a §12.2 product row (no `matrixRow`).
+     *
+     * Recipients are the on-call pool (G17): every active admin flagged
+     * `receives_ops_alerts`, plus the ops mailbox. No inbox rows are written —
+     * `ops` is not a database subject — and the realtime `sos:alert` frame is
+     * what satisfies the phase's 2-second acceptance criterion; email/SMS are
+     * the "somebody is definitely told" half.
+     */
+    event: 'sos.ops_alert',
+    matrixRow: '',
+    channels: ['email', 'sms'],
+    template: 'sos_ops_alert',
+    category: 'safety',
+    alwaysOn: true,
+    priority: 'high',
+    dedupeKey: (p: SosOpsAlertPayload) => p.alertId,
+    resolve: async (p: SosOpsAlertPayload, ctx) => {
+      const admins = await ctx.db
+        .select({ id: adminUsers.id, mobile: adminUsers.mobile, email: adminUsers.email })
+        .from(adminUsers)
+        .where(and(eq(adminUsers.receivesOpsAlerts, true), eq(adminUsers.status, 'active')));
+
+      return [
+        ...admins.map((admin): Recipient => ({
+          subjectType: 'ops',
+          subjectId: admin.id,
+          mobile: admin.mobile,
+          email: admin.email,
+          pushTokens: [],
+          prefs: {},
+        })),
+        // The mailbox — a screen nobody is watching at 03:00 is not an alert
+        // path (G17). The synthetic id never collides with a real admin.
+        {
+          subjectType: 'ops',
+          subjectId: SOS_OPS_MAILBOX_ID,
+          mobile: null,
+          email: p.opsEmail,
+          pushTokens: [],
+          prefs: {},
+        },
+      ];
+    },
+    variables: (p: SosOpsAlertPayload) => ({
+      subject: p.subjectLabel,
+      link: mapsLink(p.lat, p.lng),
+      alertRef: p.alertId.slice(0, 8).toUpperCase(),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * G12's broadcast — an explicit ops action, never automatic. Push-only, to
+     * the online drivers the service selected by radius; `driverIds` is the
+     * decision the operator made, and the resolver keeps it stable per retry.
+     */
+    event: 'sos.broadcast',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'sos_broadcast',
+    category: 'safety',
+    alwaysOn: true,
+    priority: 'high',
+    resolve: (p: SosBroadcastPayload, ctx) => ctx.resolver.resolveManyDrivers(p.driverIds),
+    variables: (p: SosBroadcastPayload) => ({ link: mapsLink(p.lat, p.lng) }),
+  }),
+
+  // ── W15: support (§9.4.12) ─────────────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * A PUBLIC reply on a ticket — operational, not a §12.2 product row (the
+     * matrix has no ticket rows; `fleet.driver_invited` is the precedent).
+     *
+     * Deduped on the message id: a double-submitted reply collapses, and the
+     * next reply is a new message and notifies again. Email is the channel
+     * that works for a fleet (no push devices); customers and drivers get both.
+     */
+    event: 'support.reply',
+    matrixRow: '',
+    channels: ['push', 'email'],
+    template: 'support_reply',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'open' },
+    dedupeKey: (p: SupportReplyPayload) => p.messageId,
+    resolve: (p: SupportReplyPayload, ctx) =>
+      ctx.resolver.resolveWalletOwner(p.requesterType, p.requesterId).then(one),
+    variables: (p: SupportReplyPayload) => ({ reference: p.reference }),
+  }),
+
+  defineTrigger({
+    /**
+     * The ticket was resolved. Keyed on the RESOLUTION INSTANT, not the ticket:
+     * a reopened ticket that resolves again must notify again, and the
+     * transition check already stops a double resolve from emitting twice.
+     */
+    event: 'support.resolved',
+    matrixRow: '',
+    channels: ['push', 'email'],
+    template: 'support_resolved',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'open' },
+    dedupeKey: (p: SupportResolvedPayload) => `${p.ticketId}:resolved:${p.resolvedAt}`,
+    resolve: (p: SupportResolvedPayload, ctx) =>
+      ctx.resolver.resolveWalletOwner(p.requesterType, p.requesterId).then(one),
+    variables: (p: SupportResolvedPayload) => ({ reference: p.reference }),
+  }),
+
+  defineTrigger({
+    /**
+     * W17 — the weekly marketplace digest (§22.2's report), emailed to the ops
+     * mailbox. Recipients are OPERATORS, not subjects: `ops` is the recipient
+     * kind, no inbox row exists for them, and email is the channel that can
+     * carry a table of numbers.
+     *
+     * DEDUPED PER WEEK — the one property that matters for a cron job whose
+     * delivery is at-least-once: a redelivered run cannot mail the week twice.
+     *
+     * The catalogue deliberately has NO template editor (§12.3's decision);
+     * this template is edited in code like every other.
+     */
+    event: 'analytics.report',
+    matrixRow: '',
+    channels: ['email'],
+    template: 'analytics_weekly_report',
+    category: 'compliance',
+    alwaysOn: true,
+    dedupeKey: (p: AnalyticsReportPayload) => p.week,
+    resolve: async (p: AnalyticsReportPayload): Promise<Recipient[]> => [
+      {
+        subjectType: 'ops',
+        subjectId: SOS_OPS_MAILBOX_ID,
+        mobile: null,
+        email: p.reportEmail,
+        pushTokens: [],
+        prefs: {},
+      },
+    ],
+    variables: (p: AnalyticsReportPayload) => ({ week: p.week, summary: p.summary }),
+  }),
 ];
 
 // ---------------------------------------------------------------------------
 // Deferred — declared, not forgotten
 // ---------------------------------------------------------------------------
 
-export const DEFERRED_TRIGGERS: DeferredTrigger[] = [
-  {
-    matrixRow: 'sos',
-    unregisteredUntilPhase: 20,
-    reason:
-      '`sos_alerts`, `POST /v1/sos` and the emergency-contact fan-out are Phase 20. The WhatsApp adapter and the always-on `safety` category ship here so Phase 20 invents nothing.',
-  },
-  {
-    matrixRow: 'dispute_update',
-    unregisteredUntilPhase: 20,
-    reason:
-      'Phase 20, not 19: `POST /v1/admin/bookings/:id/dispute` is the only thing that can set DISPUTED, and it is in the Phase 20 block.',
-  },
-];
+/**
+ * Every §12.2 row is registered as of W14 — `sos` was the last deferral. The
+ * array stays, and `registry.spec.ts` keeps reading it, because a later phase
+ * that ships a producer without a trigger must have somewhere honest to say so.
+ */
+export const DEFERRED_TRIGGERS: DeferredTrigger[] = [];
 
 /** Registered triggers indexed by event, built once. */
 export const TRIGGERS_BY_EVENT = new Map<string, RegisteredTrigger<never>>(

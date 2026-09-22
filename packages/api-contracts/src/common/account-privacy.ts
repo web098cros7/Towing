@@ -7,6 +7,23 @@ import { z } from 'zod';
  * realm folders is a build error, same reasoning as `kycStatusSchema`.
  */
 
+/**
+ * A deletion request's workflow vocabulary (W19). Declared here rather than in
+ * `admin/privacy.ts` because both realms read it: the customer POST returns
+ * the row's status, and the admin lane advances it. The migration's CHECK is
+ * pinned against this union by `migration-0033.spec.ts`.
+ */
+export const DELETION_REQUEST_STATUSES = [
+  'requested',
+  'on_hold',
+  'approved',
+  'executing',
+  'completed',
+  'rejected',
+] as const;
+export const deletionRequestStatusSchema = z.enum(DELETION_REQUEST_STATUSES);
+export type DeletionRequestStatus = z.infer<typeof deletionRequestStatusSchema>;
+
 export const consentPolicyTypeSchema = z.enum(['privacy_policy', 'terms_of_service']);
 export type ConsentPolicyType = z.infer<typeof consentPolicyTypeSchema>;
 
@@ -45,7 +62,13 @@ export type AccountDeletionRequest = z.infer<typeof accountDeletionRequestSchema
  */
 export const accountDeletionResponseSchema = z.object({
   requestId: z.uuid(),
-  status: z.literal('requested'),
+  /**
+   * The row's CURRENT status, not a creation literal. `POST /v1/me` still
+   * always creates one in `requested`, but the console owns the workflow from
+   * there (hold, approve, execute) and a widened enum costs nothing at the one
+   * call site while sparing a client a second schema when it re-reads a row.
+   */
+  status: deletionRequestStatusSchema,
   requestedAt: z.iso.datetime(),
 });
 export type AccountDeletionResponse = z.infer<typeof accountDeletionResponseSchema>;

@@ -12,3 +12,4 @@ export * from './places';
 export * from './track';
 export * from './payments';
 export * from './coupons';
+export * from './quotes';

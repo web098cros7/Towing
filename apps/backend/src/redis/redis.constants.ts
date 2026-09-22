@@ -46,6 +46,15 @@ export const DRIVER_LOCATION_CHANNEL = 'location:driver';
 export const METRICS_CHANNEL = 'ops:metrics';
 
 /**
+ * Platform-wide operational events (A18) — every booking status change,
+ * regardless of fleet. The admin live map, dashboard and badge counts
+ * subscribe here (W1); fleet-scoped clients keep reading `fleet:events`.
+ * Low frequency (one message per transition), so no batching like the ping
+ * channels — each message is independently meaningful.
+ */
+export const OPS_EVENTS_CHANNEL = 'ops:events';
+
+/**
  * Per-truck hot position hash. Written by the ping path with a 30s TTL
  * (`TRUCK_HASH_TTL_MS` in @towing/api-contracts) and read by the positions
  * snapshot; the dispatch matcher of §6.1 reads the same key.
@@ -145,6 +154,15 @@ export const paymentCaptureLockKey = (bookingId: string): string => `payment:loc
 export const KILLSWITCH_PAUSED_ZONES = 'dispatch:killswitch:paused-zones';
 export const KILLSWITCH_LONG_DISTANCE = 'dispatch:killswitch:long-distance-disabled';
 export const KILLSWITCH_FORCE_POLLING = 'dispatch:killswitch:force-polling';
+/**
+ * W14's standalone-SOS switch (G11), stored as the DISABLED flag.
+ *
+ * Inverted on purpose: `flag()` answers `false` when Redis is unreachable, and
+ * for every other switch that means "not paused" — the safe answer. Standalone
+ * SOS's safe answer is ENABLED, so the stored bit is the exception, not the
+ * rule: an outage leaves §13's safety path working.
+ */
+export const KILLSWITCH_SOS_STANDALONE_DISABLED = 'safety:killswitch:sos-standalone-disabled';
 
 /** Single-use WebSocket handshake ticket (§16.6 handshake auth). */
 export const wsTicketKey = (ticket: string): string => `ws:ticket:${ticket}`;
@@ -155,3 +173,44 @@ export const wsTicketKey = (ticket: string): string => `ws:ticket:${ticket}`;
  * staleTime and its on-reconnect REST resync already cover.
  */
 export const metricsLockKey = (fleetId: string): string => `ops:metrics:lock:${fleetId}`;
+
+/**
+ * W3's admin metrics/badge broadcaster lock. Same cost-guard contract as
+ * `metricsLockKey`: whichever node wins recomputes the platform KPIs; losing it
+ * costs one skipped push, which the console's 10s poll and resync cover.
+ */
+export const adminOpsMetricsLockKey = 'ops:admin-metrics:lock';
+
+/**
+ * W3's activity feed — the last 50 domain events off `ops:events`, newest
+ * first. Appended once per message cluster-wide (a short NX marker dedupes
+ * multi-node delivery); read by `GET /v1/admin/ops/activity`, with a DB
+ * backfill when it is empty or Redis is down.
+ */
+export const adminOpsActivityKey = 'admin:ops:activity';
+
+/**
+ * The multi-node append guard: every node receives every `ops:events` message,
+ * and the first to `SET NX` this short-lived marker is the one that pushes the
+ * row — so the feed gets one copy, not one per task.
+ */
+export const adminOpsActivitySeenKey = (hash: string): string => `admin:ops:activity:seen:${hash}`;
+
+/**
+ * W3's KPI and badge caches. Invalidated by the broadcaster, then re-filled by
+ * whichever path computes next, so the REST response and the pushed frame
+ * cannot disagree.
+ */
+export const adminOpsDashboardCacheKey = 'admin:ops:dashboard';
+export const adminOpsBadgesCacheKey = 'admin:ops:badges';
+
+/**
+ * Admin session revocation fan-out (W2 → W1-3 contract).
+ *
+ * `AdminUsersService` publishes `{ adminId, reason, at }` here whenever a
+ * sub-role change, deactivation or password reset kills an admin's sessions.
+ * W1-3's `admin.gateway` consumes it and drops `admin:user:{adminId}` sockets
+ * on every node. HTTP enforcement does NOT wait for a consumer: the A17 guard
+ * 401s the revoked admin's next request regardless.
+ */
+export const ADMIN_REVOKE_CHANNEL = 'admin:revoke';

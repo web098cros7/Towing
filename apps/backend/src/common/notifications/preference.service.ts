@@ -14,7 +14,7 @@ import type { Recipient, RegisteredTrigger } from './registry/trigger.types';
  * carries a key ONLY for a category a person may legally switch off; everything
  * else is unsuppressible by construction rather than by a default that a future
  * migration could flip. A user opt-out must never be able to suppress a KYC
- * rejection, a payout failure, or — from Phase 20 — an SOS.
+ * rejection, a payout failure, or (since W14) an SOS.
  */
 @Injectable()
 export class PreferenceService {

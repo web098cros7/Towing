@@ -3,13 +3,16 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { money, primaryId, timestamps } from './columns';
+import { adminUsers } from './admin';
 import { coupons } from './promotions';
 import {
   actorRoleEnum,
@@ -298,6 +301,12 @@ export const bookingStatusHistory = pgTable(
       .references(() => bookings.id, { onDelete: 'cascade' }),
     status: bookingStatusEnum('status').notNull(),
     actor: actorRoleEnum('actor').notNull().default('system'),
+    /**
+     * W1/W8 (migration 0020): which admin wrote this row via the manual
+     * override. Nullable — every existing row was written by the system or a
+     * non-admin actor. No cascade: history must outlive the admin.
+     */
+    actorId: uuid('actor_id').references(() => adminUsers.id),
     note: text('note'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -351,6 +360,12 @@ export const bookingLocationPath = pgTable(
  * reversible line. An `unable` row exists so §6.5's re-dispatch excludes the
  * driver who just failed to deliver; it does not touch the acceptance rate,
  * whose denominator is `accepted + rejected + expired`.
+ *
+ * W5's migration 0023 widens the CHECK once more with `reassigned` (W8's admin
+ * reassignment writer lands later; the value ships first so W8 does not have to
+ * coordinate a migration with its route). Like `unable`, it sits outside the
+ * acceptance-rate denominator — a reassignment is an admin decision, not a
+ * driver's refusal.
  */
 export const dispatchAttempts = pgTable(
   'dispatch_attempts',
@@ -362,9 +377,66 @@ export const dispatchAttempts = pgTable(
     wave: integer('wave').notNull(),
     radiusKm: numeric('radius_km', { precision: 6, scale: 2 }).notNull(),
     driverId: uuid('driver_id').references(() => drivers.id),
-    outcome: text('outcome').notNull(), // offered|accepted|rejected|expired|revoked|unable
+    outcome: text('outcome').notNull(), // offered|accepted|rejected|expired|revoked|unable|reassigned
     offeredAt: timestamp('offered_at', { withTimezone: true }).notNull().defaultNow(),
     respondedAt: timestamp('responded_at', { withTimezone: true }),
   },
   (t) => [index('idx_dispatch_attempts_booking').on(t.bookingId, t.wave)],
+);
+
+/**
+ * W5's per-wave decision log — the dispatch inspector's raw material (§9.4.6).
+ *
+ * APPEND-ONLY AUDIT, NOT STATE. The wave runner writes exactly one row per wave
+ * AFTER offers go out, inside a try/catch: an inspector that can fail a search
+ * is worse than an inspector with a gap. The durable wave position stays on
+ * `bookings.search_wave` / `dispatch_deadline_at`, and nothing reconstructs a
+ * live search from these rows — re-deriving state from an audit log is how the
+ * two quietly start disagreeing.
+ *
+ * The JSONB columns are the point of the table:
+ *  - `weights` — the §6.2 weights in force when this wave ran (`dispatch_config`,
+ *    read not hardcoded; an admin retuning them changes the next wave's row,
+ *    which is what makes "why did the ranking change" answerable).
+ *  - `config` — the resolved per-zone dispatch config (ladders, offers per wave,
+ *    timeouts) the wave actually used.
+ *  - `candidates` — at most 10 scored rows of `{driverId, distanceM, proximity,
+ *    rating, acceptance, completion, score, offered}`; `offered` says whether an
+ *    offer actually went out, which separates "ranked" from "contacted".
+ *  - `excluded` — `{reason: {count, driverIds}}` with the id list capped, so
+ *    "who was excluded and why" needs no second query into a table that no
+ *    longer holds the answer.
+ *
+ * Empty waves PAST the last rung are deliberately not logged (a booking that
+ * finds nobody re-checks every two seconds; one row per check would bury the
+ * signal). `idx_dispatch_wave_logs_ran_at` exists for W17's 30-day purge.
+ */
+export const dispatchWaveLogs = pgTable(
+  'dispatch_wave_logs',
+  {
+    id: primaryId(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' }),
+    wave: integer('wave').notNull(),
+    radiusKm: numeric('radius_km', { precision: 6, scale: 2 }).notNull(),
+    considered: integer('considered').notNull(),
+    eligible: integer('eligible').notNull(),
+    offered: integer('offered').notNull(),
+    degraded: boolean('degraded').notNull().default(false),
+    weights: jsonb('weights').notNull(),
+    config: jsonb('config').notNull(),
+    excluded: jsonb('excluded').notNull(),
+    candidates: jsonb('candidates').notNull(),
+    ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
+    durationMs: integer('duration_ms').notNull(),
+  },
+  (t) => [
+    // A collision backstop, not an idempotency key: the search lock already
+    // keeps two workers off one wave, and a raced duplicate should become a new
+    // row rather than fail a wave that has already sent its offers.
+    uniqueIndex('uq_dispatch_wave_logs_wave_ran').on(t.bookingId, t.wave, t.ranAt),
+    index('idx_dispatch_wave_logs_booking_wave').on(t.bookingId, t.wave),
+    index('idx_dispatch_wave_logs_ran_at').on(t.ranAt),
+  ],
 );

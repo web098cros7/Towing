@@ -1,4 +1,5 @@
 import type { PricingEstimateRequest } from '@towing/api-contracts';
+import { ApiClientError } from '@/lib/api/errors';
 import { env } from '@/lib/env';
 import type { FareEstimate } from '../types';
 import type { PricingDataSource } from './pricingDataSource';
@@ -126,6 +127,8 @@ function quote(input: PricingEstimateRequest): FareEstimate {
       totalPaise,
     },
     surgeActive: surgePaise > 0,
+    // A11: kill-switch warnings ride the contract response; the mock never pauses.
+    warnings: [],
     couponCode: MOCK_COUPON.code,
     totalMinPaise: totalPaise,
     totalMaxPaise: roundTenRupees(totalPaise * RANGE_SPREAD),
@@ -136,10 +139,22 @@ export const pricingMockSource: PricingDataSource = {
   async estimate(input: PricingEstimateRequest): Promise<FareEstimate> {
     await delay(650);
     if (env.mockPricingState === 'error') throw new Error('Mock pricing error');
+    // W20 §7.3 — the >600 km refusal, with the same code and details the
+    // server sends, so the quote flow is reachable in mock mode.
+    if (env.mockPricingState === 'manual_quote') {
+      throw new ApiClientError(
+        422,
+        'manual_quote_required',
+        'This trip is long enough to need a manual quote',
+        { distanceKm: 812.4 },
+      );
+    }
     return quote(input);
   },
   quoteNow(input: PricingEstimateRequest): FareEstimate | undefined {
     // The error state must stay reachable: no seed, so the request's failure shows.
-    return env.mockPricingState === 'error' ? undefined : quote(input);
+    return env.mockPricingState === 'error' || env.mockPricingState === 'manual_quote'
+      ? undefined
+      : quote(input);
   },
 };

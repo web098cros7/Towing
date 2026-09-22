@@ -82,8 +82,30 @@ describe('compliance engine', () => {
     expect(open[0]?.type).toBe('doc_expired');
     expect(open[0]?.severity).toBe('error');
     expect(open[0]?.message).toContain('KA-CE-0001');
+    expect(open[0]?.href).toBe(`/trucks?truck=${truckId}`);
   });
 
+  it('points an alert opened before deep links existed at its truck on the next sweep', async () => {
+    const { fleetId } = await seedFleet(db, `F ${randomUUID().slice(0, 8)}`);
+    const truckId = await seedTruck(db, fleetId, { plate: 'KA-CE-0003' });
+    await db.insert(complianceDocuments).values({
+      truckId,
+      docType: 'insurance',
+      status: 'valid',
+      expiresAt: new Date(Date.now() - DAY),
+    });
+
+    await compliance.sweep('manual', fleetId);
+
+    // What the previous sweep wrote: the bare list link.
+    await db.update(alerts).set({ href: '/trucks' }).where(eq(alerts.fleetId, fleetId));
+
+    await compliance.sweep('manual', fleetId);
+
+    const open = await openAlertsFor(fleetId);
+    expect(open).toHaveLength(1);
+    expect(open[0]?.href).toBe(`/trucks?truck=${truckId}`);
+  });
   it('opens a warning inside the 30-day window and counts the days down', async () => {
     const { fleetId } = await seedFleet(db, `F ${randomUUID().slice(0, 8)}`);
     const truckId = await seedTruck(db, fleetId, { plate: 'KA-CE-0002' });

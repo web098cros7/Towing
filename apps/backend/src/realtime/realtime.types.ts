@@ -1,4 +1,11 @@
 import type {
+  AdminBookingStatusEvent,
+  AdminLocationUpdateEvent,
+  AdminOpsBadgesEvent,
+  AdminOpsMetricsEvent,
+  AdminReadyEvent,
+  AdminSosAlertEvent,
+  AdminSubRole,
   BookingStatusEvent,
   CustomerBookingStatusEvent,
   CustomerLocationUpdateEvent,
@@ -13,6 +20,7 @@ import type {
   JobRevokedEvent,
   LocationUpdateEvent,
   OpsMetricsEvent,
+  OpsSubscribe,
   RealtimeReadyEvent,
   SearchProgressEvent,
 } from '@towing/api-contracts';
@@ -175,4 +183,60 @@ export type CustomerNamespaceType = Namespace<
   CustomerServerToClientEvents,
   Record<string, never>,
   CustomerSocketData
+>;
+
+// ---------------------------------------------------------------------------
+// The `/admin` namespace (W1, §3.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The second namespace with an inbound message, and for the same reason as
+ * `/driver`: filter rooms cannot be derived from the ticket (one operator
+ * watches zones/booking of their choosing), so `ops:subscribe` must exist. Its
+ * payload is zod-validated and BOUNDED (`opsSubscribeSchema`), room names are
+ * built from validated values only, and the socket's identity still comes from
+ * `socket.data` — a message can choose WHICH filtered rooms to join, never
+ * whose they are.
+ */
+export interface AdminClientToServerEvents {
+  'ops:subscribe': (payload: OpsSubscribe, ack?: (result: { ok: boolean }) => void) => void;
+}
+
+/**
+ * Only the events that have producers TODAY are declared. W3 added
+ * `ops:metrics` / `ops:badges` with the broadcaster + bridge, and W14 added
+ * `sos:alert` with `SosService` as the producer; `dispatch:wave` and
+ * `ops:banner` remain named in the contracts enum for their consumers but stay
+ * out of this type until each has a producer — adding one earlier would
+ * compile the fiction that it arrives.
+ */
+export interface AdminServerToClientEvents {
+  'realtime:ready': (payload: AdminReadyEvent) => void;
+  'booking:status': (payload: AdminBookingStatusEvent) => void;
+  'location:update': (payload: AdminLocationUpdateEvent) => void;
+  'ops:metrics': (payload: AdminOpsMetricsEvent) => void;
+  'ops:badges': (payload: AdminOpsBadgesEvent) => void;
+  'sos:alert': (payload: AdminSosAlertEvent) => void;
+}
+
+/** Attached at handshake; the only source of a socket's admin. */
+export interface AdminSocketData {
+  adminId: string;
+  subRole: AdminSubRole;
+  /** Zone/booking rooms this socket joined through `ops:subscribe`. */
+  filterRooms?: string[];
+}
+
+export type AdminSocket = Socket<
+  AdminClientToServerEvents,
+  AdminServerToClientEvents,
+  Record<string, never>,
+  AdminSocketData
+>;
+
+export type AdminNamespace = Namespace<
+  AdminClientToServerEvents,
+  AdminServerToClientEvents,
+  Record<string, never>,
+  AdminSocketData
 >;

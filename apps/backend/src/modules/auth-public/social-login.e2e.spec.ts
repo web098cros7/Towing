@@ -126,6 +126,8 @@ describe('social login (/v1/auth/social)', () => {
       EXOTEL_TOKEN: 'token',
       AUTH_DEV_OTP_ECHO: '',
       APPLE_LOGIN_ENABLED: '1',
+      // W2's at-rest TOTP key must not be the dev placeholder in production.
+      ADMIN_TOTP_ENC_KEY: 'a-real-production-totp-encryption-key-32ch',
     });
 
     expect(() => assertProductionSafety(env)).toThrow(/APPLE_LOGIN_ENABLED/);

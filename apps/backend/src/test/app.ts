@@ -140,13 +140,20 @@ export async function customerAuthHeaderFor(
 
 export async function adminAuthHeaderFor(
   app: INestApplication,
-  params: { adminId: string; subRole?: 'super_admin' | 'operations' | 'support' | 'finance' },
+  params: {
+    adminId: string;
+    subRole?: 'super_admin' | 'operations' | 'support' | 'finance';
+    authzVersion?: number;
+  },
 ): Promise<string> {
   const jwt = app.get(JwtService);
   const token = await jwt.signAsync({
     sub: params.adminId,
     role: 'admin',
     sub_role: params.subRole ?? 'operations',
+    // Matches the `DEFAULT 1` on `admin_users.authz_version` (migration
+    // 0018): seeded rows read as version one unless a spec bumps them.
+    authz_version: params.authzVersion ?? 1,
   });
   return `Bearer ${token}`;
 }

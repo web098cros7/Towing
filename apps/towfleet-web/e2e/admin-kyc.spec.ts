@@ -11,7 +11,10 @@ import { adminLogin } from './support/adminLogin';
 test('an unauthenticated visitor hitting /admin is redirected to /admin/login', async ({ page }) => {
   await page.goto('/admin/drivers');
   await expect(page).toHaveURL(/\/admin\/login/);
-  await expect(page.getByRole('heading', { name: 'Towing Admin' })).toBeVisible();
+  // Both realms share the "Welcome back" heading; the description line is what
+  // says which console this is.
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+  await expect(page.getByText('Sign in to the platform operations console.')).toBeVisible();
 });
 
 test('the fleet session does not authenticate the admin console (realm separation)', async ({
@@ -20,7 +23,7 @@ test('the fleet session does not authenticate the admin console (realm separatio
   // Log into the FLEET console first.
   await page.goto('/login');
   await page.getByLabel('Email').fill('lakshmi@recovery.in');
-  await page.getByLabel('Password').fill('password123');
+  await page.getByLabel('Password', { exact: true }).fill('password123');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -37,6 +40,8 @@ test('admin login → KYC queue renders, and a submitted driver has a real drawe
   // made for the fleet console once it had two.
   await adminLogin(page);
 
+  // A6 lands on the neutral `/admin` page; walk on to the queue explicitly.
+  await page.goto('/admin/drivers');
   await expect(page.getByRole('heading', { name: 'KYC queue' })).toBeVisible();
   await expect(page.getByText('Prakash Naik')).toBeVisible();
 

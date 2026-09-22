@@ -201,7 +201,9 @@ export async function runComplianceSweep(
     // Upsert on the partial unique index. The DO UPDATE matters: a document
     // that moves expiring_soon → expired must UPGRADE its open alert rather
     // than open a second one, and the countdown in the message has to keep
-    // moving as the days tick down.
+    // moving as the days tick down. The href deep-links the console to the
+    // truck (`/trucks?truck=<id>`), and the DO UPDATE refreshes it so alerts
+    // opened before this link existed correct themselves on the next sweep.
     const inserted = await db.execute<{ id: string; inserted: boolean }>(sql`
       insert into alerts (fleet_id, type, severity, message, href, subject_type, subject_id)
       values (
@@ -209,12 +211,12 @@ export async function runComplianceSweep(
         ${isExpired ? 'doc_expired' : 'doc_expiring'}::alert_type,
         ${isExpired ? 'error' : 'warning'}::alert_severity,
         ${message},
-        '/trucks',
+        ${`/trucks?truck=${doc.truckId}`},
         'compliance_document'::alert_subject_type,
         ${doc.docId}
       )
       on conflict ("fleet_id", "type", "subject_id") where "resolved_at" is null
-      do update set message = excluded.message, updated_at = now()
+      do update set message = excluded.message, href = excluded.href, updated_at = now()
       returning id, (xmax = 0) as inserted
     `);
     if (inserted[0]?.inserted) result.alertsOpened += 1;

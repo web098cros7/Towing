@@ -12,7 +12,7 @@ import { ApiException } from '../../common/errors/api-exception';
 import { NotificationService } from '../../common/notifications/notification.service';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { DB, type Database } from '../../db/db.module';
-import { bookings, dispatchAttempts, drivers, serviceZones, users } from '../../db/schema';
+import { bookings, dispatchAttempts, drivers, fleets, serviceZones, users } from '../../db/schema';
 import { haversineMeters } from '../pricing/pricing.math';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
@@ -33,6 +33,15 @@ import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
  * customer payment. Everything below is arranged so that exactly one accept can
  * win, and the loser is told so politely.
  */
+
+/**
+ * Why an offer died before it was decided. W6 adds `fleet_suspended` (A15):
+ * a suspended fleet's live offers are revoked with a reason that names the
+ * real cause — the driver did nothing wrong and the client can say so.
+ * W8 adds `reassigned`: an operator moved the job away from its driver, which
+ * is likewise not the offered drivers' fault.
+ */
+type RevokeReason = 'cancelled' | 'paused' | 'fleet_suspended' | 'reassigned';
 
 /**
  * Grace added to the offer TTL when locking a driver.
@@ -168,6 +177,76 @@ export class OfferService {
   }
 
   /**
+   * Revokes every live offer on a booking (A12) — customer cancel, admin
+   * cancel/reassign (W8), or a paused zone.
+   *
+   * The mirror of `expire`, MINUS the acceptance-rate recompute: a driver
+   * holding an offer for a job nobody could have accepted must not pay for it
+   * with a timeout. Do not "complete" this method by adding the recompute —
+   * that asymmetry is the point. Idempotent per driver (`resolveOffer` only
+   * moves still-`offered` rows), so a racing accept, expiry or second revoke
+   * simply wins or loses without corrupting either path.
+   */
+  async revokeAll(bookingId: string, reason: RevokeReason): Promise<string[]> {
+    const revoked = await this.revokeDrivers(
+      bookingId,
+      await this.repo.pendingOffers(bookingId),
+      reason,
+    );
+    if (revoked.length > 0) {
+      this.logger.debug(`revoked ${revoked.length} offers on ${bookingId} (${reason})`);
+    }
+    return revoked;
+  }
+
+  /**
+   * `revokeAll` scoped to a driver set (A15) — fleet suspension revokes its
+   * drivers' offers without touching other fleets' drivers on the same
+   * booking. Same per-driver idempotency and the same no-rate-damage rule;
+   * `revokeAll` is this over the full pending list.
+   */
+  async revokeDrivers(
+    bookingId: string,
+    driverIds: readonly string[],
+    reason: RevokeReason,
+  ): Promise<string[]> {
+    const wanted = new Set(driverIds);
+    if (wanted.size === 0) return [];
+    const revoked: string[] = [];
+    for (const driverId of await this.repo.pendingOffers(bookingId)) {
+      if (!wanted.has(driverId)) continue;
+      const moved = await this.repo.resolveOffer(bookingId, driverId, 'revoked');
+      if (!moved) continue;
+      await this.presence.releaseOfferLock(driverId);
+      this.gateway.emitJobRevoked(driverId, bookingId, reason);
+      revoked.push(driverId);
+    }
+    return revoked;
+  }
+
+  /**
+   * Tell the driver HOLDING a booking whose job just ended (M0-F6 / W8).
+   *
+   * `revokeAll` only moves still-`offered` attempts, so the holder — whose
+   * attempt is `accepted` — is never reached by it. No attempt row is touched
+   * here (there is nothing to resolve) and no rate is recomputed; this is
+   * purely the frame the A13 handler waits for. Lives here rather than in
+   * `DispatchService` because this service owns the `DriverGateway` — dispatch
+   * must not gain a second import for it.
+   *
+   * The reason is a parameter as of W8: a reassigned driver must see "moved to
+   * another driver", not the cancelled frame, or the app tells them a trip
+   * they were removed from was cancelled.
+   */
+  notifyHolderRevoked(
+    driverId: string,
+    bookingId: string,
+    reason: 'cancelled' | 'reassigned' = 'cancelled',
+  ): void {
+    this.gateway.emitJobRevoked(driverId, bookingId, reason);
+  }
+
+  /**
    * The driver said yes. §3.4's atomic assignment.
    *
    * FOUR THINGS HAVE TO BE TRUE AT COMMIT and each is checked inside the
@@ -205,15 +284,29 @@ export class OfferService {
       if (!claimed) throw this.gone();
 
       // (3) §3.1's database layer.
+      // M0-F9: locked — this is the driver-half of the driver-then-booking
+      // order `AdminDriversService.suspend` and `applyPendingSuspension` take.
+      // `OF drivers`, not a bare `FOR UPDATE`: the fleet side of this outer
+      // join is nullable and Postgres refuses to lock it. Without the lock a
+      // suspension landing between this re-read and the transition below
+      // suspends (and logs out) a driver who now holds a job.
       const [eligible] = await tx
         .select({
           kycStatus: drivers.kycStatus,
           isOnline: drivers.isOnline,
           fleetId: drivers.fleetId,
           truckId: drivers.assignedTruckId,
+          // A15: the fleet and the deferred shelf, re-read inside the
+          // transaction. An offer still on screen at the moment of suspension
+          // can otherwise be accepted if the eviction failed (it swallows its
+          // errors by design) or raced it. Null fleet = independent = passes.
+          fleetStatus: fleets.status,
+          suspensionPending: sql<boolean>`${drivers.pendingSuspensionAt} is not null`,
         })
         .from(drivers)
+        .leftJoin(fleets, eq(fleets.id, drivers.fleetId))
         .where(eq(drivers.id, driverId))
+        .for('update', { of: drivers })
         .limit(1);
 
       if (!eligible || eligible.kycStatus !== 'approved' || !eligible.isOnline) {
@@ -221,6 +314,13 @@ export class OfferService {
           HttpStatus.FORBIDDEN,
           ErrorCodes.DRIVER_NOT_ELIGIBLE,
           'You can no longer take this job',
+        );
+      }
+      if (eligible.fleetStatus === 'suspended' || eligible.suspensionPending) {
+        throw new ApiException(
+          HttpStatus.FORBIDDEN,
+          ErrorCodes.DRIVER_NOT_ELIGIBLE,
+          'Your account can no longer take this job',
         );
       }
 
@@ -313,6 +413,9 @@ export class OfferService {
       from: 'searching',
       to: 'assigned',
       fleetId,
+      zoneId: booking.zoneId,
+      driverId,
+      userId: booking.userId,
     });
 
     // §11.5's route and first ETA (Phase 18) — the ONE Directions call this
@@ -327,10 +430,7 @@ export class OfferService {
     // already had it a moment ago to score this candidate, and it is fresher
     // than the ~30 s Postgres flush.
     const fix = await this.presence.lastFix(driverId).catch(() => null);
-    void this.tracking.planRoute(
-      booking.id,
-      fix ? { lat: fix.lat, lng: fix.lng } : null,
-    );
+    void this.tracking.planRoute(booking.id, fix ? { lat: fix.lat, lng: fix.lng } : null);
   }
 
   /** `GET /v1/driver/offers/current` — §19.2's resync for a dropped socket. */
@@ -376,6 +476,9 @@ export class OfferService {
             )
           : 0,
         score: 0,
+        // W5: reconstructed from the DB row, not scored — zeros, and only used
+        // to rebuild the offer frame for the offering driver.
+        terms: { proximity: 0, rating: 0, acceptance: 0, completion: 0 },
         fleetId: null,
         truckId: null,
       },
@@ -429,7 +532,10 @@ export class OfferService {
       note: booking.note,
       // §5.1's collection OTP is held by the CUSTOMER and typed by the driver;
       // the code itself never travels to this phone.
-      otpPending: booking.status === 'assigned' || booking.status === 'en_route' || booking.status === 'arrived',
+      otpPending:
+        booking.status === 'assigned' ||
+        booking.status === 'en_route' ||
+        booking.status === 'arrived',
       assignedAt: booking.updatedAt?.toISOString() ?? null,
 
       // §5.2's instants (Phase 18). ABSOLUTE, on the server's clock, for the

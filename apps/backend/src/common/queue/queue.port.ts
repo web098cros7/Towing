@@ -140,6 +140,73 @@ export interface JobPayloads {
    * already or the next wave passes over it regardless.
    */
   'dispatch.offer-timeout': { bookingId: string; driverId: string; wave: number };
+
+  /**
+   * Revoke every live offer on a booking (A12) — customer cancel today, admin
+   * cancel/reassign in W8.
+   *
+   * A job rather than a direct call because the caller (`BookingsService`)
+   * must not import `DispatchModule`: dispatch already imports bookings for
+   * the state machine, so the edge the other way would be a module cycle
+   * (see `BookingsModule`'s header). The queue is `@Global()`, and delivery
+   * is near-immediate — the driver is told within the same seconds a direct
+   * call would take. Idempotent by construction (`revokeAll` only moves
+   * still-`offered` rows), so the default attempts are safe.
+   *
+   * M0-F6: `revokeAll` only reaches drivers with an `offered` attempt, but a
+   * cancelled booking may already have a HOLDER (an `accepted` attempt). The
+   * canceller carries that driver here so the worker can emit `job:revoked`
+   * to them too — otherwise the A13 handler never fires on a real cancel and
+   * the driver's screen sits on a dead job until the 15 s poll notices.
+   */
+  'dispatch.revoke': { bookingId: string; reason: 'cancelled' | 'paused'; holderDriverId?: string };
+
+  /**
+   * Apply a shelved driver suspension now that their job has ended (A14).
+   *
+   * A job rather than a direct call for the same reason as `dispatch.revoke`:
+   * the caller (`BookingsService.cancel`) sits inside a module cycle —
+   * `AdminDriversModule` imports `DriverPresenceModule`, which imports
+   * `BookingsModule` — and the queue is `@Global()`. The worker body is one
+   * line over `AdminDriversService.applyPendingSuspension`, which is also
+   * what the queue-off suite calls directly.
+   */
+  'admin.apply-suspension': { driverId: string };
+
+  /**
+   * W17 — ABSOLUTE recompute of one IST day's rollups, then the 30-day
+   * `dispatch_wave_logs` purge (§22.2's retention half). Cron-triggered after
+   * the midnight IST boundary; the manual form exists so a failed night is
+   * re-runnable from the console without shell access.
+   *
+   * `day` omitted means yesterday — resolved by the worker at RUN time, not at
+   * enqueue time, so a job that sits in a queue across midnight still computes
+   * the day the cron meant.
+   */
+  'analytics.rollup': { reason: 'cron' | 'manual'; day?: string };
+
+  /**
+   * W17 — the weekly marketplace digest to the ops mailbox (§22.2's report).
+   * Deduped per week at the trigger (`analytics.report`), so a redelivery
+   * cannot mail the same week twice.
+   */
+  'analytics.report-email': { reason: 'cron' | 'manual'; week?: string };
+
+  /**
+   * W19 — execute one approved deletion request (§20.4). By id, not by payload
+   * copy: the worker re-reads the row, so an admin who approves a request and
+   * an admin who presses "execute" cannot be acting on two different ideas of
+   * what the subject asked for. Idempotent end to end — a `completed` request
+   * is a no-op, and a half-done run is finished by the next delivery.
+   */
+  'privacy.erasure': { requestId: string };
+
+  /**
+   * W19 — the nightly retention sweep (§20.4). Deletes by the rows in
+   * `retention_policies`, so an operator's edit takes effect on the next pass
+   * without a deploy.
+   */
+  'privacy.sweep': { reason: 'cron' | 'manual' };
 }
 
 export type JobName = keyof JobPayloads;

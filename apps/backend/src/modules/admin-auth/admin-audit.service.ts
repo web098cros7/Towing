@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { DB, type Database } from '../../db/db.module';
+import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
 import { adminActions } from '../../db/schema';
 
 export interface AdminActionRecord {
@@ -36,10 +36,15 @@ export class AdminAuditService {
    * @returns the inserted row id. Phase 13 uses it as the dedupe key for the
    *   notification a decision emits: it is the one value that is genuinely
    *   one-per-decision, unlike a per-call timestamp, which a double-tapped
-   *   admin button produces two distinct copies of.
+   *   admin button produces two distinct copies.
+   *
+   * A15: `options.tx` writes the row inside the caller's transaction, so a
+   * status flip and its audit row commit atomically. Callers without a
+   * transaction omit it and behave exactly as before.
    */
-  async record(entry: AdminActionRecord): Promise<string> {
-    const [row] = await this.db.insert(adminActions).values({
+  async record(entry: AdminActionRecord, options: { tx?: DatabaseExecutor } = {}): Promise<string> {
+    const db = options.tx ?? this.db;
+    const [row] = await db.insert(adminActions).values({
       adminId: entry.adminId,
       action: entry.action,
       subjectType: entry.subjectType,

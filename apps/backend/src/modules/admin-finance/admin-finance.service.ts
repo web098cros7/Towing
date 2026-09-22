@@ -1,22 +1,45 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import type { Response } from 'express';
 import {
   ErrorCodes,
   paiseToRupeeString,
   rupeeStringToPaise,
   type AdminFinanceConfigDto,
   type AdminFinanceConfigUpdate,
+  type AdminInvariantsResponse,
+  type AdminLedgerQuery,
+  type AdminLedgerResponse,
   type AdminPayoutDto,
   type AdminPayoutsListResponse,
   type AdminPayoutsQuery,
+  type AdminPayoutSlaQuery,
+  type AdminPayoutSlaResponse,
+  type AdminRefundIssue,
+  type AdminRefundIssueResponse,
+  type AdminRefundsQuery,
+  type AdminRefundsResponse,
+  type AdminTransactionsQuery,
+  type AdminTransactionsResponse,
+  type RefundKind,
+  type RefundStatus,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
+import { streamCsv } from '../../common/csv/csv';
 import { DB, type Database } from '../../db/db.module';
+import {
+  driftedWallets,
+  ledgerInvariants,
+  type LedgerInvariants,
+} from '../../db/ledger/invariants';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
+import { codeOf } from '../admin-bookings/admin-bookings.repo';
 import type { SessionContext } from '../auth/token.service';
 import { PricingConfigRepo } from '../pricing/pricing-config.repo';
 import { PayoutsRepo } from '../money/payouts.repo';
 import { PayoutsService } from '../money/payouts.service';
+import { RefundsService } from '../money/refunds.service';
+import { AdminFinanceRepo } from './admin-finance.repo';
 
 /**
  * §9.4.10's Finance surface.
@@ -38,6 +61,9 @@ export class AdminFinanceService {
   constructor(
     private readonly repo: PayoutsRepo,
     private readonly payouts: PayoutsService,
+    /** Named for what it is: there is also a `refunds(query)` READ on this class. */
+    private readonly refundEngine: RefundsService,
+    private readonly financeRepo: AdminFinanceRepo,
     private readonly audit: AdminAuditService,
     private readonly pricingConfig: PricingConfigRepo,
     @Inject(DB) private readonly db: Database,
@@ -75,10 +101,7 @@ export class AdminFinanceService {
     `);
 
     const detail = new Map(
-      (enriched as unknown as Array<Record<string, unknown>>).map((row) => [
-        row.id as string,
-        row,
-      ]),
+      (enriched as unknown as Array<Record<string, unknown>>).map((row) => [row.id as string, row]),
     );
 
     return {
@@ -270,7 +293,222 @@ export class AdminFinanceService {
 
     return after;
   }
+
+  // ── W9: the console reads and the one write ───────────────────────────────
+
+  /** Every payment that ever touched a booking (the transactions table). */
+  async transactions(query: AdminTransactionsQuery): Promise<AdminTransactionsResponse> {
+    const { items, total } = await this.financeRepo.transactions(query);
+    return { items, page: query.page, limit: query.limit, total };
+  }
+
+  /** The append-only wallet ledger, cursor-paginated (the ledger viewer). */
+  ledger(query: AdminLedgerQuery): Promise<AdminLedgerResponse> {
+    return this.financeRepo.ledger(query);
+  }
+
+  async refunds(query: AdminRefundsQuery): Promise<AdminRefundsResponse> {
+    const { items, total } = await this.financeRepo.refunds(query);
+    return { items, page: query.page, limit: query.limit, total };
+  }
+
+  /**
+   * §14.1's five invariants, live. The panel exists so an operator can answer
+   * "is the ledger sound right now?" without shell access — and so the answer
+   * is the SAME query the nightly job and the suite assert, never a parallel
+   * reimplementation that could disagree.
+   */
+  async invariants(): Promise<AdminInvariantsResponse> {
+    const [drift, wallets] = await Promise.all([
+      ledgerInvariants(this.db),
+      driftedWallets(this.db, 20),
+    ]);
+
+    const invariants = INVARIANT_LABELS.map(({ key, label }) => ({
+      key,
+      label,
+      drift: drift[key],
+    }));
+
+    return {
+      checkedAt: new Date().toISOString(),
+      ok: invariants.every((entry) => entry.drift === 0),
+      // The array order is the panel's order; the keys are pinned by the
+      // contract, and a MISSING invariant here is a compile error, not a
+      // silently green panel.
+      invariants,
+      driftedWallets: wallets.map((wallet) => ({
+        walletId: wallet.walletId,
+        ownerType:
+          wallet.ownerType as AdminInvariantsResponse['driftedWallets'][number]['ownerType'],
+        ownerId: wallet.ownerId,
+        balancePaise: wallet.balancePaise,
+        ledgerPaise: wallet.ledgerPaise,
+        deltaPaise: wallet.deltaPaise,
+      })),
+    };
+  }
+
+  /** §14.4's decision latency, at the two percentiles worth reading. */
+  async payoutSla(query: AdminPayoutSlaQuery): Promise<AdminPayoutSlaResponse> {
+    const row = await this.financeRepo.payoutSla(query.windowDays);
+    return { windowDays: query.windowDays, ...row, generatedAt: new Date().toISOString() };
+  }
+
+  /**
+   * One IST day of money as a downloadable file: captures and refunds in one
+   * signed, time-ordered list. `streamCsv` owns the escaping (formula
+   * injection included) — the same writer every other export in the repo uses.
+   */
+  async reconciliationCsv(res: Response, date: string): Promise<void> {
+    // Row fetch errors happen BEFORE the first byte, so they can still be a
+    // proper error envelope — log the cause here, because the generic
+    // exception filter's body keeps it flat by design.
+    let rows: Awaited<ReturnType<AdminFinanceRepo['reconciliation']>>;
+    try {
+      rows = await this.financeRepo.reconciliation(date);
+    } catch (error) {
+      this.logger.error(`reconciliation ${date} failed: ${String(error)}`);
+      throw error;
+    }
+    let emitted = false;
+
+    await streamCsv(
+      res,
+      {
+        filename: `reconciliation-${date}.csv`,
+        header: [
+          'kind',
+          'ref',
+          'booking_code',
+          'amount_paise',
+          'status',
+          'method',
+          'gateway_ref',
+          'at',
+          'note',
+        ],
+      },
+      async () => {
+        if (emitted) return [];
+        emitted = true;
+        return rows.map((row) => [
+          row.kind,
+          row.ref,
+          codeOf(row.bookingId),
+          String(row.amountPaise),
+          row.status,
+          row.method ?? '',
+          row.gatewayRef ?? '',
+          row.at.toISOString(),
+          row.note ?? '',
+        ]);
+      },
+    );
+  }
+
+  /**
+   * `POST /finance/refunds` — Finance's own refund, full or partial.
+   *
+   * THE KEY IS MANDATORY, and it is the only money write in the console that
+   * demands one. Cancel and reassign refuse a second run because the booking
+   * already moved; a refund has no such guard — a retried POST is
+   * indistinguishable from a genuine second refund — so the caller pins their
+   * intent in `Idempotency-Key`, hashed with the issuing admin's id, and a
+   * replayed request resumes rather than refunding twice.
+   *
+   * The landing depends on where the booking already is, and it is A8's
+   * lands: a `paid` booking must LEAVE `paid` (the refund reverses credits,
+   * and `ledgerDrift` only holds while the two agree) — and `paid → cancelled`
+   * is not a legal edge, so `disputed` it is, exactly where W8's dispute
+   * full-refund lands. A booking that already left paid — the
+   * capture-after-cancel conflict, and nothing else in practice — takes the
+   * money-only path (`transitionTo: null`), which is exactly what the
+   * conflict alert asks Finance to do.
+   */
+  async issueRefund(
+    adminId: string,
+    body: AdminRefundIssue,
+    /** Enforced non-empty by `@IdempotencyKey()`; the row key hashes it with the admin id. */
+    clientKey: string,
+    context: SessionContext,
+  ): Promise<AdminRefundIssueResponse> {
+    const keySource = { kind: 'admin' as const, adminId, clientKey };
+
+    let result: { refundId: string; replayed: boolean };
+
+    if (body.amountPaise === undefined || body.liability === undefined) {
+      const [booking] = (await this.db.execute(sql`
+        select status from bookings where id = ${body.bookingId}::uuid
+      `)) as unknown as Array<{ status: string }>;
+      if (!booking) throw ApiException.notFound('Booking not found');
+
+      result = await this.refundEngine.refundBooking({
+        bookingId: body.bookingId,
+        reason: body.reason,
+        initiatedBy: adminId,
+        // A paid booking leaves `paid` via A8's edge (`paid → disputed`);
+        // anything else (the cancelled-booking capture conflict) keeps its
+        // status and only the money moves.
+        transitionTo: booking.status === 'paid' ? 'disputed' : null,
+        keySource,
+      });
+    } else {
+      result = await this.refundEngine.refundPartial({
+        bookingId: body.bookingId,
+        reason: body.reason,
+        initiatedBy: adminId,
+        amountPaise: body.amountPaise,
+        liability: body.liability,
+        keySource,
+      });
+    }
+
+    // The response reads the STORED row, so a replay reports the original
+    // amount and kind rather than whatever the request happened to carry.
+    const [stored] = (await this.db.execute(sql`
+      select amount, kind, status from refunds where id = ${result.refundId}::uuid
+    `)) as unknown as Array<{ amount: string; kind: RefundKind; status: RefundStatus }>;
+
+    await this.audit.record({
+      adminId,
+      action: 'refund.issue',
+      subjectType: 'booking',
+      subjectId: body.bookingId,
+      after: {
+        refundId: result.refundId,
+        kind: stored?.kind ?? null,
+        amountPaise: stored ? rupeeStringToPaise(stored.amount) : null,
+        replayed: result.replayed,
+      },
+      reason: body.reason,
+      ip: context.ip,
+      userAgent: context.userAgent,
+    });
+
+    this.logger.warn(
+      `refund ${result.refundId} issued by ${adminId} on booking ${body.bookingId}` +
+        `${result.replayed ? ' (replayed — nothing moved twice)' : ''}`,
+    );
+
+    return {
+      refundId: result.refundId,
+      kind: stored?.kind ?? 'full',
+      amountPaise: stored ? rupeeStringToPaise(stored.amount) : 0,
+      status: stored?.status ?? 'pending',
+      replayed: result.replayed,
+    };
+  }
 }
+
+/** The panel's order and wording — the labels an operator reads, once. */
+const INVARIANT_LABELS = [
+  { key: 'walletDrift', label: 'Wallet balance = sum of its ledger entries' },
+  { key: 'bookingDrift', label: 'Commission + payout + tax = total (paid bookings)' },
+  { key: 'ledgerDrift', label: 'Credited legs = the recorded driver payout' },
+  { key: 'reversalDrift', label: 'No booking refunded beyond what it was credited' },
+  { key: 'couponDrift', label: 'Coupon used_count = its redemption rows' },
+] as const satisfies ReadonlyArray<{ key: keyof LedgerInvariants; label: string }>;
 
 function alreadyDecided(state: string | undefined): ApiException {
   return new ApiException(

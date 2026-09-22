@@ -16,11 +16,21 @@ export async function adminLogin(
 ): Promise<void> {
   await page.goto('/admin/login');
   await page.getByLabel('Email').fill(credentials.email ?? 'ops@towing.local');
-  await page.getByLabel('Password').fill(credentials.password ?? 'AdminPass123!');
+  await page.getByLabel('Password', { exact: true }).fill(credentials.password ?? 'AdminPass123!');
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('One-time code').fill('123456');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
-  // `middleware.ts` hardcodes this landing — see `AdminTopbar`'s note.
-  await expect(page).toHaveURL(/\/admin\/drivers/);
+  // A7 + M0-F7: `/admin` is neutral — no sub-role is redirected anywhere
+  // (mock login is `operations`, so both queue cards show). Specs navigate on
+  // to the queue they need. Wait for the post-login URL that is NOT the login
+  // page: a bare `/\/admin/` also matches `/admin/login`, which fires the
+  // next `goto` before verify's `Set-Cookie` lands (M0-F3's live race).
+  //
+  // 15 s, not the 5 s default: on a COLD `next start` (first hits load route
+  // modules from disk) the default has been observed to expire before the
+  // client's post-verify navigation settles, failing whole batch runs on
+  // timing alone. Warm runs complete this in ~100 ms, so the larger ceiling
+  // costs nothing when it is not needed.
+  await expect(page).toHaveURL(/\/admin$/, { timeout: 15_000 });
 }

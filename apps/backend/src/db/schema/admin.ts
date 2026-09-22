@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { primaryId, timestamps } from './columns';
 import { accountStatusEnum, adminSubRoleEnum } from './enums';
 
@@ -36,6 +36,41 @@ export const adminUsers = pgTable(
     failedAttempts: integer('failed_attempts').notNull().default(0),
     lockedUntil: timestamp('locked_until', { withTimezone: true }),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    /**
+     * A17's authorization generation. Migration 0019's trigger bumps it on
+     * every sub-role or status change, so no writer can forget;
+     * `JwtAuthGuard` 401s any access token older than the row, so a demotion
+     * lands within seconds instead of at the 900-second expiry. Added by
+     * migration 0018, trigger by 0019.
+     */
+    authzVersion: integer('authz_version').notNull().default(1),
+    /**
+     * W1/W2 identity columns (migration 0020). `twofa_secret_enc` holds the
+     * env-key-encrypted TOTP secret — never a bare secret; the CHECK refuses
+     * an enabled second factor with nothing to verify against, so the DB
+     * catches what a forgetful writer would otherwise ship as a lockout.
+     * `twofa_secret` (migration 0007) stays reserved-but-unread.
+     */
+    twofaEnabled: boolean('twofa_enabled').notNull().default(false),
+    twofaSecretEnc: text('twofa_secret_enc'),
+    twofaConfirmedAt: timestamp('twofa_confirmed_at', { withTimezone: true }),
+    /**
+     * W2 (migration 0021): last accepted TOTP time-step. Refuses a code
+     * replayed on a fresh challenge inside its window. Nullable — no admin
+     * has completed TOTP before W2.
+     */
+    twofaLastCounter: integer('twofa_last_counter'),
+    /** W2 (migration 0021): set by password reset; `verify` mints no session while set. */
+    mustChangePassword: boolean('must_change_password').notNull().default(false),
+    // Plain uuids, not `.references(() => adminUsers.id)`: a self-FK inside
+    // the table's own initializer is circular for TS inference (TS7022), and
+    // the FKs exist in migration 0020 regardless — the schema never emits DDL
+    // for hand-written migrations anyway, exactly like CHECK constraints.
+    createdBy: uuid('created_by'),
+    deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
+    deactivatedBy: uuid('deactivated_by'),
+    /** W14's on-call flag: SOS/ops alerts fan out to flagged admins (G17). */
+    receivesOpsAlerts: boolean('receives_ops_alerts').notNull().default(false),
     ...timestamps,
   },
   (t) => [index('idx_admin_users_status').on(t.status)],
@@ -80,5 +115,56 @@ export const adminActions = pgTable(
       t.subjectId,
       t.createdAt.desc().nullsLast(),
     ),
+    // W1's audit viewer cursor (migration 0020): the unscoped feed orders by
+    // `created_at DESC, id DESC`, which neither scoped index above serves.
+    index('idx_admin_actions_created').on(t.createdAt.desc().nullsLast(), t.id.desc()),
   ],
+);
+
+/**
+ * Single-use TOTP recovery codes (W2, migration 0020).
+ *
+ * Stored hashed — a database dump must not hand out second factors. CASCADE on
+ * purpose, unlike audit rows: codes are live auth material, and a deleted
+ * admin must not leave valid codes behind.
+ */
+export const adminRecoveryCodes = pgTable(
+  'admin_recovery_codes',
+  {
+    id: primaryId(),
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('uq_admin_recovery_codes_admin_hash').on(t.adminId, t.codeHash)],
+);
+
+/**
+ * Internal notes on any subject (W21, migration 0020).
+ *
+ * `subject_id` is FK-free and paired with `subject_type` — the same
+ * polymorphic shape as `admin_actions` — so one `<NotesPanel/>` drops into
+ * every detail screen. `deleted_at` is a soft delete: PUT/DELETE own-notes
+ * semantics without losing who wrote what. No cascade on `admin_id`: a note
+ * must outlive its author, exactly like an audit row.
+ */
+export const adminNotes = pgTable(
+  'admin_notes',
+  {
+    id: primaryId(),
+    subjectType: text('subject_type').notNull(),
+    subjectId: uuid('subject_id').notNull(),
+    adminId: uuid('admin_id')
+      .notNull()
+      .references(() => adminUsers.id),
+    body: text('body').notNull(),
+    pinned: boolean('pinned').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => [index('idx_admin_notes_subject').on(t.subjectType, t.subjectId, t.createdAt.desc().nullsLast())],
 );

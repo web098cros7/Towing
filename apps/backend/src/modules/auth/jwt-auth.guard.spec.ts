@@ -36,7 +36,9 @@ describe('JwtAuthGuard (fleet realm)', () => {
       signOptions: { expiresIn: env.JWT_ACCESS_TTL_SECONDS },
     });
     // verifyAccessToken never touches the database, Redis or the realm
-    // policies, so the guard can be exercised without the test stack.
+    // policies, so the guard can be exercised without the test stack. The
+    // admin authz re-check (A17) must not run for non-admin realms — a stub
+    // that fails loudly proves it.
     const tokens = new TokenService(
       null as unknown as Database,
       env,
@@ -44,7 +46,12 @@ describe('JwtAuthGuard (fleet realm)', () => {
       null as unknown as RefreshGraceService,
       null as unknown as RealmPolicyRegistry,
     );
-    guard = new JwtAuthGuard(new Reflector(), tokens);
+    const authz = {
+      read: async (): Promise<never> => {
+        throw new Error('admin authz re-check must not run outside the admin realm');
+      },
+    };
+    guard = new JwtAuthGuard(new Reflector(), tokens, authz as never);
   });
 
   it('rejects a missing Authorization header', async () => {

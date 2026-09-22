@@ -8,5 +8,8 @@ import { DriversService } from './drivers.service';
   imports: [AuthModule],
   controllers: [DriversController],
   providers: [DriversService, DriversRepo],
+  // `DriversService` (W6): the admin fleet directory lists a chosen fleet's
+  // drivers through this service instead of a second query implementation.
+  exports: [DriversService],
 })
 export class DriversModule {}

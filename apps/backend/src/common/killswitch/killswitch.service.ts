@@ -4,6 +4,7 @@ import {
   KILLSWITCH_FORCE_POLLING,
   KILLSWITCH_LONG_DISTANCE,
   KILLSWITCH_PAUSED_ZONES,
+  KILLSWITCH_SOS_STANDALONE_DISABLED,
   REDIS,
 } from '../../redis/redis.constants';
 
@@ -79,11 +80,13 @@ export class KillSwitchService {
   /**
    * §19.2's "force REST-polling mode".
    *
-   * Read by the three ticket routes, which refuse with `realtime_unavailable` —
-   * the same code `REALTIME_ENABLED=false` produces, so every client already
-   * knows how to respond to it. Existing sockets are left connected: dropping
-   * them would produce a reconnect storm at the exact moment the gateway is the
-   * thing under strain.
+   * Read by the three ticket routes — customer (`POST /v1/bookings/:id/realtime/ticket`),
+   * fleet (`POST /v1/fleet/realtime/ticket`) and driver
+   * (`POST /v1/driver/realtime/ticket`) — which refuse with
+   * `realtime_unavailable`, the same code `REALTIME_ENABLED=false` produces, so
+   * every client already knows how to respond to it. Existing sockets are left
+   * connected: dropping them would produce a reconnect storm at the exact
+   * moment the gateway is the thing under strain.
    */
   async isPollingForced(): Promise<boolean> {
     return this.flag(KILLSWITCH_FORCE_POLLING);
@@ -91,6 +94,23 @@ export class KillSwitchService {
 
   async setPollingForced(forced: boolean): Promise<void> {
     await this.setFlag(KILLSWITCH_FORCE_POLLING, forced);
+  }
+
+  /**
+   * W14 (G11): may an SOS be raised with NO active booking?
+   *
+   * Enabled by default, and the storage is INVERTED for that reason: the key
+   * holds the DISABLED bit, so an unreadable Redis (where `flag()` answers
+   * `false`) leaves standalone SOS working — the one switch whose safe answer
+   * is "on". Disabling it still leaves in-booking SOS untouched; only the
+   * standalone path 422s, and the console says why.
+   */
+  async isSosStandaloneEnabled(): Promise<boolean> {
+    return !(await this.flag(KILLSWITCH_SOS_STANDALONE_DISABLED));
+  }
+
+  async setSosStandaloneDisabled(disabled: boolean): Promise<void> {
+    await this.setFlag(KILLSWITCH_SOS_STANDALONE_DISABLED, disabled);
   }
 
   private async flag(key: string): Promise<boolean> {

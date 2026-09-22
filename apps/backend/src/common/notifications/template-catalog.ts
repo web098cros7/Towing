@@ -86,6 +86,22 @@ export const TEMPLATES = {
   },
 
   /**
+   * A15 / G6: the fleet's drivers hear about a fleet suspension (push-only;
+   * the suspension itself is the operator's decision, this is the courtesy
+   * that stops it reading as a glitch).
+   */
+  fleet_suspended: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['businessName'],
+    render: (v) => ({
+      title: 'Fleet suspended',
+      body: `${v.businessName ?? 'Your fleet'} has been suspended by the platform, so new job offers are paused for its drivers. Talk to your fleet owner, or contact support.`,
+      subject: null,
+    }),
+  },
+
+  /**
    * §12.2 "Booking confirmed" → Customer, on push + SMS + WhatsApp.
    *
    * No `subject`: email is not a channel on this matrix row, and a non-null
@@ -263,6 +279,22 @@ export const TEMPLATES = {
     }),
   },
 
+  /**
+   * W9 — the capture-after-cancel alarm. The money is real and already
+   * recorded; this email exists so Finance refunds it rather than leaving a
+   * customer who paid for a cancelled booking.
+   */
+  finance_settlement_conflict: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference', 'amount'],
+    render: (v) => ({
+      title: 'Capture on a cancelled booking',
+      body: `Booking ${v.reference ?? '?'} was cancelled, but the gateway captured ₹${v.amount ?? '?'} anyway. The payment is recorded — issue a refund from Finance → Refunds.`,
+      subject: `[ops] Captured after cancel — ${v.reference ?? 'unknown booking'}`,
+    }),
+  },
+
   // --- Shipped, not yet wired (Phase 19 registers triggers against these) ----
 
   /** §12.2 "Completed + invoice". The PDF attachment lands with Phase 19's invoice. */
@@ -321,6 +353,133 @@ export const TEMPLATES = {
           ? `We could not collect ${v.amount ?? ''} for booking ${v.bookingRef ?? ''}. Please try another payment method.`
           : `We received ${v.amount ?? ''} for booking ${v.bookingRef ?? ''}. Your receipt is below.`,
       subject: `Receipt for booking ${v.bookingRef ?? ''}`,
+    }),
+  },
+
+  /**
+   * W8 — §12.2 "Dispute update", both events.
+   *
+   * Deliberately outcome-free on the resolve message: the exits range from a
+   * full refund to a charge upheld, and a push body that guesses which one
+   * happened would be wrong half the time. The app carries the resolution; the
+   * notification's job is to bring the person back to it.
+   */
+  dispute_opened: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'We are reviewing your dispute',
+      body: `We have opened a review for trip ${v.reference ?? 'your trip'}. We will update you here.`,
+      subject: null,
+    }),
+  },
+
+  dispute_resolved: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'Your dispute is resolved',
+      body: `The review for trip ${v.reference ?? 'your trip'} is complete. Open the app to see the outcome.`,
+      subject: null,
+    }),
+  },
+
+  /** W8 — §14.2's unpaid-booking nudge (see the trigger for the dedupe rule). */
+  payment_reminder: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['amount'],
+    render: (v) => ({
+      title: 'Payment pending',
+      body: `Your trip payment of ₹${v.amount ?? ''} is still pending. Pay in the app to keep booking with us.`,
+      subject: null,
+    }),
+  },
+
+  /**
+   * W14 — §13's SOS fan-out to the emergency contacts (SMS + WhatsApp).
+   *
+   * SMS is the channel that exists in principle and cannot send until the DLT
+   * registration lands (ImplementNow #6): the adapter refuses a null
+   * `dltTemplateId`, and the console renders that degradation next to the
+   * snapshot rather than implying the contact was reached.
+   */
+  sos_triggered: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['name', 'link'],
+    render: (v) => ({
+      title: 'SOS alert',
+      body: `${v.name ?? 'Someone you know'} may need help right now. Their location: ${v.link ?? ''}`,
+      subject: null,
+    }),
+  },
+
+  /** W14 — the ops alert (email/SMS to the on-call pool; the socket frame is the fast half). */
+  sos_ops_alert: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['subject', 'link', 'alertRef'],
+    render: (v) => ({
+      title: `SOS alert — ${v.subject ?? 'a user'}`,
+      body: `${v.subject ?? 'A user'} triggered an SOS (alert ${v.alertRef ?? '—'}). Location: ${v.link ?? ''}. Open the SOS console to acknowledge.`,
+      subject: `SOS: ${v.subject ?? 'a user'} needs help (${v.alertRef ?? '—'})`,
+    }),
+  },
+
+  /** W14 / G12 — the explicit nearest-driver broadcast. Push only, deliberate every time. */
+  sos_broadcast: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['link'],
+    render: (v) => ({
+      title: 'Someone nearby needs help',
+      body: `A person near you raised an SOS. Tap to see their location: ${v.link ?? ''}`,
+      subject: null,
+    }),
+  },
+
+  /** W15 — a public reply on a ticket. */
+  support_reply: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'Support replied',
+      body: `Our team answered ticket ${v.reference ?? ''}. Open the app to continue the conversation.`,
+      subject: `Support replied on ticket ${v.reference ?? ''}`,
+    }),
+  },
+
+  /** W15 — the ticket was resolved. */
+  support_resolved: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['reference'],
+    render: (v) => ({
+      title: 'Ticket resolved',
+      body: `Ticket ${v.reference ?? ''} is resolved. If anything else comes up, reply in the app or raise a new ticket.`,
+      subject: `Ticket ${v.reference ?? ''} is resolved`,
+    }),
+  },
+
+  /**
+   * W17 — the weekly marketplace digest (ops mailbox, email only).
+   *
+   * The `summary` variable is the pre-formatted report the producer builds
+   * from the rollup rows; this template owns the framing, not the numbers.
+   * Plain text with newlines — the log/SES adapters send it as-is.
+   */
+  analytics_weekly_report: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['week', 'summary'],
+    render: (v) => ({
+      title: 'Weekly marketplace report',
+      body: `Marketplace report for ${v.week ?? 'last week'}\n\n${v.summary ?? ''}`,
+      subject: `Weekly marketplace report — ${v.week ?? 'last week'}`,
     }),
   },
 } as const satisfies Record<string, TemplateDefinition>;

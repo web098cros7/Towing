@@ -2,14 +2,18 @@ import type { StoredAlert } from '../types';
 
 const HOUR = 3_600_000;
 
-/** Mirrors what the compliance sweep produces against the seeded fleet. */
+/**
+ * Mirrors what the compliance sweep produces against the seeded fleet. Truck alerts deep-link to
+ * their truck (`/trucks?truck=<id>`); al-2 and al-5 name plates that are not in the mock fleet, so they
+ * keep the plain list link.
+ */
 export const alertsMock: StoredAlert[] = [
   {
     id: 'al-1',
     type: 'doc_expired',
     severity: 'error',
     message: 'Insurance expired for KA-01-AB-1234 — truck removed from dispatch',
-    href: '/trucks',
+    href: '/trucks?truck=tr-1',
     createdAt: new Date(Date.now() - 2 * HOUR).toISOString(),
     resolvedAt: null,
   },
@@ -27,7 +31,7 @@ export const alertsMock: StoredAlert[] = [
     type: 'doc_expiring',
     severity: 'warning',
     message: 'PUC for KA-05-MJ-7788 expires in 12 days',
-    href: '/trucks',
+    href: '/trucks?truck=tr-2',
     createdAt: new Date(Date.now() - 9 * HOUR).toISOString(),
     resolvedAt: null,
   },

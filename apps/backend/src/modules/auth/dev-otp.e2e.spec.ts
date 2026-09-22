@@ -144,6 +144,10 @@ describe('GET /v1/fleet/auth/dev/otp', () => {
       TELEPHONY_PROVIDER: 'exotel',
       EXOTEL_SID: 'sid',
       EXOTEL_TOKEN: 'token',
+      // W2 added a seventh: the key encrypting admin TOTP secrets at rest must
+      // not be the in-repo dev placeholder in production, or a database dump
+      // hands out second factors.
+      ADMIN_TOTP_ENC_KEY: 'a-real-production-totp-encryption-key-32ch',
     });
 
     // The last line of defence, and the one that matters: everything above is a

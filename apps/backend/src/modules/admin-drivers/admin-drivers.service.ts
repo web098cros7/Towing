@@ -1,21 +1,31 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type {
   AdminCapabilitiesResponse,
   AdminCapabilitiesUpdate,
   AdminDocumentReview,
   AdminDocumentReviewResult,
+  AdminDriverDocumentVersion,
+  AdminDriverDocumentVersionsResponse,
+  AdminKycBulkItemResult,
+  AdminKycBulkRequest,
+  AdminKycBulkResponse,
   AdminKycDecision,
   AdminKycResult,
+  AdminPendingDocument,
+  AdminPendingDriversQuery,
   AdminPendingDriversResponse,
 } from '@towing/api-contracts';
-import { and, asc, eq } from 'drizzle-orm';
+import { ErrorCodes } from '@towing/api-contracts';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { DeviceRegistryService } from '../../common/notifications/device-registry.service';
 import { NotificationService } from '../../common/notifications/notification.service';
 import { keyFromFileUrl } from '../../common/storage/file-url';
 import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
-import { DB, type Database } from '../../db/db.module';
-import { driverDocuments, drivers } from '../../db/schema';
+import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
+import { bookings, driverDocumentVersions, driverDocuments, drivers } from '../../db/schema';
+import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
+import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 import type { KycStatus } from '../auth/auth.types';
 import { TokenService, type SessionContext } from '../auth/token.service';
 import { DriverPresenceService } from '../driver-presence/driver-presence.service';
@@ -40,16 +50,35 @@ const NEXT_STATUS: Record<AdminKycDecision['decision'], KycStatus> = {
 const THUMBNAIL_TTL_SECONDS = 5 * 60;
 
 /**
+ * One row of the document-history read: a recorded version, or the read-time
+ * fallback synthesised from `driver_documents` (see `documentVersions`).
+ * Database types, not the wire shape — the ISO conversion happens once, at the
+ * return.
+ */
+type VersionRow = {
+  id: string;
+  docType: AdminDriverDocumentVersion['docType'];
+  status: AdminDriverDocumentVersion['status'];
+  rejectionReason: string | null;
+  verifiedBy: string | null;
+  verifiedAt: Date | null;
+  supersededAt: Date | null;
+  createdAt: Date;
+  fileUrl: string;
+};
+
+/**
  * The §3.1 KYC queue and per-document review (Phase 11) — built on Phase 10's
  * single `decide()` action, which now lives here instead of `admin-auth`
  * (that module stays authentication-only).
  */
 @Injectable()
-export class AdminDriversService {
+export class AdminDriversService implements OnModuleInit {
   private readonly logger = new Logger(AdminDriversService.name);
 
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(QUEUE) private readonly queue: QueuePort,
     private readonly audit: AdminAuditService,
     private readonly tokens: TokenService,
     @Inject(STORAGE) private readonly storage: StoragePort,
@@ -57,6 +86,17 @@ export class AdminDriversService {
     private readonly deviceRegistry: DeviceRegistryService,
     private readonly presence: DriverPresenceService,
   ) {}
+
+  /**
+   * The worker over `applyPendingSuspension` — see the `admin.apply-suspension`
+   * job docs in `queue.port.ts`. One line by design, like the dispatch
+   * workers: the logic lives in the method the queue-off suite calls directly.
+   */
+  onModuleInit(): void {
+    this.queue.process('admin.apply-suspension', async ({ driverId }) => {
+      await this.applyPendingSuspension(driverId);
+    });
+  }
 
   async decide(
     adminId: string,
@@ -71,12 +111,20 @@ export class AdminDriversService {
         kycStatus: drivers.kycStatus,
         rejectionReason: drivers.rejectionReason,
         approvedBy: drivers.approvedBy,
+        pendingSuspensionReason: drivers.pendingSuspensionReason,
+        pendingSuspensionBy: drivers.pendingSuspensionBy,
+        pendingSuspensionAt: drivers.pendingSuspensionAt,
       })
       .from(drivers)
       .where(eq(drivers.id, driverId))
       .limit(1);
 
     if (!before) throw ApiException.notFound('Driver not found');
+
+    // A14: suspension is two-mode — it owns its audit and side effects.
+    if (body.decision === 'suspend') {
+      return this.suspend(adminId, driverId, body, context, before);
+    }
 
     const status = NEXT_STATUS[body.decision];
     const approving = body.decision === 'approve';
@@ -94,6 +142,19 @@ export class AdminDriversService {
         rejectionReason: ['reject', 'request_info'].includes(body.decision)
           ? (body.reason ?? null)
           : null,
+        // W6: the suspension trio (migration 0024) mirrors the operational
+        // state — `kyc_status` is the gate, these three are the who/why/when
+        // the directory renders. Any non-suspend decision ENDS the suspension
+        // state, so they clear here; only `suspend` and
+        // `applyPendingSuspension` write them.
+        suspendedAt: null,
+        suspendedBy: null,
+        suspensionReason: null,
+        // A14: reinstating clears a shelved suspension, or the next completed
+        // job would suspend a driver an admin just cleared.
+        ...(body.decision === 'reactivate'
+          ? { pendingSuspensionReason: null, pendingSuspensionBy: null, pendingSuspensionAt: null }
+          : {}),
         updatedAt: now,
       })
       .where(eq(drivers.id, driverId))
@@ -197,15 +258,331 @@ export class AdminDriversService {
       kycStatus: after!.kycStatus,
       rejectionReason: after!.rejectionReason,
       sessionsRevoked,
+      suspensionPending: false,
     };
+  }
+
+  /**
+   * A14's two-mode suspension. `KycApprovedGuard` is deliberately untouched —
+   * the grace lives here, not in the gate.
+   *
+   * - `after_current_job` (default): with a live booking, the suspension is
+   *   shelved on the driver row and the driver is blocked from new offers,
+   *   while sessions, devices, `kyc_status` AND presence stay so they can
+   *   finish the job (18 Sep correction: evicting here froze the customer's
+   *   live tracking). It applies when the job ends (`applyPendingSuspension`,
+   *   called from completion, unable and cancel paths). With no live booking
+   *   it suspends at once.
+   * - `immediate`: suspends at once, but is refused while a live booking
+   *   exists — the booking needs a disposition (reassign/cancel) first, and
+   *   those admin actions land in W8. Ending the trip out from under the
+   *   driver here would strand the customer.
+   *
+   * M0-F9: the live-booking check and the row change run in ONE transaction
+   * under `SELECT … FOR UPDATE` on the driver row, with the audit row in the
+   * same transaction. An accept landing between a lock-free check and write
+   * would let `immediate` suspend (and log out) a driver who now holds a job;
+   * a completion landing there would leave a shelf no later job end applies.
+   * `OfferService.accept` takes the driver lock before the booking lock, so
+   * the two serialize instead of racing.
+   */
+  private async suspend(
+    adminId: string,
+    driverId: string,
+    body: AdminKycDecision,
+    context: SessionContext,
+    before: {
+      id: string;
+      name: string | null;
+      kycStatus: KycStatus;
+      rejectionReason: string | null;
+      approvedBy: string | null;
+    },
+  ): Promise<AdminKycResult> {
+    const mode = body.mode ?? 'after_current_job';
+
+    const shelved:
+      AdminKycResult | Pick<AdminKycResult, 'driverId' | 'kycStatus' | 'rejectionReason'> =
+      await this.db.transaction(async (tx) => {
+        // The lock both suspension branches and `applyPendingSuspension` take
+        // before reading. `OfferService.accept` locks this same row before the
+        // booking row, so driver-then-booking order holds everywhere.
+        await tx
+          .select({ id: drivers.id })
+          .from(drivers)
+          .where(eq(drivers.id, driverId))
+          .for('update');
+        const live = await this.liveBooking(driverId, tx);
+        const now = new Date();
+
+        if (live && mode === 'immediate') {
+          throw new ApiException(
+            HttpStatus.CONFLICT,
+            ErrorCodes.INVALID_BOOKING_STATE,
+            'Driver holds an active booking — reassign or cancel it first (admin dispositions land in W8), or suspend after the current job',
+            { bookingId: live.id, status: live.status },
+          );
+        }
+
+        if (live) {
+          const [after] = await tx
+            .update(drivers)
+            .set({
+              pendingSuspensionReason: body.reason ?? null,
+              pendingSuspensionBy: adminId,
+              pendingSuspensionAt: now,
+              updatedAt: now,
+            })
+            .where(eq(drivers.id, driverId))
+            .returning({
+              id: drivers.id,
+              kycStatus: drivers.kycStatus,
+              rejectionReason: drivers.rejectionReason,
+              approvedBy: drivers.approvedBy,
+              pendingSuspensionReason: drivers.pendingSuspensionReason,
+              pendingSuspensionBy: drivers.pendingSuspensionBy,
+              pendingSuspensionAt: drivers.pendingSuspensionAt,
+            });
+
+          // 18 Sep correction: NO evict here. `evictRevoked` deletes the driver
+          // hash and flips `is_online` off, so every later ping comes back unknown
+          // → rehydrate refuses → the customer's live tracking freezes for the
+          // rest of the job, the trip replay loses its tail, and EnRouteWatcher
+          // goes blind. Eviction buys nothing either: eligibility already excludes
+          // a driver with an active booking, and the shelf keeps them out if the
+          // booking goes back to searching. Sessions, devices, `kyc_status` and
+          // presence all stay — the driver must finish the job. Eviction happens
+          // in `applyPendingSuspension`, when the suspension actually applies.
+          await this.audit.record(
+            {
+              adminId,
+              action: 'driver.kyc.suspend',
+              subjectType: 'driver',
+              subjectId: driverId,
+              before: before as unknown as Record<string, unknown>,
+              after: (after ?? null) as unknown as Record<string, unknown> | null,
+              reason: body.reason ?? null,
+              ip: context.ip ?? null,
+              userAgent: context.userAgent ?? null,
+            },
+            { tx },
+          );
+
+          return {
+            driverId,
+            kycStatus: after!.kycStatus,
+            rejectionReason: after!.rejectionReason,
+            sessionsRevoked: 0,
+            suspensionPending: true,
+          };
+        }
+
+        // No live booking: the pre-A14 immediate path, verbatim in effect. The
+        // row change and its audit row commit together; the side effects below
+        // run after commit.
+        const [after] = await tx
+          .update(drivers)
+          .set({
+            kycStatus: 'suspended',
+            approvedBy: null,
+            approvedAt: null,
+            rejectionReason: null,
+            pendingSuspensionReason: null,
+            pendingSuspensionBy: null,
+            pendingSuspensionAt: null,
+            // W6: the applied suspension's who/why/when (0024's trio) — the
+            // shelf uses `pendingSuspension*` until this branch applies it.
+            suspendedAt: now,
+            suspendedBy: adminId,
+            suspensionReason: body.reason ?? null,
+            updatedAt: now,
+          })
+          .where(eq(drivers.id, driverId))
+          .returning({
+            id: drivers.id,
+            kycStatus: drivers.kycStatus,
+            rejectionReason: drivers.rejectionReason,
+            approvedBy: drivers.approvedBy,
+          });
+
+        await this.audit.record(
+          {
+            adminId,
+            action: 'driver.kyc.suspend',
+            subjectType: 'driver',
+            subjectId: driverId,
+            before: before as unknown as Record<string, unknown>,
+            after: (after ?? null) as unknown as Record<string, unknown> | null,
+            reason: body.reason ?? null,
+            ip: context.ip ?? null,
+            userAgent: context.userAgent ?? null,
+          },
+          { tx },
+        );
+
+        return {
+          driverId,
+          kycStatus: after!.kycStatus,
+          rejectionReason: after!.rejectionReason,
+        };
+      });
+
+    if ('suspensionPending' in shelved) return shelved;
+
+    // Post-commit side effects only: a driver with no live booking is safe to
+    // log out and evict. These stay outside the transaction — a push-registry
+    // failure must not roll back the suspension.
+    const sessionsRevoked = await this.tokens.revokeSubject(driverId, 'driver', 'kyc_suspend');
+    await this.deviceRegistry.revokeAllForSubject('driver', driverId, 'kyc_suspended');
+    await this.presence.evictRevoked(driverId);
+
+    return {
+      driverId,
+      kycStatus: shelved.kycStatus,
+      rejectionReason: shelved.rejectionReason,
+      sessionsRevoked,
+      suspensionPending: false,
+    };
+  }
+
+  /**
+   * Applies a shelved suspension once the driver's job has ended — called
+   * from job completion, unable-to-deliver and cancellation, the three paths
+   * that free a driver. No-op when nothing is shelved or the driver somehow
+   * holds another live booking (defensive: callers invoke this exactly when a
+   * job ended, but a second assignment racing the call must not suspend
+   * under it — the shelf survives for the next ending).
+   *
+   * Never throws: a suspension that fails to apply must not fail the
+   * completion/cancellation it rides on. The shelf stays, eligibility keeps
+   * blocking offers, and the next job ending retries.
+   */
+  async applyPendingSuspension(driverId: string): Promise<boolean> {
+    // M0-F9: the whole check-and-apply runs in one transaction under the
+    // driver-row lock, like `suspend` above. A completion landing between a
+    // lock-free shelf read and the apply would otherwise suspend under a NEW
+    // live booking — or, the (b) race, find nothing shelved yet and leave a
+    // shelf that no later job end ever applies.
+    try {
+      const shouldApply = await this.db.transaction(async (tx) => {
+        await tx
+          .select({ id: drivers.id })
+          .from(drivers)
+          .where(eq(drivers.id, driverId))
+          .for('update');
+
+        const [pending] = await tx
+          .select({
+            reason: drivers.pendingSuspensionReason,
+            by: drivers.pendingSuspensionBy,
+            at: drivers.pendingSuspensionAt,
+          })
+          .from(drivers)
+          .where(eq(drivers.id, driverId))
+          .limit(1);
+
+        if (!pending?.at) return null;
+        if (!pending.by) {
+          // A shelf without an author is corrupt data, not a suspension: applying
+          // it would write an audit row no admin can own (`admin_id` is a uuid FK).
+          this.logger.warn(`deferred suspension for ${driverId} has no author — leaving shelved`);
+          return null;
+        }
+        if (await this.liveBooking(driverId, tx)) {
+          this.logger.warn(
+            `deferred suspension for ${driverId} skipped — driver holds another live booking`,
+          );
+          return null;
+        }
+
+        const now = new Date();
+        await tx
+          .update(drivers)
+          .set({
+            kycStatus: 'suspended',
+            approvedBy: null,
+            approvedAt: null,
+            rejectionReason: null,
+            pendingSuspensionReason: null,
+            pendingSuspensionBy: null,
+            pendingSuspensionAt: null,
+            // W6: the shelf becomes an applied suspension — move who/why/when
+            // from `pendingSuspension*` into the 0024 trio the directory reads.
+            suspendedAt: now,
+            suspendedBy: pending.by,
+            suspensionReason: pending.reason,
+            updatedAt: now,
+          })
+          .where(eq(drivers.id, driverId));
+
+        await this.audit.record(
+          {
+            adminId: pending.by,
+            action: 'driver.kyc.suspend',
+            subjectType: 'driver',
+            subjectId: driverId,
+            before: { pendingSuspensionReason: pending.reason, pendingSuspensionAt: pending.at },
+            after: { kycStatus: 'suspended' },
+            reason: pending.reason,
+            ip: null,
+            userAgent: null,
+          },
+          { tx },
+        );
+        return { by: pending.by, reason: pending.reason };
+      });
+
+      if (!shouldApply) return false;
+
+      await this.tokens.revokeSubject(driverId, 'driver', 'kyc_suspend_deferred');
+      await this.deviceRegistry.revokeAllForSubject('driver', driverId, 'kyc_suspended');
+      await this.presence.evictRevoked(driverId);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `deferred suspension for ${driverId} failed to apply: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
+  }
+
+  /** Whether the driver holds a live booking — the shelf and fleet paths share it. */
+  async hasLiveBooking(driverId: string): Promise<boolean> {
+    return (await this.liveBooking(driverId)) !== null;
+  }
+
+  /** The driver's live booking, if any — assigned, en route, arrived or in progress. Takes an executor so the suspension paths can check under their driver-row lock (M0-F9). */
+  private async liveBooking(
+    driverId: string,
+    db: DatabaseExecutor = this.db,
+  ): Promise<{ id: string; status: string } | null> {
+    const [row] = (await db.execute(sql`
+      select id, status from bookings
+       where driver_id = ${driverId}::uuid
+         and status in (${sql.join(
+           ACTIVE_JOB_STATUSES.map((status) => sql`${status}::booking_status`),
+           sql`, `,
+         )})
+       limit 1
+    `)) as unknown as Array<{ id: string; status: string }>;
+    return row ?? null;
   }
 
   /**
    * Strictly `kyc_status = 'pending'` — "submitted and awaiting a human", per
    * migration 0007's default change. An `incomplete` driver (nothing submitted
    * yet) must never appear here, however long ago they signed up.
+   *
+   * W7 paginated it and flattened the reads: ONE query for the page's drivers,
+   * ONE for their documents and ONE batch of presigns. Until W7 this ran a
+   * document query and a presign PER ROW, which is the N+1 the guide names.
    */
-  async pending(): Promise<AdminPendingDriversResponse> {
+  async pending(query: AdminPendingDriversQuery): Promise<AdminPendingDriversResponse> {
+    const { page, limit } = query;
+    const awaiting = eq(drivers.kycStatus, 'pending');
+
+    const [totals] = await this.db.select({ total: count() }).from(drivers).where(awaiting);
+
     const rows = await this.db
       .select({
         id: drivers.id,
@@ -214,54 +591,240 @@ export class AdminDriversService {
         vehicleClass: drivers.vehicleClass,
         longDistanceEnabled: drivers.longDistanceEnabled,
         kycSubmittedAt: drivers.kycSubmittedAt,
+        currentLocation: drivers.currentLocation,
+        lastPingAt: drivers.lastPingAt,
       })
       .from(drivers)
-      .where(eq(drivers.kycStatus, 'pending'))
+      .where(awaiting)
       // Oldest submission first — a queue should clear front-to-back.
-      .orderBy(asc(drivers.kycSubmittedAt));
+      .orderBy(asc(drivers.kycSubmittedAt))
+      .limit(limit)
+      .offset((page - 1) * limit);
 
-    const items = await Promise.all(
-      rows.map(async (row) => {
-        const docs = await this.db
+    const ids = rows.map((row) => row.id);
+    const docs = ids.length
+      ? await this.db
           .select({
             id: driverDocuments.id,
+            driverId: driverDocuments.driverId,
             docType: driverDocuments.docType,
             status: driverDocuments.status,
             rejectionReason: driverDocuments.rejectionReason,
             fileUrl: driverDocuments.fileUrl,
           })
           .from(driverDocuments)
-          .where(eq(driverDocuments.driverId, row.id));
+          .where(inArray(driverDocuments.driverId, ids))
+      : [];
 
-        const documents = await Promise.all(
-          docs.map(async (doc) => {
-            const thumbnail = await this.storage.presignGet(
-              keyFromFileUrl(doc.fileUrl),
-              THUMBNAIL_TTL_SECONDS,
-            );
-            return {
-              id: doc.id,
-              docType: doc.docType,
-              status: doc.status,
-              rejectionReason: doc.rejectionReason,
-              thumbnailUrl: thumbnail.url,
-            };
-          }),
-        );
-
-        return {
-          id: row.id,
-          name: row.name,
-          mobile: row.mobile,
-          vehicleClass: row.vehicleClass,
-          longDistanceEnabled: row.longDistanceEnabled,
-          kycSubmittedAt: row.kycSubmittedAt?.toISOString() ?? null,
-          documents,
-        };
-      }),
+    const thumbnails = await Promise.all(
+      docs.map((doc) => this.storage.presignGet(keyFromFileUrl(doc.fileUrl), THUMBNAIL_TTL_SECONDS)),
     );
 
-    return { items };
+    const byDriver = new Map<string, AdminPendingDocument[]>();
+    docs.forEach((doc, index) => {
+      const list = byDriver.get(doc.driverId) ?? [];
+      list.push({
+        id: doc.id,
+        docType: doc.docType,
+        status: doc.status,
+        rejectionReason: doc.rejectionReason,
+        thumbnailUrl: thumbnails[index]!.url,
+      });
+      byDriver.set(doc.driverId, list);
+    });
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        mobile: row.mobile,
+        vehicleClass: row.vehicleClass,
+        longDistanceEnabled: row.longDistanceEnabled,
+        kycSubmittedAt: row.kycSubmittedAt?.toISOString() ?? null,
+        // W7's "GPS on map" is the LAST KNOWN location, and it says so: no
+        // document carries capture-time coordinates, and a position without a
+        // ping timestamp would be a claim the data cannot support.
+        lastKnownLocation:
+          row.currentLocation && row.lastPingAt
+            ? {
+                lat: row.currentLocation.lat,
+                lng: row.currentLocation.lng,
+                at: row.lastPingAt.toISOString(),
+              }
+            : null,
+        documents: byDriver.get(row.id) ?? [],
+      })),
+      page,
+      limit,
+      total: totals?.total ?? 0,
+    };
+  }
+
+  /**
+   * §9.4.3's history — one row per UPLOAD, newest first, each with its own
+   * short-TTL thumbnail so a superseded file stays inspectable. The row was
+   * created `pending` by `DriverKycService.confirm` and is completed by
+   * `reviewDocument` below.
+   *
+   * Read-time fallback for pre-W7 data: migration 0024 shipped the table and
+   * nothing wrote it, so a document confirmed before W7 has no version row.
+   * Rather than show an empty history for those, the CURRENT
+   * `driver_documents` row is synthesised as the single entry — honest about
+   * what is known, and it disappears the moment the driver resubmits.
+   */
+  async documentVersions(driverId: string): Promise<AdminDriverDocumentVersionsResponse> {
+    const recorded = await this.db
+      .select({
+        id: driverDocumentVersions.id,
+        docType: driverDocumentVersions.docType,
+        status: driverDocumentVersions.status,
+        rejectionReason: driverDocumentVersions.rejectionReason,
+        verifiedBy: driverDocumentVersions.verifiedBy,
+        verifiedAt: driverDocumentVersions.verifiedAt,
+        supersededAt: driverDocumentVersions.supersededAt,
+        createdAt: driverDocumentVersions.createdAt,
+        fileUrl: driverDocumentVersions.fileUrl,
+      })
+      .from(driverDocumentVersions)
+      .where(eq(driverDocumentVersions.driverId, driverId))
+      .orderBy(desc(driverDocumentVersions.createdAt));
+
+    const current = await this.db
+      .select({
+        id: driverDocuments.id,
+        docType: driverDocuments.docType,
+        status: driverDocuments.status,
+        rejectionReason: driverDocuments.rejectionReason,
+        verifiedBy: driverDocuments.verifiedBy,
+        verifiedAt: driverDocuments.verifiedAt,
+        fileUrl: driverDocuments.fileUrl,
+        updatedAt: driverDocuments.updatedAt,
+      })
+      .from(driverDocuments)
+      .where(eq(driverDocuments.driverId, driverId));
+
+    if (recorded.length === 0 && current.length === 0) {
+      const [driver] = await this.db
+        .select({ id: drivers.id })
+        .from(drivers)
+        .where(eq(drivers.id, driverId))
+        .limit(1);
+      if (!driver) throw ApiException.notFound('Driver not found');
+    }
+
+    const covered = new Set(recorded.map((row) => row.docType));
+    /**
+     * Migration 0024 stores both `doc_type` and `status` as TEXT (the versions
+     * table is written before it is queried, and W7's writers are the only
+     * ones), so the DB gives `string` where the contract gives an enum. The
+     * casts are the one place that gap is bridged.
+     */
+    const rows: VersionRow[] = [
+      ...recorded.map((row) => ({
+        ...row,
+        docType: row.docType as VersionRow['docType'],
+        status: row.status as VersionRow['status'],
+      })),
+      ...current
+        .filter((doc) => !covered.has(doc.docType))
+        .map((doc) => ({
+          id: doc.id,
+          docType: doc.docType,
+          status: doc.status,
+          rejectionReason: doc.rejectionReason,
+          verifiedBy: doc.verifiedBy,
+          verifiedAt: doc.verifiedAt,
+          supersededAt: null,
+          createdAt: doc.updatedAt,
+          fileUrl: doc.fileUrl,
+        })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const thumbnails = await Promise.all(
+      rows.map((row) => this.storage.presignGet(keyFromFileUrl(row.fileUrl), THUMBNAIL_TTL_SECONDS)),
+    );
+
+    return {
+      items: rows.map((row, index) => ({
+        id: row.id,
+        docType: row.docType,
+        status: row.status,
+        rejectionReason: row.rejectionReason,
+        verifiedBy: row.verifiedBy,
+        verifiedAt: row.verifiedAt?.toISOString() ?? null,
+        supersededAt: row.supersededAt?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+        thumbnailUrl: thumbnails[index]!.url,
+      })),
+    };
+  }
+
+  /**
+   * §9.4.3's bulk approve/reject — capped at 50 by the contract.
+   *
+   * PER-ITEM, NEVER ALL-OR-NOTHING: every id runs through the SAME `decide()`
+   * the single-driver route uses, so a bulk action cannot drift from a single
+   * one — audit row, notification, session/device revocation and presence
+   * eviction all stay in one place. A driver who was already decided elsewhere
+   * (or deleted) is recorded as that driver's failure and the loop carries on.
+   */
+  async bulkDecide(
+    adminId: string,
+    body: AdminKycBulkRequest,
+    context: SessionContext = {},
+  ): Promise<AdminKycBulkResponse> {
+    const results: AdminKycBulkItemResult[] = [];
+
+    for (const driverId of body.driverIds) {
+      try {
+        const decided = await this.decide(
+          adminId,
+          driverId,
+          { decision: body.decision, reason: body.reason },
+          context,
+        );
+        results.push({ driverId, ok: true, kycStatus: decided.kycStatus, error: null });
+      } catch (error) {
+        const failure =
+          error instanceof ApiException
+            ? { code: error.code, message: error.message }
+            : { code: ErrorCodes.INTERNAL, message: 'Decision failed' };
+        this.logger.warn(`bulk ${body.decision} failed for driver ${driverId}: ${failure.code}`);
+        results.push({ driverId, ok: false, kycStatus: null, error: failure });
+      }
+    }
+
+    const succeeded = results.filter((result) => result.ok).length;
+
+    // The per-driver rows already exist (written by `decide()`); this is the
+    // ACTION's row, so "who bulk-approved forty drivers" is answerable without
+    // stitching forty timestamps. A subject type of its own: it is not a fact
+    // about any one driver, and `subject-access` deliberately has no readers
+    // for it.
+    await this.audit.record({
+      adminId,
+      action: `driver.kyc.bulk_${body.decision}`,
+      subjectType: 'driver_kyc_bulk',
+      subjectId: null,
+      before: null,
+      after: {
+        decision: body.decision,
+        requested: body.driverIds.length,
+        succeeded,
+        failed: results.length - succeeded,
+        driverIds: body.driverIds,
+      },
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    return {
+      decision: body.decision,
+      succeeded,
+      failed: results.length - succeeded,
+      results,
+    };
   }
 
   /**
@@ -284,6 +847,7 @@ export class AdminDriversService {
         docType: driverDocuments.docType,
         status: driverDocuments.status,
         rejectionReason: driverDocuments.rejectionReason,
+        fileUrl: driverDocuments.fileUrl,
       })
       .from(driverDocuments)
       .where(and(eq(driverDocuments.id, documentId), eq(driverDocuments.driverId, driverId)))
@@ -310,6 +874,33 @@ export class AdminDriversService {
         status: driverDocuments.status,
         rejectionReason: driverDocuments.rejectionReason,
       });
+
+    /**
+     * W7: complete the version row this review is about.
+     *
+     * Matched on the FILE (driver + doc type + the url read above), not on
+     * "the latest version": an admin who has had the drawer open while the
+     * driver resubmitted would otherwise stamp the NEW file with the old
+     * file's verdict. When the file has since been replaced this updates
+     * nothing, and the new version stays `pending` for a human — which is the
+     * truth. The review itself still lands on `driver_documents` (that row IS
+     * the current verdict) and in the audit trail below.
+     */
+    await this.db
+      .update(driverDocumentVersions)
+      .set({
+        status,
+        rejectionReason: body.decision === 'reject' ? (body.reason ?? null) : null,
+        verifiedBy: adminId,
+        verifiedAt: now,
+      })
+      .where(
+        and(
+          eq(driverDocumentVersions.driverId, driverId),
+          eq(driverDocumentVersions.docType, before.docType),
+          eq(driverDocumentVersions.fileUrl, before.fileUrl),
+        ),
+      );
 
     await this.audit.record({
       adminId,
@@ -339,7 +930,10 @@ export class AdminDriversService {
     context: SessionContext = {},
   ): Promise<AdminCapabilitiesResponse> {
     const [before] = await this.db
-      .select({ vehicleClass: drivers.vehicleClass, longDistanceEnabled: drivers.longDistanceEnabled })
+      .select({
+        vehicleClass: drivers.vehicleClass,
+        longDistanceEnabled: drivers.longDistanceEnabled,
+      })
       .from(drivers)
       .where(eq(drivers.id, driverId))
       .limit(1);
@@ -355,7 +949,10 @@ export class AdminDriversService {
         updatedAt: new Date(),
       })
       .where(eq(drivers.id, driverId))
-      .returning({ vehicleClass: drivers.vehicleClass, longDistanceEnabled: drivers.longDistanceEnabled });
+      .returning({
+        vehicleClass: drivers.vehicleClass,
+        longDistanceEnabled: drivers.longDistanceEnabled,
+      });
 
     await this.audit.record({
       adminId,

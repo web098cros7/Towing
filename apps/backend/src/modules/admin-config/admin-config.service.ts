@@ -2,19 +2,40 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   COMMISSION_PCT_CAP,
   COMMISSION_PCT_FLOOR,
+  commissionPaiseAtPct,
   paiseToRupeeString,
   rupeeStringToPaise,
   type AdminCommissionConfig,
+  type AdminCommissionGuardrailUpdate,
+  type AdminCommissionImpact,
+  type AdminCommissionImpactQuery,
+  type AdminCommissionProposal,
+  type AdminCommissionProposalCreate,
+  type AdminCommissionProposalDecision,
   type AdminCommissionUpdate,
   type AdminPricingConfig,
+  type AdminPricingHistoryEntry,
+  type AdminPricingRule,
+  type AdminPricingRuleCreate,
+  type AdminPricingRuleDeactivate,
   type AdminPricingUpdate,
   type Band,
   type CommissionHistoryEntry,
 } from '@towing/api-contracts';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
+import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { DB, type Database } from '../../db/db.module';
-import { chargeConfig, commissionConfig, commissionConfigHistory, pricingRules } from '../../db/schema';
+import {
+  adminActions,
+  bookings,
+  chargeConfig,
+  commissionConfig,
+  commissionConfigHistory,
+  commissionGuardrail,
+  commissionProposals,
+  pricingRules,
+} from '../../db/schema';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
 import type { SessionContext } from '../auth/token.service';
 import { PricingConfigRepo } from '../pricing/pricing-config.repo';
@@ -61,16 +82,7 @@ export class AdminConfigService {
         surgePctPeak: Number(charges.surgePctPeak),
         haversineRoadFactor: Number(charges.haversineRoadFactor),
       },
-      rules: rules.map((rule) => ({
-        id: rule.id,
-        ruleKind: rule.ruleKind,
-        serviceType: rule.serviceType,
-        vehicleClass: rule.vehicleClass,
-        maxKm: rule.maxKm === null ? null : Number(rule.maxKm),
-        pricePaise: rupeeStringToPaise(rule.price),
-        priceMaxPaise: rule.priceMax === null ? null : rupeeStringToPaise(rule.priceMax),
-        isActive: rule.isActive,
-      })),
+      rules: rules.map(toPricingRule),
     };
   }
 
@@ -150,8 +162,148 @@ export class AdminConfigService {
     return after;
   }
 
+  /**
+   * W10: add a slab, a §7.3 range or a flat fare. Before this, the matrices
+   * were unextendable — `adminPricingUpdateSchema` edits rows by id, and a fare
+   * table you cannot add a row to is a snapshot, not a rate card.
+   *
+   * A DUPLICATE ACTIVE BAND IS A 409, NOT A 500 FROM POSTGRES.
+   * `uq_pricing_rules_distance_band` and `uq_pricing_rules_roadside` are
+   * PARTIAL on `is_active`, so a collision is a business fact ("wheel-lift
+   * already has a 10 km slab") rather than a schema error — deactivating the
+   * old row is the documented way to reuse a band, and the conflict message
+   * says so.
+   *
+   * The whole before/after lives in the audit row, which is also the version
+   * history `pricingHistory` reads back. No separate version table.
+   */
+  async createPricingRule(
+    adminId: string,
+    body: AdminPricingRuleCreate,
+    context: SessionContext,
+  ): Promise<AdminPricingRule> {
+    let created: PricingRuleRow;
+    try {
+      const inserted = await this.db
+        .insert(pricingRules)
+        .values({
+          ruleKind: body.ruleKind,
+          serviceType: body.serviceType ?? null,
+          vehicleClass: body.vehicleClass ?? null,
+          maxKm: body.maxKm == null ? null : body.maxKm.toFixed(2),
+          price: paiseToRupeeString(body.pricePaise),
+          priceMax: body.priceMaxPaise == null ? null : paiseToRupeeString(body.priceMaxPaise),
+        })
+        .returning();
+
+      created = inserted[0]!;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw ApiException.conflict(
+          'An active rule already covers that band — edit or deactivate it instead',
+          {
+            ruleKind: body.ruleKind,
+            vehicleClass: body.vehicleClass ?? null,
+            maxKm: body.maxKm ?? null,
+            serviceType: body.serviceType ?? null,
+          },
+        );
+      }
+      throw error;
+    }
+
+    const dto = toPricingRule(created);
+
+    await this.audit.record({
+      adminId,
+      action: 'pricing.rule.create',
+      subjectType: 'pricing_config',
+      subjectId: dto.id,
+      before: null,
+      after: dto,
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    await this.pricingConfig.invalidate();
+    return dto;
+  }
+
+  /**
+   * W10 "retire a slab" — DEACTIVATE, never hard-delete. A deleted row would
+   * orphan the audit trail's reference and silently rewrite what an old booking
+   * was priced against; `is_active = false` takes the rule out of the rate card
+   * (`PricingConfigRepo.read` filters on it) while the history stays coherent.
+   *
+   * IDEMPOTENT BY DESIGN: a double-tapped button must not write a second audit
+   * row for a state that is already true, so an already-inactive rule is
+   * returned untouched.
+   *
+   * Existing bookings keep their locked fare — locking reads the rate card once,
+   * at confirm, and stores the numbers (§7.5).
+   */
+  async deactivatePricingRule(
+    adminId: string,
+    ruleId: string,
+    body: AdminPricingRuleDeactivate,
+    context: SessionContext,
+  ): Promise<AdminPricingRule> {
+    const rows = await this.db
+      .select()
+      .from(pricingRules)
+      .where(eq(pricingRules.id, ruleId))
+      .limit(1);
+    const existing = rows[0];
+    if (!existing) throw ApiException.notFound('Pricing rule not found');
+    if (!existing.isActive) return toPricingRule(existing);
+
+    const updated = await this.db
+      .update(pricingRules)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(pricingRules.id, ruleId))
+      .returning();
+    const dto = toPricingRule(updated[0]!);
+
+    await this.audit.record({
+      adminId,
+      action: 'pricing.rule.deactivate',
+      subjectType: 'pricing_config',
+      subjectId: ruleId,
+      before: toPricingRule(existing),
+      after: dto,
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    await this.pricingConfig.invalidate();
+    return dto;
+  }
+
+  /** §9.4.8's "saved (versioned)" — the audit rows, read back as a feed. */
+  async pricingHistory(limit = 50): Promise<AdminPricingHistoryEntry[]> {
+    const rows = await this.db
+      .select()
+      .from(adminActions)
+      .where(eq(adminActions.subjectType, 'pricing_config'))
+      .orderBy(desc(adminActions.createdAt), desc(adminActions.id))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      id: row.id,
+      adminId: row.adminId,
+      action: row.action,
+      reason: row.reason,
+      before: row.before ?? null,
+      after: row.after ?? null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
   async getCommission(): Promise<AdminCommissionConfig> {
     const rows = await this.db.select().from(commissionConfig).orderBy(asc(commissionConfig.band));
+    const guardrail = await this.guardrail();
 
     return {
       bands: rows.map((row) => ({
@@ -160,9 +312,32 @@ export class AdminConfigService {
         updatedAt: row.updatedAt.toISOString(),
         updatedBy: row.updatedBy,
       })),
-      floorPct: COMMISSION_PCT_FLOOR,
-      capPct: COMMISSION_PCT_CAP,
+      floorPct: guardrail.floorPct,
+      capPct: guardrail.capPct,
+      guardrailUpdatedAt: guardrail.updatedAt?.toISOString() ?? null,
     };
+  }
+
+  /**
+   * W11 / decision G2 — the §3.3 window is a ROW now, not a constant.
+   *
+   * Both of the CHECKs that used to enforce 5–10 were relaxed to the absolute
+   * outer bound (0 < pct ≤ 30) by migration 0026, because a CHECK cannot read
+   * another table and "the window a human may move" cannot be expressed as one.
+   * This reader is the enforcement point, and `getCommission` serves it so the
+   * form validates against the same numbers the service will.
+   *
+   * Falls back to the launch constants when the row is missing (a database
+   * older than 0026, a botched seed): refusing every commission edit because a
+   * config row is absent would turn a seeding problem into an outage.
+   */
+  private async guardrail(): Promise<{ floorPct: number; capPct: number; updatedAt: Date | null }> {
+    const rows = await this.db.select().from(commissionGuardrail).limit(1);
+    const row = rows[0];
+    if (!row) {
+      return { floorPct: COMMISSION_PCT_FLOOR, capPct: COMMISSION_PCT_CAP, updatedAt: null };
+    }
+    return { floorPct: Number(row.floorPct), capPct: Number(row.capPct), updatedAt: row.updatedAt };
   }
 
   /**
@@ -180,15 +355,28 @@ export class AdminConfigService {
    * pipe, so this branch is reached only by a caller that bypassed the schema —
    * a future internal caller, a hand-rolled request. It is the backstop, and it
    * is tested by calling the service directly.
+   *
+   * SINCE W11 the window is read from `commission_guardrail` on every call, so
+   * moving it takes effect on the NEXT edit with nothing restarted.
    */
   async updateCommission(
     adminId: string,
     body: AdminCommissionUpdate,
     context: SessionContext,
   ): Promise<AdminCommissionConfig> {
-    const offenders = body.bands.filter(
-      ({ pct }) => pct < COMMISSION_PCT_FLOOR || pct > COMMISSION_PCT_CAP,
-    );
+    const { config } = await this.writeCommission(adminId, body.bands, body.reason, context);
+    return config;
+  }
+
+  /** The one write path both a direct edit and an applied proposal go through. */
+  private async writeCommission(
+    adminId: string,
+    bands: Array<{ band: Band; pct: number }>,
+    reason: string | undefined,
+    context: SessionContext,
+  ): Promise<{ config: AdminCommissionConfig; auditId: string }> {
+    const guardrail = await this.guardrail();
+    const offenders = bands.filter(({ pct }) => pct < guardrail.floorPct || pct > guardrail.capPct);
 
     if (offenders.length > 0) {
       await this.audit.record({
@@ -198,15 +386,19 @@ export class AdminConfigService {
         subjectId: null,
         before: await this.getCommission(),
         after: null,
-        reason: body.reason ?? null,
+        reason: reason ?? null,
         ip: context.ip ?? null,
         userAgent: context.userAgent ?? null,
       });
 
       throw ApiException.validation(
-        `Commission must stay within ${COMMISSION_PCT_FLOOR}–${COMMISSION_PCT_CAP}% (§3.3)`,
+        `Commission must stay within ${guardrail.floorPct}–${guardrail.capPct}% (§3.3)`,
         {
-          bands: offenders.map(({ band, pct }) => ({ band, pct, allowed: '5–10' })),
+          bands: offenders.map(({ band, pct }) => ({
+            band,
+            pct,
+            allowed: `${guardrail.floorPct}–${guardrail.capPct}`,
+          })),
         },
       );
     }
@@ -220,14 +412,14 @@ export class AdminConfigService {
       subjectType: 'commission_config',
       subjectId: null,
       before,
-      after: { bands: body.bands },
-      reason: body.reason ?? null,
+      after: { bands },
+      reason: reason ?? null,
       ip: context.ip ?? null,
       userAgent: context.userAgent ?? null,
     });
 
     await this.db.transaction(async (tx) => {
-      for (const { band, pct } of body.bands) {
+      for (const { band, pct } of bands) {
         await tx
           .update(commissionConfig)
           .set({ pct: pct.toFixed(2), updatedBy: adminId, updatedAt: new Date() })
@@ -239,13 +431,313 @@ export class AdminConfigService {
           newPct: pct.toFixed(2),
           changedBy: adminId,
           adminActionId: auditId,
-          reason: body.reason ?? null,
+          reason: reason ?? null,
         });
       }
     });
 
     await this.pricingConfig.invalidate();
+    return { config: await this.getCommission(), auditId };
+  }
+
+  /**
+   * W11 / decision G2: move the §3.3 window itself. `commission.guardrail`,
+   * Super Admin only.
+   *
+   * A WINDOW THAT EXCLUDES A LIVE RATE IS REFUSED. If Band A charges 10 % and
+   * an admin tightens the cap to 9, the platform would be charging a rate its own
+   * policy forbids — every subsequent booking write would be a contradiction
+   * someone has to reconcile. The refusal is audited like the guardrail's other
+   * refusals, and it names the offending bands so the operator knows what to
+   * re-rate first.
+   *
+   * The ABSOLUTE bound (0 < floor < cap ≤ 30) is checked at the schema and again
+   * by the DB CHECK; this method owns only the live-data rule.
+   */
+  async updateGuardrail(
+    adminId: string,
+    body: AdminCommissionGuardrailUpdate,
+    context: SessionContext,
+  ): Promise<AdminCommissionConfig> {
+    const current = await this.guardrail();
+    const live = await this.db.select().from(commissionConfig).orderBy(asc(commissionConfig.band));
+
+    const stranded = live
+      .map((row) => ({ band: row.band, pct: Number(row.pct) }))
+      .filter(({ pct }) => pct < body.floorPct || pct > body.capPct);
+
+    if (stranded.length > 0) {
+      await this.audit.record({
+        adminId,
+        action: 'commission.guardrail.rejected',
+        subjectType: 'commission_config',
+        subjectId: null,
+        before: { floorPct: current.floorPct, capPct: current.capPct },
+        after: null,
+        reason: body.reason ?? null,
+        ip: context.ip ?? null,
+        userAgent: context.userAgent ?? null,
+      });
+
+      throw ApiException.validation(
+        `A live band would sit outside ${body.floorPct}–${body.capPct}% — re-rate it first`,
+        { stranded },
+      );
+    }
+
+    const before = { floorPct: current.floorPct, capPct: current.capPct };
+    // UPSERT, not UPDATE: a database whose row is missing (a `truncateAll` in
+    // tests, a reset that raced the seed) must not silently swallow the edit.
+    await this.db
+      .insert(commissionGuardrail)
+      .values({
+        floorPct: body.floorPct.toFixed(2),
+        capPct: body.capPct.toFixed(2),
+        updatedBy: adminId,
+      })
+      .onConflictDoUpdate({
+        target: commissionGuardrail.singleton,
+        set: {
+          floorPct: body.floorPct.toFixed(2),
+          capPct: body.capPct.toFixed(2),
+          updatedBy: adminId,
+          updatedAt: new Date(),
+        },
+      });
+
+    await this.audit.record({
+      adminId,
+      action: 'commission.guardrail.update',
+      subjectType: 'commission_config',
+      subjectId: null,
+      before,
+      after: { floorPct: body.floorPct, capPct: body.capPct },
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
     return this.getCommission();
+  }
+
+  /**
+   * §9.4.9's impact preview — "at last week's volume, Band A 10 %→9 % ≈ −₹X".
+   *
+   * THE NUMBERS ARE ACTUAL, NOT EXTRAPOLATED. For each paid booking in the
+   * window the proposed commission is recomputed with `commissionPaiseAtPct`
+   * against that booking's own taxable base (`total − tax_amount`, the same
+   * quantity the locking path multiplies), so the delta is what the platform
+   * would have earned on the bookings it actually did. An average-based
+   * projection would be easier and would answer a different question.
+   *
+   * Read-only, and it takes the percentages from the QUERY rather than the
+   * table: it previews an edit the operator has not saved yet.
+   */
+  async commissionImpact(query: AdminCommissionImpactQuery): Promise<AdminCommissionImpact> {
+    const proposed = parseBandParam(query.bands);
+    const since = new Date(Date.now() - query.days * 24 * 60 * 60 * 1000);
+
+    const rows = await this.db
+      .select({
+        band: bookings.commissionBand,
+        total: bookings.total,
+        taxAmount: bookings.taxAmount,
+        commissionAmount: bookings.commissionAmount,
+      })
+      .from(bookings)
+      .where(
+        and(
+          inArray(bookings.status, ['paid']),
+          isNotNull(bookings.commissionBand),
+          gte(bookings.createdAt, since),
+        ),
+      );
+
+    const live = new Map<Band, number>(
+      (await this.db.select().from(commissionConfig)).map((row) => [row.band, Number(row.pct)]),
+    );
+
+    const byBand = new Map<
+      Band,
+      { bookings: number; currentPaise: number; proposedPaise: number }
+    >();
+    for (const row of rows) {
+      const band = row.band as Band | null;
+      if (!band) continue;
+      const taxable = rupeeStringToPaise(row.total) - rupeeStringToPaise(row.taxAmount);
+      const proposedPct = proposed.get(band) ?? live.get(band) ?? 0;
+
+      const entry = byBand.get(band) ?? { bookings: 0, currentPaise: 0, proposedPaise: 0 };
+      entry.bookings += 1;
+      entry.currentPaise += rupeeStringToPaise(row.commissionAmount);
+      entry.proposedPaise += commissionPaiseAtPct(taxable, proposedPct);
+      byBand.set(band, entry);
+    }
+
+    const bands = (['A', 'B', 'C'] as const).map((band) => {
+      const entry = byBand.get(band) ?? { bookings: 0, currentPaise: 0, proposedPaise: 0 };
+      return {
+        band,
+        currentPct: live.get(band) ?? 0,
+        proposedPct: proposed.get(band) ?? live.get(band) ?? 0,
+        bookings: entry.bookings,
+        currentPaise: entry.currentPaise,
+        proposedPaise: entry.proposedPaise,
+        deltaPaise: entry.proposedPaise - entry.currentPaise,
+      };
+    });
+
+    return {
+      days: query.days,
+      bands,
+      totalCurrentPaise: bands.reduce((sum, band) => sum + band.currentPaise, 0),
+      totalProposedPaise: bands.reduce((sum, band) => sum + band.proposedPaise, 0),
+      totalDeltaPaise: bands.reduce((sum, band) => sum + band.deltaPaise, 0),
+    };
+  }
+
+  /** §4.2's Operations ⚠️ — propose, with a reason; never set. */
+  async createCommissionProposal(
+    adminId: string,
+    body: AdminCommissionProposalCreate,
+    context: SessionContext,
+  ): Promise<AdminCommissionProposal> {
+    let created: CommissionProposalRow;
+    try {
+      const inserted = await this.db
+        .insert(commissionProposals)
+        .values({
+          band: body.band,
+          pct: body.pct.toFixed(2),
+          proposedBy: adminId,
+          reason: body.reason,
+        })
+        .returning();
+      created = inserted[0]!;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw ApiException.conflict(`Band ${body.band} already has an open proposal`, {
+          band: body.band,
+        });
+      }
+      throw error;
+    }
+
+    await this.audit.record({
+      adminId,
+      action: 'commission.proposal.created',
+      subjectType: 'commission_config',
+      subjectId: created.id,
+      before: null,
+      after: { band: body.band, pct: body.pct, reason: body.reason },
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    return toProposal(created);
+  }
+
+  async listCommissionProposals(): Promise<AdminCommissionProposal[]> {
+    const rows = await this.db
+      .select()
+      .from(commissionProposals)
+      .orderBy(desc(commissionProposals.createdAt))
+      .limit(100);
+    return rows.map(toProposal);
+  }
+
+  /**
+   * Apply = the ORDINARY write path, so a proposal cannot become a rate that
+   * bypassed the guardrail. If the window moved between proposal and decision,
+   * the apply is refused with the same 422 a hand-typed edit would get — and
+   * that refusal is audited by `writeCommission`.
+   */
+  async applyCommissionProposal(
+    adminId: string,
+    proposalId: string,
+    body: AdminCommissionProposalDecision,
+    context: SessionContext,
+  ): Promise<AdminCommissionConfig> {
+    const proposal = await this.openProposal(proposalId);
+
+    const { config, auditId } = await this.writeCommission(
+      adminId,
+      [{ band: proposal.band, pct: Number(proposal.pct) }],
+      body.reason ?? proposal.reason,
+      context,
+    );
+
+    await this.db
+      .update(commissionProposals)
+      .set({
+        status: 'applied',
+        decidedBy: adminId,
+        decidedAt: new Date(),
+        adminActionId: auditId,
+        updatedAt: new Date(),
+      })
+      .where(eq(commissionProposals.id, proposalId));
+
+    await this.audit.record({
+      adminId,
+      action: 'commission.proposal.applied',
+      subjectType: 'commission_config',
+      subjectId: proposalId,
+      before: { status: 'open', band: proposal.band, pct: Number(proposal.pct) },
+      after: { status: 'applied', adminActionId: auditId },
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+
+    return config;
+  }
+
+  async declineCommissionProposal(
+    adminId: string,
+    proposalId: string,
+    body: AdminCommissionProposalDecision,
+    context: SessionContext,
+  ): Promise<void> {
+    const proposal = await this.openProposal(proposalId);
+
+    await this.db
+      .update(commissionProposals)
+      .set({
+        status: 'declined',
+        decidedBy: adminId,
+        decidedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(commissionProposals.id, proposalId));
+
+    await this.audit.record({
+      adminId,
+      action: 'commission.proposal.declined',
+      subjectType: 'commission_config',
+      subjectId: proposalId,
+      before: { status: 'open', band: proposal.band, pct: Number(proposal.pct) },
+      after: { status: 'declined' },
+      reason: body.reason ?? null,
+      ip: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    });
+  }
+
+  private async openProposal(proposalId: string): Promise<CommissionProposalRow> {
+    const rows = await this.db
+      .select()
+      .from(commissionProposals)
+      .where(eq(commissionProposals.id, proposalId))
+      .limit(1);
+    const proposal = rows[0];
+    if (!proposal) throw ApiException.notFound('Proposal not found');
+    if (proposal.status !== 'open') {
+      throw ApiException.conflict(`Proposal is already ${proposal.status}`, {
+        status: proposal.status,
+      });
+    }
+    return proposal;
   }
 
   async commissionHistory(limit = 50): Promise<CommissionHistoryEntry[]> {
@@ -265,4 +757,48 @@ export class AdminConfigService {
       createdAt: row.createdAt.toISOString(),
     }));
   }
+}
+
+type PricingRuleRow = typeof pricingRules.$inferSelect;
+type CommissionProposalRow = typeof commissionProposals.$inferSelect;
+
+/** One mapping for every reader of `pricing_rules` here — GET, create, deactivate. */
+function toPricingRule(rule: PricingRuleRow): AdminPricingRule {
+  return {
+    id: rule.id,
+    ruleKind: rule.ruleKind,
+    serviceType: rule.serviceType,
+    vehicleClass: rule.vehicleClass,
+    maxKm: rule.maxKm === null ? null : Number(rule.maxKm),
+    pricePaise: rupeeStringToPaise(rule.price),
+    priceMaxPaise: rule.priceMax === null ? null : rupeeStringToPaise(rule.priceMax),
+    isActive: rule.isActive,
+  };
+}
+
+function toProposal(row: CommissionProposalRow): AdminCommissionProposal {
+  return {
+    id: row.id,
+    band: row.band,
+    pct: Number(row.pct),
+    proposedBy: row.proposedBy,
+    reason: row.reason,
+    status: row.status as AdminCommissionProposal['status'],
+    decidedBy: row.decidedBy,
+    decidedAt: row.decidedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/**
+ * `A:9,B:8,C:5` → a map. The schema's regex has already refused anything else,
+ * so a parse failure here is a programming error, not a request error.
+ */
+function parseBandParam(param: string): Map<Band, number> {
+  const result = new Map<Band, number>();
+  for (const pair of param.split(',')) {
+    const [band, pct] = pair.split(':');
+    result.set(band as Band, Number(pct));
+  }
+  return result;
 }

@@ -218,6 +218,8 @@ describe('production safety', () => {
       TELEPHONY_PROVIDER: 'exotel',
       EXOTEL_SID: 'sid',
       EXOTEL_TOKEN: 'token',
+      // W2's at-rest TOTP key must not be the dev placeholder in production.
+      ADMIN_TOTP_ENC_KEY: 'a-real-production-totp-encryption-key-32ch',
     } as NodeJS.ProcessEnv);
 
     expect(() => assertProductionSafety(env)).toThrow(/GOOGLE_MAPS_API_KEY is required/);
@@ -245,6 +247,8 @@ describe('production safety', () => {
       TELEPHONY_PROVIDER: 'exotel',
       EXOTEL_SID: 'sid',
       EXOTEL_TOKEN: 'token',
+      // W2's at-rest TOTP key must not be the dev placeholder in production.
+      ADMIN_TOTP_ENC_KEY: 'a-real-production-totp-encryption-key-32ch',
     } as NodeJS.ProcessEnv);
 
     expect(() => assertProductionSafety(env)).not.toThrow();

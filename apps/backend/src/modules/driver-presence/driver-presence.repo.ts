@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DB, type Database } from '../../db/db.module';
-import { drivers, serviceZones } from '../../db/schema';
+import { drivers, fleets, serviceZones } from '../../db/schema';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 
 /**
@@ -22,6 +22,10 @@ export interface DriverIdentityRow {
   truckId: string | null;
   vehicleClass: string | null;
   longDistance: boolean;
+  /** A14: set while an admin suspension waits for the live job to end. */
+  suspensionPending: boolean;
+  /** A15: the owning fleet's status; null for independent drivers. */
+  fleetStatus: string | null;
 }
 
 /** One buffered fix, ready for the ~30s batched flush. */
@@ -70,8 +74,11 @@ export class DriverPresenceRepo {
         truckId: drivers.assignedTruckId,
         vehicleClass: drivers.vehicleClass,
         longDistance: drivers.longDistanceEnabled,
+        suspensionPending: sql<boolean>`${drivers.pendingSuspensionAt} is not null`,
+        fleetStatus: fleets.status,
       })
       .from(drivers)
+      .leftJoin(fleets, eq(fleets.id, drivers.fleetId))
       .where(eq(drivers.id, driverId))
       .limit(1);
     return row as DriverIdentityRow | undefined;

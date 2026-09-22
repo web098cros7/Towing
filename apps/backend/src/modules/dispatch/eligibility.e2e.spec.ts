@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, fleetTrucks } from '../../db/schema';
+import { drivers, driverZoneRestrictions, fleets, fleetTrucks } from '../../db/schema';
 import { createTestApp } from '../../test/app';
 import {
   seedCustomer,
@@ -97,20 +97,31 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       // The hash is written by `seedOnlineDriver` regardless, which is exactly
       // the state this rule exists to catch.
       expect((await selectFor(bookingId)).candidates).toEqual([]);
-      expect((await selectFor(bookingId)).excluded.not_approved).toBe(1);
+      expect((await selectFor(bookingId)).excluded.not_approved?.count).toBe(1);
       expect(driverId).toBeTruthy();
     });
 
     it('excludes a driver who has gone offline', async () => {
       await seedOnlineDriver(db, { zoneId, isOnline: false });
-      expect((await selectFor(bookingId)).excluded.offline).toBe(1);
+      expect((await selectFor(bookingId)).excluded.offline?.count).toBe(1);
+    });
+
+    it("excludes a suspended fleet's drivers, whatever they look like", async () => {
+      // A15: the fleet counterpart of `not_approved`. Approved, online, right
+      // class — excluded on the fleet row alone.
+      const fleet = await seedFleet(db, 'Suspended Fleet');
+      await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId });
+      await db.update(fleets).set({ status: 'suspended' }).where(eq(fleets.id, fleet.fleetId));
+
+      expect((await selectFor(bookingId)).candidates).toEqual([]);
+      expect((await selectFor(bookingId)).excluded.fleet_suspended?.count).toBe(1);
     });
 
     it('excludes a driver whose vehicle class cannot take the job', async () => {
       // A wheel-lift cannot carry a flatbed job. The class decides the
       // equipment, and equipment is not a preference.
       await seedOnlineDriver(db, { zoneId, vehicleClass: 'wheel_lift' });
-      expect((await selectFor(bookingId)).excluded.wrong_vehicle_class).toBe(1);
+      expect((await selectFor(bookingId)).excluded.wrong_vehicle_class?.count).toBe(1);
     });
 
     it('excludes a driver who has not opted in to Band C', async () => {
@@ -122,7 +133,7 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       });
       await seedOnlineDriver(db, { zoneId, longDistance: false });
 
-      expect((await selectFor(longHaul)).excluded.no_long_distance).toBe(1);
+      expect((await selectFor(longHaul)).excluded.no_long_distance?.count).toBe(1);
     });
 
     it('offers a Band C job to a driver who HAS opted in', async () => {
@@ -136,6 +147,27 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       expect((await selectFor(longHaul)).candidates.map((c) => c.driverId)).toEqual([driverId]);
     });
 
+    it('excludes a driver blocked from the booking zone (W6 §6.10)', async () => {
+      // Restrictions are a DENYLIST: a row for (driver, zone) is "no offers in
+      // this zone". The driver is otherwise fully eligible — this filter is the
+      // only place the block bites, and the live map keeps drawing them.
+      const driverId = await seedOnlineDriver(db, { zoneId });
+      await db.insert(driverZoneRestrictions).values({ driverId, zoneId });
+
+      expect((await selectFor(bookingId)).candidates).toEqual([]);
+      expect((await selectFor(bookingId)).excluded.zone_restricted?.count).toBe(1);
+    });
+
+    it('offers that same driver a booking in a zone they are not blocked from', async () => {
+      // The block is scoped to its zone, not to the driver: a row for another
+      // zone must not leak into this booking's decision.
+      const driverId = await seedOnlineDriver(db, { zoneId });
+      const otherZone = await seedZone(db);
+      await db.insert(driverZoneRestrictions).values({ driverId, zoneId: otherZone });
+
+      expect((await selectFor(bookingId)).candidates.map((c) => c.driverId)).toEqual([driverId]);
+    });
+
     it('excludes a driver whose truck is non_compliant', async () => {
       // Phase 4's exclusion status, reached for the first time by dispatch.
       const { fleetId } = await seedFleet(db, 'Compliance Fleet');
@@ -147,7 +179,7 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
 
       await seedOnlineDriver(db, { zoneId, fleetId, truckId });
 
-      expect((await selectFor(bookingId)).excluded.truck_non_compliant).toBe(1);
+      expect((await selectFor(bookingId)).excluded.truck_non_compliant?.count).toBe(1);
     });
 
     it('does NOT exclude an independent driver, who has no truck to be compliant', async () => {
@@ -166,7 +198,7 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
         status: 'en_route',
       });
 
-      expect((await selectFor(bookingId)).excluded.already_on_job).toBe(1);
+      expect((await selectFor(bookingId)).excluded.already_on_job?.count).toBe(1);
     });
 
     it('does not exclude a driver whose only job is finished', async () => {
@@ -183,7 +215,7 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       const driverId = await seedOnlineDriver(db, { zoneId });
       await repo.recordOffer({ bookingId, driverId, wave: 1, radiusKm: 2 });
 
-      expect((await selectFor(bookingId)).excluded.already_offered).toBe(1);
+      expect((await selectFor(bookingId)).excluded.already_offered?.count).toBe(1);
     });
 
     it('excludes a driver holding an offer on a DIFFERENT booking', async () => {
@@ -194,7 +226,7 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       // production path cannot disagree about the key.
       await app.get(PresenceStore).takeOfferLock(driverId, 20_000);
 
-      expect((await selectFor(bookingId)).excluded.holds_offer).toBe(1);
+      expect((await selectFor(bookingId)).excluded.holds_offer?.count).toBe(1);
     });
 
     it('excludes a driver outside the radius', async () => {
@@ -319,7 +351,7 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
 
       expect(result.degraded).toBe(true);
       expect(result.candidates).toEqual([]);
-      expect(result.excluded.wrong_vehicle_class).toBe(1);
+      expect(result.excluded.wrong_vehicle_class?.count).toBe(1);
     });
 
     it('never surfaces an unapproved driver on the degraded rung either', async () => {

@@ -1,7 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { dispatchAttemptOutcomes, type DispatchAttemptOutcome } from '@towing/api-contracts';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
-import { bookings, dispatchAttempts, drivers, fleetTrucks, services, users } from '../../db/schema';
+import {
+  bookings,
+  dispatchAttempts,
+  dispatchWaveLogs,
+  drivers,
+  fleets,
+  fleetTrucks,
+  services,
+  users,
+} from '../../db/schema';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 
 /**
@@ -16,9 +26,15 @@ import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
 
 /**
  * The legal `outcome` values, constrained by `ck_dispatch_attempts_outcome`
- * (0014, widened by 0015 with `unable` — see `recordUnable`).
+ * (0014, widened by 0015 with `unable` and by W5's 0023 with `reassigned`).
+ *
+ * SOURCED FROM THE CONTRACT (`dispatchAttemptOutcomes`): the inspector validates
+ * rows against that list and `migration-0023.spec.ts` pins it to the CHECK's
+ * literals — one list, cross-checked in both directions, instead of a third
+ * transcription that drifts.
  */
-export type AttemptOutcome = 'offered' | 'accepted' | 'rejected' | 'expired' | 'revoked' | 'unable';
+export const ATTEMPT_OUTCOMES = dispatchAttemptOutcomes;
+export type AttemptOutcome = DispatchAttemptOutcome;
 
 /** Everything the §3.2 filter and the §6.2 scorer need that the hot hash cannot hold. */
 export interface DriverEligibilityRow {
@@ -31,6 +47,25 @@ export interface DriverEligibilityRow {
   truckId: string | null;
   /** `null` for an independent driver — they operate no fleet truck by construction. */
   truckStatus: string | null;
+  /**
+   * A14: an admin suspension shelved until the driver's live job ends. Set
+   * means "take no new offers" even though `kycStatus` is still `approved` —
+   * the driver must finish the job they hold.
+   */
+  suspensionPending: boolean;
+  /**
+   * A15: the owning fleet's status, null for independent drivers. A suspended
+   * fleet's drivers take no offers — the fleet counterpart of `not_approved`
+   * for the driver themself.
+   */
+  fleetStatus: string | null;
+  /**
+   * W6 (§6.10): true when an admin has blocked this driver FROM the booking's
+   * zone. Restrictions are a denylist: a row (driver, zone) means "no offers
+   * in this zone", and no rows means the driver may work everywhere. A booking
+   * with no zone cannot match a restriction row, so it never restricts.
+   */
+  zoneRestricted: boolean;
   /** 0–5. Still a seeded default until Phase 19 writes it (§6.2 gives it 15 %). */
   rating: number | null;
   /** 0–100, written by this phase on every offer resolution. */
@@ -69,6 +104,29 @@ export interface DispatchBookingRow {
   customerName: string | null;
   customerMobile: string | null;
   longDistance: boolean;
+}
+
+/**
+ * W5: the payload of one `dispatch_wave_logs` row.
+ *
+ * The JSONB fields are typed `unknown` on purpose — the log is written by the
+ * wave runner and read by the inspector, both of which have the concrete types;
+ * the repo is just the pipe, and pretending to validate a shape it does not
+ * produce is how two definitions start drifting.
+ */
+export interface WaveLogEntry {
+  bookingId: string;
+  wave: number;
+  radiusKm: number;
+  considered: number;
+  eligible: number;
+  offered: number;
+  degraded: boolean;
+  weights: unknown;
+  config: unknown;
+  excluded: unknown;
+  candidates: unknown;
+  durationMs: number;
 }
 
 @Injectable()
@@ -134,7 +192,10 @@ export class DispatchRepo {
    * independent driver has no `assigned_truck_id` and must pass the compliance
    * filter, not fail it for having nothing to check.
    */
-  async eligibility(driverIds: string[]): Promise<Map<string, DriverEligibilityRow>> {
+  async eligibility(
+    driverIds: string[],
+    zoneId: string | null,
+  ): Promise<Map<string, DriverEligibilityRow>> {
     if (driverIds.length === 0) return new Map();
 
     const rows = await this.db
@@ -150,6 +211,21 @@ export class DispatchRepo {
         rating: drivers.rating,
         acceptanceRate: drivers.acceptanceRate,
         completionRate: drivers.completionRate,
+        // A14: the deferred-suspension shelf. A plain column read — no join —
+        // so the wave's single batched query stays single.
+        suspensionPending: sql<boolean>`${drivers.pendingSuspensionAt} is not null`,
+        // A15: one more LEFT join on the wave's batched query. Nullable by
+        // construction — independents have no fleet row, and must pass.
+        fleetStatus: fleets.status,
+        // W6 (§6.10): zone restrictions, as one correlated EXISTS — a row for
+        // (driver, booking zone) is a block in that zone. A booking with no
+        // zone matches nothing and never restricts. Still one query for the
+        // whole wave.
+        zoneRestricted: sql<boolean>`exists (
+          select 1 from driver_zone_restrictions r
+          where r.driver_id = ${drivers.id}
+            and r.zone_id = ${zoneId}::uuid
+        )`,
         // A correlated EXISTS rather than a join: a driver has at most one
         // active booking (migration 0014 makes that a unique index), so a join
         // would multiply nothing and an EXISTS stops at the first row.
@@ -161,6 +237,7 @@ export class DispatchRepo {
       })
       .from(drivers)
       .leftJoin(fleetTrucks, eq(fleetTrucks.id, drivers.assignedTruckId))
+      .leftJoin(fleets, eq(fleets.id, drivers.fleetId))
       .where(inArray(drivers.id, driverIds));
 
     return new Map(
@@ -275,6 +352,45 @@ export class DispatchRepo {
   }
 
   /**
+   * W8: §6.5's admin reassign, recorded as an attempt — the first writer of the
+   * `reassigned` outcome that migration 0023 added to the CHECK.
+   *
+   * The TWIN of `recordUnable`, and the distinction is the point: `unable`
+   * means the DRIVER could not deliver (it feeds their completion rate),
+   * `reassigned` means an OPERATOR moved the job and nobody should be
+   * penalised. Neither enters `recomputeAcceptanceRate` — its denominator is
+   * the explicit `('accepted','rejected','expired')` allowlist. What BOTH do is
+   * put the driver in `excludedDrivers()`, which is what keeps the previous
+   * driver out of the resumed search without any special-casing.
+   *
+   * The wave and radius are copied from the accepted attempt for the same
+   * reason `recordUnable` copies them: the inspector shows where the journey
+   * actually ended, not a fabricated wave 0.
+   */
+  async recordReassigned(bookingId: string, driverId: string): Promise<void> {
+    const [accepted] = await this.db
+      .select({ wave: dispatchAttempts.wave, radiusKm: dispatchAttempts.radiusKm })
+      .from(dispatchAttempts)
+      .where(
+        and(
+          eq(dispatchAttempts.bookingId, bookingId),
+          eq(dispatchAttempts.driverId, driverId),
+          eq(dispatchAttempts.outcome, 'accepted'),
+        ),
+      )
+      .limit(1);
+
+    await this.db.insert(dispatchAttempts).values({
+      bookingId,
+      driverId,
+      wave: accepted?.wave ?? 1,
+      radiusKm: accepted?.radiusKm ?? '0.00',
+      outcome: 'reassigned',
+      respondedAt: new Date(),
+    });
+  }
+
+  /**
    * Resolves an offer, and returns whether it actually moved.
    *
    * The `outcome = 'offered'` predicate is the idempotency: an expiry job that
@@ -363,9 +479,7 @@ export class DispatchRepo {
         resolved: sql<number>`count(*) filter (where ${dispatchAttempts.outcome} in ('accepted', 'rejected', 'expired'))::int`,
       })
       .from(dispatchAttempts)
-      .where(
-        and(eq(dispatchAttempts.driverId, driverId), gte(dispatchAttempts.offeredAt, since)),
-      );
+      .where(and(eq(dispatchAttempts.driverId, driverId), gte(dispatchAttempts.offeredAt, since)));
 
     if (!row || row.resolved === 0) return null;
 
@@ -379,11 +493,7 @@ export class DispatchRepo {
   }
 
   /** Persists the §6.4 wave position. The deadline is written once, on the first wave. */
-  async setWaveState(
-    bookingId: string,
-    wave: number,
-    deadlineAt: Date | null,
-  ): Promise<void> {
+  async setWaveState(bookingId: string, wave: number, deadlineAt: Date | null): Promise<void> {
     await this.db
       .update(bookings)
       .set({
@@ -392,6 +502,32 @@ export class DispatchRepo {
         updatedAt: new Date(),
       })
       .where(eq(bookings.id, bookingId));
+  }
+
+  /**
+   * W5: one wave, recorded for the inspector (§9.4.6).
+   *
+   * Called by the wave runner AFTER offers go out, wrapped in its own
+   * try/catch — a row that fails to write leaves a gap in the inspector, never
+   * a search that stopped. The JSONB payloads come from the selection result
+   * (`ranked`, `excluded`, `weights`) plus the resolved config, so the row and
+   * the offers it describes are the same computation.
+   */
+  async recordWaveLog(entry: WaveLogEntry): Promise<void> {
+    await this.db.insert(dispatchWaveLogs).values({
+      bookingId: entry.bookingId,
+      wave: entry.wave,
+      radiusKm: entry.radiusKm.toFixed(2),
+      considered: entry.considered,
+      eligible: entry.eligible,
+      offered: entry.offered,
+      degraded: entry.degraded,
+      weights: entry.weights,
+      config: entry.config,
+      excluded: entry.excluded,
+      candidates: entry.candidates,
+      durationMs: entry.durationMs,
+    });
   }
 }
 

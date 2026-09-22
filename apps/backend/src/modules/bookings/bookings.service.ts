@@ -14,6 +14,7 @@ import {
 } from '@towing/api-contracts';
 import { eq } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
+import { OpsEventsService } from '../../common/events/ops-events.service';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { NotificationService } from '../../common/notifications/notification.service';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
@@ -21,7 +22,7 @@ import { ENV, type Env } from '../../config/env';
 import { DB, type Database } from '../../db/db.module';
 import { WsTicketService } from '../../realtime/ws-ticket.service';
 import { bookingStatusHistory, bookings, users } from '../../db/schema';
-import { PricingService } from '../pricing/pricing.service';
+import { PricingService, type LockedFare } from '../pricing/pricing.service';
 import { BookingOtpService } from './booking-otp.service';
 import { BookingStateMachineService } from './booking-state-machine.service';
 import { BookingsRepo, isOtpAvailable } from './bookings.repo';
@@ -64,10 +65,15 @@ export class BookingsService {
     private readonly notifications: NotificationService,
     private readonly tickets: WsTicketService,
     private readonly killSwitch: KillSwitchService,
+    private readonly opsEvents: OpsEventsService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
-  async create(userId: string, body: BookingCreate): Promise<BookingDetail> {
+  async create(
+    userId: string,
+    body: BookingCreate,
+    options: { locked?: LockedFare } = {},
+  ): Promise<BookingDetail> {
     const guards = await this.config.load();
 
     // ── §3.7 / §3.8 guards, cheapest first ────────────────────────────────
@@ -120,14 +126,45 @@ export class BookingsService {
       });
     }
 
-    // ── The fare lock (§3.4) ──────────────────────────────────────────────
-    const locked = await this.pricing.lock({
-      serviceSlug: body.serviceSlug,
-      vehicleClass: body.vehicleClass,
-      pickup: body.pickup,
-      drop: body.drop,
-      scheduledAt: body.scheduledAt,
-    });
+    // ── The fare lock (§3.4) ────────────────────────────────────────
+    //
+    // W20: a manual quote has already been priced, by a human, and that price
+    // is what the customer accepted. It arrives here as `options.locked` and
+    // the engine is not consulted at all — re-pricing a 900 km job would throw
+    // `manual_quote_required` back in the customer's face at the moment they
+    // pressed Accept. Everything downstream (snapshot columns, commission
+    // arithmetic, tax, kill switches) is IDENTICAL, which is what keeps the
+    // locked-at-confirm invariant true for both origins.
+    const locked =
+      options.locked ??
+      (await this.pricing.lock({
+        serviceSlug: body.serviceSlug,
+        vehicleClass: body.vehicleClass,
+        pickup: body.pickup,
+        drop: body.drop,
+        scheduledAt: body.scheduledAt,
+      }));
+
+    // ── §19.8 kill switches, after the fare lock (A11) ─────────────────────
+    // The zone and band only exist once the fare is locked, and the refusal
+    // must not disturb the lock: a paused zone stops NEW bookings, never the
+    // rate card. Estimates warn instead of failing (see `estimate()`).
+    if (await this.killSwitch.isZonePaused(locked.zone.id)) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.DISPATCH_PAUSED,
+        'New bookings are paused in this zone right now. Please try again later.',
+        { zoneId: locked.zone.id },
+      );
+    }
+    if (locked.fare.band === 'C' && (await this.killSwitch.isLongDistanceDisabled())) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.DISPATCH_PAUSED,
+        'Long-distance bookings are paused right now. Please try again later.',
+        { zoneId: locked.zone.id },
+      );
+    }
 
     const minted = this.otp.mintForCreate();
 
@@ -272,6 +309,29 @@ export class BookingsService {
     userId: string,
     locked: Awaited<ReturnType<PricingService['lock']>>,
   ): Promise<void> {
+    const [schedRow] = await this.db
+      .select({ scheduledAt: bookings.scheduledAt })
+      .from(bookings)
+      .where(eq(bookings.id, bookingId))
+      .limit(1);
+
+    // A18: creation performs no transition, so it publishes its own dedicated
+    // event — the admin feed sees the search start, not just its end.
+    // `scheduledAt` rides along so dormant scheduled bookings are countable
+    // as such rather than as active searches.
+    try {
+      await this.opsEvents.publish({
+        kind: 'booking_created',
+        bookingId,
+        zoneId: locked.zone.id,
+        userId,
+        status: 'searching',
+        scheduledAt: schedRow?.scheduledAt ? schedRow.scheduledAt.toISOString() : null,
+      });
+    } catch (error) {
+      this.logger.warn(`ops creation event failed for ${bookingId}: ${String(error)}`);
+    }
+
     try {
       await this.notifications.emit('booking.confirmed', {
         bookingId,
@@ -281,24 +341,24 @@ export class BookingsService {
         amount: `₹${paiseToRupeeString(locked.fare.totalPaise)}`,
       });
     } catch (error) {
-      this.logger.warn(`booking confirmation notification failed for ${bookingId}: ${String(error)}`);
+      this.logger.warn(
+        `booking confirmation notification failed for ${bookingId}: ${String(error)}`,
+      );
     }
 
     try {
       // A scheduled booking waits. `delayMs` is durable in BullMQ, so this
       // survives a task recycling — which an in-process timer would not, and
       // which is the whole reason §6 dispatch is a queue job.
-      const [row] = await this.db
-        .select({ scheduledAt: bookings.scheduledAt })
-        .from(bookings)
-        .where(eq(bookings.id, bookingId))
-        .limit(1);
-
-      const delayMs = row?.scheduledAt
-        ? Math.max(0, row.scheduledAt.getTime() - Date.now())
+      const delayMs = schedRow?.scheduledAt
+        ? Math.max(0, schedRow.scheduledAt.getTime() - Date.now())
         : undefined;
 
-      await this.queue.enqueue('dispatch.search', { bookingId }, { jobId: `dispatch:${bookingId}`, delayMs });
+      await this.queue.enqueue(
+        'dispatch.search',
+        { bookingId },
+        { jobId: `dispatch:${bookingId}`, delayMs },
+      );
     } catch (error) {
       this.logger.warn(`dispatch enqueue failed for ${bookingId}: ${String(error)}`);
     }
@@ -494,7 +554,11 @@ export class BookingsService {
    * here. Cancelling first and chasing the money afterwards would leave the
    * platform holding nothing.
    */
-  async cancel(userId: string, bookingId: string, body: BookingCancel): Promise<BookingCancelResponse> {
+  async cancel(
+    userId: string,
+    bookingId: string,
+    body: BookingCancel,
+  ): Promise<BookingCancelResponse> {
     const { row, outcome } = await this.cancellationFor(userId, bookingId);
 
     if (outcome.tier !== 'free') {
@@ -554,8 +618,44 @@ export class BookingsService {
     await this.machine.announce(result);
     await this.otp.forget(bookingId);
 
-    this.logger.log(`event=booking_cancelled booking=${bookingId} tier=${outcome.tier}`);
+    // A12: revoke live offers so a driver holding one is told immediately.
+    // Enqueued, not called: `DispatchModule` imports this module for the state
+    // machine, so importing it back would be a cycle — the queue is `@Global()`
+    // and delivers within the same seconds. (Admin cancel/reassign wire the
+    // same job in W8.) M0-F6: carry the holder too — `revokeAll` only reaches
+    // `offered` attempts, and the assigned driver keeps an `accepted` one.
+    try {
+      await this.queue.enqueue(
+        'dispatch.revoke',
+        { bookingId, reason: 'cancelled', holderDriverId: row.driverId ?? undefined },
+        { jobId: `revoke-${bookingId}` },
+      );
+    } catch (error) {
+      this.logger.warn(`revoke enqueue failed for ${bookingId}: ${String(error)}`);
+    }
 
+    // A14: the driver is free — a shelved suspension applies via the admin
+    // worker. Enqueued, not called: `AdminDriversModule` imports
+    // `DriverPresenceModule`, which imports THIS module — so importing the
+    // admin module back would close a cycle. Same reason `cancel` revokes
+    // offers through `dispatch.revoke` above. (Admin cancel wires the same
+    // job in W8.)
+    if (row.driverId) {
+      try {
+        await this.queue.enqueue(
+          'admin.apply-suspension',
+          { driverId: row.driverId },
+          { jobId: `apply-suspension-${bookingId}` },
+        );
+      } catch (error) {
+        this.logger.warn(`suspension-apply enqueue failed for ${bookingId}: ${String(error)}`);
+      }
+    }
+
+    // §22.1's `booking_cancelled` is tracked INSIDE `machine.transition` (W17),
+    // in the same transaction as the status write — every cancellation path
+    // (customer, admin, dispute-refund, suspension) goes through it, so there
+    // is nothing to emit here and a rolled-back cancel cannot leave an event.
     return {
       id: bookingId,
       status: 'cancelled',

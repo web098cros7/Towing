@@ -9,8 +9,11 @@ import { ThrottleBucket } from '../../common/throttling/throttler.config';
 import { ZodBody } from '../../common/validation/zod.decorators';
 import type { AuthedRequest } from '../auth/auth.types';
 import { AuthModule } from '../auth/auth.module';
+import { AdminAuthModule } from '../admin-auth/admin-auth.module';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Realms } from '../auth/realm.decorator';
+import { AdminCouponsController } from './admin-coupons.controller';
+import { AdminCouponsService } from './admin-coupons.service';
 import { CouponsService } from './coupons.service';
 
 /**
@@ -41,9 +44,9 @@ export class CouponsController {
 }
 
 @Module({
-  imports: [AuthModule],
-  controllers: [CouponsController],
-  providers: [CouponsService],
+  imports: [AuthModule, AdminAuthModule],
+  controllers: [CouponsController, AdminCouponsController],
+  providers: [CouponsService, AdminCouponsService],
   exports: [CouponsService],
 })
 export class CouponsModule {}

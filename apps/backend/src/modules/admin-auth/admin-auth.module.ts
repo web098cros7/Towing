@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminAuthController } from './admin-auth.controller';
 import { AdminAuthService } from './admin-auth.service';
+import { TotpService } from './totp.service';
 
 /**
  * The admin auth realm (§9.4, §15.2).
@@ -15,7 +16,7 @@ import { AdminAuthService } from './admin-auth.service';
 @Module({
   imports: [AuthModule],
   controllers: [AdminAuthController],
-  providers: [AdminAuthService, AdminAuditService],
-  exports: [AdminAuthService, AdminAuditService],
+  providers: [AdminAuthService, AdminAuditService, TotpService],
+  exports: [AdminAuthService, AdminAuditService, TotpService],
 })
 export class AdminAuthModule {}

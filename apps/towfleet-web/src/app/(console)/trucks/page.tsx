@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Upload } from 'lucide-react';
-import { Badge, Button, DataTable, type ColumnDef } from '@towing/web-ui';
+import { Badge, Button, DataTable, FilterBar, SearchInput, type ColumnDef } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { useTrucks } from '@/features/trucks/api/trucks.queries';
 import { BulkImportDrawer } from '@/features/trucks/components/BulkImportDrawer';
@@ -42,14 +43,41 @@ const columns: ColumnDef<Truck, unknown>[] = [
 ];
 
 export default function TrucksPage() {
+  return (
+    <Suspense>
+      <TrucksList />
+    </Suspense>
+  );
+}
+
+function TrucksList() {
   const { data, isLoading, isError, refetch } = useTrucks();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // Palette deep-link (`/trucks?q=KA01…`) seeds the filter; typing afterwards
+  // stays local so the back button keeps working.
+  const searchParams = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get('q') ?? '');
+  // Alert deep-link (`/trucks?truck=<id>`) opens that truck's checklist. Keyed on the param, so
+  // closing the drawer does not reopen it, while a NEW link (the palette, another alert) does.
+  // An id that is not in the fleet simply opens nothing: `selected` below resolves to null.
+  const truckParam = searchParams.get('truck');
+  useEffect(() => {
+    if (truckParam) setSelectedId(truckParam);
+  }, [truckParam]);
 
   const selected = useMemo(
     () => data?.find((t) => t.id === selectedId) ?? null,
     [data, selectedId],
   );
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return data ?? [];
+    return (data ?? []).filter((t) =>
+      [t.plate, t.assignedDriverName ?? ''].join(' ').toLowerCase().includes(needle),
+    );
+  }, [data, q]);
 
   return (
     <div>
@@ -68,14 +96,26 @@ export default function TrucksPage() {
         }
       />
 
+      <FilterBar className="mb-4">
+        <SearchInput
+          value={q}
+          onValueChange={setQ}
+          placeholder="Plate or driver"
+          className="w-72"
+          data-testid="trucks-search"
+        />
+      </FilterBar>
+
       <DataTable
         columns={columns}
-        data={data ?? []}
+        data={filtered}
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}
-        emptyTitle="No trucks yet"
-        emptyDescription="Add your first truck to start receiving fleet jobs."
+        emptyTitle={q ? 'No trucks match' : 'No trucks yet'}
+        emptyDescription={
+          q ? 'Clear the search to see the whole fleet.' : 'Add your first truck to start receiving fleet jobs.'
+        }
         onRowClick={(truck) => setSelectedId(truck.id)}
       />
 

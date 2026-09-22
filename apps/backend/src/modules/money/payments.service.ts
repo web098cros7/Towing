@@ -22,7 +22,12 @@ import { LedgerService } from '../../db/ledger/ledger.service';
 import { paymentCaptureLockKey } from '../../redis/redis.constants';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
-import { PAYMENT_GATEWAY, type PaymentGatewayPort, type PaymentHandle } from './payment-gateway.port';
+import { trackEvent } from '../analytics/analytics-events';
+import {
+  PAYMENT_GATEWAY,
+  type PaymentGatewayPort,
+  type PaymentHandle,
+} from './payment-gateway.port';
 import { PaymentsRepo, type PaymentRow, type SettlementInputsRow } from './payments.repo';
 import { computeSettlement } from './settlement';
 import { devCheckoutSignature, devPaymentRef } from './dev-payment.adapter';
@@ -264,6 +269,21 @@ export class PaymentsService {
 
     if (inputs.status === 'paid') return;
 
+    if (inputs.status === 'cancelled') {
+      // CAPTURE-AFTER-CANCEL (W9 decision (2)). A stale checkout sheet, a late
+      // UPI debit, a webhook that finally landed — the gateway took the money
+      // on a booking that was cancelled before it ever reached `completed`.
+      //
+      // THE MONEY IS REAL, SO THROWING IS THE WRONG ANSWER. Throwing would
+      // leave the capture invisible to every ledger read and re-alert the
+      // sweep forever. Instead: record it, raise the ops alarm exactly once
+      // per payment, and leave the refund to Finance — the money-only path
+      // (`POST /finance/refunds` on a non-`paid` booking), because the
+      // booking is already where the customer wanted it and must not move.
+      await this.recordSettlementConflict(bookingId, inputs, handle);
+      return;
+    }
+
     if (inputs.status !== 'completed') {
       // The webhook-arrives-early case, and a genuinely odd one. Throwing is
       // right: `WebhooksController` records it on `webhook_events.error` and
@@ -342,9 +362,49 @@ export class PaymentsService {
 
     // (c) After commit, all best-effort. None of it may fail a settlement that
     // has already happened.
-    await this.afterSettlement(bookingId, paymentId, inputs, totalPaise, settlement.driverSharePaise);
+    await this.afterSettlement(
+      bookingId,
+      paymentId,
+      inputs,
+      totalPaise,
+      settlement.driverSharePaise,
+    );
 
     await this.machine.announce(result);
+  }
+
+  /**
+   * The capture-after-cancel record: mark the payment captured, alert ops
+   * ONCE per payment, and stop. No settlement legs — nobody is owed a share
+   * of a cancelled trip — and no status transition, because the refund path
+   * leaves the booking where it is.
+   */
+  private async recordSettlementConflict(
+    bookingId: string,
+    inputs: SettlementInputsRow,
+    handle: PaymentHandle,
+  ): Promise<void> {
+    const paymentId = await this.ensureCapturedRow(bookingId, handle);
+    const amountPaise = rupeeStringToPaise(inputs.totalRupees);
+
+    this.logger.error(
+      `event=settlement_conflict booking=${bookingId} amount_paise=${amountPaise} ` +
+        `payment=${paymentId ?? 'unknown'} — captured after cancellation; refund from Finance`,
+    );
+
+    try {
+      // Deduped per payment by the registry: webhook redeliveries and sweep
+      // passes all land here, and exactly one alarm per stale checkout is the
+      // point of the trigger's `dedupeKey`.
+      await this.notifications.emit('finance.settlement_conflict', {
+        paymentId: paymentId ?? handle.gatewayRef ?? bookingId,
+        bookingId,
+        amountPaise,
+        opsEmail: this.env.LEDGER_OPS_EMAIL,
+      });
+    } catch (error) {
+      this.logger.warn(`settlement-conflict alert failed for ${bookingId}: ${String(error)}`);
+    }
   }
 
   /** Everything that hangs off a settled payment, none of it load-bearing. */
@@ -359,11 +419,14 @@ export class PaymentsService {
     // app. A client-emitted `payment_success` counts sheets that returned
     // success, which is not the same fact as money landing — and two numbers
     // for one KPI is what §2.5's dashboards then have to reconcile.
-    this.logger.log(
-      `event=payment_success booking=${bookingId} amount_paise=${totalPaise} ` +
-        `provider=${this.gateway.name}`,
-    );
-    this.logger.log(`event=booking_completed booking=${bookingId}`);
+    //
+    // AS OF W17 THIS IS A DURABLE ROW, not a log line (ToBeDoneEhsan 19vi):
+    // the `completed → paid` transition in `BookingStateMachineService`
+    // writes `analytics_events.payment_success` in the same transaction as
+    // the status change, which is exactly here — the ledger committed above.
+    // `booking_completed` is tracked at ITS transition (when the job
+    // finished), not at payment time, which is why it is no longer logged
+    // here at all.
 
     try {
       this.customers.emitBookingStatus(bookingId, 'paid');
@@ -375,7 +438,11 @@ export class PaymentsService {
     // one after ITS commit, but that ran before the transition wrote
     // `commission_amount`, so the cell it computed is stale by construction.
     try {
-      await this.queue.enqueue('invoice.generate', { bookingId }, { jobId: `invoice:${bookingId}` });
+      await this.queue.enqueue(
+        'invoice.generate',
+        { bookingId },
+        { jobId: `invoice:${bookingId}` },
+      );
     } catch (error) {
       this.logger.warn(`invoice enqueue failed for ${bookingId}: ${String(error)}`);
     }
@@ -424,6 +491,22 @@ export class PaymentsService {
     if (!row) return;
 
     this.logger.warn(`event=payment_failure payment=${paymentId} reason=${reason}`);
+
+    // §22.1's `payment_failure`, durable as of W17 (19vi). This is the single
+    // writer of a failed payment — webhook, reconcile sweep and the service
+    // all land here. Best-effort on purpose: a tracker insert must never turn
+    // a recorded gateway failure into an error the webhook then retries.
+    try {
+      await trackEvent(this.db, {
+        name: 'payment_failure',
+        bookingId: row.bookingId,
+        subjectType: 'payment',
+        subjectId: paymentId,
+        props: { reason },
+      });
+    } catch (error) {
+      this.logger.warn(`payment_failure tracker write failed for ${paymentId}: ${String(error)}`);
+    }
 
     const [booking] = (await this.db.execute(sql`
       select user_id from bookings where id = ${row.bookingId}::uuid

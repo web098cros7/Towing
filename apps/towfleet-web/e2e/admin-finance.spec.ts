@@ -12,15 +12,16 @@ import { adminLogin } from './support/adminLogin';
  * paisa" is a fact rather than a fixture.
  */
 
-test('the Finance queue is reachable from the topbar and lists both owner types', async ({
-  page,
-}) => {
+test('the Finance queue lists both owner types', async ({ page }) => {
   await adminLogin(page);
 
-  // The topbar had NO navigation until Phase 19 — this link is the whole
-  // reason a second admin page is usable at all.
-  await page.getByRole('link', { name: 'Payouts' }).click();
-  await expect(page).toHaveURL(/\/admin\/finance/);
+  // W1 §3.2 moved section navigation from the topbar into the permission-
+  // filtered sidebar, so this no longer clicks a topbar link. It stays a DIRECT
+  // goto rather than a sidebar click on purpose: the mock identity is
+  // `operations`, which holds `finance.summary` but not `finance.read`, so the
+  // sidebar correctly HIDES Finance for it — the filtering itself is asserted
+  // in `admin-shell.spec.ts`.
+  await page.goto('/admin/finance');
 
   await expect(page.getByRole('heading', { name: 'Payout approvals' })).toBeVisible();
 
@@ -67,6 +68,12 @@ test('a pending payout opens a decision drawer showing both status axes', async 
 
   // The sentence that stops an operator reasoning wrongly about a rejection.
   await expect(page.getByText(/wallet was already debited/i)).toBeVisible();
+
+  // W21: the notes panel drops into every detail screen. The driver-fixtured
+  // notes must NOT appear for a payout subject — the empty state also proves
+  // the panel scopes by subject, not just by screen.
+  await expect(page.getByRole('heading', { name: 'Internal notes' })).toBeVisible();
+  await expect(page.getByTestId('notes-empty')).toBeVisible();
 });
 
 test('rejection requires a reason before the confirm button enables', async ({ page }) => {
@@ -104,4 +111,30 @@ test('an already-decided payout offers no decision buttons', async ({ page }) =>
 test('an unauthenticated visitor cannot reach the Finance queue', async ({ page }) => {
   await page.goto('/admin/finance');
   await expect(page).toHaveURL(/\/admin\/login/);
+});
+
+test('A20: the queue paginates — more than 50 payouts are reachable', async ({ page }) => {
+  await adminLogin(page);
+  await page.goto('/admin/finance');
+
+  // 53 pending in the mock: the first page holds the canonical rows.
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+  await expect(page.getByText('Ramesh Kumar')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Next page' }).click();
+
+  // The tail of the queue, unreachable before pagination.
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await expect(page.getByText('Load Test Driver 51')).toBeVisible();
+  await expect(page.getByText('Ramesh Kumar')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Previous page' }).click();
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+  await expect(page.getByText('Ramesh Kumar')).toBeVisible();
+
+  // Switching filters restarts from the top.
+  await page.getByRole('button', { name: 'Next page' }).click();
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await page.getByTestId('finance-filter-all').click();
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
 });

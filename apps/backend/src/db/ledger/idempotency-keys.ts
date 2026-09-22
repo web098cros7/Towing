@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import type { RefundKind } from '@towing/api-contracts';
+
 /**
  * Every `wallet_transactions.idempotency_key` this application writes, built
  * here so a raw string literal never appears at a call site.
@@ -54,22 +57,68 @@ export const ledgerKeys = {
    * booking can carry a cancellation refund and later a dispute refund — and
    * `bk:v1:<bookingId>:driver` is already taken by the original settlement.
    *
-   * (The `refunds.idempotency_key` ROW key is the booking-scoped
-   * `rf:v1:<bookingId>:<reason>`: there is at most one refund per booking per
-   * reason. Two different scopes, deliberately, for two different uniqueness
-   * questions.)
+   * (The `refunds.idempotency_key` ROW key is scoped per the grammar below:
+   * v1 is booking+reason for the system paths, v2 adds the dispute or the
+   * hashing source for the ones that can happen more than once.)
    */
   refundDriverDebit: (refundId: string) => `rf:v1:${refundId}:driver`,
   refundFleetDebit: (refundId: string) => `rf:v1:${refundId}:fleet`,
+
+  /**
+   * W8's dispute `cancel_no_charge` exit: platform-funded driver compensation,
+   * a NEW leg with an `adjustment` type — same reasoning as
+   * `cancellationCompensation` above, and its own key because one booking can
+   * carry a cancellation comp AND a dispute comp.
+   */
+  disputeCompensation: (disputeId: string) => `dx:v1:${disputeId}:driver`,
 } as const;
 
 /**
  * `refunds.idempotency_key`. Not a ledger key — it dedupes the refund ROW, the
  * way `po:v1:req:…` dedupes a payout request — but it lives here so the whole
  * grammar is legible in one file.
+ *
+ * **v1 is booking+reason**: there is at most one cancellation refund and at
+ * most one plain dispute refund per booking. It cannot express "one refund per
+ * dispute" (a second, separately-resolved dispute is a real event) or finance's
+ * "one refund per submitted intent" (partials are many), which is what v2
+ * exists for.
  */
 export const refundRowKey = (bookingId: string, reason: RefundReason): string =>
   `rf:v1:${bookingId}:${reason}`;
+
+/**
+ * **v2** (W8): the refund ROW's key for the paths that the v1 grammar cannot
+ * express. The version segment bump follows this file's own rule — the meaning
+ * changed, so the version did.
+ *
+ * Two sources:
+ *  - `dispute:<id>` — a dispute resolution refund. Retrying the same
+ *    resolution replays; resolving a NEW dispute on the same booking is a new
+ *    key, which is exactly right.
+ *  - `admin:<sha256(adminId:clientKey)>` — a finance-issued refund. This is
+ *    the ONE place a client header reaches a key, and it does so through a
+ *    hash that also pins the admin: the same request replayed by the same
+ *    admin is the same key, while a different admin (or deliberately different
+ *    intent) is a different refund. The header is REQUIRED on the route, so
+ *    "no key" cannot silently mean "no dedupe".
+ */
+export const disputeRefundRowKey = (
+  bookingId: string,
+  kind: RefundKind,
+  disputeId: string,
+): string => `rf:v2:${bookingId}:${kind}:dispute:${disputeId}`;
+
+export const adminRefundRowKey = (
+  bookingId: string,
+  kind: RefundKind,
+  adminId: string,
+  clientKey: string,
+): string =>
+  `rf:v2:${bookingId}:${kind}:admin:${createHash('sha256')
+    .update(`${adminId}:${clientKey}`)
+    .digest('hex')
+    .slice(0, 32)}`;
 
 /** The reasons a refund can exist. Part of the key, so the list is closed. */
 export const REFUND_REASONS = ['cancellation', 'dispute', 'duplicate_payment'] as const;
@@ -82,8 +131,11 @@ export type RefundReason = (typeof REFUND_REASONS)[number];
  * receive the first's payment. Exactly the trap `PayoutsService` already
  * guards with `po:v1:req:<fleetId>:<sha256>`.
  */
-export const paymentRowKey = (bookingId: string, purpose: string, hashedClientKey: string): string =>
-  `pay:v1:${bookingId}:${purpose}:${hashedClientKey}`;
+export const paymentRowKey = (
+  bookingId: string,
+  purpose: string,
+  hashedClientKey: string,
+): string => `pay:v1:${bookingId}:${purpose}:${hashedClientKey}`;
 
 /**
  * `payouts.idempotency_key`. **v2**, because Phase 19 widened payouts from
@@ -93,10 +145,7 @@ export const paymentRowKey = (bookingId: string, purpose: string, hashedClientKe
  * ("bump the version segment — never reuse it with different semantics"), the
  * shape changed, so the version did.
  */
-export const payoutRowKey = (
-  ownerType: string,
-  ownerId: string,
-  hashedClientKey: string,
-): string => `po:v2:req:${ownerType}:${ownerId}:${hashedClientKey}`;
+export const payoutRowKey = (ownerType: string, ownerId: string, hashedClientKey: string): string =>
+  `po:v2:req:${ownerType}:${ownerId}:${hashedClientKey}`;
 
 export type LedgerKeyBuilder = keyof typeof ledgerKeys;

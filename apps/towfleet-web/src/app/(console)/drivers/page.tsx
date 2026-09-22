@@ -1,6 +1,7 @@
 'use client';
 
-import { Badge, Button, DataTable, type ColumnDef } from '@towing/web-ui';
+import { useMemo, useState } from 'react';
+import { Badge, Button, DataTable, FilterBar, SearchInput, type ColumnDef } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { useDrivers } from '@/features/drivers/api/drivers.queries';
 import { KYC_LABEL, type FleetDriver, type KycStatus } from '@/features/drivers/types';
@@ -67,6 +68,15 @@ const columns: ColumnDef<FleetDriver, unknown>[] = [
 
 export default function DriversPage() {
   const { data, isLoading, isError, refetch } = useDrivers();
+  const [q, setQ] = useState('');
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return data ?? [];
+    return (data ?? []).filter((d) =>
+      [d.name, d.phone, d.assignedTruckPlate ?? ''].join(' ').toLowerCase().includes(needle),
+    );
+  }, [data, q]);
 
   return (
     <div>
@@ -80,14 +90,28 @@ export default function DriversPage() {
         }
       />
 
+      <FilterBar className="mb-4">
+        <SearchInput
+          value={q}
+          onValueChange={setQ}
+          placeholder="Name, phone or truck"
+          className="w-72"
+          data-testid="drivers-search"
+        />
+      </FilterBar>
+
       <DataTable
         columns={columns}
-        data={data ?? []}
+        data={filtered}
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}
-        emptyTitle="No drivers yet"
-        emptyDescription="Invite drivers — they onboard through the TowPartner app and appear here with live KYC status."
+        emptyTitle={q ? 'No drivers match' : 'No drivers yet'}
+        emptyDescription={
+          q
+            ? 'Clear the search to see the whole roster.'
+            : 'Invite drivers — they onboard through the TowPartner app and appear here with live KYC status.'
+        }
       />
     </div>
   );

@@ -29,6 +29,9 @@ import {
 import { useBookingStore } from '@/features/booking/store/bookingStore';
 import { towTypes, vehicleClassFor } from '@/features/booking/data/towTypes.data';
 import { useFareEstimate, usePrefetchFareEstimates } from '@/features/booking/api/pricing.queries';
+import { ManualQuoteBar } from '@/features/quotes/components/ManualQuoteBar';
+import { RequestQuoteSheet } from '@/features/quotes/components/RequestQuoteSheet';
+import { useRequestQuote } from '@/features/quotes/api/quotes.queries';
 import { useServices } from '@/features/services/api/services.queries';
 import { FareBreakdownSheet } from '@/features/booking/components/FareBreakdownSheet';
 import { TowTypeCarousel } from '@/features/booking/components/TowTypeCarousel';
@@ -145,6 +148,57 @@ export function BookTowScreen() {
       if (result.data) setBreakdownOpen(true);
     });
   }, [estimate, estimateInput]);
+
+  /**
+   * W20 §7.3 — the >600 km refusal turned into the next step.
+   *
+   * Before this, a `manual_quote_required` 422 left the screen showing a fare
+   * skeleton forever: the mutation had an error handler, the QUERY did not. The
+   * refusal is a legitimate answer, not a failure, so it gets its own bar and
+   * its own route onward — request → My Quotes → accept → Searching, the same
+   * hand-off a normal booking makes.
+   */
+  const manualQuote =
+    estimate.error instanceof ApiClientError && estimate.error.code === 'manual_quote_required'
+      ? { distanceKm: readDistanceKm(estimate.error.details) }
+      : null;
+  const [quoteSheetOpen, setQuoteSheetOpen] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const requestQuote = useRequestQuote();
+
+  const submitQuoteRequest = useCallback(
+    (notes: string) => {
+      // The quote contract REQUIRES a drop — and so does §7.3: a roadside job
+      // never crosses 600 km, so this branch is never reachable without one.
+      // The guard is for the type checker's benefit, not the customer's.
+      if (!estimateInput?.drop) return;
+      setQuoteError(null);
+      requestQuote.mutate(
+        {
+          serviceSlug: estimateInput.serviceSlug,
+          vehicleClass: estimateInput.vehicleClass,
+          pickup: estimateInput.pickup,
+          ...(pickupAddress ? { pickupAddress } : {}),
+          drop: estimateInput.drop,
+          ...(dropAddress ? { dropAddress } : {}),
+          ...(notes ? { notes } : {}),
+        },
+        {
+          onSuccess: () => {
+            setQuoteSheetOpen(false);
+            navigation.navigate('MyQuotes');
+          },
+          onError: (error) =>
+            setQuoteError(
+              error instanceof ApiClientError
+                ? error.message
+                : 'We could not file the request. Please try again.',
+            ),
+        },
+      );
+    },
+    [estimateInput, pickupAddress, dropAddress, requestQuote, navigation],
+  );
 
   // --- route numbers ----------------------------------------------------------
 
@@ -361,9 +415,25 @@ export function BookTowScreen() {
 
             <NotesSection note={note} onChangeNote={setNote} />
 
-            <EstimatedFareRow estimate={estimate.data} onPress={onFarePress} />
+            {manualQuote ? (
+              // W20 §7.3: past 600 km the engine will not price the trip. Figma draws
+              // no state for this, so the quote bar stands in for fare + Confirm.
+              <ManualQuoteBar
+                distanceKm={manualQuote.distanceKm}
+                submitting={requestQuote.isPending}
+                errorMessage={quoteError}
+                onRequest={() => {
+                  setQuoteError(null);
+                  setQuoteSheetOpen(true);
+                }}
+              />
+            ) : (
+              <>
+                <EstimatedFareRow estimate={estimate.data} onPress={onFarePress} />
 
-            <MiButton tone="yellow" label="Confirm Booking" onPress={() => void confirmBooking()} />
+                <MiButton tone="yellow" label="Confirm Booking" onPress={() => void confirmBooking()} />
+              </>
+            )}
           </MiSheetPanel>
         </View>
       </KeyboardAvoidingView>
@@ -375,6 +445,12 @@ export function BookTowScreen() {
         vehicleName={vehicleName}
         vehicleClass={vehicleClass}
         route={route}
+      />
+      <RequestQuoteSheet
+        visible={quoteSheetOpen}
+        submitting={requestQuote.isPending}
+        onClose={() => setQuoteSheetOpen(false)}
+        onSubmit={submitQuoteRequest}
       />
     </View>
   );
@@ -394,6 +470,18 @@ function regionAround(points: MapCoordinate[]): MapRegion {
     latitudeDelta: Math.max((maxLat - minLat) * 1.8, 0.02),
     longitudeDelta: Math.max((maxLng - minLng) * 1.8, 0.02),
   };
+}
+
+/**
+ * The refusal's `details.distanceKm`, when it is there. `details` is typed
+ * `unknown` on the error (it is whatever the backend sent), so this is the one
+ * place the shape is asserted — and a missing number degrades to the copy that
+ * does not need one rather than rendering `undefined km`.
+ */
+function readDistanceKm(details: unknown): number | undefined {
+  if (typeof details !== 'object' || details === null) return undefined;
+  const value = (details as { distanceKm?: unknown }).distanceKm;
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 /**

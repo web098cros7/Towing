@@ -8,11 +8,11 @@ import type {
   DriverKycStatusResponse,
   DriverKycSubmitResponse,
 } from '@towing/api-contracts';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { PresignedUploadService } from '../../common/storage/presigned-upload.helper';
 import { DB, type Database } from '../../db/db.module';
-import { driverDocuments, drivers } from '../../db/schema';
+import { driverDocumentVersions, driverDocuments, drivers } from '../../db/schema';
 
 /** The 5 documents §3.1 requires before a driver can reach `pending`. */
 export const REQUIRED_KYC_DOC_TYPES: readonly DriverDocType[] = [
@@ -49,36 +49,69 @@ export class DriverKycService {
       throw ApiException.forbidden('This key was not issued to you');
     }
 
-    const [existing] = await this.db
-      .select({ id: driverDocuments.id })
-      .from(driverDocuments)
-      .where(and(eq(driverDocuments.driverId, driverId), eq(driverDocuments.docType, body.docType)))
-      .limit(1);
-
     const fileUrl = `local://${body.key}`;
+    const now = new Date();
 
-    if (existing) {
-      // A resubmission over a previously-rejected (or pending) document resets
-      // its review — the old verdict cannot survive new bytes.
-      await this.db
-        .update(driverDocuments)
-        .set({
+    /**
+     * W7: the same transaction writes BOTH the current row and its history.
+     *
+     * `driver_documents` is a verdict plus the latest file, so a resubmission
+     * overwrites it and the previous object is orphaned — the history row is
+     * what keeps that file findable (the admin's version list reads it, and
+     * W19's erasure walks it to delete every object). The supersede-then-insert
+     * order matters: marking superseded AFTER the insert would also mark the
+     * row just written.
+     */
+    await this.db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: driverDocuments.id })
+        .from(driverDocuments)
+        .where(
+          and(eq(driverDocuments.driverId, driverId), eq(driverDocuments.docType, body.docType)),
+        )
+        .limit(1);
+
+      if (existing) {
+        // A resubmission over a previously-rejected (or pending) document resets
+        // its review — the old verdict cannot survive new bytes.
+        await tx
+          .update(driverDocuments)
+          .set({
+            fileUrl,
+            status: 'pending',
+            rejectionReason: null,
+            verifiedBy: null,
+            verifiedAt: null,
+            updatedAt: now,
+          })
+          .where(eq(driverDocuments.id, existing.id));
+      } else {
+        await tx.insert(driverDocuments).values({
+          driverId,
+          docType: body.docType,
           fileUrl,
           status: 'pending',
-          rejectionReason: null,
-          verifiedBy: null,
-          verifiedAt: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(driverDocuments.id, existing.id));
-    } else {
-      await this.db.insert(driverDocuments).values({
+        });
+      }
+
+      await tx
+        .update(driverDocumentVersions)
+        .set({ supersededAt: now })
+        .where(
+          and(
+            eq(driverDocumentVersions.driverId, driverId),
+            eq(driverDocumentVersions.docType, body.docType),
+            isNull(driverDocumentVersions.supersededAt),
+          ),
+        );
+
+      await tx.insert(driverDocumentVersions).values({
         driverId,
         docType: body.docType,
         fileUrl,
         status: 'pending',
       });
-    }
+    });
   }
 
   async status(driverId: string): Promise<DriverKycStatusResponse> {

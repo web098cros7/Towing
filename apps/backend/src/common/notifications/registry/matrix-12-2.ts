@@ -131,7 +131,7 @@ export const MATRIX_12_2: readonly MatrixRow[] = [
     label: 'SOS triggered',
     recipient: 'Emergency contacts + Ops',
     channels: ['push', 'sms', 'whatsapp'],
-    note: 'Push is marked (ops). The whole row is Phase 20 — but the WhatsApp adapter and the always-on safety category ship here so Phase 20 invents nothing.',
+    note: 'Push is marked (ops). W14 claims this row: `sos.triggered` fans out to the contact snapshot over SMS + WhatsApp, and `sos.ops_alert` (operational) reaches the on-call admins — admins have no push devices, so the socket frame plus email/SMS is their alert path.',
   },
   {
     key: 'dispute_update',

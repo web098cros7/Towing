@@ -134,11 +134,17 @@ export type RootStackParamList = {
    */
   Support: undefined;
   HelpCenter: undefined;
-  ContactUs: undefined;
-  /** Figma 60 · Support Chat. `bookingId` pins the topic strip to a trip. No chat backend exists: messages stay on the phone. */
+  /** W15: the message form files a ticket; a booking id attaches the trip (§6.6). */
+  ContactUs: { bookingId?: string } | undefined;
+  /** Figma 60 · Support Chat. `bookingId` pins the topic strip to a trip. */
   SupportChat: { bookingId?: string } | undefined;
   /** Figma 61 · Report an Issue. `bookingId` preselects the trip; otherwise the newest booking. */
   ReportIssue: { bookingId?: string } | undefined;
+  /** W15: the requester's own ticket list and one ticket's thread. */
+  MyTickets: undefined;
+  TicketThread: { ticketId: string };
+  /** W20 §7.3: long-distance trips the engine will not price. */
+  MyQuotes: undefined;
   Settings: undefined;
   EmergencyContacts: undefined;
   AddEmergencyContact: undefined;

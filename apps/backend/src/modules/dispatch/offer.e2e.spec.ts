@@ -40,7 +40,16 @@ async function offerTo(bookingId: string, driverId: string, wave = 1): Promise<v
   const booking = await repo.booking(bookingId);
   await offers.offer(
     booking!,
-    { driverId, distanceMeters: 500, score: 50, fleetId: null, truckId: null },
+    {
+      driverId,
+      distanceMeters: 500,
+      score: 50,
+      // W5 fixture: the offer path never runs the scorer, so the terms are
+      // placeholders — nothing asserts on them here.
+      terms: { proximity: 0.5, rating: 0.5, acceptance: 0.5, completion: 0.5 },
+      fleetId: null,
+      truckId: null,
+    },
     wave,
     2,
     20,
@@ -51,9 +60,7 @@ async function outcomeOf(bookingId: string, driverId: string): Promise<string | 
   const [row] = await db
     .select({ outcome: dispatchAttempts.outcome })
     .from(dispatchAttempts)
-    .where(
-      and(eq(dispatchAttempts.bookingId, bookingId), eq(dispatchAttempts.driverId, driverId)),
-    );
+    .where(and(eq(dispatchAttempts.bookingId, bookingId), eq(dispatchAttempts.driverId, driverId)));
   return row?.outcome;
 }
 
@@ -116,7 +123,14 @@ describe('dispatch offers (§6.3)', () => {
       const booking = await repo.booking(bookingId);
       const made = await offers.offer(
         booking!,
-        { driverId, distanceMeters: 500, score: 50, fleetId: null, truckId: null },
+        {
+          driverId,
+          distanceMeters: 500,
+          score: 50,
+          terms: { proximity: 0.5, rating: 0.5, acceptance: 0.5, completion: 0.5 },
+          fleetId: null,
+          truckId: null,
+        },
         1,
         2,
         20,

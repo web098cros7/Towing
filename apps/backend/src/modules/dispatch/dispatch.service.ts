@@ -11,8 +11,9 @@ import { DB, type Database } from '../../db/db.module';
 import { serviceZones } from '../../db/schema';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { CustomerGateway } from '../bookings/customer.gateway';
+import { DispatchConfigRepo } from '../bookings/dispatch-config.repo';
 import { PresenceStore } from '../driver-presence/presence-store';
-import { CandidateSelectionService } from './candidate-selection.service';
+import { CandidateSelectionService, type SelectionResult } from './candidate-selection.service';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
 import { OfferService } from './offer.service';
@@ -78,7 +79,10 @@ const EMPTY_WAVE_DELAY_MS = 2_000;
  * It doubles as the shape the log line is built from, so the two cannot drift.
  */
 export type WaveOutcome =
-  | { ran: false; reason: 'locked' | 'unknown_booking' | 'not_searching' | 'scheduled' | 'paused' }
+  | {
+      ran: false;
+      reason: 'locked' | 'unknown_booking' | 'not_searching' | 'scheduled' | 'paused';
+    }
   | { ran: false; reason: 'gave_up'; wave: number }
   | {
       ran: true;
@@ -106,6 +110,9 @@ export class DispatchService implements OnModuleInit {
     private readonly machine: BookingStateMachineService,
     private readonly customerGateway: CustomerGateway,
     private readonly notifications: NotificationService,
+    /** The GLOBAL half of §6.7 — W12 reads it for the per-service wave size and
+     *  the re-dispatch priority. Already injected by the scorer in this module. */
+    private readonly globalConfig: DispatchConfigRepo,
   ) {}
 
   /**
@@ -121,6 +128,28 @@ export class DispatchService implements OnModuleInit {
     this.queue.process('dispatch.offer-timeout', async ({ bookingId, driverId }) => {
       await this.expireOffer(bookingId, driverId);
     });
+
+    this.queue.process('dispatch.revoke', async ({ bookingId, reason, holderDriverId }) => {
+      await this.revokeBooking(bookingId, reason, holderDriverId);
+    });
+  }
+
+  /**
+   * The `dispatch.revoke` worker body, extracted so tests can drive it
+   * directly (the suite runs queue-off).
+   *
+   * Revokes every live offer, then — M0-F6 — tells the holder, if the
+   * canceller named one. A cancelled booking's holder keeps an `accepted`
+   * attempt `revokeAll` will never move, so without the second step their
+   * screen sits on a dead job until the 15 s poll notices.
+   */
+  async revokeBooking(
+    bookingId: string,
+    reason: 'cancelled' | 'paused',
+    holderDriverId?: string,
+  ): Promise<void> {
+    await this.offers.revokeAll(bookingId, reason);
+    if (holderDriverId) this.offers.notifyHolderRevoked(holderDriverId, bookingId);
   }
 
   /**
@@ -168,7 +197,10 @@ export class DispatchService implements OnModuleInit {
       await this.queue.enqueue(
         'dispatch.search',
         { bookingId },
-        { jobId: `dispatch-${bookingId}-scheduled`, delayMs: booking.scheduledAt.getTime() - Date.now() },
+        {
+          jobId: `dispatch-${bookingId}-scheduled`,
+          delayMs: booking.scheduledAt.getTime() - Date.now(),
+        },
       );
       return { ran: false, reason: 'scheduled' };
     }
@@ -178,6 +210,10 @@ export class DispatchService implements OnModuleInit {
     // is the entire point of having it.
     if (await this.isPaused(booking)) {
       this.logger.log(`booking ${bookingId} held — dispatch paused for its zone or band`);
+      // A12: drivers holding an offer for a search that just stopped must be
+      // told now — otherwise they sit out their twenty seconds and pay for it
+      // in acceptance rate. Revoke before rescheduling; both are idempotent.
+      await this.offers.revokeAll(bookingId, 'paused');
       // Re-check shortly rather than failing the booking. A pause is an
       // operator's temporary decision, and a customer whose search was killed by
       // it would have to re-book at whatever surge applies then.
@@ -211,17 +247,36 @@ export class DispatchService implements OnModuleInit {
     // budget.
     const radiusKm = ladder[Math.min(wave, ladder.length) - 1] ?? ladder[ladder.length - 1]!;
 
+    // W5: the wave log measures the whole decision — selection plus offers.
+    const waveStartedAt = Date.now();
     const selected = await this.selection.select(booking, radiusKm, config.offersPerWave);
     await this.repo.setWaveState(bookingId, wave, booking.dispatchDeadlineAt ? null : deadlineAt);
 
     let offered = 0;
+    const offeredDriverIds: string[] = [];
     for (const candidate of selected.candidates) {
       // `offer` returns false when another search won the driver between
       // selection and the lock — ordinary in a busy zone, not an error.
       if (await this.offers.offer(booking, candidate, wave, radiusKm, config.offerTimeoutSeconds)) {
         offered += 1;
+        offeredDriverIds.push(candidate.driverId);
       }
     }
+
+    // W5: ONE row per wave, AFTER the offers, never inside the loop — the log
+    // is an observer and must not slow a wave down. `writeWaveLog` swallows its
+    // own failures for the same reason.
+    await this.writeWaveLog({
+      booking,
+      wave,
+      radiusKm,
+      config,
+      selected,
+      offered,
+      offeredDriverIds,
+      durationMs: Date.now() - waveStartedAt,
+      ladderLength: ladder.length,
+    });
 
     await this.announceProgress(booking, wave, radiusKm, deadlineAt);
 
@@ -236,10 +291,16 @@ export class DispatchService implements OnModuleInit {
     const nextDelayMs = offered === 0 ? EMPTY_WAVE_DELAY_MS : config.offerTimeoutSeconds * 1_000;
     await this.reschedule(bookingId, nextDelayMs, `wave-${wave}`);
 
+    // The wave log carries the ids now, so the line stays a compact tally.
+    const excludedCounts = Object.fromEntries(
+      Object.entries(selected.excluded).map(([reason, detail]) => [reason, detail.count]),
+    );
     this.logger.log(
-      `booking ${bookingId} wave ${wave} @ ${radiusKm}km: ${selected.considered} in range, ${offered} offered` +
+      `booking ${bookingId} wave ${wave} @ ${radiusKm}km: ${selected.considered} in range, ${selected.eligible} eligible, ${offered} offered` +
         (selected.degraded ? ' (postgis fallback)' : '') +
-        (Object.keys(selected.excluded).length > 0 ? ` — excluded ${JSON.stringify(selected.excluded)}` : ''),
+        (Object.keys(excludedCounts).length > 0
+          ? ` — excluded ${JSON.stringify(excludedCounts)}`
+          : ''),
     );
 
     return {
@@ -288,9 +349,74 @@ export class DispatchService implements OnModuleInit {
     );
 
     this.logger.log(`re-dispatching ${bookingId} from wave ${booking.searchWave ?? 1} (${reason})`);
-    // Delay 0 — a re-dispatch goes to the front. The customer has already
-    // waited through one full search.
-    await this.reschedule(bookingId, 0, `redispatch-${reason}`);
+    // §6.7's re-dispatch priority (W12). `front` — the default and §6.5's
+    // shipped behaviour — is delay 0: the customer has already waited through
+    // one full search. `normal` schedules the re-dispatch like any other wave,
+    // which is what a platform drowning in cancel-and-redispatch loops wants.
+    const { redispatchPriority } = await this.globalConfig.load();
+    const delayMs = redispatchPriority === 'normal' ? config.offerTimeoutSeconds * 1_000 : 0;
+    await this.reschedule(bookingId, delayMs, `redispatch-${reason}`);
+  }
+
+  /**
+   * W8's `offer_to_driver` reassign (§6.5 step 6): one EXCLUSIVE offer to an
+   * operator's chosen, eligibility-checked driver.
+   *
+   * The engine's own rules still apply — the driver must survive
+   * `CandidateSelectionService.select` at the widest ladder rung (an operator's
+   * explicit choice is not radius-limited the way an automatic wave is, but it
+   * is still gated on KYC, suspension, zone restrictions, presence and the
+   * already-offered set), and `OfferService.offer`'s lock still decides whether
+   * the offer is real.
+   *
+   * THE EXCLUSIVE WINDOW is the successor scheduled for exactly this offer's
+   * expiry: while the offer is open, the next wave is not due, so nobody else
+   * is asked. (A wave runs when its predecessor's offers resolve or expire by
+   * design — a booking whose assigned driver was reassigned has no live wave,
+   * and the successor this method schedules is the only one in flight.)
+   *
+   * Returns the exclusion reason when it refuses, so the console can say WHY
+   * (offline, suspended, already asked, lock lost) rather than a bare 422.
+   */
+  async adminOfferToDriver(
+    bookingId: string,
+    driverId: string,
+  ): Promise<{ offered: boolean; exclusion?: string; wave: number; radiusKm: number }> {
+    const booking = await this.repo.booking(bookingId);
+    if (!booking || booking.status !== 'searching') {
+      return { offered: false, exclusion: 'not_searching', wave: 0, radiusKm: 0 };
+    }
+
+    const config = await this.configFor(booking);
+    const ladder = booking.longDistance ? config.bandCRadiusLadderKm : config.radiusLadderKm;
+    const wave = booking.searchWave ?? 1;
+    const radiusKm = ladder[ladder.length - 1]!;
+
+    // A wide limit, not `offersPerWave`: the operator named a driver who may
+    // not be in the top of the score ranking, and the question here is
+    // eligibility, not rank.
+    const selected = await this.selection.select(booking, radiusKm, 50);
+    const candidate = selected.candidates.find((entry) => entry.driverId === driverId);
+    if (!candidate) {
+      const exclusion =
+        Object.entries(selected.excluded).find(([, detail]) =>
+          detail.driverIds.includes(driverId),
+        )?.[0] ?? 'not_eligible';
+      return { offered: false, exclusion, wave, radiusKm };
+    }
+
+    const offered = await this.offers.offer(
+      booking,
+      candidate,
+      wave,
+      radiusKm,
+      config.offerTimeoutSeconds,
+    );
+    if (offered) {
+      // The exclusive window: the next wave waits out the offer just sent.
+      await this.reschedule(bookingId, config.offerTimeoutSeconds * 1_000, 'admin-offer-to-driver');
+    }
+    return { offered, exclusion: offered ? undefined : 'offer_locked', wave, radiusKm };
   }
 
   /**
@@ -366,23 +492,102 @@ export class DispatchService implements OnModuleInit {
 
   /** §6.7's per-zone config, through the one sanctioned reader of the JSONB. */
   private async configFor(booking: DispatchBookingRow): Promise<DispatchConfig> {
-    const [zone] = booking.zoneId
-      ? await this.db
-          .select({ dispatchConfig: serviceZones.dispatchConfig })
-          .from(serviceZones)
-          .where(eq(serviceZones.id, booking.zoneId))
-          .limit(1)
-      : [];
+    const [zone, global] = await Promise.all([
+      booking.zoneId
+        ? this.db
+            .select({ dispatchConfig: serviceZones.dispatchConfig })
+            .from(serviceZones)
+            .where(eq(serviceZones.id, booking.zoneId))
+            .limit(1)
+            .then((rows) => rows[0])
+        : Promise.resolve(undefined),
+      this.globalConfig.load(),
+    ]);
 
     // A NULL `dispatch_config` — an un-tuned zone, or a booking with no zone at
     // all — resolves to Phase 14's typed defaults rather than to constants here.
-    return resolveDispatchConfig(zone?.dispatchConfig ?? null, booking.serviceType as ServiceType);
+    // W12 adds the PLATFORM's per-service wave size as the layer between those
+    // defaults and the zone's own overrides (`resolveDispatchConfig`'s order).
+    return resolveDispatchConfig(
+      zone?.dispatchConfig ?? null,
+      booking.serviceType as ServiceType,
+      global.perServiceMaxOffers,
+    );
   }
 
   private async isPaused(booking: DispatchBookingRow): Promise<boolean> {
     if (await this.killSwitch.isZonePaused(booking.zoneId)) return true;
     if (booking.longDistance && (await this.killSwitch.isLongDistanceDisabled())) return true;
     return false;
+  }
+
+  /**
+   * W5: writes the wave's decision record (§9.4.6).
+   *
+   * SKIPPED FOR EMPTY WAVES PAST THE LAST RUNG. A quiet booking re-checks its
+   * widest radius every two seconds until the deadline; one row per check would
+   * bury every wave that could have matched somebody. Waves at or before the
+   * last rung still log their emptiness — "wave 3 found nobody in 8 km" is an
+   * answer the inspector exists to give.
+   *
+   * FAILURES ARE SWALLOWED, deliberately: the offers are already out and the
+   * search is already rescheduled by the time this runs, so a failed insert can
+   * only lose an audit row — throwing here would fail a wave that worked.
+   */
+  private async writeWaveLog(params: {
+    booking: DispatchBookingRow;
+    wave: number;
+    radiusKm: number;
+    config: DispatchConfig;
+    selected: SelectionResult;
+    offered: number;
+    offeredDriverIds: string[];
+    durationMs: number;
+    ladderLength: number;
+  }): Promise<void> {
+    const {
+      booking,
+      wave,
+      radiusKm,
+      config,
+      selected,
+      offered,
+      offeredDriverIds,
+      durationMs,
+      ladderLength,
+    } = params;
+
+    if (offered === 0 && wave > ladderLength) return;
+
+    const offeredSet = new Set(offeredDriverIds);
+    try {
+      await this.repo.recordWaveLog({
+        bookingId: booking.id,
+        wave,
+        radiusKm,
+        considered: selected.considered,
+        eligible: selected.eligible,
+        offered,
+        degraded: selected.degraded,
+        weights: selected.weights,
+        config,
+        excluded: selected.excluded,
+        candidates: selected.ranked.map((candidate) => ({
+          driverId: candidate.driverId,
+          distanceM: Math.round(candidate.distanceMeters),
+          proximity: round4(candidate.terms.proximity),
+          rating: round4(candidate.terms.rating),
+          acceptance: round4(candidate.terms.acceptance),
+          completion: round4(candidate.terms.completion),
+          score: round2(candidate.score),
+          offered: offeredSet.has(candidate.driverId),
+        })),
+        durationMs,
+      });
+    } catch (error) {
+      // An inspector with a gap beats a search that stopped — see the docblock.
+      this.logger.warn(`wave log write failed for ${booking.id} wave ${wave}: ${String(error)}`);
+    }
   }
 
   /**
@@ -394,11 +599,25 @@ export class DispatchService implements OnModuleInit {
    * completed jobs for an hour. A bare `dispatch-{bookingId}` would silently
    * drop every wave after the first.
    */
-  private async reschedule(bookingId: string, delayMs: number, discriminator: string): Promise<void> {
+  private async reschedule(
+    bookingId: string,
+    delayMs: number,
+    discriminator: string,
+  ): Promise<void> {
     await this.queue.enqueue(
       'dispatch.search',
       { bookingId },
       { jobId: `dispatch-${bookingId}-${discriminator}`, delayMs, attempts: 2 },
     );
   }
+}
+
+/** 4 dp is finer than any term needs to be and keeps the stored JSON compact. */
+function round4(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
+
+/** The score as the ranking used it, to two decimals. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }

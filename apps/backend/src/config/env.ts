@@ -30,7 +30,20 @@ const EnvSchema = z.object({
   // hashed, so only the access secret needs to be a real signing secret.
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be >= 32 chars'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900), // 15m
-  JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30), // 30d
+  JWT_REFRESH_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 60 * 24 * 30), // 30d
+
+  /**
+   * A17: how long `JwtAuthGuard` trusts its per-process copy of an admin's
+   * `{status, sub_role, authz_version}` before re-reading the row. ~5 s bounds
+   * how long a demotion takes to bite, without a database read on every admin
+   * request. 0 disables the cache (every request re-reads) — the e2e for this
+   * sets a small value rather than sleeping.
+   */
+  ADMIN_AUTHZ_TTL_MS: z.coerce.number().int().min(0).default(5000),
 
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
@@ -47,6 +60,17 @@ const EnvSchema = z.object({
    */
   FILE_SIGNING_SECRET: z.string().min(32, 'FILE_SIGNING_SECRET must be >= 32 chars'),
 
+  /**
+   * Key encrypting `admin_users.twofa_secret_enc` at rest (W2, AES-256-GCM
+   * via SHA-256 domain separation — the stored value is never a bare TOTP
+   * secret). Dev default so `pnpm backend` works with zero setup, same
+   * standing as the other dev secrets; production refuses to boot on it.
+   */
+  ADMIN_TOTP_ENC_KEY: z
+    .string()
+    .min(32, 'ADMIN_TOTP_ENC_KEY must be >= 32 chars')
+    .default('dev-only-totp-enc-key-change-me-32-chars'),
+
   /** Test-suite escape hatch; never enable in a deployed environment. */
   THROTTLE_DISABLED: z
     .string()
@@ -56,7 +80,12 @@ const EnvSchema = z.object({
   CORS_ORIGINS: z
     .string()
     .default('http://localhost:3000')
-    .transform((raw) => raw.split(',').map((o) => o.trim()).filter(Boolean)),
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ),
 
   /**
    * §19.2 kill switch. Off means: the ticket endpoint 503s, the gateway refuses
@@ -155,6 +184,51 @@ const EnvSchema = z.object({
 
   /** Where the drift alarm mails. */
   LEDGER_OPS_EMAIL: z.string().default('ops@towing.local'),
+
+  // ── W17: analytics (§9.4.13, §22.2) ────────────────────────────────────
+
+  /**
+   * 00:15 IST = 18:45 UTC — the IST day has just closed and the rollup must
+   * run after it; an hour ahead of `earnings.reconcile` so the two heavy
+   * sweeps do not overlap.
+   */
+  ANALYTICS_ROLLUP_CRON: z.string().default('45 18 * * *'),
+
+  /** Monday 08:00 IST — the marketplace week is closed and ops is at a desk. */
+  ANALYTICS_REPORT_CRON: z.string().default('30 2 * * 1'),
+
+  /** Where the weekly digest mails (the ops mailbox, like every ops alarm). */
+  ANALYTICS_REPORT_EMAIL: z.string().default('ops@towing.local'),
+
+  // ── W19: retention & erasure (§20.4 DPDP) ──────────────────────────────
+
+  /**
+   * 00:45 IST = 19:15 UTC — half an hour after the analytics rollup's 00:15,
+   * which is deliberate: that job purges the 30-day wave logs, and two heavy
+   * DELETEs starting on the same minute is how a nightly job finds its own
+   * table locked.
+   */
+  PRIVACY_SWEEP_CRON: z.string().default('15 19 * * *'),
+
+  // ── W14: SOS (§13) ─────────────────────────────────────────────────────
+
+  /** Where the SOS ops alert mails when no admin is flagged on-call (G17). */
+  SOS_OPS_EMAIL: z.string().default('ops@towing.local'),
+
+  /**
+   * The 5-second undo is the app's; this is the SERVER's grace on top of it —
+   * a cancel accepted this long after the trigger. Past it the alert is live
+   * work for an operator, and "never mind" stops being a valid transition.
+   */
+  SOS_CANCEL_GRACE_SECONDS: z.coerce.number().int().positive().default(30),
+
+  /**
+   * G12's broadcast reach. Small on purpose: the action reveals a location to
+   * drivers who are not on the job, and the value of a response decays fast
+   * with distance. An operator can narrow it per call; these are the defaults.
+   */
+  SOS_BROADCAST_RADIUS_KM: z.coerce.number().positive().default(3),
+  SOS_BROADCAST_LIMIT: z.coerce.number().int().min(1).max(50).default(10),
 
   /**
    * §14.4's "min threshold". The spec requires one and names no number.
@@ -384,7 +458,12 @@ const EnvSchema = z.object({
   GOOGLE_OAUTH_CLIENT_IDS: z
     .string()
     .default('')
-    .transform((raw) => raw.split(',').map((id) => id.trim()).filter(Boolean)),
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
 
   GOOGLE_JWKS_URL: z.url().default('https://www.googleapis.com/oauth2/v3/certs'),
 
@@ -417,7 +496,12 @@ const EnvSchema = z.object({
   APPLE_CLIENT_IDS: z
     .string()
     .default('')
-    .transform((raw) => raw.split(',').map((id) => id.trim()).filter(Boolean)),
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
 
   APPLE_JWKS_URL: z.url().default('https://appleid.apple.com/auth/keys'),
 
@@ -535,9 +619,7 @@ const EnvSchema = z.object({
    */
   DIRECTIONS_PROVIDER: z.enum(['haversine', 'google_directions']).default('haversine'),
 
-  GOOGLE_DIRECTIONS_URL: z
-    .url()
-    .default('https://maps.googleapis.com/maps/api/directions/json'),
+  GOOGLE_DIRECTIONS_URL: z.url().default('https://maps.googleapis.com/maps/api/directions/json'),
 
   /**
    * §19.3's full 2–5 s band, unlike `ROUTING_TIMEOUT_MS` — and the contrast is
@@ -716,6 +798,13 @@ export function assertProductionSafety(env: Env): void {
     throw new Error('FILE_SIGNING_SECRET is still the development placeholder');
   }
 
+  // A database dump must not hand out second factors. The dev key decrypts
+  // nothing an attacker cannot already read (it ships in the repo's .env
+  // sample path), so production refuses it outright.
+  if (env.ADMIN_TOTP_ENC_KEY.includes('dev-only')) {
+    throw new Error('ADMIN_TOTP_ENC_KEY is still the development placeholder');
+  }
+
   // The dev payout adapter marks payouts `paid` on a timer without a bank ever
   // being involved. In production that is a ledger full of money nobody sent.
   if (env.PAYOUT_PROVIDER === 'dev') {
@@ -775,7 +864,9 @@ export function assertProductionSafety(env: Env): void {
   }
 
   if (env.NOTIFY_SMS_PROVIDER === 'msg91' && (!env.MSG91_AUTH_KEY || !env.MSG91_SENDER_ID)) {
-    throw new Error('MSG91_AUTH_KEY and MSG91_SENDER_ID are required when NOTIFY_SMS_PROVIDER=msg91');
+    throw new Error(
+      'MSG91_AUTH_KEY and MSG91_SENDER_ID are required when NOTIFY_SMS_PROVIDER=msg91',
+    );
   }
 
   if (
@@ -793,9 +884,7 @@ export function assertProductionSafety(env: Env): void {
   // make a Google Cloud billing account a launch blocker. What is refused is
   // the misconfiguration — the real adapter selected with nothing to call.
   if (env.ROUTING_PROVIDER === 'google_distance_matrix' && !env.GOOGLE_MAPS_API_KEY) {
-    throw new Error(
-      'GOOGLE_MAPS_API_KEY is required when ROUTING_PROVIDER=google_distance_matrix',
-    );
+    throw new Error('GOOGLE_MAPS_API_KEY is required when ROUTING_PROVIDER=google_distance_matrix');
   }
 
   // Geocoding follows routing exactly. `GEOCODING_PROVIDER=local` in production
@@ -840,4 +929,3 @@ export function assertProductionSafety(env: Env): void {
     throw new Error('EXOTEL_SID and EXOTEL_TOKEN are required when TELEPHONY_PROVIDER=exotel');
   }
 }
-

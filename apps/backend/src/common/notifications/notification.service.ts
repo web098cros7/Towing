@@ -1,7 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  NOTIFICATIONS,
+  type NotificationChannel,
+  type NotificationPort,
+} from './notification.port';
+import type { ChannelResult, RenderedMessage } from './channel.port';
 import { DB, type Database } from '../../db/db.module';
-import { notificationEvents, notifications } from '../../db/schema/notifications';
+import {
+  isInboxSubjectType,
+  notificationEvents,
+  notifications,
+  type NotificationSubjectType,
+} from '../../db/schema/notifications';
 import { isUniqueViolation } from '../errors/pg-errors';
 import { QUEUE, type QueuePort } from '../queue/queue.port';
 import { RecipientResolverService } from './recipient-resolver.service';
@@ -46,7 +57,52 @@ export class NotificationService {
     @Inject(DB) private readonly db: Database,
     @Inject(QUEUE) private readonly queue: QueuePort,
     private readonly resolver: RecipientResolverService,
+    /**
+     * W18 — the TRANSPORT, injected here rather than in the console's service
+     * for one structural reason: `notification-port-usage.spec.ts` fails the
+     * build on any `NOTIFICATIONS` import outside this directory (invariant 69),
+     * and the guarded test-send is the one feature that needs to hand a
+     * message to a vendor without a domain event behind it.
+     */
+    @Inject(NOTIFICATIONS) private readonly port: NotificationPort,
   ) {}
+
+  /**
+   * W18's guarded test-send, as a seam on the ONLY producer-facing API.
+   *
+   * A `notify()` call outside this directory is what invariant 69 exists to
+   * prevent — the four pre-Phase-13 call sites assembled their own `to` and two
+   * of them passed a UUID. This method takes the address its CALLER already
+   * resolved from the caller's own admin record, so the console can offer a
+   * test-send without reopening that door: the destination is never
+   * user-supplied, and there is no argument here that accepts a subject id.
+   *
+   * NO DELIVERY ROW IS WRITTEN, deliberately: a test-send never enters the
+   * fan-out, and inventing one would put a fiction in the delivery log the
+   * office reads to answer "did we actually tell them".
+   */
+  async sendPreview(params: {
+    channel: NotificationChannel;
+    to: string;
+    rendered: RenderedMessage;
+    templateKey: string;
+    dltTemplateId: string | null;
+    waTemplateName: string | null;
+  }): Promise<ChannelResult> {
+    return this.port.notify(params.channel, {
+      to: params.to,
+      rendered: params.rendered,
+      templateKey: params.templateKey,
+      dltTemplateId: params.dltTemplateId,
+      waTemplateName: params.waTemplateName,
+      variables: {},
+      priority: 'normal',
+      data: {},
+      // A synthetic correlation id: a test-send has no delivery row (see the
+      // method note), and `deliveryId` is only ever a log/metrics handle.
+      deliveryId: `test-send:${randomUUID()}`,
+    });
+  }
 
   /**
    * @returns the `notification_events.id`, or null when there was no registered
@@ -110,37 +166,40 @@ export class NotificationService {
         resolver: this.resolver,
       });
 
-      const inboxRows = recipients
-        .filter((recipient) => recipient.subjectId !== OPS_PSEUDO_SUBJECT)
-        .map((recipient) => {
-          // The id is generated HERE rather than by `gen_random_uuid()`, so the
-          // push payload can carry `notificationId` in the same insert. A tap
-          // needs to mark exactly this row read, and a second UPDATE pass to
-          // stamp it would be one more thing to get wrong.
-          const id = randomUUID();
-          const variables = asVariables(trigger)(payload, recipient);
-          const rendered = renderTemplate(trigger.template as TemplateKey, variables);
+      // AN EXPLICIT ALLOWLIST, not "everything except the ops pseudo-subject".
+      // Since W14 the recipient union also carries `contact` (a snapshot row)
+      // and `ops` (an on-call admin) — neither is a subject the `notifications`
+      // table admits, and neither has a bell to ring. The pseudo-subject check
+      // stays too: that one is a `fleet`-typed placeholder with no row behind it.
+      const inboxRows = recipients.filter(isInboxRecipient).map((recipient) => {
+        // The id is generated HERE rather than by `gen_random_uuid()`, so the
+        // push payload can carry `notificationId` in the same insert. A tap
+        // needs to mark exactly this row read, and a second UPDATE pass to
+        // stamp it would be one more thing to get wrong.
+        const id = randomUUID();
+        const variables = asVariables(trigger)(payload, recipient);
+        const rendered = renderTemplate(trigger.template as TemplateKey, variables);
 
-          const data: Record<string, string> = {
-            event,
-            notificationId: id,
-            action: trigger.push?.action ?? 'open',
-          };
-          if (trigger.push?.invalidate) data.invalidate = trigger.push.invalidate;
-          if (trigger.push?.route) data.route = trigger.push.route;
+        const data: Record<string, string> = {
+          event,
+          notificationId: id,
+          action: trigger.push?.action ?? 'open',
+        };
+        if (trigger.push?.invalidate) data.invalidate = trigger.push.invalidate;
+        if (trigger.push?.route) data.route = trigger.push.route;
 
-          return {
-            id,
-            subjectId: recipient.subjectId,
-            subjectType: recipient.subjectType,
-            eventId: row.id,
-            event,
-            category: trigger.category,
-            title: rendered.title ?? rendered.subject ?? event,
-            body: rendered.body,
-            data,
-          };
-        });
+        return {
+          id,
+          subjectId: recipient.subjectId,
+          subjectType: recipient.subjectType,
+          eventId: row.id,
+          event,
+          category: trigger.category,
+          title: rendered.title ?? rendered.subject ?? event,
+          body: rendered.body,
+          data,
+        };
+      });
 
       if (inboxRows.length > 0) {
         await tx.insert(notifications).values(inboxRows);
@@ -172,4 +231,16 @@ function asVariables(trigger: RegisteredTrigger<never>) {
     payload: Record<string, unknown>,
     recipient: Recipient,
   ) => Record<string, string>;
+}
+
+/**
+ * An inbox recipient: one of the three database-backed subject types (migration
+ * 0010's CHECK) that is not the synthetic ops placeholder. Everything else —
+ * `contact`, `ops` — is delivery-only: a snapshot row or an on-call admin has
+ * no in-app centre to write to.
+ */
+function isInboxRecipient(
+  recipient: Recipient,
+): recipient is Recipient & { subjectType: NotificationSubjectType } {
+  return isInboxSubjectType(recipient.subjectType) && recipient.subjectId !== OPS_PSEUDO_SUBJECT;
 }

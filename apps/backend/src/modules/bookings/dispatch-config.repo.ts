@@ -1,8 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  GLOBAL_DISPATCH_CONFIG_DEFAULTS,
-  type GlobalDispatchConfig,
-} from '@towing/api-contracts';
+import { GLOBAL_DISPATCH_CONFIG_DEFAULTS, type GlobalDispatchConfig } from '@towing/api-contracts';
 import { CacheService } from '../../common/cache/cache.service';
 import { DB, type Database } from '../../db/db.module';
 import { dispatchConfig } from '../../db/schema';
@@ -51,6 +48,16 @@ export class DispatchConfigRepo {
         stalePingSeconds: row.stalePingSeconds,
         oneActiveBookingPerCustomer: row.oneActiveBookingPerCustomer,
         blockOnUnpaidBalance: row.blockOnUnpaidBalance,
+        // ── W12 ──
+        redispatchPriority: row.redispatchPriority as 'front' | 'normal',
+        pingOnJobMs: row.pingOnJobMs,
+        pingIdleMs: row.pingIdleMs,
+        // Raw JSONB out of a cache: validated by the CONSUMER
+        // (`resolveDispatchConfig`'s per-service layer takes a `ServiceType`
+        // key), so a hand-edited value degrades to "no override", never to a
+        // crash on the dispatch path.
+        perServiceMaxOffers: (row.perServiceMaxOffers ??
+          null) as BookingGuardConfig['perServiceMaxOffers'],
       };
     });
   }

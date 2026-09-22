@@ -54,6 +54,27 @@ export class DriverPresenceService {
     const row = await this.repo.identity(driverId);
     if (!row) throw ApiException.notFound('Driver not found');
 
+    // A14: a shelved suspension blocks going (back) online — evicting a driver
+    // from presence while the toggle still works would just re-admit them on
+    // the next tap, with the shelf still waiting.
+    if (row.suspensionPending) {
+      throw new ApiException(
+        HttpStatus.FORBIDDEN,
+        ErrorCodes.ACCOUNT_NOT_ACTIVE,
+        'Your account is suspended pending review. Please contact support.',
+      );
+    }
+
+    // A15: same for a suspended fleet — its drivers cannot go online however
+    // approved they are themselves. Independents (null fleet) pass.
+    if (row.fleetStatus === 'suspended') {
+      throw new ApiException(
+        HttpStatus.FORBIDDEN,
+        ErrorCodes.ACCOUNT_NOT_ACTIVE,
+        'Your fleet is suspended. Please contact your fleet owner or support.',
+      );
+    }
+
     // Postgres first, then Redis. If the process dies between them the driver is
     // flagged online with no GEO membership, which the very next ping repairs
     // through `LocationIngestService.rehydrate`. The other order leaves a member
@@ -126,16 +147,19 @@ export class DriverPresenceService {
    * whichever arrived last.
    */
   async configFor(driverId: string): Promise<DriverConfigUpdateEvent> {
-    const [row, config] = await Promise.all([
-      this.repo.identity(driverId),
-      this.config.load(),
-    ]);
+    const [row, config] = await Promise.all([this.repo.identity(driverId), this.config.load()]);
 
     const online = row?.isOnline === true && row.kycStatus === 'approved';
     return {
       // §20.4: nothing is captured at all while offline. `null` says that;
       // a large interval would merely say "rarely", which is a different promise.
-      pingIntervalMs: online ? PING_CADENCE.idleMs : PING_CADENCE.offlineMs,
+      //
+      // W12: the cadence is an ADMIN KNOB (`dispatch_config.ping_*`), not the
+      // frozen `PING_CADENCE` constant — the constant survives as the column
+      // default, which is what keeps a database that never touched the knob
+      // behaving exactly as it did. §11.3 wanted this server-configurable from
+      // the start; pushing a constant over `config:update` was only half of it.
+      pingIntervalMs: online ? config.pingIdleMs : PING_CADENCE.offlineMs,
       staleAfterMs: config.stalePingSeconds * 1000,
       lowAccuracyMeters: LOW_ACCURACY_METERS,
       at: new Date().toISOString(),
@@ -154,10 +178,14 @@ export class DriverPresenceService {
       isOnline: params.isOnline,
       zoneId: params.zoneId,
       zoneName: params.zoneName,
+      // W12: same admin knob as `configFor`, read from the same row — the socket
+      // frame and the REST response must never be able to disagree about the
+      // cadence (a driver whose socket says 3 s and whose REST call said 10 s
+      // runs whichever arrived last).
       pingIntervalMs: params.isOnline
         ? params.onJob
-          ? PING_CADENCE.onJobMs
-          : PING_CADENCE.idleMs
+          ? config.pingOnJobMs
+          : config.pingIdleMs
         : PING_CADENCE.offlineMs,
       // Read from `dispatch_config`, never a local constant: §6.7 makes this an
       // admin knob, and a handset ageing its own marker at a different threshold

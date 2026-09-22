@@ -33,6 +33,10 @@ export async function seedBooking(
     status?: (typeof bookings.$inferInsert)['status'];
     createdAt?: Date;
     total?: string;
+    /** §14 GST snapshot — the impact preview recomputes from `total − taxAmount`. */
+    taxAmount?: string;
+    commissionBand?: (typeof bookings.$inferInsert)['commissionBand'];
+    commissionPct?: string;
     commissionAmount?: string;
     driverPayout?: string;
     pickupAddress?: string;
@@ -52,6 +56,9 @@ export async function seedBooking(
       pickupAddress: params.pickupAddress ?? 'Indiranagar',
       status: params.status ?? 'paid',
       total: params.total ?? '0.00',
+      taxAmount: params.taxAmount ?? '0.00',
+      commissionBand: params.commissionBand ?? null,
+      commissionPct: params.commissionPct ?? null,
       commissionAmount: params.commissionAmount ?? '0.00',
       driverPayout: params.driverPayout ?? '0.00',
       ...(params.createdAt ? { createdAt: params.createdAt, updatedAt: params.createdAt } : {}),

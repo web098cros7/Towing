@@ -3,9 +3,14 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { NOTIFICATION_PREF_DEFAULTS } from '@towing/api-contracts';
+import {
+  NOTIFICATION_PREF_DEFAULTS,
+  COMMISSION_PCT_CAP,
+  COMMISSION_PCT_FLOOR,
+} from '@towing/api-contracts';
 import { loadEnv } from '../../config/env';
 import { runComplianceSweep } from '../../modules/compliance/compliance-sweep';
+import { RETENTION_POLICY_DEFAULTS } from '../../modules/privacy/retention';
 import { rebuildEarnings } from '../../modules/money/earnings-projector';
 import { hashPassword } from '../../modules/auth/password';
 import { digest } from '../../modules/auth/otp.util';
@@ -14,15 +19,19 @@ import type { LatLng } from '../geography';
 import type * as schema from '../schema';
 import {
   adminUsers,
+  appConfig,
   bookingStatusHistory,
   bookings,
   chargeConfig,
   commissionConfig,
   commissionConfigHistory,
+  commissionGuardrail,
   complianceDocuments,
+  contentPages,
   dispatchConfig,
   driverDocuments,
   drivers,
+  emergencyContacts,
   fleetDriverShares,
   fleetOwnerCredentials,
   fleetTrucks,
@@ -31,6 +40,7 @@ import {
   payoutAccounts,
   payouts,
   pricingRules,
+  retentionPolicies,
   serviceZones,
   services,
   users,
@@ -39,6 +49,7 @@ import {
 } from '../schema';
 import {
   ADMIN_FIXTURES,
+  CONTENT_PAGES,
   CUSTOMER_NAMES,
   FLEETS,
   FLEET_DRIVERS,
@@ -104,7 +115,7 @@ const CHUNK = 50;
 const LOAD_CHUNK = 200;
 
 /** Tables owned by the app (CASCADE resolves FK order). */
-const APP_TABLES = [
+export const APP_TABLES = [
   'alerts',
   // Before `admin_users`: an audit row references the admin who wrote it, and
   // although CASCADE resolves the order anyway, the list reads as the graph.
@@ -119,7 +130,15 @@ const APP_TABLES = [
   // and deletion rows behind, so a re-seeded database still believed the old
   // users had consented.
   'consent_records',
+  // Before `deletion_requests`: an erasure job references the request it ran.
+  'erasure_jobs',
   'deletion_requests',
+  // W20 manual quotes reference `bookings`, so they go before it in the reset.
+  'quotes',
+  // W19 policy rows are re-seeded by migration 0033, so wiping them on reset
+  // is safe — the migration only runs on a fresh database, though, which is
+  // why `db:seed` re-inserts the defaults itself (see `seedRetentionPolicies`).
+  'retention_policies',
   'truck_imports',
   'webhook_events',
   'earnings_daily',
@@ -160,6 +179,53 @@ const APP_TABLES = [
   'addresses',
   'emergency_contacts',
   'users',
+  // W5–W13. This list is the reset, and a table missing from it is a reset that
+  // leaves rows behind — which is how the M4 gate caught `app_config`: a
+  // singleton the migration seeds, absent here, so a second `runSeed` collided
+  // with the row the first one wrote. Most of these cascade from the tables
+  // above; the four that do NOT have a foreign key are the dangerous ones, and
+  // they are named last on purpose:
+  'dispatch_wave_logs',
+  'driver_document_versions',
+  'driver_zone_restrictions',
+  'disputes',
+  'dispute_evidence',
+  'ratings',
+  'suspension_requests',
+  'impersonation_sessions',
+  'admin_recovery_codes',
+  'coupons',
+  'coupon_redemptions',
+  // W16: banners are FK-free against the graph above (`created_by` is a plain
+  // reference to an admin, no cascade).
+  'banners',
+  // W17: rollups + the §22.1 tracker. The rollup tables are rewritten
+  // absolutely every night and the tracker is append-only; none of them
+  // cascade from anything above, so the reset must name them.
+  'analytics_daily',
+  'analytics_zone_daily',
+  'analytics_band_daily',
+  'analytics_demand_grid',
+  'analytics_events',
+  // FK-free or nearly so — a leftover row here outlives every CASCADE.
+  'admin_notes',
+  'service_zone_versions',
+  'commission_proposals',
+  'commission_guardrail',
+  'app_config',
+  // W14 (SOS) and W15 (tickets/content). The two children cascade from
+  // `sos_alerts` but are named anyway — the reset list stays explicit. The
+  // alerts themselves reference `bookings`/`users` by id only, so no CASCADE
+  // above reaches them; named last for the same reason as the group they join.
+  'sos_alerts',
+  'sos_alert_contacts',
+  'sos_alert_events',
+  // W15: tickets and the FAQ/legal pages — both FK-free against the graph
+  // above except `booking_id`, which is SET NULL rather than cascade.
+  'support_tickets',
+  'support_ticket_messages',
+  'support_ticket_events',
+  'content_pages',
 ] as const;
 
 type HistoricalStatus = 'paid' | 'completed' | 'cancelled' | 'no_drivers_found' | 'disputed';
@@ -320,7 +386,10 @@ export async function runSeed(
   );
 
   const adminCredentials = await Promise.all(
-    ADMIN_FIXTURES.map(async (admin) => ({ admin, passwordHash: await hashPassword(SEED_PASSWORD) })),
+    ADMIN_FIXTURES.map(async (admin) => ({
+      admin,
+      passwordHash: await hashPassword(SEED_PASSWORD),
+    })),
   );
 
   const summary: SeedSummary = {
@@ -347,6 +416,22 @@ export async function runSeed(
   const adminIdBySubRole = new Map<AdminFixture['subRole'], string>();
 
   await db.transaction(async (tx) => {
+    // ── W19 retention policy rows ────────────────────────────────────────────
+    // Migration 0033 seeds these for a fresh database; `db:reset` truncates
+    // them and the migration does not re-run, so the seed re-inserts the same
+    // defaults idempotently (unique on `policy_key`). Without this the sweep
+    // has nothing to read after the first reset.
+    await tx
+      .insert(retentionPolicies)
+      .values(
+        RETENTION_POLICY_DEFAULTS.map((policy) => ({
+          policyKey: policy.policyKey,
+          retentionDays: policy.retentionDays,
+          description: policy.description,
+        })),
+      )
+      .onConflictDoNothing({ target: retentionPolicies.policyKey });
+
     // ── Admin operators (§9.4) ───────────────────────────────────────────────
     // One per RBAC sub-role, so the §3.1 approval gate is operable the moment a
     // developer runs `pnpm db:seed` — without an admin nobody can move a driver
@@ -361,6 +446,11 @@ export async function runSeed(
           name: admin.name,
           passwordHash,
           subRole: admin.subRole,
+          // W14 / G17: the operations admin is the seeded on-call recipient.
+          // Without a flagged admin, `sos.ops_alert` reaches only the mailbox
+          // (the log adapter locally), and the console's "ops alerted" story
+          // would look wired-but-silent on a fresh seed.
+          receivesOpsAlerts: admin.subRole === 'operations',
         })
         .returning({ id: adminUsers.id });
       adminIdBySubRole.set(admin.subRole, row!.id);
@@ -515,6 +605,18 @@ export async function runSeed(
     // §7.4 and §6.2 — one row each, column defaults carry the launch values.
     await tx.insert(chargeConfig).values({});
     await tx.insert(dispatchConfig).values({});
+    // W12 — the public app-config row (nothing blocked, no banner). Migration
+    // 0027 inserts it too; the seed repeats it because `db:reset` truncates.
+    await tx.insert(appConfig).values({});
+
+    // W11 — the §3.3 window. Migration 0026 inserts it too; the seed repeats it
+    // because `db:reset` truncates every table and a missing row would fall back
+    // to code constants, quietly making a seeded database behave like an
+    // unseeded one.
+    await tx.insert(commissionGuardrail).values({
+      floorPct: COMMISSION_PCT_FLOOR.toFixed(2),
+      capPct: COMMISSION_PCT_CAP.toFixed(2),
+    });
 
     // §3.3 bands, plus a genesis history row per band. The history table is
     // append-only and `old_pct` is nullable precisely for these three: they had
@@ -589,10 +691,7 @@ export async function runSeed(
     // ── Drivers + shares ────────────────────────────────────────────────────
     const seededDrivers: SeededDriver[] = [];
 
-    const insertDriver = async (
-      fixture: DriverFixture,
-      fleetKey: FleetFixture['key'] | null,
-    ) => {
+    const insertDriver = async (fixture: DriverFixture, fleetKey: FleetFixture['key'] | null) => {
       const fleet = fleetKey ? fleetByKey.get(fleetKey)! : null;
       const approved = fixture.kycStatus === 'approved';
       const homeAreas = fleet?.fixture.areas ?? FLEETS[0]!.areas;
@@ -714,10 +813,48 @@ export async function runSeed(
           // string, and the scale-1 values are unchanged.
           mobile: `+9198450201${String(i).padStart(2, '0')}`,
           name,
+          // Join dates spread over history (recent-biased, like the bookings)
+          // so `new_customers` per day is real — customers all "joining today"
+          // would flatline the dashboard's growth story and the W17 rollup.
+          createdAt: new Date(now.getTime() - Math.pow(rng(), 1.35) * HISTORY_DAYS * DAY_MS),
         })),
       )
       .returning({ id: users.id });
     summary.customers = customerRows.length;
+
+    // ── W14: SOS demo data ──────────────────────────────────────────────────
+    // The FIRST customer gets emergency contacts. `POST /v1/sos` fans out to
+    // the SNAPSHOT of these rows, so the live look can raise an alert as this
+    // customer and see the whole §13 chain (snapshot → ops alert → console).
+    // A customer with none is a real state too — the alert still reaches ops.
+    await tx.insert(emergencyContacts).values([
+      {
+        userId: customerRows[0]!.id,
+        name: 'Anjali (spouse)',
+        phone: '+919845029901',
+        relation: 'spouse',
+      },
+      {
+        userId: customerRows[0]!.id,
+        name: 'Ravi (brother)',
+        phone: '+919845029902',
+        relation: 'brother',
+      },
+    ]);
+
+    // ── W15: FAQ + legal content ───────────────────────────────────────────
+    // The customer app fetches these instead of shipping hardcoded FAQs and
+    // dead legal links; a fresh seed must be able to serve Help and Legal.
+    await tx.insert(contentPages).values(
+      CONTENT_PAGES.map((page) => ({
+        slug: page.slug,
+        kind: page.kind,
+        title: page.title,
+        bodyMd: page.bodyMd,
+        sortOrder: page.sortOrder,
+        isPublished: true,
+      })),
+    );
 
     // ── Wallets ─────────────────────────────────────────────────────────────
     const fleetWallets = new Map<FleetFixture['key'], string>();
@@ -812,8 +949,7 @@ export async function runSeed(
       // they are the same function, not because they were checked once.
       const isHighwayPickup = band === 'B' && rng() < 0.6;
       const waitingMinutes = rng() < 0.2 ? 15 + Math.floor(5 + rng() * 25) : 0;
-      const surgeBand: SurgeBand =
-        rng() < 0.15 ? (rng() < 0.5 ? 'high' : 'peak') : 'standard';
+      const surgeBand: SurgeBand = rng() < 0.15 ? (rng() < 0.5 ? 'high' : 'peak') : 'standard';
       const requestedDiscountPaise = rng() < 0.1 ? (100 + Math.floor(rng() * 3) * 100) * 100 : 0;
 
       const fare = computeFare({
@@ -927,7 +1063,11 @@ export async function runSeed(
         completedAt: settled || status === 'completed' ? (paidAt ?? createdAt) : null,
         cancelledBy: status === 'cancelled' ? (cancelledByDriver ? 'driver' : 'customer') : null,
         cancellationReason:
-          status === 'cancelled' ? (cancelledByDriver ? 'Vehicle issue' : 'Customer cancelled') : null,
+          status === 'cancelled'
+            ? cancelledByDriver
+              ? 'Vehicle issue'
+              : 'Customer cancelled'
+            : null,
         cancellationFee: toRupees(cancellationFeePaise),
         paymentMethod: settled
           ? (weighted(rng, [
@@ -937,6 +1077,9 @@ export async function runSeed(
             ] as const) as BookingInsert['paymentMethod'])
           : null,
         createdAt,
+        // paid_at is what the W17 rollup keys paid/GMV off — a settled booking
+        // without it is invisible to every trend screen (empty dashboard bug).
+        paidAt,
         updatedAt: paidAt ?? createdAt,
       });
 
@@ -1021,7 +1164,12 @@ export async function runSeed(
 
     perBooking.forEach((b, i) => {
       const id = bookingIds[i]!;
-      historyRows.push({ bookingId: id, status: 'searching', actor: 'system', createdAt: b.createdAt });
+      historyRows.push({
+        bookingId: id,
+        status: 'searching',
+        actor: 'system',
+        createdAt: b.createdAt,
+      });
 
       if (b.driver) {
         historyRows.push({

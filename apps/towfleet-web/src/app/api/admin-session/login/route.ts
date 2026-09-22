@@ -20,6 +20,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       challengeId: '00000000-0000-4000-8000-000000000001',
       expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      // W2: mock login has no enrolled TOTP, so the console shows the SMS copy.
+      method: 'sms',
     });
   }
 

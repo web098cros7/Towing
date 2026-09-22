@@ -3,6 +3,8 @@
 # Separate from .next/ because NEXT_PUBLIC_USE_MOCKS is inlined at build time
 # and the hermetic Playwright suite must keep its mocks-on build intact.
 .next-live/
+# Throwaway mocks-ON build for verification runs, so a running `next dev` keeps its own .next/.
+.next-verify/
 out/
 test-results/
 playwright-report/

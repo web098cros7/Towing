@@ -45,6 +45,16 @@ export interface StoragePort {
   /** `key` is caller-chosen (e.g. `driver-documents/<driverId>/<uuid>.jpg`) — the caller owns naming because the bytes don't exist yet to derive one from. */
   presignPut(key: string, ttlSeconds: number, contentType?: string): Promise<PresignedUrl>;
   presignGet(key: string, ttlSeconds: number): Promise<PresignedUrl>;
+  /**
+   * Removes an object. Added in W19 for the erasure runner (§20.4): deleting
+   * the KYC row while leaving the government-ID scan in the bucket is not an
+   * erasure, it is a broken foreign key with the same data behind it.
+   *
+   * IDEMPOTENT BY CONTRACT — a missing object is success, not an error. An
+   * erasure that has already run once must be re-runnable (the whole job is),
+   * and "the file was already gone" is the expected state on the second pass.
+   */
+  delete(key: string): Promise<void>;
 }
 
 export const STORAGE = Symbol('STORAGE');

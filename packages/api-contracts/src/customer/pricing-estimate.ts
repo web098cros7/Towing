@@ -117,5 +117,11 @@ export const pricingEstimateResponseSchema = z.object({
   breakdown: fareBreakdownSchema,
   /** §9.1.5 — drives the surge badge. True whenever `breakdown.surgePaise > 0`. */
   surgeActive: z.boolean(),
+  /**
+   * A11 — kill-switch warnings. The fare is still quoted (refusing the quote
+   * would hide the price), but `POST /v1/bookings` refuses while any of these
+   * is present. Always served, empty when clear, so the shape is stable.
+   */
+  warnings: z.array(z.enum(['dispatch_paused', 'long_distance_disabled'])),
 });
 export type PricingEstimateResponse = z.infer<typeof pricingEstimateResponseSchema>;

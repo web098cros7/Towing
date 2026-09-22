@@ -33,19 +33,25 @@ export const BAND_PCT: Record<Band, number> = { A: 10, B: 8, C: 5 };
  * §3.3 guardrail: "admin edits are validated server-side against the floor/cap
  * (5%/10% at launch); attempts outside the band are rejected and audited."
  *
- * These two numbers are enforced in THREE places on purpose, and all three must
- * agree: `commissionPctSchema` below (422 at the edge), the
- * `ck_commission_config_guardrail` CHECK on `commission_config` (backstop if a
- * route ever forgets the schema), and `ck_bookings_commission_pct_guardrail` on
- * `bookings.commission_pct`, which has existed since migration 0002. A config
- * table permitted to hold 12% while the booking column rejects it is a runtime
- * insert failure on the first booking after the edit, not a validation error the
- * admin can see and correct.
+ * SINCE W11 THESE ARE THE SEEDED LAUNCH WINDOW, NOT THE POLICY. Decision G2
+ * made the window editable by a super admin: it lives in `commission_guardrail`
+ * (one row, seeded 5/10 by migration 0026), the service enforces THAT, and the
+ * two database CHECKs were relaxed to the absolute outer bound G2 names
+ * (`0 < pct <= 30` — "the DB CHECK still refuses an absurd value").
+ *
+ * `commissionPctSchema` below therefore validates against the LAUNCH window and
+ * is fit for the seed and for tests. A runtime caller must use the row.
  */
 export const COMMISSION_PCT_FLOOR = 5;
 export const COMMISSION_PCT_CAP = 10;
 
-/** A commission percentage an admin is allowed to write. Two decimal places, `numeric(5,2)`. */
+/**
+ * A commission percentage inside the §3.3 LAUNCH window. Two decimal places,
+ * `numeric(5,2)`.
+ *
+ * See the note above: the enforcement window is `commission_guardrail` since
+ * W11, so a live write path must read it rather than lean on this schema.
+ */
 export const commissionPctSchema = z
   .number()
   .min(COMMISSION_PCT_FLOOR)

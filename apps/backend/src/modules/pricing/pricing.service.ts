@@ -1,11 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  ErrorCodes,
   commissionPaiseAtPct,
   type PricingEstimateRequest,
   type PricingEstimateResponse,
   type ServiceCatalogItem,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
+import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { ROUTING, type RoutingPort } from '../../common/routing/routing.port';
 import { PricingConfigRepo, type RateCard } from './pricing-config.repo';
 import {
@@ -67,6 +69,7 @@ export class PricingService {
     private readonly catalog: ServicesService,
     private readonly config: PricingConfigRepo,
     private readonly zones: ZoneResolverService,
+    private readonly killSwitch: KillSwitchService,
     @Inject(ROUTING) private readonly routing: RoutingPort,
   ) {}
 
@@ -76,6 +79,15 @@ export class PricingService {
    */
   async estimate(request: PricingEstimateRequest): Promise<PricingEstimateResponse> {
     const priced = await this.price(request);
+    // A11: estimates warn where creation refuses. Quoting a fare the customer
+    // cannot book would be a lie; refusing the quote would hide the price
+    // behind the kill switch. The warnings mirror `BookingsService.create`'s
+    // refusals exactly — keep the two in step.
+    const warnings: PricingEstimateResponse['warnings'] = [];
+    if (await this.killSwitch.isZonePaused(priced.zone.id)) warnings.push('dispatch_paused');
+    if (priced.fare.band === 'C' && (await this.killSwitch.isLongDistanceDisabled())) {
+      warnings.push('long_distance_disabled');
+    }
     return {
       serviceSlug: priced.service.slug,
       serviceType: priced.service.serviceType,
@@ -105,6 +117,7 @@ export class PricingService {
         totalPaise: priced.fare.totalPaise,
       },
       surgeActive: priced.fare.surgePaise > 0,
+      warnings,
     };
   }
 
@@ -140,6 +153,122 @@ export class PricingService {
   }
 
   private async price(request: PricingEstimateRequest): Promise<PricedRequest> {
+    const context = await this.contextFor(request);
+
+    let fare;
+    try {
+      fare = computeFare({
+        service: context.service.serviceType,
+        vehicleClass: context.vehicleClass,
+        distanceKm: context.distanceKm,
+        hourOfDay: hourInOperatingTimezone(request.scheduledAt),
+        isHighwayPickup: context.zone.isHighway,
+        surgeBand: context.zone.surgeBand,
+        rules: context.rateCard.rules,
+        charges: context.rateCard.charges,
+      });
+    } catch (error) {
+      if (error instanceof CustomQuoteRequiredError) {
+        // §7.3's "600 km+ — Custom quote". Refused HERE rather than at booking
+        // time so the customer learns before choosing a vehicle and a
+        // destination — and, since W20, with a code the app can act on: the
+        // customer is offered the manual-quote flow (`POST /v1/quotes`)
+        // instead of a dead end that said "contact support".
+        throw new ApiException(
+          422,
+          ErrorCodes.MANUAL_QUOTE_REQUIRED,
+          'This trip is long enough to need a manual quote',
+          { distanceKm: Math.round(context.distanceKm * 100) / 100 },
+        );
+      }
+      throw error;
+    }
+
+    return {
+      ...context,
+      // Reported, not echoed: past 100 km the engine prices as flatbed whatever
+      // was asked for (§3.3 Band C is flatbed hauling), and the customer's
+      // breakdown must name the class they will actually be billed as.
+      vehicleClass: context.distanceKm > 100 ? 'flatbed' : context.vehicleClass,
+      distanceKm: Math.round(context.distanceKm * 100) / 100,
+      fare,
+    };
+  }
+
+  /**
+   * W20's manual lane, part one: the billed distance for a REQUEST that will
+   * never reach `computeFare` (that is the whole reason it is manual).
+   *
+   * Same road factor and same adapter as the automatic path — an operator
+   * quoting off a straight line while the engine quotes off the road would put
+   * two different numbers on two screens purporting to be "the distance".
+   */
+  async quoteDistanceKm(
+    pickup: PricingEstimateRequest['pickup'],
+    drop: NonNullable<PricingEstimateRequest['drop']>,
+  ): Promise<number> {
+    const rateCard = await this.config.load();
+    const { distanceKm } = await this.billedDistance(
+      pickup,
+      drop,
+      rateCard.charges.haversineRoadFactor,
+    );
+    return Math.round(distanceKm * 100) / 100;
+  }
+
+  /**
+   * W20's manual lane, part two: a `LockedFare` built from the operator's
+   * number instead of the engine's.
+   *
+   * THE OPERATOR'S NUMBER IS THE WHOLE FARE, and the engine is not consulted
+   * for it — it cannot be, 600 km is precisely where the slab table ends. The
+   * COMMISSION, however, is not the operator's to choose: it is computed from
+   * the rate card exactly as `lock()` does, and the caller passes the pct the
+   * quote was written under so a rate-card edit between quote and acceptance
+   * cannot change a price the customer already agreed to.
+   *
+   * `band: 'C'` is band C by definition (§3.3: Band C is the long-haul
+   * flatbed band), which also means the booking this becomes will be flatbed
+   * even if the dropped class said otherwise — same rule as the automatic
+   * path's `distanceKm > 100` override.
+   */
+  async lockManualQuote(
+    request: PricingEstimateRequest,
+    totalPaise: number,
+    commissionPct: number,
+  ): Promise<LockedFare> {
+    const context = await this.contextFor(request);
+    const commission = commissionPaiseAtPct(totalPaise, commissionPct);
+
+    const fare: FareResult = {
+      basePaise: totalPaise,
+      nightPaise: 0,
+      highwayPaise: 0,
+      accidentPaise: 0,
+      waitingPaise: 0,
+      surgePaise: 0,
+      discountPaise: 0,
+      totalPaise,
+      band: 'C',
+    };
+
+    return {
+      ...context,
+      vehicleClass: context.distanceKm > 100 ? 'flatbed' : context.vehicleClass,
+      distanceKm: Math.round(context.distanceKm * 100) / 100,
+      fare,
+      commissionPct,
+      commissionPaise: commission,
+      // §7's "driver net = total − commission", never a second rounding.
+      driverPayoutPaise: totalPaise - commission,
+    };
+  }
+
+  /**
+   * Everything the §7 pipeline produces BEFORE the fare engine runs: what is
+   * being bought, from where, how far, and against which rate card.
+   */
+  private async contextFor(request: PricingEstimateRequest): Promise<Omit<PricedRequest, 'fare'>> {
     const service = await this.catalog.requireBySlug(request.serviceSlug);
     const vehicleClass = resolveVehicleClass(service, request.vehicleClass);
 
@@ -164,47 +293,18 @@ export class PricingService {
     // routing call is made at all — that is also what keeps the four roadside
     // services inside §7.6's budget when Maps is degraded.
     const { distanceKm, distanceSource, etaMinutes } = request.drop
-      ? await this.billedDistance(request.pickup, request.drop, rateCard.charges.haversineRoadFactor)
+      ? await this.billedDistance(
+          request.pickup,
+          request.drop,
+          rateCard.charges.haversineRoadFactor,
+        )
       : { distanceKm: 0, distanceSource: 'haversine' as const, etaMinutes: null };
 
-    let fare;
-    try {
-      fare = computeFare({
-        service: service.serviceType,
-        vehicleClass,
-        distanceKm,
-        hourOfDay: hourInOperatingTimezone(request.scheduledAt),
-        isHighwayPickup: zone.isHighway,
-        surgeBand: zone.surgeBand,
-        rules: rateCard.rules,
-        charges: rateCard.charges,
-      });
-    } catch (error) {
-      if (error instanceof CustomQuoteRequiredError) {
-        // §7.3's "600 km+ — Custom quote (manual at launch)". Blocked here
-        // rather than at booking time so the customer learns before choosing a
-        // vehicle and a destination; the manual-quote admin path is post-launch.
-        throw ApiException.validation(
-          'Tows over 600 km are quoted manually — please contact support',
-          { distanceKm: 'beyond the automatic pricing range (§7.3)' },
-        );
-      }
-      throw error;
-    }
-
-    return {
-      service,
-      // Reported, not echoed: past 100 km the engine prices as flatbed whatever
-      // was asked for (§3.3 Band C is flatbed hauling), and the customer's
-      // breakdown must name the class they will actually be billed as.
-      vehicleClass: distanceKm > 100 ? 'flatbed' : vehicleClass,
-      distanceKm: Math.round(distanceKm * 100) / 100,
-      distanceSource,
-      etaMinutes,
-      zone,
-      fare,
-      rateCard,
-    };
+    // `vehicleClass` is the RESOLVED class here (catalogue default or the
+    // client's choice); the `> 100 km => flatbed` override belongs to the
+    // callers, because it describes what will be billed, not what was asked
+    // for — see `price()` and `lockManualQuote()`.
+    return { service, vehicleClass, distanceKm, distanceSource, etaMinutes, zone, rateCard };
   }
 
   /**

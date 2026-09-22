@@ -1,8 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
-import { bookings, dispatchAttempts } from '../../db/schema';
+import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
+import { bookings, dispatchAttempts, dispatchConfig } from '../../db/schema';
 import { createTestApp } from '../../test/app';
 import {
   seedCustomer,
@@ -19,7 +20,12 @@ import { PresenceStore } from '../driver-presence/presence-store';
 import { DispatchRepo } from './dispatch.repo';
 import { DispatchService } from './dispatch.service';
 import { OfferService } from './offer.service';
-import { seedOnlineDriver, seedSearchingBooking, seedZone } from './dispatch-fixtures';
+import {
+  seedDispatchConfig,
+  seedOnlineDriver,
+  seedSearchingBooking,
+  seedZone,
+} from './dispatch-fixtures';
 
 /**
  * §6.4's progressive-radius wave loop.
@@ -82,7 +88,9 @@ describe('dispatch waves (§6.4)', () => {
 
   describe('the ladder', () => {
     it('starts at wave 1 and offers within the first rung', async () => {
-      zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 2 } });
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 2 },
+      });
       const bookingId = await seedSearchingBooking(db, { userId, zoneId });
       const near = await seedOnlineDriver(db, { zoneId, metersAway: 800 });
 
@@ -96,7 +104,9 @@ describe('dispatch waves (§6.4)', () => {
     });
 
     it('widens on the next wave and reaches a driver the first could not', async () => {
-      zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [2, 10], offersPerWave: 2 } });
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [2, 10], offersPerWave: 2 },
+      });
       const bookingId = await seedSearchingBooking(db, { userId, zoneId });
       // 6 km out: outside rung 1, inside rung 2.
       const far = await seedOnlineDriver(db, { zoneId, metersAway: 6_000 });
@@ -248,7 +258,9 @@ describe('dispatch waves (§6.4)', () => {
        * needs is durable, so a fresh `runWave` on a cold process behaves exactly
        * as the next scheduled one would. That is what this asserts.
        */
-      zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 1 } });
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 1 },
+      });
       const bookingId = await seedSearchingBooking(db, { userId, zoneId });
       const first = await seedOnlineDriver(db, { zoneId, metersAway: 500 });
       const second = await seedOnlineDriver(db, { zoneId, metersAway: 900 });
@@ -358,7 +370,9 @@ describe('dispatch waves (§6.4)', () => {
     it('resumes at the stored wave rather than restarting at 2 km', async () => {
       // A customer whose driver dropped out four minutes in must not be sent
       // back to the start of the ladder for someone else's decision.
-      zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 1 } });
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 1 },
+      });
       const bookingId = await seedSearchingBooking(db, { userId, zoneId });
       const first = await seedOnlineDriver(db, { zoneId, metersAway: 500 });
 
@@ -393,6 +407,38 @@ describe('dispatch waves (§6.4)', () => {
       // One attempt total — the exclusion set held across the re-dispatch.
       expect(await attemptsFor(bookingId)).toHaveLength(1);
     });
+
+    it('W12: `redispatchPriority` decides whether it jumps the queue or waits a cadence', async () => {
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [2, 4, 7], offersPerWave: 1, offerTimeoutSeconds: 20 },
+      });
+      const bookingId = await seedSearchingBooking(db, { userId, zoneId });
+      const queue = app.get<QueuePort>(QUEUE);
+      const spy = vi.spyOn(queue, 'enqueue');
+
+      // The default — §6.5 as shipped: delay 0, because the customer has already
+      // spent one full search through no fault of their own.
+      await dispatch.redispatch(bookingId, 'driver_cancelled');
+      expect(spy).toHaveBeenCalledWith(
+        'dispatch.search',
+        { bookingId },
+        expect.objectContaining({ delayMs: 0 }),
+      );
+
+      await seedDispatchConfig(db, { redispatchPriority: 'normal' });
+      await app.get(DispatchConfigRepo).invalidate();
+      spy.mockClear();
+
+      // `normal` schedules it like any other wave: one offer countdown away.
+      await dispatch.redispatch(bookingId, 'driver_cancelled');
+      expect(spy).toHaveBeenCalledWith(
+        'dispatch.search',
+        { bookingId },
+        expect.objectContaining({ delayMs: 20_000 }),
+      );
+
+      spy.mockRestore();
+    });
   });
 
   describe('the empty-wave rule', () => {
@@ -405,7 +451,9 @@ describe('dispatch waves (§6.4)', () => {
        * Asserted through `runWave`'s return value because the re-enqueue itself
        * is a no-op under `QUEUE_ENABLED=false`.
        */
-      zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [2, 4], offerTimeoutSeconds: 20 } });
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [2, 4], offerTimeoutSeconds: 20 },
+      });
       const bookingId = await seedSearchingBooking(db, { userId, zoneId });
       // No drivers at all.
 
@@ -428,7 +476,9 @@ describe('dispatch waves (§6.4)', () => {
     });
 
     it('waits the offer timeout when it DID offer to someone', async () => {
-      zoneId = await seedZone(db, { dispatchConfig: { radiusLadderKm: [5], offerTimeoutSeconds: 20 } });
+      zoneId = await seedZone(db, {
+        dispatchConfig: { radiusLadderKm: [5], offerTimeoutSeconds: 20 },
+      });
       const bookingId = await seedSearchingBooking(db, { userId, zoneId });
       await seedOnlineDriver(db, { zoneId, metersAway: 500 });
 

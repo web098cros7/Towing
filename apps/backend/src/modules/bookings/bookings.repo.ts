@@ -33,13 +33,21 @@ export class BookingsRepo {
    * second inline copy. A third would guarantee the three disagree about a
    * boundary row eventually.
    */
-  async list(userId: string, limit: number, cursor?: string): Promise<{ items: Booking[]; nextCursor: string | null }> {
+  async list(
+    userId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<{ items: Booking[]; nextCursor: string | null }> {
     const decoded = cursor ? decodeCursor(cursor) : null;
 
     const rows = await this.db
-      .select({ booking: bookings, serviceSlug: services.slug })
+      .select({
+        booking: bookings,
+        serviceSlug: sql<
+          string | null
+        >`(select s.slug from services s where s.service_type = ${bookings.serviceType} order by s.display_order asc limit 1)`,
+      })
       .from(bookings)
-      .leftJoin(services, eq(services.serviceType, bookings.serviceType))
       .where(
         and(
           eq(bookings.userId, userId),
@@ -69,9 +77,13 @@ export class BookingsRepo {
   /** Scoped by `userId` in the WHERE, never checked afterwards — a filter that runs is a filter. */
   async detail(userId: string, bookingId: string): Promise<BookingDetail | null> {
     const [row] = await this.db
-      .select({ booking: bookings, serviceSlug: services.slug })
+      .select({
+        booking: bookings,
+        serviceSlug: sql<
+          string | null
+        >`(select s.slug from services s where s.service_type = ${bookings.serviceType} order by s.display_order asc limit 1)`,
+      })
       .from(bookings)
-      .leftJoin(services, eq(services.serviceType, bookings.serviceType))
       .where(and(eq(bookings.id, bookingId), eq(bookings.userId, userId)))
       .limit(1);
 
@@ -198,7 +210,8 @@ function toBooking(row: BookingRow): Booking {
     pickupAddress: row.pickupAddress,
     pickup: { lat: row.pickupLat, lng: row.pickupLng },
     dropAddress: row.dropAddress,
-    drop: row.dropLat !== null && row.dropLng !== null ? { lat: row.dropLat, lng: row.dropLng } : null,
+    drop:
+      row.dropLat !== null && row.dropLng !== null ? { lat: row.dropLat, lng: row.dropLng } : null,
     distanceKm: row.distanceKm === null ? null : Number(row.distanceKm),
     breakdown: {
       basePaise: rupeeStringToPaise(row.baseFare),
@@ -217,4 +230,3 @@ function toBooking(row: BookingRow): Booking {
     updatedAt: row.updatedAt.toISOString(),
   };
 }
-

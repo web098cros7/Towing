@@ -1,20 +1,20 @@
 import type { INestApplication } from '@nestjs/common';
-import {
-  pricingEstimateResponseSchema,
-  serviceCatalogResponseSchema,
-} from '@towing/api-contracts';
+import { pricingEstimateResponseSchema, serviceCatalogResponseSchema } from '@towing/api-contracts';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  appConfig,
   chargeConfig,
   commissionConfig,
+  commissionGuardrail,
   dispatchConfig,
   pricingRules,
   serviceZones,
   services,
 } from '../../db/schema';
 import { SERVICE_CATALOG } from '../../db/seed/fixtures';
+import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import {
   adminAuthHeaderFor,
   createTestApp,
@@ -137,7 +137,12 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const response = await request(app.getHttpServer())
         .post('/v1/pricing/estimate')
         .set('Authorization', customerAuth)
-        .send({ serviceSlug: 'car_tow', vehicleClass: 'flatbed', pickup: BENGALURU, drop: BENGALURU_DROP })
+        .send({
+          serviceSlug: 'car_tow',
+          vehicleClass: 'flatbed',
+          pickup: BENGALURU,
+          drop: BENGALURU_DROP,
+        })
         .expect(200);
 
       // `expectMatchesContract` toEquals, so an added field already fails — this
@@ -154,7 +159,12 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const response = await request(app.getHttpServer())
         .post('/v1/pricing/estimate')
         .set('Authorization', customerAuth)
-        .send({ serviceSlug: 'car_tow', vehicleClass: 'wheel_lift', pickup: HIGHWAY, drop: BENGALURU_DROP })
+        .send({
+          serviceSlug: 'car_tow',
+          vehicleClass: 'wheel_lift',
+          pickup: HIGHWAY,
+          drop: BENGALURU_DROP,
+        })
         .expect(200);
 
       expect(response.body.zone.isHighway).toBe(true);
@@ -165,7 +175,12 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const response = await request(app.getHttpServer())
         .post('/v1/pricing/estimate')
         .set('Authorization', customerAuth)
-        .send({ serviceSlug: 'car_tow', vehicleClass: 'wheel_lift', pickup: CHENNAI, drop: CHENNAI })
+        .send({
+          serviceSlug: 'car_tow',
+          vehicleClass: 'wheel_lift',
+          pickup: CHENNAI,
+          drop: CHENNAI,
+        })
         .expect(200);
 
       expect(response.body.zone.surgeBand).toBe('high');
@@ -280,6 +295,46 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
         Math.round(response.body.breakdown.basePaise * 0.4),
       );
     });
+
+    describe('§19.8 kill-switch warnings (A11)', () => {
+      // Same ~170 km drop as the bookings-create spec — Band C.
+      const FAR_DROP = { lat: 14.5, lng: 77.6 };
+
+      const quote = (drop: { lat: number; lng: number }) =>
+        request(app.getHttpServer())
+          .post('/v1/pricing/estimate')
+          .set('Authorization', customerAuth)
+          .send({ serviceSlug: 'car_tow', vehicleClass: 'wheel_lift', pickup: BENGALURU, drop })
+          .expect(200);
+
+      it('serves no warnings when nothing is paused', async () => {
+        const response = await quote(BENGALURU_DROP);
+        expectMatchesContract(pricingEstimateResponseSchema, response.body);
+        expect(response.body.warnings).toEqual([]);
+      });
+
+      it('warns instead of failing in a paused zone', async () => {
+        const [zone] = await db
+          .select({ id: serviceZones.id })
+          .from(serviceZones)
+          .where(eq(serviceZones.name, 'Bengaluru Metro'));
+        await app.get(KillSwitchService).setPausedZones([zone!.id]);
+
+        const response = await quote(BENGALURU_DROP);
+        expect(response.status).toBe(200);
+        expectMatchesContract(pricingEstimateResponseSchema, response.body);
+        expect(response.body.warnings).toEqual(['dispatch_paused']);
+      });
+
+      it('warns on a long-distance quote while long-distance is disabled', async () => {
+        await app.get(KillSwitchService).setLongDistanceDisabled(true);
+
+        const response = await quote(FAR_DROP);
+        expect(response.status).toBe(200);
+        expect(response.body.band).toBe('C');
+        expect(response.body.warnings).toEqual(['long_distance_disabled']);
+      });
+    });
   });
 
   describe('realm isolation', () => {
@@ -287,10 +342,16 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
       const driverId = await seedDriver(db, { kycStatus: 'approved' });
       const driverAuth = await driverAuthHeaderFor(app, { driverId, kycStatus: 'approved' });
       const admin = await seedAdmin(db, { subRole: 'super_admin' });
-      const adminAuth = await adminAuthHeaderFor(app, { adminId: admin.id, subRole: 'super_admin' });
+      const adminAuth = await adminAuthHeaderFor(app, {
+        adminId: admin.id,
+        subRole: 'super_admin',
+      });
 
       for (const auth of [driverAuth, adminAuth]) {
-        await request(app.getHttpServer()).get('/v1/services').set('Authorization', auth).expect(403);
+        await request(app.getHttpServer())
+          .get('/v1/services')
+          .set('Authorization', auth)
+          .expect(403);
       }
       await request(app.getHttpServer()).get('/v1/services').expect(401);
     });
@@ -381,9 +442,17 @@ export async function seedPricingFixtures(db: TestDatabase): Promise<void> {
 
   await db.insert(chargeConfig).values({});
   await db.insert(dispatchConfig).values({});
+  // W12 — the public `GET /v1/app-config` reader falls back to code defaults
+  // without this, which would make an app-config spec pass for the wrong reason.
+  await db.insert(appConfig).values({});
   await db.insert(commissionConfig).values([
     { band: 'A', pct: '10.00' },
     { band: 'B', pct: '8.00' },
     { band: 'C', pct: '5.00' },
   ]);
+  // W11 — the §3.3 window (decision G2). Migration 0026 inserts it and the real
+  // seed repeats it; this fixture is what the specs truncate-and-seed against,
+  // and a missing row would silently fall back to the code constants, making a
+  // guardrail test pass for the wrong reason.
+  await db.insert(commissionGuardrail).values({ floorPct: '5.00', capPct: '10.00' });
 }
