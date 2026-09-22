@@ -82,7 +82,8 @@ describe('referrals e2e (/v1/me/referral)', () => {
       const first = await summaryOf(auth).expect(200);
 
       expect(first.body.code).toMatch(/^[A-Z]{1,5}[A-Z2-9]{4}$/);
-      expect(first.body.shareUrl).toBe(`https://mitow.in/r/${first.body.code}`);
+      // The origin is PUBLIC_TRACK_BASE_URL (the same one /t/ share links use).
+      expect(first.body.shareUrl.endsWith(`/r/${first.body.code}`)).toBe(true);
       expect(first.body.referrerRewardPaise).toBe(10000);
       expect(first.body.refereeRewardPaise).toBe(10000);
       expect(first.body.invitedCount).toBe(0);
