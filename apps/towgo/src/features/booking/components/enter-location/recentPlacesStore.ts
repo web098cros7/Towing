@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import { env } from '@/lib/env';
+import { storage } from '@/lib/storage/storage';
 import { useBookings } from '@/features/bookings/api/bookings.queries';
 import type { Booking } from '@/features/bookings/types';
 import {
@@ -18,9 +19,15 @@ import {
  *   booking first), so a returning customer sees real places from launch;
  * - both: every place picked on screen 10 this session goes on top.
  *
- * "Clear recents" empties the session list and hides history rows from
- * bookings made before the clear. Neither survives an app restart, because
- * there is nowhere to store the clear.
+ * "Clear recents" empties the picked list and hides history rows from bookings
+ * made before the clear.
+ *
+ * BOTH ARE WRITTEN TO DEVICE STORAGE. They used to live only in memory, which
+ * cost a customer every place they had picked but not yet booked each time the
+ * app restarted — and made "Clear recents" briefly true: clearing hid the
+ * history rows, then the next launch forgot the clear and brought them all
+ * back. A customer who clears their recent places has asked for something, and
+ * it has to outlive the process.
  */
 type RecentPlacesState = {
   recents: RecentLocation[];
@@ -30,17 +37,61 @@ type RecentPlacesState = {
   clearRecents: () => void;
 };
 
+const STORAGE_KEY = 'places.recent.v1';
+
+/** What is written to storage. Versioned by key, so a shape change is a new key. */
+type StoredRecents = { recents: RecentLocation[]; clearedAt: number | null };
+
+/**
+ * Anything unreadable is treated as "nothing stored" rather than thrown: this
+ * is a convenience list, and a customer whose storage is corrupt or from an
+ * older build should get an empty one, not a screen that will not open.
+ */
+function readStored(): StoredRecents | null {
+  try {
+    const raw = storage.getString(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredRecents;
+    if (!Array.isArray(parsed?.recents)) return null;
+    const clearedAt = typeof parsed.clearedAt === 'number' ? parsed.clearedAt : null;
+    return { recents: parsed.recents.slice(0, RECENT_PLACES_LIMIT), clearedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(value: StoredRecents): void {
+  try {
+    storage.set(STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // A failed write costs the next launch its list; it must never cost the
+    // customer the tap they just made.
+  }
+}
+
+/**
+ * Stored list if there is one; otherwise the drawn rows in mock mode and an
+ * empty list against the real backend, where trip history fills the gap.
+ */
+function initialState(): StoredRecents {
+  return readStored() ?? { recents: env.useMocks ? recentDestinations : [], clearedAt: null };
+}
+
 export const useRecentPlacesStore = create<RecentPlacesState>((set, get) => ({
-  recents: env.useMocks ? recentDestinations : [],
-  clearedAt: null,
-  addRecent: (place) =>
-    set({
-      recents: [place, ...get().recents.filter((r) => r.id !== place.id)].slice(
-        0,
-        RECENT_PLACES_LIMIT,
-      ),
-    }),
-  clearRecents: () => set({ recents: [], clearedAt: Date.now() }),
+  ...initialState(),
+  addRecent: (place) => {
+    const recents = [place, ...get().recents.filter((r) => r.id !== place.id)].slice(
+      0,
+      RECENT_PLACES_LIMIT,
+    );
+    set({ recents });
+    writeStored({ recents, clearedAt: get().clearedAt });
+  },
+  clearRecents: () => {
+    const clearedAt = Date.now();
+    set({ recents: [], clearedAt });
+    writeStored({ recents: [], clearedAt });
+  },
 }));
 
 /**
