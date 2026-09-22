@@ -35,6 +35,8 @@ type BookingRow = typeof bookings.$inferSelect & {
   driverTotalTrips: number | null;
   driverVehicleClass: string | null;
   truckPlate: string | null;
+  truckMake: string | null;
+  truckModel: string | null;
 };
 
 @Injectable()
@@ -68,6 +70,8 @@ export class BookingsRepo {
         driverTotalTrips: drivers.totalTrips,
         driverVehicleClass: drivers.vehicleClass,
         truckPlate: fleetTrucks.plate,
+        truckMake: fleetTrucks.make,
+        truckModel: fleetTrucks.model,
       })
       .from(bookings)
       .leftJoin(drivers, eq(drivers.id, bookings.driverId))
@@ -100,6 +104,8 @@ export class BookingsRepo {
           driverTotalTrips: r.driverTotalTrips,
           driverVehicleClass: r.driverVehicleClass,
           truckPlate: r.truckPlate,
+          truckMake: r.truckMake,
+          truckModel: r.truckModel,
         }),
       ),
       nextCursor:
@@ -123,6 +129,8 @@ export class BookingsRepo {
         driverTotalTrips: drivers.totalTrips,
         driverVehicleClass: drivers.vehicleClass,
         truckPlate: fleetTrucks.plate,
+        truckMake: fleetTrucks.make,
+        truckModel: fleetTrucks.model,
       })
       .from(bookings)
       .leftJoin(drivers, eq(drivers.id, bookings.driverId))
@@ -140,6 +148,8 @@ export class BookingsRepo {
       driverTotalTrips: row.driverTotalTrips,
       driverVehicleClass: row.driverVehicleClass,
       truckPlate: row.truckPlate,
+      truckMake: row.truckMake,
+      truckModel: row.truckModel,
     };
 
     const firstReached = await this.firstReached(bookingId);
@@ -298,6 +308,8 @@ function toDriverCard(row: BookingRow): TrackedDriver | null {
     totalTrips: row.driverTotalTrips ?? 0,
     vehiclePlate: row.truckPlate,
     vehicleClass: (row.driverVehicleClass as TrackedDriver['vehicleClass']) ?? null,
+    vehicleMake: row.truckMake,
+    vehicleModel: row.truckModel,
   };
 }
 

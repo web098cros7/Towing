@@ -658,6 +658,8 @@ export async function runSeed(
             type: truck.type,
             plate: truck.plate,
             capacity: truck.capacity,
+            make: truck.make,
+            model: truck.model,
             status,
             currentLocation:
               status === 'active' ? jitter(rng, { lat: area[1], lng: area[2] }) : null,

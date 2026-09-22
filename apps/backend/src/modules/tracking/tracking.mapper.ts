@@ -36,6 +36,8 @@ export function toTrackedDriver(row: TrackingBookingRow): TrackedDriver | null {
     totalTrips: row.driverTotalTrips ?? 0,
     vehiclePlate: row.truckPlate,
     vehicleClass: (row.driverVehicleClass as TrackedDriver['vehicleClass']) ?? null,
+    vehicleMake: row.truckMake ?? null,
+    vehicleModel: row.truckModel ?? null,
   };
 }
 
@@ -88,6 +90,7 @@ export function toBookingTracking(
     // migration 0015 — the three columns below are real, this one is derived.
     // Only meaningful once a driver exists, hence the guard.
     assignedAt: row.driverId ? (row.updatedAt?.toISOString() ?? null) : null,
+    enRouteAt: row.enRouteAt ? new Date(row.enRouteAt).toISOString() : null,
     arrivedAt: row.arrivedAt?.toISOString() ?? null,
     startedAt: row.startedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,

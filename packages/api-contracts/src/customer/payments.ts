@@ -77,8 +77,11 @@ export const paymentIntentSchema = z.object({
    * coupon lines — without a second round trip.
    */
   breakdown: fareBreakdownSchema,
-  /** true when the wallet covered the whole bill: the booking is already paid, open no sheet. */
-  settled: z.boolean(),
+  /**
+   * true when the wallet covers the whole bill: `amountPaise` is 0, open no
+   * sheet, and confirm with `POST /v1/payments/:bookingId/wallet`.
+   */
+  walletOnly: z.boolean(),
 });
 export type PaymentIntentDto = z.infer<typeof paymentIntentSchema>;
 
@@ -167,3 +170,22 @@ export const cashCollectedResponseSchema = z.object({
   bookingStatus: z.string(),
 });
 export type CashCollectedResponse = z.infer<typeof cashCollectedResponseSchema>;
+
+/**
+ * POST/DELETE /v1/payments/:bookingId/coupon — Figma 28 at payment time; the
+ * booking's total is recomputed and any open payment intent is closed, so the
+ * next intent charges the new total.
+ */
+export const paymentCouponRequestSchema = z.object({
+  code: z.string().trim().min(3).max(32),
+});
+export type PaymentCouponRequest = z.infer<typeof paymentCouponRequestSchema>;
+
+export const paymentCouponResponseSchema = z.object({
+  bookingId: z.uuid(),
+  couponCode: z.string().nullable(),
+  discountPaise: unsignedPaiseSchema,
+  totalPaise: unsignedPaiseSchema,
+  breakdown: fareBreakdownSchema,
+});
+export type PaymentCouponResponse = z.infer<typeof paymentCouponResponseSchema>;

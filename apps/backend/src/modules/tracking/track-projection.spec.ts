@@ -58,6 +58,9 @@ const row: TrackingBookingRow = {
   driverVehicleClass: 'flatbed',
   driverLastPingAt: new Date('2026-09-03T10:00:00.000Z'),
   truckPlate: 'KA 03 AB 1234',
+  truckMake: 'Tata',
+  truckModel: 'LPT 1109',
+  enRouteAt: null,
 };
 
 const fix = { lat: 12.98765432, lng: 77.61234567, lastPingAt: new Date('2026-09-03T10:00:05.000Z') };

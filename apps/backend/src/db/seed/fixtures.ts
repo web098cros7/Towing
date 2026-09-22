@@ -289,6 +289,8 @@ export interface TruckFixture {
   plate: string;
   type: 'wheel_lift' | 'flatbed';
   capacity: string;
+  make: string;
+  model: string;
   active: boolean;
   compliance: CompliancePlan;
 }
@@ -299,6 +301,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-01-AB-1234',
       type: 'flatbed',
       capacity: '5t',
+      make: 'Tata',
+      model: 'LPT 1109',
       active: true,
       compliance: [
         ['insurance', -4],
@@ -311,6 +315,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-05-MJ-7788',
       type: 'wheel_lift',
       capacity: '2.5t',
+      make: 'Ashok Leyland',
+      model: 'Dost+',
       active: true,
       compliance: [
         ['insurance', 200],
@@ -323,6 +329,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-03-QT-5511',
       type: 'wheel_lift',
       capacity: '2.5t',
+      make: 'Tata',
+      model: 'Intra V30',
       active: true,
       compliance: [
         ['insurance', 110],
@@ -335,6 +343,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-51-GH-9902',
       type: 'flatbed',
       capacity: '7t',
+      make: 'Tata',
+      model: 'Ultra 1518',
       active: true,
       compliance: [
         ['insurance', 320],
@@ -347,6 +357,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-02-ZX-3344',
       type: 'flatbed',
       capacity: '5t',
+      make: 'Tata',
+      model: 'LPT 1109',
       active: true,
       compliance: [
         ['insurance', 45],
@@ -359,6 +371,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-04-PL-6677',
       type: 'wheel_lift',
       capacity: '2.5t',
+      make: 'Ashok Leyland',
+      model: 'Partner',
       active: false,
       compliance: [
         ['insurance', 180],
@@ -371,6 +385,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-09-WE-8899',
       type: 'wheel_lift',
       capacity: '3t',
+      make: 'Tata',
+      model: 'Intra V30',
       active: true,
       compliance: [
         ['insurance', 260],
@@ -383,6 +399,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'KA-41-RT-2210',
       type: 'flatbed',
       capacity: '8t',
+      make: 'Tata',
+      model: 'Ultra 1518',
       active: true,
       compliance: [
         ['insurance', 150],
@@ -397,6 +415,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-01-AA-1001',
       type: 'flatbed',
       capacity: '7t',
+      make: 'Tata',
+      model: 'LPT 1109',
       active: true,
       compliance: [
         ['insurance', 210],
@@ -409,6 +429,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-02-BB-2002',
       type: 'wheel_lift',
       capacity: '2.5t',
+      make: 'Ashok Leyland',
+      model: 'Dost+',
       active: true,
       compliance: [
         ['insurance', 90],
@@ -421,6 +443,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-09-CC-3003',
       type: 'flatbed',
       capacity: '5t',
+      make: 'Tata',
+      model: 'Ultra 1518',
       active: true,
       compliance: [
         ['insurance', -10],
@@ -433,6 +457,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-10-DD-4004',
       type: 'wheel_lift',
       capacity: '3t',
+      make: 'Tata',
+      model: 'Intra V30',
       active: true,
       compliance: [
         ['insurance', 150],
@@ -445,6 +471,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-11-EE-5005',
       type: 'flatbed',
       capacity: '8t',
+      make: 'Tata',
+      model: 'LPT 1109',
       active: true,
       compliance: [
         ['insurance', 300],
@@ -457,6 +485,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-04-FF-6006',
       type: 'wheel_lift',
       capacity: '2.5t',
+      make: 'Ashok Leyland',
+      model: 'Partner',
       active: true,
       compliance: [
         ['insurance', 60],
@@ -469,6 +499,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-05-GG-7007',
       type: 'flatbed',
       capacity: '5t',
+      make: 'Tata',
+      model: 'Ultra 1518',
       active: true,
       compliance: [
         ['insurance', 190],
@@ -481,6 +513,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-12-HH-8008',
       type: 'wheel_lift',
       capacity: '3t',
+      make: 'Tata',
+      model: 'Intra V30',
       active: true,
       compliance: [
         ['insurance', 230],
@@ -493,6 +527,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-14-JJ-9009',
       type: 'flatbed',
       capacity: '7t',
+      make: 'Tata',
+      model: 'LPT 1109',
       active: true,
       compliance: [
         ['insurance', 130],
@@ -505,6 +541,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-18-KK-1010',
       type: 'wheel_lift',
       capacity: '2.5t',
+      make: 'Ashok Leyland',
+      model: 'Dost+',
       active: false,
       compliance: [
         ['insurance', 100],
@@ -517,6 +555,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-20-LL-1111',
       type: 'flatbed',
       capacity: '5t',
+      make: 'Tata',
+      model: 'Ultra 1518',
       active: true,
       compliance: [
         ['insurance', 280],
@@ -529,6 +569,8 @@ export const TRUCKS: Record<FleetFixture['key'], readonly TruckFixture[]> = {
       plate: 'TN-22-MM-1212',
       type: 'wheel_lift',
       capacity: '3t',
+      make: 'Tata',
+      model: 'Intra V30',
       active: true,
       compliance: [
         ['insurance', 170],

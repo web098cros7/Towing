@@ -168,18 +168,13 @@ export class PaymentsService {
     }
 
     // WALLET-ONLY: the wallet covers the whole bill, so there is no gateway
-    // order to open. The row is marked captured and settled inline, and the
-    // DTO tells the app not to open a sheet.
+    // order to open. The row is NOT settled here — the app opens the intent
+    // when the Payment screen mounts, and settling inline would pay before the
+    // customer taps Pay. The DTO tells the app not to open a sheet and to
+    // confirm with `POST /v1/payments/:bookingId/wallet`.
     if (gatewayPaise === 0) {
       const orderRef = `wallet-${row.id}`;
       await this.repo.setOrderRef(row.id, orderRef);
-      await this.settleCapturedPayment(bookingId, {
-        gatewayRef: orderRef,
-        orderRef,
-        status: 'captured',
-        method: 'wallet',
-        amountPaise: 0,
-      });
 
       return {
         paymentId: row.id,
@@ -191,7 +186,7 @@ export class PaymentsService {
         autoSettles: true,
         devCheckout: null,
         breakdown: booking.breakdown,
-        settled: true,
+        walletOnly: true,
       };
     }
 
@@ -221,8 +216,58 @@ export class PaymentsService {
       autoSettles: handle.autoSettles,
       devCheckout: handle.devCheckout,
       breakdown: booking.breakdown,
-      settled: false,
+      walletOnly: false,
     };
+  }
+
+  // ──────────────────────────────────────────────────────────── wallet ────
+
+  /**
+   * The customer's explicit confirmation that the wallet should pay the whole
+   * bill. The intent route only OPENS the wallet-only intent; this is what
+   * settles it, so a screen that mounts and never taps Pay leaves the booking
+   * at `completed`.
+   */
+  async payWithWallet(bookingId: string, userId: string): Promise<PaymentResultDto> {
+    const booking = await this.loadPayableBooking(bookingId, userId, 'booking', {
+      allowPaid: true,
+    });
+
+    // Already settled: a 200 replay, matching `capture`.
+    if (booking.status === 'paid') return this.resultFor(bookingId, 'paid');
+
+    const open = await this.repo.openIntent(bookingId, 'booking');
+    if (!open || open.provider !== 'wallet' || !open.gatewayOrderRef) {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.INVALID_BOOKING_STATE,
+        'There is no wallet payment to confirm — open the payment again',
+      );
+    }
+
+    // Re-check the balance: the intent was opened against a snapshot, and the
+    // wallet may have been spent elsewhere (a refund reversal, another booking)
+    // between then and the tap. Settling on the stale snapshot would overdraw.
+    const balance = await this.ledger.balanceOf({ ownerType: 'user', ownerId: userId });
+    const needed = rupeeStringToPaise(open.walletApplied);
+    if (balance < needed) {
+      await this.repo.markFailed(open.id, 'Wallet balance changed');
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.INVALID_BOOKING_STATE,
+        'Your wallet balance changed — open the payment again',
+      );
+    }
+
+    await this.settleCapturedPayment(bookingId, {
+      gatewayRef: open.gatewayOrderRef,
+      orderRef: open.gatewayOrderRef,
+      status: 'captured',
+      method: 'wallet',
+      amountPaise: 0,
+    });
+
+    return this.resultFor(bookingId, 'paid');
   }
 
   // ─────────────────────────────────────────────────────────────── cash ────
@@ -938,7 +983,7 @@ export class PaymentsService {
             }
           : null,
       breakdown: booking.breakdown,
-      settled: false,
+      walletOnly: row.provider === 'wallet',
     };
   }
 

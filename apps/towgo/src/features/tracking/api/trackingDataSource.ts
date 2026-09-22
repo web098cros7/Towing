@@ -1,10 +1,10 @@
 import type {
   BookingShareResponse,
-  BookingTracking,
   CallContact,
   CancellationQuote,
 } from '@towing/api-contracts';
 import { env } from '@/lib/env';
+import type { BookingTrackingDisplay } from '@/screens/booking/tracking/trackingDisplay';
 import { trackingMockSource } from './trackingMockSource';
 import { trackingRestSource } from './trackingRestSource';
 
@@ -21,7 +21,7 @@ import { trackingRestSource } from './trackingRestSource';
  */
 export interface TrackingDataSource {
   /** §19.2's polling rung. Carries exactly what the `/customer` socket pushes. */
-  getTracking(bookingId: string): Promise<BookingTracking>;
+  getTracking(bookingId: string): Promise<BookingTrackingDisplay>;
   /** §11.7 — mints, or returns the live link. Idempotent server-side. */
   share(bookingId: string): Promise<BookingShareResponse>;
   revokeShare(bookingId: string): Promise<void>;

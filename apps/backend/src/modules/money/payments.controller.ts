@@ -1,10 +1,22 @@
-import { Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
 import {
   paymentCaptureRequestSchema,
+  paymentCouponRequestSchema,
   paymentIntentRequestSchema,
   type CashPaymentResponse,
   type PaymentCaptureRequest,
+  type PaymentCouponRequest,
+  type PaymentCouponResponse,
   type PaymentIntentDto,
   type PaymentIntentRequest,
   type PaymentResultDto,
@@ -17,6 +29,7 @@ import { ZodBody, ZodParam } from '../../common/validation/zod.decorators';
 import type { AuthedRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Realms } from '../auth/realm.decorator';
+import { PaymentCouponService } from './payment-coupon.service';
 import { PaymentsService } from './payments.service';
 import { WalletService } from './wallet.service';
 
@@ -36,6 +49,7 @@ export class PaymentsController {
   constructor(
     private readonly payments: PaymentsService,
     private readonly wallet: WalletService,
+    private readonly coupons: PaymentCouponService,
   ) {}
 
   /**
@@ -77,6 +91,20 @@ export class PaymentsController {
   }
 
   /**
+   * Confirms a wallet-only intent. The intent route only opens it; this is
+   * what settles, so mounting the Payment screen never pays on its own.
+   */
+  @Post('payments/:bookingId/wallet')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  payWithWallet(
+    @ZodParam(z.uuid(), 'bookingId') bookingId: string,
+    @Req() request: AuthedRequest,
+  ): Promise<PaymentResultDto> {
+    return this.payments.payWithWallet(bookingId, customerId(request));
+  }
+
+  /**
    * Figma 27's Cash: the booking stays `completed` until the driver confirms
    * the cash.
    */
@@ -88,6 +116,32 @@ export class PaymentsController {
     @Req() request: AuthedRequest,
   ): Promise<CashPaymentResponse> {
     return this.payments.chooseCash(bookingId, customerId(request));
+  }
+
+  /**
+   * Figma 28's "Apply Coupon" at payment time. The booking's total is
+   * recomputed and any open intent is closed, so the next intent charges the
+   * new total.
+   */
+  @Post('payments/:bookingId/coupon')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  applyCoupon(
+    @ZodParam(z.uuid(), 'bookingId') bookingId: string,
+    @ZodBody(paymentCouponRequestSchema) body: PaymentCouponRequest,
+    @Req() request: AuthedRequest,
+  ): Promise<PaymentCouponResponse> {
+    return this.coupons.apply(bookingId, customerId(request), body.code);
+  }
+
+  @Delete('payments/:bookingId/coupon')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  removeCoupon(
+    @ZodParam(z.uuid(), 'bookingId') bookingId: string,
+    @Req() request: AuthedRequest,
+  ): Promise<PaymentCouponResponse> {
+    return this.coupons.remove(bookingId, customerId(request));
   }
 
   /**

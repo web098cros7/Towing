@@ -230,7 +230,7 @@ function fixAge(): number {
 }
 
 export const trackingMockSource: TrackingDataSource = {
-  async getTracking(bookingId: string): Promise<BookingTracking> {
+  async getTracking(bookingId: string): Promise<BookingTrackingDisplay> {
     await delay(300);
     if (env.mockTrackingState === 'error') throw new Error('Failed to load tracking');
 
@@ -270,14 +270,13 @@ export const trackingMockSource: TrackingDataSource = {
       pickup: PICKUP,
       drop: DROP,
       assignedAt: iso(phase.matchedAt),
+      enRouteAt: iso(phase.enRouteAt),
       arrivedAt: iso(phase.arrivedAt),
       startedAt: iso(phase.startedAt),
       completedAt: iso(phase.completedAt),
       shared: shared !== null,
       at: new Date(now).toISOString(),
-      // App-local: the contract has no en-route instant yet (19's "Driver on the way" time).
-      enRouteAt: iso(phase.enRouteAt),
-      // App-local: nor an in-transit one (25's "In transit" time); null while loading.
+      // App-local: the server has no separate in-transit instant (25's "In transit" time); null while loading.
       inTransitAt: iso(phase.inTransitAt),
     };
     return tracking;

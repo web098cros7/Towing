@@ -2,39 +2,28 @@ import type { BookingTracking, JobStatus, TrackedDriver } from '@towing/api-cont
 import { towMethodLabelFor } from '@/features/booking/data/towTypes.data';
 
 /**
- * App-local, OPTIONAL extension of the tracked driver (Figma 18 · Driver En Route).
- *
- * The Vehicle Card draws "Tata 407 (Flatbed)" (`<make> <model> (<body type>)`).
- * `trackedDriverSchema` carries only `vehicleClass`, which gives the body type;
- * the make and model have no field in the contract yet (data gap). The mock
- * source fills these two, the live API leaves them absent, and the card then
- * keeps the model line's slot with a placeholder bar rather than rewording it.
+ * The tracked driver, as the contract now carries it (Figma 18 · Driver En
+ * Route). The Vehicle Card draws "Tata 407 (Flatbed)" (`<make> <model> (<body
+ * type>)`): `vehicleClass` gives the body type, and `vehicleMake` /
+ * `vehicleModel` now come from the server alongside it. The alias is kept so
+ * existing imports keep working.
  */
-export type TrackedDriverDisplay = TrackedDriver & {
-  /** e.g. "Tata". */
-  vehicleMake?: string | null;
-  /** e.g. "407". */
-  vehicleModel?: string | null;
-};
+export type TrackedDriverDisplay = TrackedDriver;
 
 /**
- * App-local, OPTIONAL extension of the tracking payload. The mock fills both;
- * the live API leaves them absent and the rows keep their time slots with a
- * placeholder bar.
+ * App-local extension of the tracking payload.
  *
  * - `enRouteAt` (Figma 19 · Driver Arriving): 19's timeline draws "Driver on the
- *   way" with the time the driver set off (`assigned → en_route`), and
- *   `bookingTrackingSchema` has no field for it: the server keeps it only in
- *   `booking_status_history` (data gap). `assignedAt` is NOT a stand-in: 20 draws
- *   "Driver Assigned" and "Driver on the way" as two separate times.
+ *   way" with the time the driver set off (`assigned → en_route`). The server
+ *   now carries this instant on the tracking payload, so it comes straight from
+ *   the wire.
  * - `inTransitAt` (Figma 25 · Trip in Progress): 25's timeline draws "In transit"
- *   with the time the loaded truck left the pickup, and the server has no such
- *   instant at all (data gap). `startedAt` is NOT a stand-in: 25 draws "Picked
- *   up" and "In transit" as two separate times.
+ *   with the time the loaded truck left the pickup. The server has no separate
+ *   instant for it, so the live API sets it to `startedAt` (the driver starts
+ *   the trip at the pickup and leaves), while the mock keeps its own clock value
+ *   (which distinguishes loading from the tow).
  */
 export type BookingTrackingDisplay = BookingTracking & {
-  /** ISO instant the booking entered `en_route`. */
-  enRouteAt?: string | null;
   /** ISO instant the loaded truck left the pickup; null while the vehicle is loaded. */
   inTransitAt?: string | null;
 };

@@ -5,11 +5,14 @@ import type {
   CancellationQuote,
 } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
+import type { BookingTrackingDisplay } from '@/screens/booking/tracking/trackingDisplay';
 import type { TrackingDataSource } from './trackingDataSource';
 
 export const trackingRestSource: TrackingDataSource = {
-  getTracking: (bookingId: string): Promise<BookingTracking> =>
-    apiFetch<BookingTracking>(`bookings/${bookingId}/tracking`),
+  async getTracking(bookingId: string): Promise<BookingTrackingDisplay> {
+    const tracking = await apiFetch<BookingTracking>(`bookings/${bookingId}/tracking`);
+    return { ...tracking, inTransitAt: tracking.startedAt };
+  },
 
   /**
    * No `idempotent: true`, and no explicit key either.

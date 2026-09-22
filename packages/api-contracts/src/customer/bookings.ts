@@ -82,6 +82,9 @@ export const trackedDriverSchema = z.object({
   totalTrips: z.number().int().nonnegative(),
   vehiclePlate: z.string().nullable(),
   vehicleClass: vehicleClassSchema.nullable(),
+  /** The truck's make and model, when the fleet has recorded them. */
+  vehicleMake: z.string().nullable(),
+  vehicleModel: z.string().nullable(),
 });
 export type TrackedDriver = z.infer<typeof trackedDriverSchema>;
 
@@ -320,6 +323,8 @@ export const bookingTrackingSchema = z.object({
   drop: geoPointSchema.nullable(),
   /** §5.2's instants, so the timeline renders without a second request. */
   assignedAt: z.iso.datetime().nullable(),
+  /** When the driver set off towards the pickup. */
+  enRouteAt: z.iso.datetime().nullable(),
   arrivedAt: z.iso.datetime().nullable(),
   startedAt: z.iso.datetime().nullable(),
   completedAt: z.iso.datetime().nullable(),

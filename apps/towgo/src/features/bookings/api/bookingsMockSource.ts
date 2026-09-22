@@ -8,6 +8,7 @@ import {
   hasMockMatch,
   mockTripPhase,
   recordMockMatch,
+  type MockTripPhase,
 } from '@/features/tracking/api/mockTripClock';
 import type { BookingDetail } from '../types';
 import { bookingDetailsMock, bookingsMock } from '../mocks/bookings.mock';
@@ -126,6 +127,31 @@ function withMockedService<T extends { serviceSlug: string }>(booking: T): T {
   return booking;
 }
 
+/** An epoch-ms instant as an ISO string; `null` stays `null`. */
+function iso(ms: number | null): string | null {
+  return ms === null ? null : new Date(ms).toISOString();
+}
+
+/**
+ * The six trip instants for a live mock booking, taken from the shared mock
+ * trip clock's phase times. Anything the clock has not reached yet is null.
+ */
+function instantsFromPhase(
+  phase: MockTripPhase,
+): Pick<
+  BookingDetail,
+  'assignedAt' | 'enRouteAt' | 'arrivedAt' | 'startedAt' | 'completedAt' | 'paidAt'
+> {
+  return {
+    assignedAt: iso(phase.matchedAt),
+    enRouteAt: iso(phase.enRouteAt),
+    arrivedAt: iso(phase.arrivedAt),
+    startedAt: iso(phase.startedAt),
+    completedAt: iso(phase.completedAt),
+    paidAt: iso(phase.paidAt),
+  };
+}
+
 /**
  * Moves a mock search on: accepted once its match time passes, ended as
  * `no_drivers_found` once its deadline passes, otherwise advanced to the wave
@@ -138,7 +164,9 @@ function settleMockSearch(booking: BookingDetail): BookingDetail {
   // A matched trip follows the mock trip clock. Only forward from the clock's
   // own statuses, so a cancel (or a retried search) is never overwritten.
   if (hasMockMatch(booking.id) && MOCK_TRIP_STATUSES.has(booking.status)) {
-    booking.status = mockTripPhase(booking.id).status;
+    const phase = mockTripPhase(booking.id);
+    booking.status = phase.status;
+    Object.assign(booking, instantsFromPhase(phase));
     return booking;
   }
 
@@ -159,6 +187,7 @@ function settleMockSearch(booking: BookingDetail): BookingDetail {
     booking.driverName = driver?.driverName ?? null;
     booking.driverRating = driver?.driverRating ?? null;
     booking.driverTrips = driver?.driverTrips ?? null;
+    Object.assign(booking, instantsFromPhase(mockTripPhase(booking.id)));
     return booking;
   }
 
@@ -260,6 +289,12 @@ export const bookingsMockSource: BookingsDataSource = {
       driverPhoto: null,
       driverTrips: null,
       durationMinutes: null,
+      paidAt: null,
+      assignedAt: null,
+      enRouteAt: null,
+      arrivedAt: null,
+      startedAt: null,
+      completedAt: null,
     };
 
     created.unshift(booking);
@@ -331,6 +366,12 @@ export const bookingsMockSource: BookingsDataSource = {
         driverPhoto: null,
         durationMinutes: null,
         otpAvailable: false,
+        paidAt: null,
+        assignedAt: null,
+        enRouteAt: null,
+        arrivedAt: null,
+        startedAt: null,
+        completedAt: null,
       };
       created.unshift(own);
     }

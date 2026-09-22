@@ -81,11 +81,12 @@ export function isScheduled(booking: Pick<Booking, 'scheduledAt'>): boolean {
 
 /**
  * How the trip was paid for. Booking-local on purpose, distinct from the
- * account's `PaymentKind` (saved instruments). Cash is not a supported
- * payment method (confirmed spec correction, Phase 12) — every booking is
- * paid through a saved instrument.
+ * account's `PaymentKind` (saved instruments). Cash is now settled by the
+ * driver's "cash collected" confirmation rather than through a saved
+ * instrument, so it is a supported method alongside the instrument-backed
+ * ones.
  */
-export type BookingPaymentMethod = 'card' | 'upi' | 'wallet';
+export type BookingPaymentMethod = 'card' | 'upi' | 'wallet' | 'cash';
 
 /**
  * Detail payload — what `GET /bookings/:id` returns: every list field plus the
@@ -130,7 +131,22 @@ export type BookingDetail = Booking & {
   /** Server-sourced; a URL or nothing. */
   driverPhoto: string | null;
   driverTrips: number | null;
-  /** 45 -> formatEta(45) === "45 mins". Null until a driver is assigned. */
+  /** ISO instant the payment was captured; null until then. */
+  paidAt: string | null;
+  /** ISO instant the driver was assigned; null until then. */
+  assignedAt: string | null;
+  /** ISO instant the driver set off; null until then. */
+  enRouteAt: string | null;
+  /** ISO instant the driver reached the pickup; null until then. */
+  arrivedAt: string | null;
+  /** ISO instant the tow started; null until then. */
+  startedAt: string | null;
+  /** ISO instant the truck reached the drop; null until then. */
+  completedAt: string | null;
+  /**
+   * Minutes from `startedAt` to `completedAt`; null until both exist.
+   * 45 -> formatEta(45) === "45 mins".
+   */
   durationMinutes: number | null;
   /** Bundled artwork for the chosen duty class stays a local lookup, not a field. */
   towTypeId?: never;

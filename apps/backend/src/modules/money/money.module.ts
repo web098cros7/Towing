@@ -13,6 +13,7 @@ import { PayoutsController } from './payouts.controller';
 import { PayoutsRepo } from './payouts.repo';
 import { PayoutsService } from './payouts.service';
 import { PaymentReconcileService } from './payment-reconcile.service';
+import { PaymentCouponService } from './payment-coupon.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { RefundsService } from './refunds.service';
@@ -25,6 +26,7 @@ import { DriverCashController } from './driver-cash.controller';
 import { DriverPayoutAccountService } from './driver-payout-account.service';
 import { PayoutAccountsRepo } from './payout-accounts.repo';
 import { BookingsModule } from '../bookings/bookings.module';
+import { CouponsModule } from '../coupons/coupons.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PaymentGatewayModule } from './payment-gateway.module';
 import { RazorpayRouteAdapter } from './razorpay-route.adapter';
@@ -49,7 +51,14 @@ import { ReferralsModule } from '../referrals/referrals.module';
  * NotificationsModule are all `@Global()`.
  */
 @Module({
-  imports: [AuthModule, BookingsModule, PricingModule, PaymentGatewayModule, ReferralsModule],
+  imports: [
+    AuthModule,
+    BookingsModule,
+    CouponsModule,
+    PricingModule,
+    PaymentGatewayModule,
+    ReferralsModule,
+  ],
   controllers: [
     EarningsController,
     ReportsController,
@@ -68,6 +77,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     PayoutsRepo,
     PayoutReconcileService,
     PaymentsService,
+    PaymentCouponService,
     PaymentReconcileService,
     RefundsService,
     WalletService,
@@ -103,6 +113,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     PayoutsRepo,
     PayoutReconcileService,
     PaymentsService,
+    PaymentCouponService,
     PaymentReconcileService,
     RefundsService,
     DriverEarningsRepo,

@@ -5,4 +5,5 @@ export const PAYMENT_LABEL: Record<BookingPaymentMethod, string> = {
   card: 'Card',
   upi: 'UPI',
   wallet: 'Wallet',
+  cash: 'Cash',
 };

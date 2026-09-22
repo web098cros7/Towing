@@ -29,9 +29,9 @@ const NO_ADDRESS = '—';
  * The two points travel as `pickupPoint` / `dropPoint`: nothing draws them, but
  * 10's recent places read a past trip's addresses back from this list.
  *
- * The contract has NO driver fields on a booking (the driver, plate, rating and
- * photo live on `GET /bookings/:id/tracking`), so those map to `null` here and
- * the screens that draw a driver read the tracking payload instead.
+ * The contract now carries the driver on the booking itself (`driver:
+ * TrackedDriver | null`), so the plate, name and rating map straight across;
+ * the tracking payload still carries the live position and the make/model.
  */
 function toBooking(api: ApiBooking): Booking {
   return {
@@ -48,18 +48,23 @@ function toBooking(api: ApiBooking): Booking {
     farePaise: api.breakdown.totalPaise,
     routeTone: api.status === 'completed' || api.status === 'paid' ? 'success' : 'info',
     truckImage: null,
-    vehiclePlate: null,
-    driverName: null,
-    driverRating: null,
+    vehiclePlate: api.driver?.vehiclePlate ?? null,
+    driverName: api.driver?.name ?? null,
+    driverRating: api.driver?.rating ?? null,
   };
 }
 
 /**
- * `bookingDetailSchema` → the app's `BookingDetail`. Fields the contract does not
- * carry (payment method, the driver's photo and trip count, the trip duration) are
- * `null`, which every screen already treats as "not known".
+ * `bookingDetailSchema` → the app's `BookingDetail`. The contract now carries
+ * the payment method, the driver's photo and trip count, and the six trip
+ * instants; `durationMinutes` is derived from `startedAt` and `completedAt`.
  */
 function toBookingDetail(api: ApiBookingDetail): BookingDetail {
+  const { startedAt, completedAt } = api;
+  const durationMinutes =
+    startedAt !== null && completedAt !== null
+      ? Math.max(1, Math.round((Date.parse(completedAt) - Date.parse(startedAt)) / 60000))
+      : null;
   return {
     ...toBooking(api),
     distanceKm: api.distanceKm,
@@ -79,10 +84,16 @@ function toBookingDetail(api: ApiBookingDetail): BookingDetail {
     cancellationFeePaise: api.cancellationFeePaise,
     otpAvailable: api.otpAvailable,
     search: api.search,
-    paymentMethod: null,
-    driverPhoto: null,
-    driverTrips: null,
-    durationMinutes: null,
+    paymentMethod: api.paymentMethod,
+    driverPhoto: api.driver?.photoUrl ?? null,
+    driverTrips: api.driver?.totalTrips ?? null,
+    paidAt: api.paidAt,
+    assignedAt: api.assignedAt,
+    enRouteAt: api.enRouteAt,
+    arrivedAt: api.arrivedAt,
+    startedAt: api.startedAt,
+    completedAt: api.completedAt,
+    durationMinutes,
   };
 }
 

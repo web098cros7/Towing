@@ -38,6 +38,9 @@ export interface TrackingBookingRow {
   driverVehicleClass: string | null;
   driverLastPingAt: Date | null;
   truckPlate: string | null;
+  truckMake: string | null;
+  truckModel: string | null;
+  enRouteAt: Date | string | null;
 }
 
 /**
@@ -100,6 +103,9 @@ export class TrackingRepo {
         driverVehicleClass: drivers.vehicleClass,
         driverLastPingAt: drivers.lastPingAt,
         truckPlate: fleetTrucks.plate,
+        truckMake: fleetTrucks.make,
+        truckModel: fleetTrucks.model,
+        enRouteAt: sql<Date | string | null>`(select min(h.created_at) from booking_status_history h where h.booking_id = ${bookings.id} and h.status = 'en_route')`,
       })
       .from(bookings)
       .leftJoin(drivers, eq(drivers.id, bookings.driverId))

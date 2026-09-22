@@ -32,6 +32,10 @@ ALTER TABLE "app_config" ADD COLUMN "referee_reward_paise" integer DEFAULT 10000
 ALTER TABLE "app_config" ADD CONSTRAINT "ck_app_config_referrer_reward_paise" CHECK ("referrer_reward_paise" >= 0);--> statement-breakpoint
 ALTER TABLE "app_config" ADD CONSTRAINT "ck_app_config_referee_reward_paise" CHECK ("referee_reward_paise" >= 0);--> statement-breakpoint
 
+-- Figma 18/20's vehicle card: the truck's make and model. Nullable: fleets fill them in.
+ALTER TABLE "fleet_trucks" ADD COLUMN "make" text;--> statement-breakpoint
+ALTER TABLE "fleet_trucks" ADD COLUMN "model" text;--> statement-breakpoint
+
 CREATE TABLE "referral_codes" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"code" text NOT NULL,

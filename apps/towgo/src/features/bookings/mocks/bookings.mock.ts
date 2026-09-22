@@ -17,6 +17,32 @@ import type { Booking, BookingDetail } from '../types';
 const iso = (day: number, hour: number, minute: number): string =>
   new Date(Date.UTC(2026, 4, day, hour - 5, minute - 30)).toISOString();
 
+/**
+ * The six trip instants for a completed fixture, derived from its `createdAt`:
+ * assigned +2 min, en route +3, arrived +15, started +18, completed = started
+ * + `durationMinutes`, paid = completed + 2 min.
+ */
+function completedInstants(
+  createdAt: string,
+  durationMinutes: number,
+): Pick<
+  BookingDetail,
+  'assignedAt' | 'enRouteAt' | 'arrivedAt' | 'startedAt' | 'completedAt' | 'paidAt'
+> {
+  const base = Date.parse(createdAt);
+  const at = (minutes: number) => new Date(base + minutes * 60_000).toISOString();
+  const startedAt = at(18);
+  const completedAt = new Date(Date.parse(startedAt) + durationMinutes * 60_000).toISOString();
+  return {
+    assignedAt: at(2),
+    enRouteAt: at(3),
+    arrivedAt: at(15),
+    startedAt,
+    completedAt,
+    paidAt: new Date(Date.parse(completedAt) + 2 * 60_000).toISOString(),
+  };
+}
+
 export const bookingDetailsMock: BookingDetail[] = [
   {
     id: 'b1',
@@ -55,6 +81,7 @@ export const bookingDetailsMock: BookingDetail[] = [
     driverPhoto: null,
     driverTrips: 128,
     durationMinutes: 45,
+    ...completedInstants(iso(17, 10, 30), 45),
   },
   {
     id: 'b4',
@@ -93,6 +120,7 @@ export const bookingDetailsMock: BookingDetail[] = [
     driverPhoto: null,
     driverTrips: 76,
     durationMinutes: 55,
+    ...completedInstants(iso(16, 16, 20), 55),
   },
   {
     id: 'b2',
@@ -131,6 +159,7 @@ export const bookingDetailsMock: BookingDetail[] = [
     driverPhoto: null,
     driverTrips: 214,
     durationMinutes: 35,
+    ...completedInstants(iso(15, 11, 45), 35),
   },
   {
     id: 'b3',
@@ -169,6 +198,7 @@ export const bookingDetailsMock: BookingDetail[] = [
     driverPhoto: null,
     driverTrips: 96,
     durationMinutes: 80,
+    ...completedInstants(iso(9, 18, 15), 80),
   },
 ];
 

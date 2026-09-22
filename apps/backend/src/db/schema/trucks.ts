@@ -15,6 +15,9 @@ export const fleetTrucks = pgTable(
     type: vehicleClassEnum('type').notNull(),
     plate: text('plate').notNull(),
     capacity: text('capacity'),
+    // Figma 18/20's vehicle card: the truck's make and model. Nullable: fleets fill them in.
+    make: text('make'),
+    model: text('model'),
     currentLocation: geographyPoint('current_location'),
     lastPingAt: timestamp('last_ping_at', { withTimezone: true }),
     // `non_compliant` is what excludes a truck from dispatch (§3.2).
