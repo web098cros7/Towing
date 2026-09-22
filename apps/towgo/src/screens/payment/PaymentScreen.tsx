@@ -145,9 +145,12 @@ export function PaymentScreen() {
       );
     } else if (outcome.kind === 'failed') {
       setFailure(outcome.failure);
+    } else if (outcome.kind === 'cash') {
+      // 31b · Pay Cash to Driver: the driver confirms the cash, and 31b polls for that.
+      navigation.navigate('PayCash', { bookingId, amountPaise: outcome.amountPaise });
     }
     // 'stay': nothing drawn; 27 (or 29, after a dismissed Try Again) stays as it is.
-  }, [bookingId, method, payWith]);
+  }, [bookingId, method, navigation, payWith]);
 
   /** A tap selects a row. */
   const selectMethod = useCallback(

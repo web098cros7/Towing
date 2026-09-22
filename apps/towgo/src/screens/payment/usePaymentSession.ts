@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ErrorCodes,
@@ -50,6 +51,12 @@ export type PaymentOutcome =
     }
   /** A definite decline: 29 · Payment Failed. */
   | { kind: 'failed'; failure: PaymentFailure }
+  /**
+   * Cash chosen: 31b · Pay Cash to Driver. The booking is NOT paid yet — the driver confirms
+   * the cash in the driver app, and 31b polls until it turns `paid`. `amountPaise` is what the
+   * customer hands over (the booking's total).
+   */
+  | { kind: 'cash'; amountPaise: number }
   /**
    * Nothing to show: the customer closed the checkout (not a failure), the payment could not
    * start, or the bank is still confirming. Stay where you are (29 spec D3; not drawn).
@@ -190,23 +197,22 @@ export function usePaymentSession(bookingId: string) {
     async (method: PaymentMethodKind): Promise<PaymentOutcome> => {
       if (payingRef.current) return { kind: 'stay' };
 
-      // Cash: no gateway, no intent. The booking becomes `paid` when the DRIVER confirms.
+      // Cash: no gateway, no intent. The booking becomes `paid` when the DRIVER confirms, so
+      // the screen (31b) polls for that; this call only records the choice.
       if (method === 'cash') {
         payingRef.current = true;
         setPaying(true);
         let outcome: PaymentOutcome = { kind: 'stay' };
         try {
           const cash = await chooseCash({ bookingId });
-          const paid = await pollBookingPaid(bookingId);
-          if (paid) outcome = paidOutcome('cash', null, cash.amountPaise);
+          outcome = { kind: 'cash', amountPaise: cash.amountPaise };
           return outcome;
         } catch {
+          Alert.alert('Could not choose cash', 'Please try again.');
           return outcome;
         } finally {
-          if (outcome.kind !== 'paid') {
-            payingRef.current = false;
-            setPaying(false);
-          }
+          payingRef.current = false;
+          setPaying(false);
         }
       }
 
@@ -303,23 +309,6 @@ function paidOutcome(
   return { kind: 'paid', method, transactionId, paidAt: new Date().toISOString(), amountPaise };
 }
 
-/**
- * Polls the booking until it turns `paid`, every 3 s, up to 10 minutes. Used after `chooseCash`:
- * the booking becomes `paid` when the DRIVER confirms the cash, which can take a while.
- */
-async function pollBookingPaid(bookingId: string): Promise<boolean> {
-  const deadline = Date.now() + 10 * 60 * 1000;
-  while (Date.now() < deadline) {
-    try {
-      const booking = await bookingsDataSource.getBooking(bookingId);
-      if (booking?.status === 'paid') return true;
-    } catch {
-      // A transient read failure is not a "not paid": keep polling.
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, 3_000));
-  }
-  return false;
-}
 
 function failedOutcome(
   method: PaymentMethodKind,

@@ -105,6 +105,13 @@ export type RootStackParamList = {
     };
   };
   /**
+   * Figma 31b · Pay Cash to Driver. Shown after the customer chooses Cash on 27 and taps Pay,
+   * until the DRIVER confirms the cash in the driver app. Polls the booking every 3 s and
+   * resets to `[Tabs, PaymentSuccess]` once it turns `paid`. Back and "Pay Online Instead"
+   * both return to 27, where Cash is still selected.
+   */
+  PayCash: { bookingId: string; amountPaise: number };
+  /**
    * Figma 26 · Emergency: a pushed root screen with no tab bar, signed-in only. `bookingId` is the
    * trip to share; without it the screen falls back to the active booking. Figma draws no caller
    * (26 spec, Data gap 1): 25 Trip in Progress's Help chip opens it, an owner decision (26

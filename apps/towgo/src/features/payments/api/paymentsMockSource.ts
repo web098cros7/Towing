@@ -278,17 +278,21 @@ export const paymentsMockSource: PaymentsDataSource = {
   },
 
   /**
-   * 27's Cash. The mock marks the booking paid immediately, the way `capture`
-   * does, so test mode shows 31 after cash. The amount is the booking's total
-   * (or 0 when the booking cannot be read).
+   * 27's Cash. The mock does NOT mark the booking paid immediately: the driver
+   * confirms the cash in the driver app, so the booking is scheduled to turn
+   * `paid` 8 s later. That gives test mode time to show 31b · Pay Cash to
+   * Driver, then 31 · Payment Successful. The amount is the booking's total
+   * (or the fallback when the booking cannot be read).
    */
   async chooseCash(bookingId: string): Promise<CashPaymentResponse> {
     await delay(400);
     if (env.mockPaymentState === 'error') throw new Error('Could not record the cash payment');
 
     const amountPaise = await bookingTotalPaise(bookingId);
-    paid.add(bookingId);
-    recordMockPaid(bookingId);
+    setTimeout(() => {
+      paid.add(bookingId);
+      recordMockPaid(bookingId);
+    }, 8000);
 
     return {
       paymentId: `mock-cash-${bookingId}`,

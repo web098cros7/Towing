@@ -22,6 +22,7 @@ import { TrackingScreen } from '@/screens/booking/TrackingScreen';
 import { ChatWithDriverScreen } from '@/screens/booking/ChatWithDriverScreen';
 import { PaymentScreen } from '@/screens/payment/PaymentScreen';
 import { PaymentSuccessScreen } from '@/screens/payment/PaymentSuccessScreen';
+import { PayCashScreen } from '@/screens/payment/PayCashScreen';
 import { EmergencyScreen } from '@/screens/emergency/EmergencyScreen';
 import { BookingDetailsScreen } from '@/screens/bookings/BookingDetailsScreen';
 import { PersonalInformationScreen } from '@/screens/account/PersonalInformationScreen';
@@ -303,6 +304,21 @@ export function RootNavigator() {
               <Stack.Screen
                 name="PaymentSuccess"
                 component={PaymentSuccessScreen}
+                options={{
+                  animation: 'fade',
+                  gestureEnabled: false,
+                  animationDuration: motion.duration.slow,
+                  contentStyle: { backgroundColor: mitowColors.surfacePage },
+                }}
+              />
+              {/*
+                Figma 31b: pushed from 27 when the customer chooses Cash and taps Pay. Same
+                options as 30 — the fade matches the status hand-off, and no back swipe keeps
+                the customer from swiping away while the driver is confirming.
+              */}
+              <Stack.Screen
+                name="PayCash"
+                component={PayCashScreen}
                 options={{
                   animation: 'fade',
                   gestureEnabled: false,
