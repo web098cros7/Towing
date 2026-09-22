@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { splitPoolN } from '@towing/api-contracts';
 import { createRng } from '../../db/seed/pricing';
-import { computeSettlement } from './settlement';
+import { computeSettlement, projectEarnings } from './settlement';
 
 /**
  * The §7.5 worked examples are the acceptance vectors for this whole phase:
@@ -54,6 +54,25 @@ describe('computeSettlement — §7.5 worked vectors', () => {
   });
 });
 
+describe('computeSettlement — locked commission percentage', () => {
+  it('uses the LOCKED pct (7.5%) rather than the band default (10%)', () => {
+    const s = computeSettlement({
+      totalPaise: 200_000,
+      band: 'A',
+      commissionPct: 7.5,
+      driverSharePct: null,
+    });
+    expect(s.commissionPaise).toBe(15_000);
+    expect(s.poolPaise).toBe(185_000);
+  });
+
+  it('falls back to the band default when no pct is locked', () => {
+    const s = computeSettlement({ totalPaise: 200_000, band: 'A', driverSharePct: null });
+    expect(s.commissionPaise).toBe(20_000); // 10% of 200_000
+    expect(s.poolPaise).toBe(180_000);
+  });
+});
+
 describe('computeSettlement — edge cases', () => {
   it('drops a zero leg rather than writing one the CHECK constraint would reject', () => {
     const allDriver = computeSettlement({ totalPaise: 100_000, band: 'A', driverSharePct: 100 });
@@ -92,6 +111,73 @@ describe('computeSettlement — edge cases', () => {
       expect(s.legs.reduce((sum, l) => sum + l.amountPaise, 0)).toBe(s.poolPaise);
       expect(s.legs.every((l) => l.amountPaise > 0)).toBe(true);
     }
+  });
+});
+
+describe('projectEarnings — the driver-facing projection', () => {
+  it('projects gross/commission/net from the LOCKED pct on a tax-free booking', () => {
+    const p = projectEarnings({
+      totalRupees: '2000.00',
+      taxRupees: '0',
+      band: 'A',
+      commissionPct: '10.00',
+    });
+    expect(p.grossPaise).toBe(200_000);
+    expect(p.commissionPaise).toBe(20_000);
+    expect(p.netPaise).toBe(180_000);
+    expect(p.band).toBe('A');
+    expect(p.commissionPct).toBe(10);
+  });
+
+  it('uses the TAXABLE amount (total − tax) as gross', () => {
+    const p = projectEarnings({
+      totalRupees: '2180.00',
+      taxRupees: '180.00',
+      band: 'A',
+      commissionPct: '10.00',
+    });
+    expect(p.grossPaise).toBe(200_000);
+    expect(p.commissionPaise).toBe(20_000);
+    expect(p.netPaise).toBe(180_000);
+  });
+
+  it('equals the pool computeSettlement will credit, for any inputs', () => {
+    const cases: Array<{
+      totalRupees: string;
+      taxRupees: string | null;
+      band: 'A' | 'B' | 'C' | null;
+      commissionPct: string | number | null;
+    }> = [
+      { totalRupees: '2000.00', taxRupees: '0', band: 'A', commissionPct: '10.00' },
+      { totalRupees: '2180.00', taxRupees: '180.00', band: 'A', commissionPct: '10.00' },
+      { totalRupees: '4499.00', taxRupees: '0', band: 'A', commissionPct: 7.5 },
+      { totalRupees: '5998.80', taxRupees: '0', band: 'B', commissionPct: null },
+      { totalRupees: '40000.00', taxRupees: '0', band: 'C', commissionPct: null },
+    ];
+
+    for (const c of cases) {
+      const p = projectEarnings(c);
+      const s = computeSettlement({
+        totalPaise: p.grossPaise,
+        band: c.band ?? 'A',
+        commissionPct: p.commissionPct,
+        driverSharePct: null,
+      });
+      expect(p.netPaise).toBe(s.poolPaise);
+      expect(p.commissionPaise).toBe(s.commissionPaise);
+    }
+  });
+
+  it('null pct and null band → zero commission, net = gross', () => {
+    const p = projectEarnings({
+      totalRupees: '1000.00',
+      taxRupees: '0',
+      band: null,
+      commissionPct: null,
+    });
+    expect(p.grossPaise).toBe(100_000);
+    expect(p.commissionPaise).toBe(0);
+    expect(p.netPaise).toBe(100_000);
   });
 });
 

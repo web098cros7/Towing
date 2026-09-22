@@ -20,6 +20,7 @@ import { DriverGateway } from '../driver-presence/driver.gateway';
 import { PresenceStore } from '../driver-presence/presence-store';
 import { EtaService } from '../tracking/eta.service';
 
+import { projectEarnings } from '../money/settlement';
 import { CandidateSelectionService, type ScoredCandidate } from './candidate-selection.service';
 import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
 
@@ -646,27 +647,30 @@ function reference(bookingId: string): string {
 }
 
 /**
- * The gross → commission → net triple, from the values LOCKED at confirm.
+ * The gross → commission → net triple, PROJECTED from the values LOCKED at
+ * confirm — the same arithmetic settlement will run at capture time.
  *
  * Never recomputed from live config: §3.4 locks the fare and the commission
  * percentage at the moment the customer confirms, precisely so an admin editing
  * the rate card mid-search cannot change what a driver is offered — or, worse,
  * offer one number and pay another.
+ *
+ * The amounts are projected from the locked percentage (via `projectEarnings`)
+ * rather than read from `commission_amount`/`driver_payout`, which stay at
+ * '0.00' until settlement.
  */
 function earningsOf(booking: {
   total: string;
+  taxAmount: string;
   commissionBand: 'A' | 'B' | 'C' | null;
   commissionPct: string | null;
-  commissionAmount: string;
-  driverPayout: string;
 }): JobOffer['earnings'] {
-  return {
-    grossPaise: rupeeStringToPaise(booking.total),
+  return projectEarnings({
+    totalRupees: booking.total,
+    taxRupees: booking.taxAmount,
     band: booking.commissionBand,
-    commissionPct: booking.commissionPct === null ? null : Number(booking.commissionPct),
-    commissionPaise: rupeeStringToPaise(booking.commissionAmount),
-    netPaise: rupeeStringToPaise(booking.driverPayout),
-  };
+    commissionPct: booking.commissionPct,
+  });
 }
 
 /** First name only on an offer — full identity is earned by assignment, not consideration. */

@@ -4,6 +4,7 @@ import type { DriverJob, JobStatus } from '@towing/api-contracts';
 import { rupeeStringToPaise } from '@towing/api-contracts';
 import { DB, type Database } from '../../db/db.module';
 import { bookings, drivers, users } from '../../db/schema';
+import { projectEarnings } from '../money/settlement';
 
 /** The booking as the §5.2 machine needs it — authorisation, timing and the locked money. */
 export interface JobRow {
@@ -104,28 +105,22 @@ export class JobExecutionRepo {
     if (!row) return null;
     const booking = row.booking;
 
-    const grossPaise = rupeeStringToPaise(booking.total);
-    const commissionPct = booking.commissionPct === null ? null : Number(booking.commissionPct);
-    // Recomputed from the LOCKED percentage rather than read from
+    // Projected from the LOCKED percentage rather than read from
     // `commission_amount`, which stays at zero until Phase 19 captures payment.
     // The driver is entitled to see what they earned the moment they finish,
     // not once somebody pays.
-    const commissionPaise =
-      commissionPct === null ? 0 : Math.round((grossPaise * commissionPct) / 100);
-
     return {
       bookingId: booking.id,
       reference: `TW-${booking.id.slice(0, 8).toUpperCase()}`,
       status: booking.status,
       serviceType: booking.serviceType,
       vehicleClass: booking.vehicleClass,
-      earnings: {
-        grossPaise,
+      earnings: projectEarnings({
+        totalRupees: booking.total,
+        taxRupees: booking.taxAmount,
         band: booking.commissionBand,
-        commissionPct,
-        commissionPaise,
-        netPaise: grossPaise - commissionPaise,
-      },
+        commissionPct: booking.commissionPct,
+      }),
       pickup: { lat: booking.pickupLat, lng: booking.pickupLng },
       pickupAddress: booking.pickupAddress,
       drop:

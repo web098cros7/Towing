@@ -211,6 +211,8 @@ export class LedgerService {
     bookingId: string;
     totalPaise: number;
     band: Band;
+    /** The percentage LOCKED on the booking; null falls back to the band default. */
+    commissionPct?: number | null;
     driverId: string;
     /** Null for an independent driver — the whole pool is one `fare_credit`. */
     fleet: { fleetId: string; driverSharePct: number } | null;
@@ -218,6 +220,7 @@ export class LedgerService {
     const settlement = computeSettlement({
       totalPaise: input.totalPaise,
       band: input.band,
+      commissionPct: input.commissionPct ?? null,
       driverSharePct: input.fleet?.driverSharePct ?? null,
     });
 

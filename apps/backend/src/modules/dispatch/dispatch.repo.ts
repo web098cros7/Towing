@@ -95,6 +95,7 @@ export interface DispatchBookingRow {
   total: string;
   commissionBand: 'A' | 'B' | 'C' | null;
   commissionPct: string | null;
+  taxAmount: string;
   commissionAmount: string;
   driverPayout: string;
   note: string | null;
@@ -161,6 +162,7 @@ export class DispatchRepo {
         total: bookings.total,
         commissionBand: bookings.commissionBand,
         commissionPct: bookings.commissionPct,
+        taxAmount: bookings.taxAmount,
         commissionAmount: bookings.commissionAmount,
         driverPayout: bookings.driverPayout,
         note: bookings.note,

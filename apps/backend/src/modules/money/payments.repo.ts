@@ -41,6 +41,8 @@ export interface SettlementInputsRow {
   fleetId: string | null;
   driverSharePct: number | null;
   band: Band | null;
+  /** The percentage LOCKED on the booking at confirm; null falls back to the band default. */
+  commissionPct: number | null;
   totalRupees: string;
   taxRupees: string;
   paymentId: string | null;
@@ -294,7 +296,7 @@ export class PaymentsRepo {
   ): Promise<SettlementInputsRow | null> {
     const rows = (await tx.execute(sql`
       select b.id, b.status, b.user_id, b.driver_id, b.fleet_id,
-             b.commission_band, b.total, b.tax_amount,
+             b.commission_band, b.commission_pct, b.total, b.tax_amount,
              fds.driver_share as driver_share_pct,
              p.id as payment_id, p.amount as payment_amount, p.wallet_applied
         from bookings b
@@ -320,6 +322,10 @@ export class PaymentsRepo {
           ? null
           : Number(row.driver_share_pct),
       band: (row.commission_band as Band | null) ?? null,
+      commissionPct:
+        row.commission_pct === null || row.commission_pct === undefined
+          ? null
+          : Number(row.commission_pct),
       totalRupees: row.total as string,
       taxRupees: (row.tax_amount as string | null) ?? '0',
       paymentId: (row.payment_id as string | null) ?? null,

@@ -1,4 +1,10 @@
-import { commissionPaise, splitPool, type Band } from '@towing/api-contracts';
+import {
+  commissionPaise,
+  commissionPaiseAtPct,
+  rupeeStringToPaise,
+  splitPool,
+  type Band,
+} from '@towing/api-contracts';
 
 /**
  * §14.3 booking settlement, as pure arithmetic: gross → commission → pool →
@@ -26,6 +32,11 @@ import { commissionPaise, splitPool, type Band } from '@towing/api-contracts';
 export interface SettlementInput {
   totalPaise: number;
   band: Band;
+  /**
+   * The percentage LOCKED on the booking at confirm. When null/absent the
+   * band's launch default `BAND_PCT` applies — only old fixtures hit that.
+   */
+  commissionPct?: number | null;
   /** Null for an independent driver — the whole pool is one `fare_credit`. */
   driverSharePct: number | null;
 }
@@ -43,13 +54,18 @@ export interface Settlement {
 }
 
 export function computeSettlement(input: SettlementInput): Settlement {
-  const { totalPaise, band, driverSharePct } = input;
+  const { totalPaise, band, driverSharePct, commissionPct } = input;
 
   if (!Number.isSafeInteger(totalPaise) || totalPaise < 0) {
     throw new Error(`Settlement needs a non-negative integer paise total, got ${totalPaise}`);
   }
 
-  const commission = commissionPaise(totalPaise, band);
+  // The LOCKED percentage wins when present; the band's launch default is the
+  // fallback for rows predating the lock (old fixtures only).
+  const commission =
+    commissionPct !== null && commissionPct !== undefined
+      ? commissionPaiseAtPct(totalPaise, commissionPct)
+      : commissionPaise(totalPaise, band);
   // §7: "driver net = total − commission (so the two always sum exactly)".
   const pool = totalPaise - commission;
 
@@ -90,5 +106,53 @@ export function computeSettlement(input: SettlementInput): Settlement {
     fleetSharePaise: fleetPaise,
     driverSharePaise: driverPaise,
     legs,
+  };
+}
+
+/**
+ * What the driver is shown on the offer card and the current-job screen BEFORE
+ * payment — and it equals the pool settlement will credit, because it is the
+ * same arithmetic on the same inputs.
+ *
+ * `grossPaise` is the TAXABLE amount (total − tax): GST is nobody's money, so
+ * the commission and the pool are computed on the taxable base, exactly as
+ * `computeSettlement` does at capture time. Commission uses the percentage
+ * LOCKED on the booking when present, falling back to the band's launch
+ * default, and zero when neither is available.
+ */
+export function projectEarnings(input: {
+  totalRupees: string;
+  taxRupees: string | null;
+  band: Band | null;
+  commissionPct: string | number | null;
+}): {
+  grossPaise: number;
+  band: Band | null;
+  commissionPct: number | null;
+  commissionPaise: number;
+  netPaise: number;
+} {
+  const totalPaise = rupeeStringToPaise(input.totalRupees);
+  const taxPaise = input.taxRupees === null ? 0 : rupeeStringToPaise(input.taxRupees);
+  const grossPaise = totalPaise - taxPaise;
+
+  const commissionPct =
+    input.commissionPct === null || input.commissionPct === undefined
+      ? null
+      : Number(input.commissionPct);
+
+  const commission =
+    commissionPct !== null
+      ? commissionPaiseAtPct(grossPaise, commissionPct)
+      : input.band !== null
+        ? commissionPaise(grossPaise, input.band)
+        : 0;
+
+  return {
+    grossPaise,
+    band: input.band,
+    commissionPct,
+    commissionPaise: commission,
+    netPaise: grossPaise - commission,
   };
 }

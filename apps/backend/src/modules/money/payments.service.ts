@@ -567,6 +567,7 @@ export class PaymentsService {
     const settlement = computeSettlement({
       totalPaise: taxablePaise,
       band: inputs.band,
+      commissionPct: inputs.commissionPct,
       driverSharePct: inputs.fleetId ? (inputs.driverSharePct ?? 0) : null,
     });
 
@@ -575,6 +576,7 @@ export class PaymentsService {
       bookingId,
       totalPaise: taxablePaise,
       band: inputs.band,
+      commissionPct: inputs.commissionPct,
       driverId: inputs.driverId,
       fleet: inputs.fleetId
         ? { fleetId: inputs.fleetId, driverSharePct: inputs.driverSharePct ?? 0 }
