@@ -22,9 +22,9 @@ import {
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
 import { useBookingStore } from '@/features/booking/store/bookingStore';
 import type { BookingDetail } from '@/features/bookings/types';
+import { callDriver } from '@/features/calling/callDriver';
 import { openDriverChat } from '@/features/chat/openDriverChat';
 import { useInvoiceLink } from '@/features/payments/api/payments.queries';
-import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import type { RootStackParamList } from '@/navigation/types';
 import {
   displayDriver,
@@ -109,15 +109,7 @@ export function CompletedTripDetails({
   const paidAt = !unpaid && paidAtIso ? paidAtLabel(paidAtIso) : null;
 
   /** Call: the driver's number handed to the phone's dialer, exactly as 20 and 18 do. */
-  const onCall = useCallback(async () => {
-    try {
-      const contact = await trackingDataSource.contact(booking.id);
-      if (!contact.dialNumber) return;
-      await Linking.openURL(`tel:${contact.dialNumber}`);
-    } catch {
-      // Nothing drawn for a failure; the button stays available to try again.
-    }
-  }, [booking.id]);
+  const onCall = useCallback(() => void callDriver(booking.id), [booking.id]);
 
   /** Message: 22 Chat with Driver through the one shared action, as 20 does. */
   const onMessage = useCallback(

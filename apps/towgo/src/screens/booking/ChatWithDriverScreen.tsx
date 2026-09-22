@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   View,
   type ListRenderItemInfo,
@@ -11,8 +10,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MiChatBubble, MiDayPill, MiScreen, mitowColors, mitowLayout } from '@/design';
+import { callDriver } from '@/features/calling/callDriver';
 import { useChatMessages, useSendChatMessage } from '@/features/chat/api/chat.queries';
-import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import { useTracking } from '@/features/tracking/api/tracking.queries';
 import type { RootStackParamList } from '@/navigation/types';
 import { ChatComposer } from './chat/ChatComposer';
@@ -61,21 +60,13 @@ export function ChatWithDriverScreen() {
   const goBack = useCallback(() => navigation.goBack(), [navigation]);
 
   /**
-   * Call `292:2638`: 18's call action (`TrackingScreen`'s `contactDriver('tel')`),
-   * repeated here because 18 keeps it screen-local. The number comes from
-   * `contact()` and goes to the system dialer, which shows it before dialling. No
-   * dialog, warning or error is drawn, so a failed lookup or a missing number does
-   * nothing (22 Data gap 13).
+   * Call `292:2638`: 18's call action, through the shared `callDriver` helper.
+   * The number comes from `contact()` and goes to the system dialer; when it is
+   * unmasked the helper warns first, because the driver's real number is about
+   * to be dialled and shown. A failed lookup or a missing number does nothing
+   * (22 Data gap 13).
    */
-  const onCall = useCallback(async () => {
-    try {
-      const contact = await trackingDataSource.contact(bookingId);
-      if (!contact.dialNumber) return;
-      await Linking.openURL(`tel:${contact.dialNumber}`);
-    } catch {
-      // Nothing drawn for a failure; the button stays available to try again.
-    }
-  }, [bookingId]);
+  const onCall = useCallback(() => void callDriver(bookingId), [bookingId]);
 
   const onComposerSend = useCallback(
     (text: string) => {

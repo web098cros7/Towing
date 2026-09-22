@@ -123,13 +123,8 @@ export function AssignedJobScreen() {
     try {
       contact = await offersDataSource.contact(job.bookingId);
     } catch {
-      // The number on the job is the honest fallback — it is what the driver
-      // would have dialled before this route existed, and a customer standing
-      // beside a broken vehicle is worse off if the button simply fails.
-      contact = job.customerMobile
-        ? { dialNumber: job.customerMobile, masked: false, displayName: job.customerName }
-        : null;
-      if (!contact) return;
+      Alert.alert('Could not get the number', 'Try again in a moment.');
+      return;
     }
 
     if (!contact.dialNumber) return;
@@ -316,19 +311,8 @@ export function AssignedJobScreen() {
                   <Text weight="medium" numberOfLines={1} style={{ fontSize: 18, lineHeight: 25 }}>
                     {job.customerName ?? 'Customer'}
                   </Text>
-                  <Text style={{ fontSize: 14, lineHeight: 20, color: INK_SOFT }}>
-                    {/*
-                      The number is EARNED BY ASSIGNMENT (§11.9 in the other
-                      direction) — the offer carried a first name and nothing else.
-                      Phase 18 routes the CALL through `TelephonyPort`, but no
-                      masked-calling provider is provisioned yet
-                      (SETUP-CHECKLIST item 13), so the real number is still what
-                      gets dialled — behind a warning the customer’s app shows too.
-                    */}
-                    {job.customerMobile ?? 'Number available shortly'}
-                  </Text>
                 </View>
-                <ActionChip icon={Phone} label="Call" onPress={onCall} disabled={!job.customerMobile} />
+                <ActionChip icon={Phone} label="Call" onPress={onCall} />
                 <ActionChip
                   icon={MessageCircle}
                   label="Message"

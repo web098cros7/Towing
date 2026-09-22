@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, ScrollView, Share, View } from 'react-native';
+import { Alert, ScrollView, Share, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -21,8 +21,8 @@ import {
 } from '@/design';
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
 import { useBooking, useCancelBooking } from '@/features/bookings/api/bookings.queries';
+import { callDriver } from '@/features/calling/callDriver';
 import { openDriverChat } from '@/features/chat/openDriverChat';
-import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import { useShareTrip } from '@/features/tracking/api/tracking.queries';
 import { CancelTripSheet } from '@/features/tracking/components/CancelTripSheet';
 import { track } from '@/lib/analytics/analytics';
@@ -147,16 +147,8 @@ export function BookingDetailsScreen() {
     [bookingId, navigation],
   );
 
-  /** Call: the same as 18, the driver's number handed to the phone's dialer. */
-  const onCall = useCallback(async () => {
-    try {
-      const contact = await trackingDataSource.contact(bookingId);
-      if (!contact.dialNumber) return;
-      await Linking.openURL(`tel:${contact.dialNumber}`);
-    } catch {
-      // Nothing drawn for a failure; the button stays available to try again.
-    }
-  }, [bookingId]);
+  /** Call: the same as 18, through the shared `callDriver` helper (which warns on an unmasked number). */
+  const onCall = useCallback(() => void callDriver(bookingId), [bookingId]);
 
   /** Message: 22 Chat with Driver through the one shared action. */
   const onMessage = useCallback(

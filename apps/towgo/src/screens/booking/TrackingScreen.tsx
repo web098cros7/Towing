@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Linking,
   Platform,
   Share,
   useWindowDimensions,
@@ -37,9 +36,9 @@ import {
 } from '@/design';
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
 import { useBooking, useCancelBooking } from '@/features/bookings/api/bookings.queries';
+import { callDriver } from '@/features/calling/callDriver';
 import { openDriverChat } from '@/features/chat/openDriverChat';
 import { recordMockCodeShown } from '@/features/tracking/api/mockTripClock';
-import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import { useRevokeShare, useShareTrip } from '@/features/tracking/api/tracking.queries';
 import { BookingOtpCard } from '@/features/tracking/components/BookingOtpCard';
 import { CancelTripSheet } from '@/features/tracking/components/CancelTripSheet';
@@ -405,25 +404,17 @@ export function TrackingScreen() {
   const onStopSharing = useCallback(() => revokeShare.mutate(), [revokeShare]);
 
   /**
-   * Call (icon/phone) reaches the driver through `contact()` and hands the
-   * number to the system dialer, which shows it before anything is dialled. The
-   * design draws no dialog, warning or error, so none is added: a failed lookup
-   * or a missing number leaves the screen as it is (data gap 9).
+   * Call (icon/phone) reaches the driver through `callDriver`, which reads the
+   * number from `contact()` and hands it to the system dialer. When the number
+   * is unmasked — which is today, until a masked-calling provider exists — the
+   * helper warns first, because the driver's real number is about to be dialled
+   * and shown. A failed lookup or a missing number is still silent: the design
+   * draws no error state for it (data gap 9).
    *
    * Message (icon/message) opens 22 Chat with Driver on every screen here,
    * through `openDriverChat` — the in-app trip chat, live and in test mode.
    */
-  const callDriver = useCallback(async () => {
-    try {
-      const contact = await trackingDataSource.contact(bookingId);
-      if (!contact.dialNumber) return;
-      await Linking.openURL(`tel:${contact.dialNumber}`);
-    } catch {
-      // Nothing drawn for a failure; the button stays available to try again.
-    }
-  }, [bookingId]);
-
-  const onCall = useCallback(() => void callDriver(), [callDriver]);
+  const onCall = useCallback(() => void callDriver(bookingId), [bookingId]);
   const onMessage = useCallback(
     () => void openDriverChat(navigation, bookingId),
     [bookingId, navigation],

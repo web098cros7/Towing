@@ -109,7 +109,6 @@ export const offersMockSource: OffersDataSource = {
       dropAddress: offer.dropAddress,
       distanceKm: offer.distanceKm,
       customerName: offer.customerName,
-      customerMobile: '+919845020100',
       customerRating: offer.customerRating,
       note: offer.note,
       otpPending: true,

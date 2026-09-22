@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { Alert, Linking, ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -26,11 +26,11 @@ import {
 } from '@/design';
 import { bookingsKeys } from '@/features/bookings/api/bookings.keys';
 import { bookingsDataSource } from '@/features/bookings/api/bookingsDataSource';
+import { callDriver } from '@/features/calling/callDriver';
 import { serviceTitle } from '@/features/services/data/serviceTitles';
 import type { RootStackParamList } from '@/navigation/types';
 import { displayDriver, vehicleModelLabel } from '@/screens/booking/tracking/trackingDisplay';
 import { useBookingTracking } from '@/screens/bookings/booking-details/useBookingLive';
-import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
 import { formatPaise } from '@/utils/format';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -116,18 +116,16 @@ export function PayCashScreen() {
   }, [navigation]);
 
   /**
-   * "Call Driver": the same call BookingDetailsScreen makes — read the contact from the
-   * tracking payload, then open the dialer. A missing number or a failed open alerts.
+   * "Call Driver": the shared `callDriver` helper, which reads the contact from the
+   * server seam, warns on an unmasked number, and reports the outcome. This screen
+   * keeps its own copy for a missing number and a failed lookup, so there is only
+   * one contact lookup.
    */
-  const callDriver = useCallback(async () => {
-    try {
-      const contact = await trackingDataSource.contact(bookingId);
-      if (!contact?.dialNumber) {
-        Alert.alert('Could not call the driver', 'No phone number is available yet.');
-        return;
-      }
-      await Linking.openURL(`tel:${contact.dialNumber}`);
-    } catch {
+  const onCallDriver = useCallback(async () => {
+    const outcome = await callDriver(bookingId);
+    if (outcome === 'no-number') {
+      Alert.alert('Could not call the driver', 'No phone number is available yet.');
+    } else if (outcome === 'failed') {
       Alert.alert('Could not call the driver', 'Please try again.');
     }
   }, [bookingId]);
@@ -148,7 +146,7 @@ export function PayCashScreen() {
             paddingBottom: Math.max(insets.bottom, FOOTER_BOTTOM_GAP),
           }}
         >
-          <MiButton tone="dark" label="Call Driver" onPress={() => void callDriver()} />
+          <MiButton tone="dark" label="Call Driver" onPress={() => void onCallDriver()} />
           <MiButton tone="outline" label="Pay Online Instead" onPress={payOnline} />
         </View>
       }

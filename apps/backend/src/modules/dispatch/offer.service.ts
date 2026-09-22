@@ -495,7 +495,6 @@ export class OfferService {
       .select({
         booking: bookings,
         customerName: users.name,
-        customerMobile: users.mobile,
       })
       .from(bookings)
       .leftJoin(users, eq(users.id, bookings.userId))
@@ -527,10 +526,6 @@ export class OfferService {
       dropAddress: booking.dropAddress,
       distanceKm: booking.distanceKm === null ? null : Number(booking.distanceKm),
       customerName: row.customerName,
-      // Phase 18 replaces this with a masked number once telephony exists
-      // (SETUP-CHECKLIST). Until then the driver gets the real one, which is
-      // what makes the job completable and is recorded as a known gap.
-      customerMobile: row.customerMobile,
       customerRating: null,
       note: booking.note,
       // §5.1's collection OTP is held by the CUSTOMER and typed by the driver;

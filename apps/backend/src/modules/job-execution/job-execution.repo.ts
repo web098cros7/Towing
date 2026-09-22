@@ -132,8 +132,6 @@ export class JobExecutionRepo {
       dropAddress: booking.dropAddress,
       distanceKm: booking.distanceKm === null ? null : Number(booking.distanceKm),
       customerName: row.customerName,
-      // The call button is gone once the trip is over; the number goes with it.
-      customerMobile: null,
       customerRating: null,
       note: booking.note,
       otpPending: false,

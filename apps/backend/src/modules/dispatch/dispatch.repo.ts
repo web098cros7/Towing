@@ -103,7 +103,6 @@ export interface DispatchBookingRow {
   dispatchDeadlineAt: Date | null;
   scheduledAt: Date | null;
   customerName: string | null;
-  customerMobile: string | null;
   longDistance: boolean;
 }
 
@@ -170,7 +169,6 @@ export class DispatchRepo {
         dispatchDeadlineAt: bookings.dispatchDeadlineAt,
         scheduledAt: bookings.scheduledAt,
         customerName: users.name,
-        customerMobile: users.mobile,
       })
       .from(bookings)
       .leftJoin(services, eq(services.serviceType, bookings.serviceType))

@@ -146,8 +146,6 @@ export const driverJobSchema = z.object({
   ...jobLegSchema.shape,
 
   customerName: z.string().nullable(),
-  /** E.164. Phase 18 replaces this with a masked number once telephony exists. */
-  customerMobile: z.string().nullable(),
   customerRating: z.number().nullable(),
   note: z.string().nullable(),
 
