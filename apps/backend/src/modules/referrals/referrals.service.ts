@@ -7,8 +7,8 @@ import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { DB, type Database } from '../../db/db.module';
 import { LedgerService } from '../../db/ledger/ledger.service';
 import type { LedgerLeg } from '../../db/ledger/ledger.types';
+import { ENV, type Env } from '../../config/env';
 
-const SHARE_BASE_URL = 'https://mitow.in/r/';
 const SUFFIX_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const DEFAULT_REWARD_PAISE = 10000;
 
@@ -22,6 +22,7 @@ export class ReferralsService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly ledger: LedgerService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   private async rewards(): Promise<{ referrerRewardPaise: number; refereeRewardPaise: number }> {
@@ -90,9 +91,13 @@ export class ReferralsService {
     `)) as unknown as Array<unknown>;
     const hasBookings = bookingRows.length > 0;
 
+    // The same origin that serves `/t/` share links. Pointing it at
+    // `app.mitow.in` later moves both surfaces together.
+    const shareBase = this.env.PUBLIC_TRACK_BASE_URL.replace(/\/$/, '');
+
     return {
       code,
-      shareUrl: SHARE_BASE_URL + code,
+      shareUrl: `${shareBase}/r/${code}`,
       referrerRewardPaise,
       refereeRewardPaise,
       invitedCount: counts[0]?.invited ?? 0,

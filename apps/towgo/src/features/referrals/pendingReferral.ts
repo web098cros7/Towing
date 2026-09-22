@@ -13,6 +13,7 @@ const CODE_PATTERN = /^[A-Za-z0-9]{4,20}$/;
  *   - moveyo:///r/CODE
  *   - https://mitow.in/r/CODE
  *   - https://www.mitow.in/r/CODE
+ *   - https://app.mitow.in/r/CODE
  * Returns the code uppercased, or null when the URL is not a referral link.
  */
 export function parseReferralCode(url: string): string | null {
@@ -22,7 +23,8 @@ export function parseReferralCode(url: string): string | null {
     const parsed = new URL(url);
     const host = parsed.hostname.toLowerCase();
     const isCustomScheme = parsed.protocol === 'moveyo:';
-    const isWebHost = host === 'mitow.in' || host === 'www.mitow.in';
+    const isWebHost =
+      host === 'mitow.in' || host === 'www.mitow.in' || host === 'app.mitow.in';
     if (!isCustomScheme && !isWebHost) return null;
     path = parsed.pathname;
   } catch {

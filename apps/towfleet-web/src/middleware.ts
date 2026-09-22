@@ -22,10 +22,11 @@ function redirectTo(request: NextRequest, pathname: string, preserveNext = false
 }
 
 /**
- * §11.7's share-trip page — the ONE public route in this app (Phase 18).
+ * §11.7's share-trip page and Refer & Earn's invite page — the TWO public
+ * surfaces in this app (Phase 18, then Refer & Earn).
  *
  * THIS MIDDLEWARE IS DENY-BY-DEFAULT, which is the right posture for a fleet
- * console and is exactly why the share page needs an explicit branch: without
+ * console and is exactly why each public page needs an explicit branch: without
  * it, `/t/{token}` redirects to `/login`, and a customer's spouse following a
  * link at nine at night is asked for a fleet-owner password. The failure is
  * silent in development — anyone testing while logged in never sees it — which
@@ -33,14 +34,14 @@ function redirectTo(request: NextRequest, pathname: string, preserveNext = false
  *
  * A PREFIX, NOT A REGEX OVER THE TOKEN. The route itself validates the token's
  * shape and the API validates it again; a middleware that tried to would be a
- * third place the format lives.
+ * third place the format lives. The same holds for `/r/{code}`.
  */
 /**
  * Public brand assets (`/brand/logo.svg`) — the login pages themselves render
  * the wordmark while unauthenticated, so the asset must bypass the
  * deny-by-default redirect like the share-trip page does.
  */
-const PUBLIC_PREFIXES = ['/t/', '/brand/'];
+const PUBLIC_PREFIXES = ['/t/', '/r/', '/brand/'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
