@@ -40,6 +40,7 @@ const statusVariant: Record<JobStatus, 'info' | 'success' | 'error' | 'neutral' 
   cancelled: 'error',
   no_drivers_found: 'neutral',
   disputed: 'error',
+  refunded: 'neutral',
 };
 
 const columns: ColumnDef<Job, unknown>[] = [

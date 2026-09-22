@@ -258,6 +258,7 @@ export function mockSubjectExport(): AdminSubjectExportResponse {
       {
         policyType: 'privacy_policy',
         policyVersion: '2026-08-10',
+        action: 'granted',
         consentedAt: '2026-08-10T00:00:00.000Z',
       },
     ],

@@ -118,6 +118,8 @@ export const bookingStatusEnum = pgEnum('booking_status', [
   'cancelled',
   'no_drivers_found',
   'disputed',
+  /** Settled, then given back. `disputed` stays for a trip somebody contests. */
+  'refunded',
 ]);
 
 export const actorRoleEnum = pgEnum('actor_role', [

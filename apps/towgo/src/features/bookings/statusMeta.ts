@@ -7,7 +7,7 @@ import type { BookingStatus } from './types';
  * `icon` is only rendered by the details card's pill; the list card reads
  * `label`/`tone` and ignores it.
  *
- * TEN ENTRIES, matching `jobStatusSchema` exactly. An eleventh, `scheduled`,
+ * ELEVEN ENTRIES, matching `jobStatusSchema` exactly. Another, `scheduled`,
  * lived here until Phase 15 and could never be reached: no such
  * `booking_status` value exists, so no server could ever send it. §9.1.5's
  * "later" is now a badge derived from `scheduledAt` (`isScheduled`), which is
@@ -27,6 +27,10 @@ export const STATUS_META: Record<
   cancelled: { label: 'Cancelled', tone: 'error', icon: CircleX },
   no_drivers_found: { label: 'No Drivers Found', tone: 'error', icon: X },
   disputed: { label: 'Disputed', tone: 'warning', icon: CircleHelp },
+  // Not an error from the customer's side — they have their money back — so
+  // neutral rather than red. `Receipt` is deliberate: it is still a trip with
+  // a bill, just one that was reversed.
+  refunded: { label: 'Refunded', tone: 'neutral', icon: Receipt },
 };
 
 /** §9.1.5's "later", rendered beside the status rather than instead of it. */

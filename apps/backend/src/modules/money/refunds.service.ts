@@ -125,7 +125,7 @@ export class RefundsService {
      * compensating legs and the amount-aware payment update still run, only
      * the status write is skipped (A8).
      */
-    transitionTo: 'cancelled' | 'disputed' | null;
+    transitionTo: 'cancelled' | 'refunded' | 'disputed' | null;
     note?: string;
     /** W8: v2 key + `refunds.dispute_id` for dispute and finance-issued refunds. */
     keySource?: RefundKeySource;
@@ -447,7 +447,7 @@ export class RefundsService {
   private async resumeRefund(params: {
     refundId: string;
     bookingId: string;
-    transitionTo: 'cancelled' | 'disputed' | null;
+    transitionTo: 'cancelled' | 'refunded' | 'disputed' | null;
     reason: string;
     note?: string;
   }): Promise<void> {

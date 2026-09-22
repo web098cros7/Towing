@@ -1,14 +1,13 @@
-export type JobStatus =
-  | 'searching'
-  | 'assigned'
-  | 'en_route'
-  | 'arrived'
-  | 'in_progress'
-  | 'completed'
-  | 'paid'
-  | 'cancelled'
-  | 'no_drivers_found'
-  | 'disputed';
+/**
+ * Re-exported from the contract rather than retyped.
+ *
+ * It was a hand-written copy of the same union, which is how it came to be
+ * missing `refunded` the moment the contract gained one — a local copy of a
+ * server vocabulary drifts silently until something downstream fails to
+ * compile, and here that was a mock, not the console.
+ */
+export type { JobStatus } from '@towing/api-contracts';
+import type { JobStatus } from '@towing/api-contracts';
 
 export type Job = {
   id: string;
@@ -40,6 +39,7 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   cancelled: 'Cancelled',
   no_drivers_found: 'No drivers found',
   disputed: 'Disputed',
+  refunded: 'Refunded',
 };
 
 export const ACTIVE_JOB_STATUSES: JobStatus[] = [

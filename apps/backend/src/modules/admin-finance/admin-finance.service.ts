@@ -447,10 +447,12 @@ export class AdminFinanceService {
         bookingId: body.bookingId,
         reason: body.reason,
         initiatedBy: adminId,
-        // A paid booking leaves `paid` via A8's edge (`paid → disputed`);
-        // anything else (the cancelled-booking capture conflict) keeps its
-        // status and only the money moves.
-        transitionTo: booking.status === 'paid' ? 'disputed' : null,
+        // A paid booking leaves `paid` via A8's edge, which lands on
+        // `refunded` — it landed on `disputed` until 0037, which left the
+        // console showing disputes nobody had raised and the finance reports
+        // counting them. Anything else (the cancelled-booking capture
+        // conflict) keeps its status and only the money moves.
+        transitionTo: booking.status === 'paid' ? 'refunded' : null,
         keySource,
       });
     } else {

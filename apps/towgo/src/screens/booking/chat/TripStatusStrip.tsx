@@ -37,6 +37,7 @@ const OTHER_LABELS: Record<Exclude<JobStatus, 'assigned' | 'en_route'>, string> 
   cancelled: 'Trip cancelled',
   no_drivers_found: 'No driver found',
   disputed: 'Trip under review',
+  refunded: 'Trip refunded',
 };
 
 /*

@@ -1,11 +1,11 @@
 import type { IconComponent, StatusTone } from '@towing/ui';
-import { Check, X, Truck, Navigation, MapPin, Clock, Search, Receipt, CircleHelp } from '@/icons';
+import { Check, X, Truck, Navigation, MapPin, Clock, Search, Receipt, CircleHelp, RotateCcw } from '@/icons';
 import type { ChipTone } from '@/theme/driverColors';
 import type { JobStatus } from './types';
 
 /**
  * Chip glyph + tone + label per job status — the driver-app mirror of TowGo's
- * `features/bookings/statusMeta.ts`. Every one of the contract's ten statuses
+ * `features/bookings/statusMeta.ts`. Every one of the contract's statuses
  * has an entry: a `Record<JobStatus, …>` makes a missing one a compile error
  * rather than an `undefined` chip at runtime, which is the whole reason the
  * status vocabulary is widened before real job data flows.
@@ -24,6 +24,10 @@ export const JOB_STATUS_META: Record<
   cancelled: { label: 'Cancelled', tone: 'red', icon: X },
   no_drivers_found: { label: 'No Drivers Found', tone: 'red', icon: X },
   disputed: { label: 'Disputed', tone: 'orange', icon: CircleHelp },
+  // A refunded trip is one the driver drove and was paid for; the money came
+  // back from MiTow's side, and their settlement is reversed separately. Slate
+  // rather than red because it is not their failure.
+  refunded: { label: 'Refunded', tone: 'slate', icon: RotateCcw },
 };
 
 /**

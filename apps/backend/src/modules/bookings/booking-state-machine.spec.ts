@@ -221,7 +221,8 @@ describe('the status sets agree with each other and with the database', () => {
     // resting states that are neither — `completed` awaits settlement, and
     // `disputed` awaits a human. `no_drivers_found` is open-ish: §9.1.6 can
     // retry straight back into the search. `paid` rests here too since A8
-    // lifted it out of the terminal set so refunds can leave for `disputed`.
+    // lifted it out of the terminal set so refunds can leave for `refunded`,
+    // which is itself terminal — the money is back and nothing follows.
     const resting = ['completed', 'disputed', 'no_drivers_found', 'paid'];
     const accounted = new Set<string>([
       ...OPEN_BOOKING_STATUSES,

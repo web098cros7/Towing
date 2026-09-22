@@ -202,9 +202,11 @@ describe('W9 — admin finance console (/v1/admin/finance)', () => {
     expect(response.body.amountPaise).toBe(100_000);
     expect(response.body.status).toBe('processed');
 
-    // A8's landing: a refunded paid booking leaves `paid` for `disputed`
+    // A8's landing: a refunded paid booking leaves `paid` for `refunded`
+    // (it landed on `disputed` until 0037, which marked it as an argument
+    // nobody had had)
     // (`paid → cancelled` is not a legal edge, deliberately).
-    expect(await statusOf(bookingId)).toBe('disputed');
+    expect(await statusOf(bookingId)).toBe('refunded');
 
     const [payment] = (await db.execute(sql`
       select status, refunded_amount::text as refunded from payments where booking_id = ${bookingId}::uuid

@@ -24,6 +24,11 @@ export const privacyMockSource: PrivacyDataSource = {
 
   async recordConsent(policyType, policyVersion) {
     await delay(300);
-    consents.push({ policyType, policyVersion, consentedAt: new Date().toISOString() });
+    consents.push({
+      policyType,
+      policyVersion,
+      action: 'granted',
+      consentedAt: new Date().toISOString(),
+    });
   },
 };

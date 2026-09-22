@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { paiseSchema, unsignedPaiseSchema } from '../common/money';
 import { cursorEnvelopeSchema, cursorQuerySchema } from '../common/pagination';
 
-/** Full §5.1 machine — the DB has all ten; clients must render every one. */
+/** Full §5.1 machine — the DB has all eleven; clients must render every one. */
 export const jobStatusSchema = z.enum([
   'searching',
   'assigned',
@@ -14,6 +14,12 @@ export const jobStatusSchema = z.enum([
   'cancelled',
   'no_drivers_found',
   'disputed',
+  /**
+   * A full refund landed. Distinct from `disputed`, which means somebody is
+   * contesting the trip — a refund is a decision, not an argument, and the
+   * two were the same status until 0037.
+   */
+  'refunded',
 ]);
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 

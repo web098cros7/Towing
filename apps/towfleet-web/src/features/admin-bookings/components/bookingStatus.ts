@@ -17,6 +17,9 @@ export const BOOKING_STATUS_TONES: Record<JobStatus, StatusTone> = {
   paid: 'success',
   cancelled: 'neutral',
   disputed: 'warning',
+  // Neutral, not a warning: a refund is a closed decision, and colouring it
+  // amber would put it back in the pile of things somebody still has to work.
+  refunded: 'neutral',
 };
 
 /** The list's one-click "live problems" chip (§9.4.7). */
