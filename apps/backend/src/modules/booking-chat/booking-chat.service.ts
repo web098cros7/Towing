@@ -7,6 +7,7 @@ import {
 } from '@towing/api-contracts';
 import { and, asc, eq, isNull, ne } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
+import { NotificationService } from '../../common/notifications/notification.service';
 import { DB, type Database } from '../../db/db.module';
 import { bookingMessages, bookings } from '../../db/schema';
 import { ACTIVE_JOB_STATUSES } from '../bookings/booking-state-machine.service';
@@ -31,6 +32,7 @@ export class BookingChatService {
     @Inject(DB) private readonly db: Database,
     private readonly customerGateway: CustomerGateway,
     private readonly driverGateway: DriverGateway,
+    private readonly notifications: NotificationService,
   ) {}
 
   private async loadForCustomer(userId: string, bookingId: string) {
@@ -136,7 +138,39 @@ export class BookingChatService {
       );
     }
 
+    // Push is the second delivery surface: the socket reaches a foreground
+    // app, the push reaches a phone in a pocket. Best-effort — a notification
+    // failure must never fail a stored message.
+    try {
+      const preview = this.previewOf(body.body);
+      if (party.type === 'customer') {
+        await this.notifications.emit('chat.message_to_driver', {
+          bookingId: booking.id,
+          messageId: dto.id,
+          recipientId: booking.driverId,
+          preview,
+        });
+      } else {
+        await this.notifications.emit('chat.message_to_customer', {
+          bookingId: booking.id,
+          messageId: dto.id,
+          recipientId: booking.userId,
+          preview,
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `chat push failed for booking ${booking.id}: ${(error as Error).message}`,
+      );
+    }
+
     return dto;
+  }
+
+  /** The push body: the message trimmed, cut to 120 chars with an ellipsis. */
+  private previewOf(body: string): string {
+    const trimmed = body.trim();
+    return trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
   }
 
   private toDto(row: typeof bookingMessages.$inferSelect): BookingMessage {

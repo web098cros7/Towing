@@ -149,7 +149,22 @@ export class DispatchService implements OnModuleInit {
     holderDriverId?: string,
   ): Promise<void> {
     await this.offers.revokeAll(bookingId, reason);
-    if (holderDriverId) this.offers.notifyHolderRevoked(holderDriverId, bookingId);
+    if (holderDriverId) {
+      this.offers.notifyHolderRevoked(holderDriverId, bookingId);
+
+      // The socket frame above covers a foreground app; this covers a phone in
+      // a pocket. A notification failure must never fail the revoke — the
+      // booking is already cancelled and the offers are already dead.
+      if (reason === 'cancelled') {
+        try {
+          await this.notifications.emit('job.cancelled', { bookingId, driverId: holderDriverId });
+        } catch (error) {
+          this.logger.warn(
+            `job.cancelled notification failed for ${bookingId}: ${String(error)}`,
+          );
+        }
+      }
+    }
   }
 
   /**

@@ -17,6 +17,7 @@ import {
 } from '../../test/db';
 import { seedBooking } from '../../test/fixtures';
 import { closeTestRedis, flushTestRedis } from '../../test/redis';
+import { notificationEvents } from '../../db/schema';
 
 /**
  * Figma 24's chat thread (§9.1.10, §9.2.3).
@@ -145,6 +146,34 @@ describe('booking chat', () => {
         .expect(200);
 
       expect(second.body.items[0].readAt).not.toBeNull();
+    });
+  });
+
+  describe('push notifications', () => {
+    it('emits chat.message_to_driver on a customer message and chat.message_to_customer on a driver reply', async () => {
+      const { id, driverId } = await seedAssignedBooking();
+      const driverAuth = await driverAuthHeaderFor(app, { driverId });
+
+      await request(app.getHttpServer())
+        .post(`/v1/bookings/${id}/messages`)
+        .set('Authorization', auth)
+        .send({ body: 'Where are you?' })
+        .expect(201);
+
+      const afterCustomer = await db.select().from(notificationEvents);
+      expect(afterCustomer.map((row) => row.event)).toEqual(['chat.message_to_driver']);
+
+      await request(app.getHttpServer())
+        .post(`/v1/jobs/${id}/messages`)
+        .set('Authorization', driverAuth)
+        .send({ body: 'Five minutes away' })
+        .expect(201);
+
+      const afterDriver = await db.select().from(notificationEvents);
+      expect(afterDriver.map((row) => row.event).sort()).toEqual([
+        'chat.message_to_customer',
+        'chat.message_to_driver',
+      ]);
     });
   });
 });

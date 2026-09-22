@@ -4,7 +4,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KillSwitchService } from '../../common/killswitch/killswitch.service';
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
-import { bookings, dispatchAttempts, drivers } from '../../db/schema';
+import { bookings, dispatchAttempts, drivers, notificationEvents } from '../../db/schema';
 import {
   createTestApp,
   customerAuthHeaderFor,
@@ -184,6 +184,11 @@ describe('offer revocation (A12)', () => {
     expect(attempts).toHaveLength(1);
     expect(attempts[0]!.outcome).toBe('accepted');
     expect(await acceptanceRateOf(driverId)).toBe(rateBefore);
+
+    // The push half of the same fact: the socket frame above reaches a
+    // foreground app, this reaches a phone in a pocket.
+    const emitted = await db.select().from(notificationEvents);
+    expect(emitted.map((row) => row.event)).toContain('job.cancelled');
   });
 
   it('a paused wave revokes held offers with reason paused', async () => {

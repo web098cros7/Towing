@@ -248,6 +248,27 @@ export interface SupportResolvedPayload extends Record<string, unknown> {
 }
 
 /**
+ * The customer (or ops) cancelled a job the driver had already accepted. The
+ * socket's `job:revoked` frame covers a foreground app; this covers a phone in
+ * a pocket.
+ */
+export interface JobCancelledPayload extends Record<string, unknown> {
+  bookingId: string;
+  driverId: string;
+}
+
+/**
+ * One chat message, in either direction. `recipientId` is the OTHER party —
+ * the driver when the customer sent, the customer when the driver sent.
+ */
+export interface TripChatPayload extends Record<string, unknown> {
+  bookingId: string;
+  messageId: string;
+  recipientId: string;
+  preview: string;
+}
+
+/**
  * W17 — the weekly marketplace digest. `summary` is pre-formatted TEXT by the
  * producer (`AnalyticsRollupService`): the numbers are computed there from the
  * rollup rows, and the template stays a template.
@@ -1243,6 +1264,68 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
       },
     ],
     variables: (p: AnalyticsReportPayload) => ({ week: p.week, summary: p.summary }),
+  }),
+
+  // ── Driver app: cancel + trip chat ─────────────────────────────────────
+
+  defineTrigger({
+    /**
+     * The customer (or ops) cancelled a job the driver had already accepted.
+     *
+     * The socket's `job:revoked` frame covers a foreground app; this covers a
+     * phone in a pocket. Push-only, because the driver is the only recipient
+     * and the app is the only surface that can act on it.
+     */
+    event: 'job.cancelled',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'job_cancelled',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'open', invalidate: 'offers', route: 'towpartner://job' },
+    dedupeKey: (p: JobCancelledPayload) => `${p.bookingId}:cancelled`,
+    resolve: (p: JobCancelledPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
+    variables: (p: JobCancelledPayload) => ({
+      bookingRef: p.bookingId.slice(0, 8).toUpperCase(),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * A chat message from the customer to the driver. Push-only, keyed on the
+     * message id so a redelivered emit collapses and the next message notifies
+     * again.
+     */
+    event: 'chat.message_to_driver',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'chat_message_to_driver',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'open', route: 'towpartner://job/chat' },
+    dedupeKey: (p: TripChatPayload) => p.messageId,
+    resolve: (p: TripChatPayload, ctx) => ctx.resolver.resolveDriver(p.recipientId).then(one),
+    variables: (p: TripChatPayload) => ({ preview: p.preview }),
+  }),
+
+  defineTrigger({
+    /**
+     * The reverse direction — a chat message from the driver to the customer.
+     *
+     * `refetch` rather than `open`, because the customer app has no chat route
+     * in its push table yet; the notification brings them back to the app and
+     * the app decides where to go.
+     */
+    event: 'chat.message_to_customer',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'chat_message_to_customer',
+    category: 'transactional',
+    alwaysOn: true,
+    push: { action: 'refetch' },
+    dedupeKey: (p: TripChatPayload) => p.messageId,
+    resolve: (p: TripChatPayload, ctx) => ctx.resolver.resolveUser(p.recipientId).then(one),
+    variables: (p: TripChatPayload) => ({ preview: p.preview }),
   }),
 ];
 

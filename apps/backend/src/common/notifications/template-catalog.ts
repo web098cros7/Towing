@@ -482,6 +482,45 @@ export const TEMPLATES = {
       subject: `Weekly marketplace report — ${v.week ?? 'last week'}`,
     }),
   },
+
+  /**
+   * The customer (or ops) cancelled a job the driver had accepted. Push-only,
+   * so no subject — the driver app is the only surface that reads it.
+   */
+  job_cancelled: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['bookingRef'],
+    render: (v) => ({
+      title: 'Job cancelled',
+      body: `Booking TW-${v.bookingRef ?? ''} was cancelled by the customer. You're free for the next job.`,
+      subject: null,
+    }),
+  },
+
+  /** A chat message from the customer to the driver. The body IS the preview. */
+  chat_message_to_driver: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['preview'],
+    render: (v) => ({
+      title: 'New message from your customer',
+      body: v.preview ?? '',
+      subject: null,
+    }),
+  },
+
+  /** The reverse direction — a chat message from the driver to the customer. */
+  chat_message_to_customer: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['preview'],
+    render: (v) => ({
+      title: 'New message from your driver',
+      body: v.preview ?? '',
+      subject: null,
+    }),
+  },
 } as const satisfies Record<string, TemplateDefinition>;
 
 export type TemplateKey = keyof typeof TEMPLATES;
