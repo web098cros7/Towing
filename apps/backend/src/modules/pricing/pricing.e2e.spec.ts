@@ -81,7 +81,7 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
         .expect(200);
 
       expectMatchesContract(serviceCatalogResponseSchema, response.body);
-      expect(response.body).toHaveLength(9);
+      expect(response.body).toHaveLength(10);
       expect(response.body.map((s: { slug: string }) => s.slug)).toEqual([
         'car_tow',
         'bike_tow',
@@ -89,6 +89,7 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
         'wheel_lift_tow',
         'battery',
         'flat_tyre',
+        'lockout',
         'fuel',
         'breakdown',
         'accident_recovery',

@@ -165,6 +165,9 @@ export const paymentsMockSource: PaymentsDataSource = {
       orderRef,
       publicKey: 'rzp_test_dev',
       amountPaise,
+      // Test mode keeps the wallet out of the bill; the live API applies it.
+      walletAppliedPaise: 0,
+      settled: false,
       currency: 'INR',
       // The app skips the native sheet on this. See the header.
       autoSettles: true,

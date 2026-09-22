@@ -4,10 +4,18 @@ import {
   rupeeStringToPaise,
   type Booking,
   type BookingDetail,
+  type TrackedDriver,
 } from '@towing/api-contracts';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { DB, type Database } from '../../db/db.module';
-import { bookings, services, serviceZones } from '../../db/schema';
+import {
+  bookingStatusHistory,
+  bookings,
+  drivers,
+  fleetTrucks,
+  services,
+  serviceZones,
+} from '../../db/schema';
 import { decodeCursor, encodeCursor } from '../jobs/jobs.cursor';
 import { OPEN_BOOKING_STATUSES } from './booking-state-machine.service';
 
@@ -19,7 +27,15 @@ import { OPEN_BOOKING_STATUSES } from './booking-state-machine.service';
  * `idx_bookings_user_feed`, the twin of `idx_bookings_fleet_feed` that migration
  * 0012 added for exactly this query.
  */
-type BookingRow = typeof bookings.$inferSelect & { serviceSlug: string | null };
+type BookingRow = typeof bookings.$inferSelect & {
+  serviceSlug: string | null;
+  driverName: string | null;
+  driverPhotoUrl: string | null;
+  driverRating: string | null;
+  driverTotalTrips: number | null;
+  driverVehicleClass: string | null;
+  truckPlate: string | null;
+};
 
 @Injectable()
 export class BookingsRepo {
@@ -46,8 +62,16 @@ export class BookingsRepo {
         serviceSlug: sql<
           string | null
         >`(select s.slug from services s where s.service_type = ${bookings.serviceType} order by s.display_order asc limit 1)`,
+        driverName: drivers.name,
+        driverPhotoUrl: drivers.photoUrl,
+        driverRating: drivers.rating,
+        driverTotalTrips: drivers.totalTrips,
+        driverVehicleClass: drivers.vehicleClass,
+        truckPlate: fleetTrucks.plate,
       })
       .from(bookings)
+      .leftJoin(drivers, eq(drivers.id, bookings.driverId))
+      .leftJoin(fleetTrucks, eq(fleetTrucks.id, bookings.truckId))
       .where(
         and(
           eq(bookings.userId, userId),
@@ -66,7 +90,18 @@ export class BookingsRepo {
     const last = page[page.length - 1];
 
     return {
-      items: page.map((r) => toBooking({ ...r.booking, serviceSlug: r.serviceSlug })),
+      items: page.map((r) =>
+        toBooking({
+          ...r.booking,
+          serviceSlug: r.serviceSlug,
+          driverName: r.driverName,
+          driverPhotoUrl: r.driverPhotoUrl,
+          driverRating: r.driverRating,
+          driverTotalTrips: r.driverTotalTrips,
+          driverVehicleClass: r.driverVehicleClass,
+          truckPlate: r.truckPlate,
+        }),
+      ),
       nextCursor:
         rows.length > limit && last
           ? encodeCursor({ createdAt: last.booking.createdAt, id: last.booking.id })
@@ -82,13 +117,32 @@ export class BookingsRepo {
         serviceSlug: sql<
           string | null
         >`(select s.slug from services s where s.service_type = ${bookings.serviceType} order by s.display_order asc limit 1)`,
+        driverName: drivers.name,
+        driverPhotoUrl: drivers.photoUrl,
+        driverRating: drivers.rating,
+        driverTotalTrips: drivers.totalTrips,
+        driverVehicleClass: drivers.vehicleClass,
+        truckPlate: fleetTrucks.plate,
       })
       .from(bookings)
+      .leftJoin(drivers, eq(drivers.id, bookings.driverId))
+      .leftJoin(fleetTrucks, eq(fleetTrucks.id, bookings.truckId))
       .where(and(eq(bookings.id, bookingId), eq(bookings.userId, userId)))
       .limit(1);
 
     if (!row) return null;
-    const booking = { ...row.booking, serviceSlug: row.serviceSlug };
+    const booking = {
+      ...row.booking,
+      serviceSlug: row.serviceSlug,
+      driverName: row.driverName,
+      driverPhotoUrl: row.driverPhotoUrl,
+      driverRating: row.driverRating,
+      driverTotalTrips: row.driverTotalTrips,
+      driverVehicleClass: row.driverVehicleClass,
+      truckPlate: row.truckPlate,
+    };
+
+    const firstReached = await this.firstReached(bookingId);
 
     return {
       ...toBooking(booking),
@@ -102,7 +156,48 @@ export class BookingsRepo {
       // the card rather than probe a route that would 409.
       otpAvailable: isOtpAvailable(booking.status),
       search: await this.searchProgress(booking),
+      paymentMethod: booking.paymentMethod ?? null,
+      paidAt: booking.paidAt?.toISOString() ?? null,
+      assignedAt: firstReached.assigned,
+      enRouteAt: firstReached.enRoute,
+      arrivedAt: booking.arrivedAt?.toISOString() ?? null,
+      startedAt: booking.startedAt?.toISOString() ?? null,
+      completedAt: booking.completedAt?.toISOString() ?? null,
     };
+  }
+
+  /**
+   * §5.2's `assigned` and `en_route` instants, read from the append-only
+   * history in ONE grouped query. `bookings` denormalises `arrivedAt`,
+   * `startedAt` and `completedAt` but not these two, so this is the only place
+   * they live. Missing → null.
+   */
+  private async firstReached(
+    bookingId: string,
+  ): Promise<{ assigned: string | null; enRoute: string | null }> {
+    const rows = await this.db
+      .select({
+        status: bookingStatusHistory.status,
+        at: sql<Date | string>`min(${bookingStatusHistory.createdAt})`,
+      })
+      .from(bookingStatusHistory)
+      .where(
+        and(
+          eq(bookingStatusHistory.bookingId, bookingId),
+          inArray(bookingStatusHistory.status, ['assigned', 'en_route']),
+        ),
+      )
+      .groupBy(bookingStatusHistory.status);
+
+    let assigned: string | null = null;
+    let enRoute: string | null = null;
+    for (const r of rows) {
+      // Raw SQL aggregates may come back as strings; `new Date` normalises both.
+      const iso = new Date(r.at).toISOString();
+      if (r.status === 'assigned') assigned = iso;
+      else if (r.status === 'en_route') enRoute = iso;
+    }
+    return { assigned, enRoute };
   }
 
   /**
@@ -191,6 +286,22 @@ export function isOtpAvailable(status: string): boolean {
 }
 
 /**
+ * §9.1.7's driver card, mapped the same way `tracking.mapper.ts#toTrackedDriver`
+ * does. Null until a driver is assigned; no mobile number ever.
+ */
+function toDriverCard(row: BookingRow): TrackedDriver | null {
+  if (!row.driverId || !row.driverName) return null;
+  return {
+    name: row.driverName,
+    photoUrl: row.driverPhotoUrl,
+    rating: row.driverRating === null ? null : Number(row.driverRating),
+    totalTrips: row.driverTotalTrips ?? 0,
+    vehiclePlate: row.truckPlate,
+    vehicleClass: (row.driverVehicleClass as TrackedDriver['vehicleClass']) ?? null,
+  };
+}
+
+/**
  * Row → DTO, built field by field.
  *
  * NO COMMISSION, for the §7.6 reason the estimate has none: the row carries
@@ -225,6 +336,7 @@ function toBooking(row: BookingRow): Booking {
       totalPaise: rupeeStringToPaise(row.total),
     },
     band: row.commissionBand,
+    driver: toDriverCard(row),
     scheduledAt: row.scheduledAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

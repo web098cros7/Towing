@@ -189,7 +189,7 @@ export const STANDALONE_ZONES: readonly ZoneFixture[] = [
  */
 export interface ServiceFixture {
   slug: string;
-  serviceType: 'tow' | 'battery' | 'flat_tyre' | 'fuel' | 'breakdown' | 'accident_recovery';
+  serviceType: 'tow' | 'battery' | 'flat_tyre' | 'fuel' | 'breakdown' | 'accident_recovery' | 'lockout';
   defaultVehicleClass: 'wheel_lift' | 'flatbed' | null;
   name: string;
   description: string;
@@ -245,6 +245,14 @@ export const SERVICE_CATALOG: readonly ServiceFixture[] = [
     defaultVehicleClass: null,
     name: 'Flat-tyre support',
     description: 'Tyre change or on-the-spot repair.',
+    requiresDrop: false,
+  },
+  {
+    slug: 'lockout',
+    serviceType: 'lockout',
+    defaultVehicleClass: null,
+    name: 'Car lockout',
+    description: 'Locked out of your car? We get you back in.',
     requiresDrop: false,
   },
   {

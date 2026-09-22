@@ -105,6 +105,8 @@ const ROADSIDE_FARE: Partial<Record<ServiceType, number>> = {
   flat_tyre: 69_900,
   fuel: 69_900,
   breakdown: 99_900,
+  /** Figma 09's Car Lockout. ₹799 is a PLACEHOLDER (battery's tier) until Ehsan sets it. */
+  lockout: 79_900,
 };
 
 /**

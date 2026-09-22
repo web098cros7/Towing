@@ -872,6 +872,11 @@ const EXCLUDED = new Set([
   // `invoiceLinkSchema` in `invoice.e2e.spec.ts` — it needs a PAID booking,
   // which this table's static paths cannot produce.
   '/v1/bookings/:id/invoice',
+  // Migration 0035's customer reads: trip chat needs a real booking with a
+  // driver (booking-chat.e2e.spec.ts), and the referral summary is asserted in
+  // referrals.e2e.spec.ts.
+  '/v1/bookings/:id/messages',
+  '/v1/me/referral',
   // Development-only OTP echo (`AUTH_DEV_OTP_ECHO`, and production refuses to
   // boot with it set). It has no contract schema ON PURPOSE: publishing one in
   // `@towing/api-contracts` would advertise to every client a route that must

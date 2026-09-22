@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   paymentCaptureRequestSchema,
   paymentIntentRequestSchema,
+  type CashPaymentResponse,
   type PaymentCaptureRequest,
   type PaymentIntentDto,
   type PaymentIntentRequest,
@@ -73,6 +74,20 @@ export class PaymentsController {
     @Req() request: AuthedRequest,
   ): Promise<PaymentResultDto> {
     return this.payments.capture(bookingId, customerId(request), body);
+  }
+
+  /**
+   * Figma 27's Cash: the booking stays `completed` until the driver confirms
+   * the cash.
+   */
+  @Post('payments/:bookingId/cash')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  cash(
+    @ZodParam(z.uuid(), 'bookingId') bookingId: string,
+    @Req() request: AuthedRequest,
+  ): Promise<CashPaymentResponse> {
+    return this.payments.chooseCash(bookingId, customerId(request));
   }
 
   /**

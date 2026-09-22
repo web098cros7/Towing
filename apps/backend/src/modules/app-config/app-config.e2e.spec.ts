@@ -64,6 +64,17 @@ describe('app config (W12)', () => {
       });
   });
 
+  it('serves the support contact and referral rewards by default', async () => {
+    const response = await request(app.getHttpServer()).get('/v1/app-config').expect(200);
+
+    expect(response.body).toMatchObject({
+      supportPhone: '+911800123456',
+      supportEmail: 'support@mitow.in',
+      referrerRewardPaise: 10000,
+      refereeRewardPaise: 10000,
+    });
+  });
+
   it('answers 304 when If-None-Match matches the ETag it served', async () => {
     const first = await request(app.getHttpServer()).get('/v1/app-config').expect(200);
     const etag = first.headers.etag!;

@@ -4,6 +4,7 @@ import {
   ErrorCodes,
   paiseToRupeeString,
   rupeeStringToPaise,
+  type CouponOffer,
   type CouponRejection,
   type CouponValidationDto,
 } from '@towing/api-contracts';
@@ -65,6 +66,51 @@ export class CouponsService {
       discountPaise: discountFor(coupon, subtotalPaise),
       reason: null,
     };
+  }
+
+  /**
+   * The customer's "Available offers" list (Figma 28).
+   *
+   * PUBLIC, LIVE, AND NOT ALREADY USED UP BY THIS CUSTOMER. The per-user cap is
+   * checked with a correlated subquery rather than a join so a coupon with zero
+   * redemptions still appears — an inner join would silently drop it.
+   *
+   * Capped at 20: this is a marketing surface, not a catalogue, and an
+   * unbounded list is a payload nobody reads.
+   */
+  async offers(userId: string): Promise<CouponOffer[]> {
+    const rows = (await this.db.execute(sql`
+      select code, kind, value, max_discount, min_order, expires_at
+        from coupons
+       where is_active
+         and is_public
+         and (starts_at is null or starts_at <= now())
+         and (expires_at is null or expires_at > now())
+         and (max_uses is null or used_count < max_uses)
+         and (
+           select count(*) from coupon_redemptions
+            where coupon_id = coupons.id and user_id = ${userId}::uuid
+         ) < max_uses_per_user
+       order by expires_at asc nulls last, code asc
+       limit 20
+    `)) as unknown as Array<Record<string, unknown>>;
+
+    return rows.map((row) => {
+      const kind = row.kind as 'percent' | 'flat';
+      const value = row.value as string;
+      const maxDiscount = (row.max_discount as string | null) ?? null;
+      const expiresAt = row.expires_at ? new Date(row.expires_at as string) : null;
+
+      return {
+        code: row.code as string,
+        kind,
+        percent: kind === 'percent' ? Number(value) : null,
+        flatPaise: kind === 'flat' ? rupeeStringToPaise(value) : null,
+        maxDiscountPaise: maxDiscount === null ? null : rupeeStringToPaise(maxDiscount),
+        minOrderPaise: rupeeStringToPaise(row.min_order as string),
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
+      };
+    });
   }
 
   /**

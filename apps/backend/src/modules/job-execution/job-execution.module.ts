@@ -6,6 +6,7 @@ import { BookingsModule } from '../bookings/bookings.module';
 import { DispatchModule } from '../dispatch/dispatch.module';
 import { DriverPresenceModule } from '../driver-presence/driver-presence.module';
 import { TrackingModule } from '../tracking/tracking.module';
+import { DevJobOtpController } from './dev-job-otp.controller';
 import { DriverStatsService } from './driver-stats.service';
 import { EnRouteWatcher } from './en-route.watcher';
 import { JobExecutionController } from './job-execution.controller';
@@ -50,7 +51,7 @@ import { JobExecutionService } from './job-execution.service';
     RealtimeModule,
     AdminDriversModule,
   ],
-  controllers: [JobExecutionController],
+  controllers: [JobExecutionController, DevJobOtpController],
   providers: [JobExecutionService, JobExecutionRepo, DriverStatsService, EnRouteWatcher],
   exports: [JobExecutionService],
 })

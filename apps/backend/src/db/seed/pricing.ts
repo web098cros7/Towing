@@ -38,7 +38,14 @@ export {
   type VehicleClass,
 } from '../../modules/pricing/pricing.math';
 
-export type ServiceType = 'tow' | 'battery' | 'flat_tyre' | 'fuel' | 'breakdown' | 'accident_recovery';
+export type ServiceType =
+  | 'tow'
+  | 'battery'
+  | 'flat_tyre'
+  | 'fuel'
+  | 'breakdown'
+  | 'accident_recovery'
+  | 'lockout';
 
 /**
  * mulberry32 — same generator as the location simulator so a seed value means

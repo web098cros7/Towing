@@ -33,6 +33,8 @@ export const DRIVER_EVENT = {
   JOB_OFFER: 'job:offer',
   /** The offer is gone — someone else took it, it expired, or the customer cancelled. */
   JOB_REVOKED: 'job:revoked',
+  /** Figma 24 — one chat message frame, delivered to the driver room. */
+  CHAT_MESSAGE: 'chat:message',
 } as const;
 export type DriverEventName = (typeof DRIVER_EVENT)[keyof typeof DRIVER_EVENT];
 

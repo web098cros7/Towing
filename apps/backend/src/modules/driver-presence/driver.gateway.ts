@@ -14,6 +14,7 @@ import {
   DRIVER_NAMESPACE,
   driverLocationPingSchema,
   driverRoom,
+  type BookingMessage,
   type DriverConfigUpdateEvent,
   type DriverLocationAccepted,
   type JobOfferEvent,
@@ -224,6 +225,11 @@ export class DriverGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       reason,
       at: new Date().toISOString(),
     });
+  }
+
+  /** Figma 24 — one chat message, to the driver's room (cross-node, like `emitJobOffer`). */
+  emitChatMessage(driverId: string, message: BookingMessage): void {
+    this.namespace.to(driverRoom(driverId)).emit(DRIVER_EVENT.CHAT_MESSAGE, message);
   }
 
   /** How many sockets this driver has attached to THIS node. */

@@ -1,6 +1,16 @@
-import { Controller, HttpCode, HttpStatus, Module, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Module,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   couponValidateRequestSchema,
+  type CouponOffer,
   type CouponValidateRequest,
   type CouponValidationDto,
 } from '@towing/api-contracts';
@@ -40,6 +50,16 @@ export class CouponsController {
     const auth = request.auth;
     if (!auth) throw ApiException.unauthorized();
     return this.coupons.validate(auth.sub, body.code, body.subtotalPaise);
+  }
+
+  /** The customer's "Available offers" list (Figma 28). */
+  @Get('offers')
+  @ThrottleBucket('money')
+  @HttpCode(HttpStatus.OK)
+  async offers(@Req() request: AuthedRequest): Promise<{ items: CouponOffer[] }> {
+    const auth = request.auth;
+    if (!auth) throw ApiException.unauthorized();
+    return { items: await this.coupons.offers(auth.sub) };
   }
 }
 

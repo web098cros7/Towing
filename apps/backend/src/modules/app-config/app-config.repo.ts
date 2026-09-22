@@ -27,6 +27,10 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   sevLevel: null,
   sevMessage: null,
   sevUpdatedAt: null,
+  supportPhone: '+911800123456',
+  supportEmail: 'support@mitow.in',
+  referrerRewardPaise: 10000,
+  refereeRewardPaise: 10000,
 };
 
 @Injectable()
@@ -48,6 +52,10 @@ export class AppConfigRepo {
         sevLevel: row.sevLevel as AppConfig['sevLevel'],
         sevMessage: row.sevMessage,
         sevUpdatedAt: row.sevUpdatedAt?.toISOString() ?? null,
+        supportPhone: row.supportPhone,
+        supportEmail: row.supportEmail,
+        referrerRewardPaise: row.referrerRewardPaise,
+        refereeRewardPaise: row.refereeRewardPaise,
       };
     });
   }
@@ -73,6 +81,10 @@ export class AppConfigRepo {
       config.sevLevel,
       config.sevMessage,
       config.sevUpdatedAt,
+      config.supportPhone,
+      config.supportEmail,
+      config.referrerRewardPaise,
+      config.refereeRewardPaise,
     ]);
     let hash = 0;
     for (let index = 0; index < fingerprint.length; index += 1) {

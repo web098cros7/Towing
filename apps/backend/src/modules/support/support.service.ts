@@ -22,6 +22,9 @@ import { randomUUID } from 'node:crypto';
 import { ApiException } from '../../common/errors/api-exception';
 import { isUniqueViolation } from '../../common/errors/pg-errors';
 import { NotificationService } from '../../common/notifications/notification.service';
+import { keyFromFileUrl } from '../../common/storage/file-url';
+import { PresignedUploadService } from '../../common/storage/presigned-upload.helper';
+import { STORAGE, type StoragePort } from '../../common/storage/storage.port';
 import { DB, type Database } from '../../db/db.module';
 import {
   supportTicketEvents,
@@ -31,6 +34,9 @@ import {
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
 import type { SessionContext } from '../auth/token.service';
 import { SupportRepo, type TicketRequester } from './support.repo';
+
+/** Storage key prefix for ticket-message photo attachments. */
+export const SUPPORT_ATTACHMENT_KEY_PREFIX = 'support-attachments';
 
 /**
  * W15's support tickets (§9.4.12, §6.6).
@@ -58,11 +64,22 @@ export class SupportService {
     private readonly repo: SupportRepo,
     private readonly notifications: NotificationService,
     private readonly audit: AdminAuditService,
+    private readonly uploads: PresignedUploadService,
+    @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
   // -------------------------------------------------------------------------
   // Requester rail
   // -------------------------------------------------------------------------
+
+  /** Mints one upload slot for a ticket-message photo. */
+  async presignAttachment(requester: TicketRequester) {
+    return this.uploads.presign(
+      SUPPORT_ATTACHMENT_KEY_PREFIX,
+      requester.requesterId,
+      'att',
+    );
+  }
 
   async create(
     requester: TicketRequester,
@@ -70,6 +87,8 @@ export class SupportService {
   ): Promise<SupportTicketCreateResponse> {
     const identity = await this.repo.findRequester(requester);
     if (!identity) throw ApiException.notFound('Account not found');
+
+    const checked = this.checkAttachments(requester, body.attachments);
 
     let bookingId: string | null = null;
     if (body.bookingId) {
@@ -101,6 +120,7 @@ export class SupportService {
         authorId: requester.requesterId,
         body: body.body,
         visibility: 'public',
+        attachments: checked,
       });
 
       await tx.insert(supportTicketEvents).values({
@@ -133,7 +153,7 @@ export class SupportService {
   async myDetail(requester: TicketRequester, ticketId: string): Promise<SupportTicketDetail> {
     const detail = await this.repo.requesterDetail(requester, ticketId);
     if (!detail) throw ApiException.notFound('Ticket not found');
-    return detail;
+    return this.signAttachments(detail);
   }
 
   /**
@@ -155,6 +175,8 @@ export class SupportService {
       });
     }
 
+    const checked = this.checkAttachments(requester, body.attachments);
+
     const now = new Date();
     await this.db.transaction(async (tx) => {
       await tx.insert(supportTicketMessages).values({
@@ -163,6 +185,7 @@ export class SupportService {
         authorId: requester.requesterId,
         body: body.body,
         visibility: 'public',
+        attachments: checked,
       });
       await tx.insert(supportTicketEvents).values({
         ticketId,
@@ -461,6 +484,53 @@ export class SupportService {
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
+
+  /**
+   * Every key must be one this requester minted via `presignAttachment` —
+   * otherwise a caller could claim another subject's uploaded file by
+   * replaying its key. Returns the stored form (`local://<key>`), deduped.
+   */
+  private checkAttachments(
+    requester: TicketRequester,
+    keys: string[] | undefined,
+  ): string[] {
+    if (!keys || keys.length === 0) return [];
+    const unique = Array.from(new Set(keys));
+    for (const key of unique) {
+      if (
+        !this.uploads.isOwnKey(
+          key,
+          SUPPORT_ATTACHMENT_KEY_PREFIX,
+          requester.requesterId,
+          'att',
+        )
+      ) {
+        throw ApiException.forbidden('This attachment was not uploaded by you');
+      }
+    }
+    return unique.map((key) => `local://${key}`);
+  }
+
+  /**
+   * Swaps stored `local://<key>` attachment values for fetchable signed URLs
+   * on the way out. Non-`local://` values pass through untouched.
+   */
+  private async signAttachments(detail: SupportTicketDetail): Promise<SupportTicketDetail> {
+    const messages = await Promise.all(
+      detail.messages.map(async (message) => {
+        if (message.attachments.length === 0) return message;
+        const attachments = await Promise.all(
+          message.attachments.map(async (value) => {
+            if (!value.startsWith('local://')) return value;
+            const signed = await this.storage.presignGet(keyFromFileUrl(value), 3600);
+            return signed.url;
+          }),
+        );
+        return { ...message, attachments };
+      }),
+    );
+    return { ...detail, messages };
+  }
 
   private async requireTicket(ticketId: string): Promise<AdminSupportTicket> {
     const ticket = await this.repo.adminDetail(ticketId);

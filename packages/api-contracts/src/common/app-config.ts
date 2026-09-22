@@ -28,6 +28,14 @@ export const appConfigSchema = z.object({
   sevLevel: z.enum(['sev1', 'sev2', 'sev3']).nullable(),
   sevMessage: z.string().nullable(),
   sevUpdatedAt: z.iso.datetime().nullable(),
+  /** Shown by the customer app's Support/Contact screen. */
+  supportPhone: z.string(),
+  /** Shown by the customer app's Support/Contact screen. */
+  supportEmail: z.string(),
+  /** Shown by the customer app's Refer & Earn screen. */
+  referrerRewardPaise: z.number().int().nonnegative(),
+  /** Shown by the customer app's Refer & Earn screen. */
+  refereeRewardPaise: z.number().int().nonnegative(),
 });
 export type AppConfig = z.infer<typeof appConfigSchema>;
 
@@ -55,6 +63,13 @@ export const adminAppConfigUpdateSchema = z
     forceUpgrade: z.boolean().optional(),
     sevLevel: z.enum(['sev1', 'sev2', 'sev3']).nullable().optional(),
     sevMessage: z.string().min(3).max(500).nullable().optional(),
+    supportPhone: z
+      .string()
+      .regex(/^\+?[0-9]{10,15}$/, 'expected a phone number like +911800123456')
+      .optional(),
+    supportEmail: z.string().email().optional(),
+    referrerRewardPaise: z.number().int().min(0).max(1_000_000).optional(),
+    refereeRewardPaise: z.number().int().min(0).max(1_000_000).optional(),
     reason: z.string().min(3).max(500).optional(),
   })
   .refine((body) => Object.keys(body).some((key) => key !== 'reason'), {

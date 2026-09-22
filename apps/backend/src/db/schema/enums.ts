@@ -8,6 +8,7 @@ export const serviceTypeEnum = pgEnum('service_type', [
   'fuel',
   'breakdown',
   'accident_recovery',
+  'lockout',
 ]);
 
 export const vehicleClassEnum = pgEnum('vehicle_class', ['wheel_lift', 'flatbed']);
@@ -150,6 +151,10 @@ export const walletTxnTypeEnum = pgEnum('wallet_txn_type', [
   'refund_debit',
   'refund_credit',
   'adjustment',
+  /** Migration 0035: a cash trip debits the driver the fare they collected (see payments). */
+  'cash_collected_debit',
+  /** Migration 0035: the customer's wallet balance spent on a booking at payment. */
+  'wallet_spend_debit',
 ]);
 
 /**

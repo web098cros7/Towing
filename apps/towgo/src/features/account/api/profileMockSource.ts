@@ -14,6 +14,8 @@ function seedProfile(): CustomerProfile {
     name: identity?.name ?? 'Rahul Sharma',
     email: 'rahul.sharma@email.com',
     photoUrl: null,
+    language: null,
+    appearance: null,
   };
 }
 

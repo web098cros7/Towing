@@ -106,6 +106,12 @@ export const payments = pgTable(
      * makes the cap a database fact.
      */
     refundedAmount: money('refunded_amount').notNull().default('0'),
+    /**
+     * Migration 0035 — the customer's wallet balance applied to this booking
+     * payment. `amount` is only the gateway's part, so refunds (capped at
+     * `amount`) never reach wallet money.
+     */
+    walletApplied: money('wallet_applied').notNull().default('0'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

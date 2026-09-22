@@ -3,6 +3,7 @@ import {
   supportTicketCreateRequestSchema,
   supportTicketMessageCreateSchema,
   supportTicketsQuerySchema,
+  type SupportAttachmentPresignResponse,
   type SupportTicketCreateRequest,
   type SupportTicketCreateResponse,
   type SupportTicketDetail,
@@ -48,6 +49,15 @@ export class SupportController {
     @Req() request: AuthedRequest,
   ): Promise<SupportTicketCreateResponse> {
     return this.support.create(requesterOf(request), body);
+  }
+
+  /**
+   * Declared above the `:id` routes so `attachments` is never parsed as an id.
+   */
+  @Post('attachments/presign')
+  @HttpCode(HttpStatus.OK)
+  presignAttachment(@Req() request: AuthedRequest): Promise<SupportAttachmentPresignResponse> {
+    return this.support.presignAttachment(requesterOf(request));
   }
 
   @Get(':id')

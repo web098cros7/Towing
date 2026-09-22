@@ -51,16 +51,18 @@ describe('coupons e2e', () => {
       starts_at: null,
       expires_at: null,
       is_active: true,
+      is_public: false,
       ...values,
     };
 
     const [created] = (await db.execute(sql`
       insert into coupons (code, kind, value, max_discount, min_order, max_uses,
-                           max_uses_per_user, starts_at, expires_at, is_active)
+                           max_uses_per_user, starts_at, expires_at, is_active, is_public)
       values (${row.code}, ${row.kind}, ${row.value}::numeric,
               ${row.max_discount}::numeric, ${row.min_order}::numeric,
               ${row.max_uses}::int, ${row.max_uses_per_user}::int,
-              ${row.starts_at}::timestamptz, ${row.expires_at}::timestamptz, ${row.is_active})
+              ${row.starts_at}::timestamptz, ${row.expires_at}::timestamptz,
+              ${row.is_active}, ${row.is_public})
       returning id
     `)) as unknown as [{ id: string }];
 
@@ -72,6 +74,11 @@ describe('coupons e2e', () => {
       .post('/v1/coupons/validate')
       .set('Authorization', auth)
       .send({ code, subtotalPaise });
+
+  const offers = () =>
+    request(app.getHttpServer())
+      .get('/v1/coupons/offers')
+      .set('Authorization', auth);
 
   describe('validate', () => {
     it('prices a percentage coupon', async () => {
@@ -125,6 +132,61 @@ describe('coupons e2e', () => {
 
       expect((await validate('EXPIRED').expect(200)).body.reason).toBe('expired');
       expect((await validate('BIGORDER').expect(200)).body.reason).toBe('below_min_order');
+    });
+  });
+
+  describe('offers', () => {
+    it('lists a public active coupon', async () => {
+      await seedCoupon({ code: 'PUB20', is_public: true, max_discount: '100.00' });
+      const res = await offers().expect(200);
+
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0]).toMatchObject({
+        code: 'PUB20',
+        kind: 'percent',
+        percent: 20,
+        flatPaise: null,
+        maxDiscountPaise: 10_000,
+        minOrderPaise: 0,
+        expiresAt: null,
+      });
+    });
+
+    it('does not list a private coupon', async () => {
+      await seedCoupon({ code: 'PRIV20', is_public: false });
+      const res = await offers().expect(200);
+      expect(res.body.items).toHaveLength(0);
+    });
+
+    it('does not list an expired coupon', async () => {
+      await seedCoupon({
+        code: 'OLD20',
+        is_public: true,
+        expires_at: new Date(Date.now() - 86_400_000).toISOString(),
+      });
+      const res = await offers().expect(200);
+      expect(res.body.items).toHaveLength(0);
+    });
+
+    it('does not list a coupon the user has already used up', async () => {
+      const couponId = await seedCoupon({
+        code: 'ONCE20',
+        is_public: true,
+        max_uses_per_user: 1,
+      });
+
+      const bookingId = await seedBooking(db, {
+        userId,
+        status: 'searching',
+        total: '2000.00',
+      });
+      await db.execute(sql`
+        insert into coupon_redemptions (coupon_id, user_id, booking_id, discount_amount)
+        values (${couponId}::uuid, ${userId}::uuid, ${bookingId}::uuid, '40.00'::numeric)
+      `);
+
+      const res = await offers().expect(200);
+      expect(res.body.items).toHaveLength(0);
     });
   });
 

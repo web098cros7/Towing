@@ -23,6 +23,7 @@ import type {
   OpsSubscribe,
   RealtimeReadyEvent,
   SearchProgressEvent,
+  BookingMessage,
 } from '@towing/api-contracts';
 import type { Namespace, Server, Socket } from 'socket.io';
 
@@ -103,6 +104,8 @@ export interface DriverServerToClientEvents {
   /** §6.3's offer — the room this lands in is why Phase 16 built the namespace. */
   'job:offer': (payload: JobOfferEvent) => void;
   'job:revoked': (payload: JobRevokedEvent) => void;
+  /** Figma 24 — driver↔customer chat. */
+  'chat:message': (payload: BookingMessage) => void;
 }
 
 /** Attached at handshake from the redeemed ticket — the only source of a socket's driver. */
@@ -156,6 +159,8 @@ export interface CustomerServerToClientEvents {
    */
   'location:update': (payload: CustomerLocationUpdateEvent) => void;
   'eta:update': (payload: EtaUpdateEvent) => void;
+  /** Figma 24 — driver↔customer chat. */
+  'chat:message': (payload: BookingMessage) => void;
 }
 
 /**

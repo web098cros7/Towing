@@ -64,7 +64,7 @@ export interface PaymentHandle {
   gatewayRef: string | null;
   orderRef: string | null;
   status: 'pending' | 'authorized' | 'captured' | 'failed';
-  method: 'upi' | 'card' | 'wallet' | null;
+  method: 'upi' | 'card' | 'wallet' | 'cash' | null;
   amountPaise: number | null;
   failureReason?: string | null;
 }

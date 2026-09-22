@@ -74,6 +74,8 @@ export const serviceTypeSchema = z.enum([
   'fuel',
   'breakdown',
   'accident_recovery',
+  /** Figma 09's Car Lockout (migration 0035). A flat roadside fare. */
+  'lockout',
 ]);
 export type ServiceType = z.infer<typeof serviceTypeSchema>;
 

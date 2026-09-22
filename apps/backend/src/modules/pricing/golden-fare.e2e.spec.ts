@@ -34,7 +34,14 @@ describe('golden file — re-pricing the seed through the live engine', () => {
   let db: TestDatabase;
   let rows: Array<{
     id: string;
-    serviceType: 'tow' | 'battery' | 'flat_tyre' | 'fuel' | 'breakdown' | 'accident_recovery';
+    serviceType:
+      | 'tow'
+      | 'battery'
+      | 'flat_tyre'
+      | 'fuel'
+      | 'breakdown'
+      | 'accident_recovery'
+      | 'lockout';
     vehicleClass: 'wheel_lift' | 'flatbed';
     distanceKm: string | null;
     baseFare: string;

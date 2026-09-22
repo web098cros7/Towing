@@ -66,6 +66,9 @@ export const SUPPORT_ACTOR_TYPES = ['requester', 'admin', 'system'] as const;
 export const supportActorTypeSchema = z.enum(SUPPORT_ACTOR_TYPES);
 export type SupportActorType = z.infer<typeof supportActorTypeSchema>;
 
+/** Figma 61 "Add photos" — the cap on attachments per message. */
+export const SUPPORT_MAX_ATTACHMENTS = 3;
+
 /**
  * The legal status graph. `closed` is terminal; `resolved` can be reopened to
  * `in_progress` when the requester answers the resolution, which is the one
@@ -106,6 +109,7 @@ export const supportTicketMessageSchema = z.object({
   /** Resolved for admin authors so the requester sees "Priya (Support)". */
   authorName: z.string().nullable(),
   body: z.string(),
+  /** Fetchable signed URLs — they expire; re-read the ticket for fresh ones. */
   attachments: z.array(z.string()),
   createdAt: z.iso.datetime(),
 });
@@ -118,6 +122,13 @@ export const supportTicketCreateRequestSchema = z.object({
   body: z.string().trim().min(4).max(4000),
   /** §6.6: "Get help" from a booking attaches the trip. */
   bookingId: z.uuid().optional(),
+  /**
+   * Keys returned by the attachment presign, uploaded before sending.
+   */
+  attachments: z
+    .array(z.string().min(1).max(300))
+    .max(SUPPORT_MAX_ATTACHMENTS)
+    .optional(),
 });
 export type SupportTicketCreateRequest = z.infer<typeof supportTicketCreateRequestSchema>;
 
@@ -132,6 +143,13 @@ export type SupportTicketCreateResponse = z.infer<typeof supportTicketCreateResp
 /** `POST /v1/support/tickets/:id/messages` — a requester reply, public by definition. */
 export const supportTicketMessageCreateSchema = z.object({
   body: z.string().trim().min(1).max(4000),
+  /**
+   * Keys returned by the attachment presign, uploaded before sending.
+   */
+  attachments: z
+    .array(z.string().min(1).max(300))
+    .max(SUPPORT_MAX_ATTACHMENTS)
+    .optional(),
 });
 export type SupportTicketMessageCreate = z.infer<typeof supportTicketMessageCreateSchema>;
 
@@ -149,3 +167,13 @@ export type SupportTicketsQuery = z.infer<typeof supportTicketsQuerySchema>;
 
 export const supportTicketsResponseSchema = pageEnvelopeSchema(supportTicketSummarySchema);
 export type SupportTicketsResponse = z.infer<typeof supportTicketsResponseSchema>;
+
+/** `POST /v1/support/tickets/attachments/presign` — one slot per photo. */
+export const supportAttachmentPresignResponseSchema = z.object({
+  uploadUrl: z.string(),
+  key: z.string(),
+  expiresAt: z.iso.datetime(),
+});
+export type SupportAttachmentPresignResponse = z.infer<
+  typeof supportAttachmentPresignResponseSchema
+>;

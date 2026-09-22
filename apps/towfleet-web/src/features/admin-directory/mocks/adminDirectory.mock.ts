@@ -329,6 +329,7 @@ export const adminAppViewTripsMock: AdminAppViewTripsResponse = {
       totalPaise: booking.totalPaise,
     },
     band: 'A',
+    driver: null,
     scheduledAt: null,
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,

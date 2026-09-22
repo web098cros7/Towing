@@ -71,6 +71,12 @@ export const ledgerKeys = {
    * carry a cancellation comp AND a dispute comp.
    */
   disputeCompensation: (disputeId: string) => `dx:v1:${disputeId}:driver`,
+
+  /** The customer's wallet debit when their balance is spent at booking payment. */
+  walletSpend: (bookingId: string) => `ws:v1:${bookingId}:user`,
+
+  /** The driver's debit for cash they physically collected on a completed booking. */
+  cashCollected: (bookingId: string) => `cc:v1:${bookingId}:driver`,
 } as const;
 
 /**

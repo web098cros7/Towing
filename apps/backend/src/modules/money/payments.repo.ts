@@ -7,6 +7,8 @@ export interface PaymentRow {
   id: string;
   bookingId: string;
   amount: string;
+  /** Wallet balance spent against this payment, NUMERIC rupees string. */
+  walletApplied: string;
   taxAmount: string;
   /** W8 (migration 0025): the running total of refunds against this payment. */
   refundedAmount: string;
@@ -43,6 +45,7 @@ export interface SettlementInputsRow {
   taxRupees: string;
   paymentId: string | null;
   paymentAmount: string | null;
+  walletApplied: string;
 }
 
 function toRow(row: Record<string, unknown>): PaymentRow {
@@ -50,6 +53,7 @@ function toRow(row: Record<string, unknown>): PaymentRow {
     id: row.id as string,
     bookingId: row.booking_id as string,
     amount: row.amount as string,
+    walletApplied: (row.wallet_applied as string | null) ?? '0',
     taxAmount: (row.tax_amount as string | null) ?? '0',
     refundedAmount: (row.refunded_amount as string | null) ?? '0',
     status: row.status as PaymentRow['status'],
@@ -80,14 +84,17 @@ export class PaymentsRepo {
     amount: string;
     taxAmount: string;
     purpose: PaymentPurpose;
-    method: 'upi' | 'card' | 'wallet';
+    method: 'upi' | 'card' | 'wallet' | 'cash';
     idempotencyKey: string;
     provider: string;
+    /** NUMERIC rupees string; defaults to '0' when the wallet is not used. */
+    walletApplied?: string;
   }): Promise<PaymentRow> {
     const rows = (await this.db.execute(sql`
-      insert into payments (booking_id, amount, tax_amount, purpose, method, status,
+      insert into payments (booking_id, amount, wallet_applied, tax_amount, purpose, method, status,
                             idempotency_key, provider)
-      values (${params.bookingId}::uuid, ${params.amount}::numeric, ${params.taxAmount}::numeric,
+      values (${params.bookingId}::uuid, ${params.amount}::numeric,
+              ${params.walletApplied ?? '0'}::numeric, ${params.taxAmount}::numeric,
               ${params.purpose}, ${params.method}::payment_method, 'pending',
               ${params.idempotencyKey}, ${params.provider})
       returning *
@@ -274,7 +281,7 @@ export class PaymentsRepo {
       select b.id, b.status, b.user_id, b.driver_id, b.fleet_id,
              b.commission_band, b.total, b.tax_amount,
              fds.driver_share as driver_share_pct,
-             p.id as payment_id, p.amount as payment_amount
+             p.id as payment_id, p.amount as payment_amount, p.wallet_applied
         from bookings b
         left join fleet_driver_shares fds
                on fds.fleet_id = b.fleet_id and fds.driver_id = b.driver_id
@@ -302,6 +309,7 @@ export class PaymentsRepo {
       taxRupees: (row.tax_amount as string | null) ?? '0',
       paymentId: (row.payment_id as string | null) ?? null,
       paymentAmount: (row.payment_amount as string | null) ?? null,
+      walletApplied: (row.wallet_applied as string | null) ?? '0',
     };
   }
 
@@ -318,6 +326,7 @@ export class PaymentsRepo {
       select p.* from payments p
        join bookings b on b.id = p.booking_id
        where p.status in ('pending', 'authorized')
+         and coalesce(p.provider, '') not in ('cash', 'wallet')
          and p.updated_at < now() - (${graceMinutes} || ' minutes')::interval
          and (
               (p.purpose = 'booking' and b.status = 'completed')

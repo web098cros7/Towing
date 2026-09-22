@@ -51,3 +51,27 @@ export const couponValidationSchema = z.object({
   reason: couponRejectionSchema.nullable(),
 });
 export type CouponValidationDto = z.infer<typeof couponValidationSchema>;
+
+/**
+ * One entry in the customer's "Available offers" list (Figma 28).
+ *
+ * The app words the title and the validity line itself — this carries only the
+ * facts it needs to do so.
+ */
+export const couponOfferSchema = z.object({
+  code: z.string(),
+  kind: couponKindSchema,
+  /** The % off for a percent coupon; null for a flat one. */
+  percent: z.number().nullable(),
+  /** The amount off for a flat coupon; null for a percent one. */
+  flatPaise: unsignedPaiseSchema.nullable(),
+  maxDiscountPaise: unsignedPaiseSchema.nullable(),
+  minOrderPaise: unsignedPaiseSchema,
+  expiresAt: z.iso.datetime().nullable(),
+});
+export type CouponOffer = z.infer<typeof couponOfferSchema>;
+
+export const couponOffersResponseSchema = z.object({
+  items: z.array(couponOfferSchema),
+});
+export type CouponOffersResponse = z.infer<typeof couponOffersResponseSchema>;

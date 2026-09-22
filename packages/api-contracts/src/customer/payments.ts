@@ -46,6 +46,8 @@ export const paymentIntentSchema = z.object({
    */
   publicKey: z.string().min(1),
   amountPaise: unsignedPaiseSchema,
+  /** Wallet balance taken off this bill; `amountPaise` is what the gateway collects. */
+  walletAppliedPaise: unsignedPaiseSchema,
   currency: z.literal('INR'),
   /**
    * True on the dev gateway: there is no real sheet to open, so the app skips
@@ -75,6 +77,8 @@ export const paymentIntentSchema = z.object({
    * coupon lines — without a second round trip.
    */
   breakdown: fareBreakdownSchema,
+  /** true when the wallet covered the whole bill: the booking is already paid, open no sheet. */
+  settled: z.boolean(),
 });
 export type PaymentIntentDto = z.infer<typeof paymentIntentSchema>;
 
@@ -141,3 +145,25 @@ export const walletTransactionSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 export type WalletTransactionDto = z.infer<typeof walletTransactionSchema>;
+
+/**
+ * POST /v1/payments/:bookingId/cash — the customer will hand the driver cash;
+ * the booking stays `completed` until the driver confirms.
+ */
+export const cashPaymentResponseSchema = z.object({
+  paymentId: z.uuid(),
+  bookingId: z.uuid(),
+  status: z.literal('awaiting_cash'),
+  amountPaise: unsignedPaiseSchema,
+});
+export type CashPaymentResponse = z.infer<typeof cashPaymentResponseSchema>;
+
+/**
+ * POST /v1/jobs/:id/cash-collected — the driver's confirmation; settles the
+ * booking to `paid`.
+ */
+export const cashCollectedResponseSchema = z.object({
+  bookingId: z.uuid(),
+  bookingStatus: z.string(),
+});
+export type CashCollectedResponse = z.infer<typeof cashCollectedResponseSchema>;

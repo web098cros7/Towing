@@ -49,6 +49,8 @@ import { QuotesModule } from './modules/quotes/quotes.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthPublicModule } from './modules/auth-public/auth-public.module';
+import { BookingChatModule } from './modules/booking-chat/booking-chat.module';
+import { ReferralsModule } from './modules/referrals/referrals.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { DriverKycModule } from './modules/driver-kyc/driver-kyc.module';
@@ -132,6 +134,8 @@ import { RedisModule } from './redis/redis.module';
     DispatchModule,
     TrackingModule,
     JobExecutionModule,
+    BookingChatModule,
+    ReferralsModule,
     PlacesModule,
     FilesModule,
     DashboardModule,

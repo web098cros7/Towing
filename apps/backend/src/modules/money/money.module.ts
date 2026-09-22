@@ -21,6 +21,7 @@ import { DriverEarningsRepo } from './driver-earnings.repo';
 import { DriverEarningsService } from './driver-earnings.service';
 import { EarningsDigestService } from './earnings-digest.service';
 import { DriverMoneyController } from './driver-money.controller';
+import { DriverCashController } from './driver-cash.controller';
 import { DriverPayoutAccountService } from './driver-payout-account.service';
 import { PayoutAccountsRepo } from './payout-accounts.repo';
 import { BookingsModule } from '../bookings/bookings.module';
@@ -30,6 +31,7 @@ import { RazorpayRouteAdapter } from './razorpay-route.adapter';
 import { ReportsController } from './reports.controller';
 import { ReportsRepo } from './reports.repo';
 import { ReportsService } from './reports.service';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 /**
  * The money domain: the earnings projection and its nightly reconciliation,
@@ -47,13 +49,14 @@ import { ReportsService } from './reports.service';
  * NotificationsModule are all `@Global()`.
  */
 @Module({
-  imports: [AuthModule, BookingsModule, PricingModule, PaymentGatewayModule],
+  imports: [AuthModule, BookingsModule, PricingModule, PaymentGatewayModule, ReferralsModule],
   controllers: [
     EarningsController,
     ReportsController,
     PayoutsController,
     PaymentsController,
     DriverMoneyController,
+    DriverCashController,
   ],
   providers: [
     EarningsProjectorService,

@@ -8,6 +8,7 @@ const SERVICE_LABEL: Record<string, string> = {
   fuel: 'Fuel delivery',
   breakdown: 'Breakdown assistance',
   accident_recovery: 'Accident recovery',
+  lockout: 'Car lockout',
 };
 
 export function toJobDto(row: JobFeedRow): JobDto {

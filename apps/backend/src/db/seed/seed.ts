@@ -135,6 +135,10 @@ export const APP_TABLES = [
   'deletion_requests',
   // W20 manual quotes reference `bookings`, so they go before it in the reset.
   'quotes',
+  // Migration 0035: trip chat and referral redemptions reference `bookings`/`users`.
+  'booking_messages',
+  'referral_redemptions',
+  'referral_codes',
   // W19 policy rows are re-seeded by migration 0033, so wiping them on reset
   // is safe — the migration only runs on a fresh database, though, which is
   // why `db:seed` re-inserts the defaults itself (see `seedRetentionPolicies`).

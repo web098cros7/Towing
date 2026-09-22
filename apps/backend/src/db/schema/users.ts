@@ -22,6 +22,10 @@ export const users = pgTable(
     name: text('name'),
     email: text('email'),
     photoUrl: text('photo_url'),
+    /** Figma 54 · Language. Null follows the device. Migration 0035. */
+    language: text('language'),
+    /** Figma 55 · Appearance: 'light' | 'dark' | 'system'. Null follows the device. */
+    appearance: text('appearance'),
     defaultLat: doublePrecision('default_lat'),
     defaultLng: doublePrecision('default_lng'),
     status: accountStatusEnum('status').notNull().default('active'),

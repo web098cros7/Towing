@@ -67,6 +67,8 @@ export const coupons = pgTable(
     startsAt: timestamp('starts_at', { withTimezone: true }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     isActive: boolean('is_active').notNull().default(true),
+    /** Listed in the app's Available offers (Figma 28); private codes still validate when typed. */
+    isPublic: boolean('is_public').notNull().default(false),
     ...timestamps,
   },
   (t) => [uniqueIndex('uq_coupons_code').on(sql`upper(${t.code})`)],

@@ -74,6 +74,17 @@ export const bookingCreateSchema = z
   });
 export type BookingCreate = z.infer<typeof bookingCreateSchema>;
 
+/** §9.1.7's driver card. No mobile number — that is `GET /:id/contact`, behind telephony. */
+export const trackedDriverSchema = z.object({
+  name: z.string(),
+  photoUrl: z.string().nullable(),
+  rating: z.number().nullable(),
+  totalTrips: z.number().int().nonnegative(),
+  vehiclePlate: z.string().nullable(),
+  vehicleClass: vehicleClassSchema.nullable(),
+});
+export type TrackedDriver = z.infer<typeof trackedDriverSchema>;
+
 /**
  * A booking as its own customer sees it.
  *
@@ -102,6 +113,9 @@ export const bookingSchema = z.object({
   breakdown: fareBreakdownSchema,
   /** §3.3 tier. A label, not a take rate. */
   band: commissionBandSchema.nullable(),
+
+  /** Null until a driver is assigned (§9.1.7). Same card as tracking; no mobile number. */
+  driver: trackedDriverSchema.nullable(),
 
   /** Future-dated when the customer chose "later"; null for an immediate tow. */
   scheduledAt: z.iso.datetime().nullable(),
@@ -142,6 +156,21 @@ export const bookingDetailSchema = bookingSchema.extend({
       deadlineAt: z.iso.datetime().nullable(),
     })
     .nullable(),
+
+  /** How it was paid; null until paid. */
+  paymentMethod: z.enum(['upi', 'card', 'cash', 'wallet']).nullable(),
+  /** When the payment was captured; null until paid. */
+  paidAt: z.iso.datetime().nullable(),
+  /** When a driver was assigned to the booking. */
+  assignedAt: z.iso.datetime().nullable(),
+  /** When the assigned driver started heading to the pickup. */
+  enRouteAt: z.iso.datetime().nullable(),
+  /** When the driver reached the pickup. */
+  arrivedAt: z.iso.datetime().nullable(),
+  /** When the trip started. */
+  startedAt: z.iso.datetime().nullable(),
+  /** When the trip completed. */
+  completedAt: z.iso.datetime().nullable(),
 });
 export type BookingDetail = z.infer<typeof bookingDetailSchema>;
 
@@ -261,17 +290,6 @@ export const trackedPositionSchema = z.object({
   at: z.iso.datetime(),
 });
 export type TrackedPosition = z.infer<typeof trackedPositionSchema>;
-
-/** §9.1.7's driver card. No mobile number — that is `GET /:id/contact`, behind telephony. */
-export const trackedDriverSchema = z.object({
-  name: z.string(),
-  photoUrl: z.string().nullable(),
-  rating: z.number().nullable(),
-  totalTrips: z.number().int().nonnegative(),
-  vehiclePlate: z.string().nullable(),
-  vehicleClass: vehicleClassSchema.nullable(),
-});
-export type TrackedDriver = z.infer<typeof trackedDriverSchema>;
 
 /**
  * `GET /v1/bookings/:id/tracking` — §19.2's polling rung for §9.1.7.

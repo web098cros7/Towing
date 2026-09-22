@@ -62,4 +62,8 @@ export const adminAppConfigMock: AppConfig = {
   sevLevel: null,
   sevMessage: null,
   sevUpdatedAt: null,
+  supportPhone: '+911800123456',
+  supportEmail: 'support@mitow.in',
+  referrerRewardPaise: 10000,
+  refereeRewardPaise: 10000,
 };

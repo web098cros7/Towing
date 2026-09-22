@@ -10,6 +10,7 @@ import {
   CUSTOMER_EVENT,
   CUSTOMER_NAMESPACE,
   bookingRoom,
+  type BookingMessage,
   type CustomerBookingStatusEvent,
   type CustomerLocationUpdateEvent,
   type EtaUpdateEvent,
@@ -163,6 +164,11 @@ export class CustomerGateway implements OnGatewayInit, OnGatewayConnection, OnGa
    */
   emitEtaUpdate(payload: EtaUpdateEvent): void {
     this.namespace.to(bookingRoom(payload.bookingId)).emit(CUSTOMER_EVENT.ETA_UPDATE, payload);
+  }
+
+  /** Figma 24 — one chat message, to the booking room. */
+  emitChatMessage(bookingId: string, message: BookingMessage): void {
+    this.namespace.to(bookingRoom(bookingId)).emit(CUSTOMER_EVENT.CHAT_MESSAGE, message);
   }
 
   /** How many sockets are watching this booking on THIS node. */

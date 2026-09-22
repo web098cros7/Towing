@@ -1,7 +1,19 @@
-import { Controller, Delete, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   emergencyContactCreateSchema,
+  emergencyContactUpdateSchema,
   type EmergencyContactCreate,
+  type EmergencyContactUpdate,
 } from '@towing/api-contracts';
 import { z } from 'zod';
 import { ZodBody, ZodParam } from '../../common/validation/zod.decorators';
@@ -28,6 +40,15 @@ export class MeEmergencyContactsController {
     @Req() request: AuthedRequest,
   ) {
     return this.contacts.create(customerId(request), body);
+  }
+
+  @Put(':id')
+  update(
+    @ZodParam(z.uuid(), 'id') contactId: string,
+    @ZodBody(emergencyContactUpdateSchema) body: EmergencyContactUpdate,
+    @Req() request: AuthedRequest,
+  ) {
+    return this.contacts.update(customerId(request), contactId, body);
   }
 
   @Delete(':id')

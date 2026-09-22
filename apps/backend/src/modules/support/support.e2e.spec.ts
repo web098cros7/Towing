@@ -431,4 +431,59 @@ describe('support tickets (/v1/support + /v1/admin/support, W15)', () => {
       .set('Authorization', opsAuth)
       .expect(403);
   });
+
+  // -------------------------------------------------------------------------
+  // Attachments (Figma 61 "Add photos", up to 3)
+  // -------------------------------------------------------------------------
+
+  describe('attachments', () => {
+    const presign = (auth: string) =>
+      request(app.getHttpServer())
+        .post('/v1/support/tickets/attachments/presign')
+        .set('Authorization', auth)
+        .expect(200);
+
+    it('presigns a key under the requester’s own namespace', async () => {
+      const res = await presign(customerAuth);
+      expect(typeof res.body.uploadUrl).toBe('string');
+      expect(res.body.key).toMatch(
+        new RegExp(`^support-attachments/${customerId}/att-`),
+      );
+      expect(typeof res.body.expiresAt).toBe('string');
+    });
+
+    it('stores a checked attachment and serves it back as a signed URL', async () => {
+      const slot = await presign(customerAuth);
+      const key = slot.body.key as string;
+
+      const created = await createTicket(customerAuth, { attachments: [key] });
+      const ticketId = created.body.ticketId as string;
+
+      const detail = await request(app.getHttpServer())
+        .get(`/v1/support/tickets/${ticketId}`)
+        .set('Authorization', customerAuth)
+        .expect(200);
+      const parsed = expectMatchesContract(supportTicketDetailSchema, detail.body);
+      const first = parsed.messages[0]!;
+      expect(first.attachments).toHaveLength(1);
+      expect(typeof first.attachments[0]).toBe('string');
+      expect(first.attachments[0]!.startsWith('local://')).toBe(false);
+    });
+
+    it('refuses a key minted for another requester', async () => {
+      const otherSlot = await presign(otherCustomerAuth);
+      await createTicket(customerAuth, { attachments: [otherSlot.body.key] }, 403);
+    });
+
+    it('refuses more than three attachments', async () => {
+      const slots = await Promise.all([
+        presign(customerAuth),
+        presign(customerAuth),
+        presign(customerAuth),
+        presign(customerAuth),
+      ]);
+      const keys = slots.map((slot) => slot.body.key as string);
+      await createTicket(customerAuth, { attachments: keys }, 422);
+    });
+  });
 });

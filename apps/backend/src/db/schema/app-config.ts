@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { primaryId, timestamps } from './columns';
 
 /**
@@ -37,6 +37,12 @@ export const appConfig = pgTable(
     sevLevel: text('sev_level'),
     sevMessage: text('sev_message'),
     sevUpdatedAt: timestamp('sev_updated_at', { withTimezone: true }),
+    /** The support line and inbox the customer app shows (migration 0035). */
+    supportPhone: text('support_phone').notNull().default('+911800123456'),
+    supportEmail: text('support_email').notNull().default('support@mitow.in'),
+    /** Refer & Earn (Figma 45): wallet credit to each side on the referee's first paid trip. */
+    referrerRewardPaise: integer('referrer_reward_paise').notNull().default(10000),
+    refereeRewardPaise: integer('referee_reward_paise').notNull().default(10000),
     ...timestamps,
   },
   (t) => [uniqueIndex('app_config_singleton_unique').on(t.singleton)],

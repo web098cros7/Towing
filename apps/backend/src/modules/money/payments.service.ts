@@ -1,10 +1,12 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
   ErrorCodes,
   paiseToRupeeString,
   rupeeStringToPaise,
+  type CashCollectedResponse,
+  type CashPaymentResponse,
   type PaymentCaptureRequest,
   type PaymentIntentDto,
   type PaymentPurpose,
@@ -17,7 +19,7 @@ import { NotificationService } from '../../common/notifications/notification.ser
 import { QUEUE, type QueuePort } from '../../common/queue/queue.port';
 import { ENV, type Env } from '../../config/env';
 import { DB, type Database } from '../../db/db.module';
-import { paymentRowKey } from '../../db/ledger/idempotency-keys';
+import { ledgerKeys, paymentRowKey } from '../../db/ledger/idempotency-keys';
 import { LedgerService } from '../../db/ledger/ledger.service';
 import { paymentCaptureLockKey } from '../../redis/redis.constants';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
@@ -33,6 +35,7 @@ import { computeSettlement } from './settlement';
 import { devCheckoutSignature, devPaymentRef } from './dev-payment.adapter';
 import { cancellationPolicy } from '../bookings/cancellation-policy';
 import { PricingConfigRepo } from '../pricing/pricing-config.repo';
+import { ReferralsService } from '../referrals/referrals.service';
 
 /**
  * §14.2's capture, and the one place a booking ever becomes `paid`.
@@ -62,6 +65,7 @@ export class PaymentsService {
     private readonly customers: CustomerGateway,
     private readonly rateCards: PricingConfigRepo,
     private readonly notifications: NotificationService,
+    private readonly referrals: ReferralsService,
     @Inject(DB) private readonly db: Database,
     @Inject(QUEUE) private readonly queue: QueuePort,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
@@ -92,12 +96,12 @@ export class PaymentsService {
     // paid — so reading the column here would always find zero and 422 the
     // intent. Running the same `cancellationPolicy` the quote runs is also what
     // guarantees the customer is charged what they were shown.
-    const amountPaise =
+    const totalPaise =
       purpose === 'booking'
         ? rupeeStringToPaise(booking.total)
         : (await this.cancellationFeePaise(booking)).feePaise;
 
-    if (amountPaise <= 0) {
+    if (totalPaise <= 0) {
       throw new ApiException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         ErrorCodes.VALIDATION_FAILED,
@@ -105,13 +109,34 @@ export class PaymentsService {
       );
     }
 
+    // Only purpose 'booking' ever applies wallet money. `cancellation_fee`
+    // intents always leave `walletApplied` at '0'.
+    const balancePaise =
+      purpose === 'booking'
+        ? await this.ledger.balanceOf({ ownerType: 'user', ownerId: userId })
+        : 0;
+    const walletPaise = Math.max(0, Math.min(balancePaise, totalPaise));
+    const gatewayPaise = totalPaise - walletPaise;
+
     // ANY open intent for this booking and purpose is reused, whatever key
     // created it. A customer who backgrounds the app and returns has a new
     // client key for what is still one intent to pay — and two live orders for
     // one booking is how you end up with two captures.
-    const open = await this.repo.openIntent(bookingId, purpose);
+    //
+    // The reused row's amounts are returned AS STORED — never recomputed — so
+    // the wallet split the customer was shown is the split they pay.
+    let open = await this.repo.openIntent(bookingId, purpose);
+
+    // The customer switched from cash to paying online. Fail the cash intent
+    // via the REPO (no failure notification — this is a deliberate switch, not
+    // a gateway failure) and continue as if there were no open intent.
+    if (open && open.provider === 'cash') {
+      await this.repo.markFailed(open.id, 'Customer switched to online payment');
+      open = null;
+    }
+
     if (open?.gatewayOrderRef) {
-      return this.intentDto(open, booking, amountPaise);
+      return this.intentDto(open, booking);
     }
 
     // Namespaced by booking AND purpose: `uq_payments_idempotency_key` is
@@ -125,27 +150,56 @@ export class PaymentsService {
       try {
         row = await this.repo.create({
           bookingId,
-          amount: paiseToRupeeString(amountPaise),
+          amount: paiseToRupeeString(gatewayPaise),
+          walletApplied: paiseToRupeeString(walletPaise),
           taxAmount: purpose === 'booking' ? booking.taxAmount : '0',
           purpose,
-          method: 'upi',
+          method: walletPaise > 0 && gatewayPaise === 0 ? 'wallet' : 'upi',
           idempotencyKey: storedKey,
-          provider: this.gateway.name,
+          provider: walletPaise > 0 && gatewayPaise === 0 ? 'wallet' : this.gateway.name,
         });
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
         const existing = await this.repo.byIdempotencyKey(storedKey);
         if (!existing) throw error;
         row = existing;
-        if (row.gatewayOrderRef) return this.intentDto(row, booking, amountPaise);
+        if (row.gatewayOrderRef) return this.intentDto(row, booking);
       }
+    }
+
+    // WALLET-ONLY: the wallet covers the whole bill, so there is no gateway
+    // order to open. The row is marked captured and settled inline, and the
+    // DTO tells the app not to open a sheet.
+    if (gatewayPaise === 0) {
+      const orderRef = `wallet-${row.id}`;
+      await this.repo.setOrderRef(row.id, orderRef);
+      await this.settleCapturedPayment(bookingId, {
+        gatewayRef: orderRef,
+        orderRef,
+        status: 'captured',
+        method: 'wallet',
+        amountPaise: 0,
+      });
+
+      return {
+        paymentId: row.id,
+        orderRef,
+        publicKey: this.env.RAZORPAY_KEY_ID ?? 'rzp_test_dev',
+        amountPaise: 0,
+        walletAppliedPaise: walletPaise,
+        currency: 'INR',
+        autoSettles: true,
+        devCheckout: null,
+        breakdown: booking.breakdown,
+        settled: true,
+      };
     }
 
     const handle = await this.gateway.createIntent({
       paymentId: row.id,
       bookingId,
       purpose,
-      amountPaise,
+      amountPaise: gatewayPaise,
       customer: {
         userId,
         name: booking.customerName,
@@ -162,11 +216,106 @@ export class PaymentsService {
       orderRef: handle.orderRef,
       publicKey: handle.publicKey,
       amountPaise: handle.amountPaise,
+      walletAppliedPaise: walletPaise,
       currency: 'INR',
       autoSettles: handle.autoSettles,
       devCheckout: handle.devCheckout,
       breakdown: booking.breakdown,
+      settled: false,
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────── cash ────
+
+  /**
+   * The customer says "I'll pay cash". Records an intent row with
+   * `provider = 'cash'` and leaves the booking at `completed` — the driver's
+   * confirmation is what settles it.
+   */
+  async chooseCash(bookingId: string, userId: string): Promise<CashPaymentResponse> {
+    const booking = await this.loadPayableBooking(bookingId, userId, 'booking');
+
+    const open = await this.repo.openIntent(bookingId, 'booking');
+    if (open?.provider === 'cash') {
+      return {
+        paymentId: open.id,
+        bookingId,
+        status: 'awaiting_cash',
+        amountPaise: rupeeStringToPaise(open.amount),
+      };
+    }
+
+    if (open) {
+      await this.repo.markFailed(open.id, 'Customer chose to pay cash');
+    }
+
+    const row = await this.repo.create({
+      bookingId,
+      amount: booking.total,
+      walletApplied: '0',
+      taxAmount: booking.taxAmount,
+      purpose: 'booking',
+      method: 'cash',
+      idempotencyKey: paymentRowKey(bookingId, 'booking', sha256(`cash:${randomUUID()}`)),
+      provider: 'cash',
+    });
+
+    return {
+      paymentId: row.id,
+      bookingId,
+      status: 'awaiting_cash',
+      amountPaise: rupeeStringToPaise(booking.total),
+    };
+  }
+
+  /**
+   * The driver's confirmation that they physically hold the cash. This is the
+   * only path that settles a cash booking to `paid`.
+   */
+  async confirmCashCollected(
+    bookingId: string,
+    driverId: string,
+  ): Promise<CashCollectedResponse> {
+    const [row] = (await this.db.execute(sql`
+      select status, total from bookings
+       where id = ${bookingId}::uuid and driver_id = ${driverId}::uuid
+    `)) as unknown as Array<{ status: string; total: string } | undefined>;
+
+    if (!row) throw ApiException.notFound('Job not found');
+
+    if (row.status === 'paid') return { bookingId, bookingStatus: 'paid' };
+
+    if (row.status !== 'completed') {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.INVALID_BOOKING_STATE,
+        'Cash can only be collected once the trip is completed',
+        { status: row.status },
+      );
+    }
+
+    const open = await this.repo.openIntent(bookingId, 'booking');
+    if (!open || open.provider !== 'cash') {
+      throw new ApiException(
+        HttpStatus.CONFLICT,
+        ErrorCodes.INVALID_BOOKING_STATE,
+        'The customer has not chosen to pay cash',
+      );
+    }
+
+    await this.settleCapturedPayment(bookingId, {
+      gatewayRef: `cash-${open.id}`,
+      orderRef: null,
+      status: 'captured',
+      method: 'cash',
+      amountPaise: rupeeStringToPaise(row.total),
+    });
+
+    const [after] = (await this.db.execute(sql`
+      select status from bookings where id = ${bookingId}::uuid
+    `)) as unknown as Array<{ status: string } | undefined>;
+
+    return { bookingId, bookingStatus: after?.status ?? 'paid' };
   }
 
   // ──────────────────────────────────────────────────────────── capture ────
@@ -219,7 +368,16 @@ export class PaymentsService {
       );
     }
 
-    await this.assertAmountMatches(handle, rupeeStringToPaise(booking.total));
+    // The gateway only ever collects the part the wallet did not cover, so the
+    // amount check is against `total − walletApplied` on the row this order
+    // belongs to. A missing row means zero wallet was applied.
+    const paymentRow = await this.repo.byOrderRef(body.orderRef);
+    const walletAppliedPaise = paymentRow ? rupeeStringToPaise(paymentRow.walletApplied) : 0;
+
+    await this.assertAmountMatches(
+      handle,
+      rupeeStringToPaise(booking.total) - walletAppliedPaise,
+    );
 
     await this.settleCapturedPayment(bookingId, handle);
 
@@ -309,6 +467,42 @@ export class PaymentsService {
       );
     }
 
+    // LEDGER FIRST: the wallet debit is posted BEFORE the settlement credits,
+    // so a crash between the two leaves the customer's balance already spent
+    // and the settlement replayable on the same `ws:v1:*` key.
+    const { walletAppliedPaise, provider } = await this.paymentLegsFor(paymentId);
+    if (walletAppliedPaise > 0) {
+      await this.ledger.post([
+        {
+          owner: { ownerType: 'user', ownerId: inputs.userId },
+          type: 'wallet_spend_debit',
+          amountPaise: -walletAppliedPaise,
+          reason: `Paid towards booking TW-${bookingId.slice(0, 8).toUpperCase()}`,
+          refId: bookingId,
+          idempotencyKey: ledgerKeys.walletSpend(bookingId),
+        },
+      ]);
+    }
+
+    // CASH: the driver physically holds the whole fare. Debit them the FULL
+    // booking total (including tax) BEFORE the settlement credits, so the net
+    // effect is that their wallet goes down by commission + tax — what they
+    // owe the platform. The ledger invariants only sum the three settlement
+    // credit types, so they stay zero.
+    if (provider === 'cash') {
+      const cashTotalPaise = rupeeStringToPaise(inputs.totalRupees);
+      await this.ledger.post([
+        {
+          owner: { ownerType: 'driver', ownerId: inputs.driverId },
+          type: 'cash_collected_debit',
+          amountPaise: -cashTotalPaise,
+          reason: `Cash collected for booking TW-${bookingId.slice(0, 8).toUpperCase()}`,
+          refId: bookingId,
+          idempotencyKey: ledgerKeys.cashCollected(bookingId),
+        },
+      ]);
+    }
+
     // ⚠ THE SINGLE MOST DANGEROUS LINE IN THE PHASE.
     //
     // `taxable`, never `booking.total`. §14.3's split applies to what the
@@ -350,7 +544,7 @@ export class PaymentsService {
         bookingId,
         to: 'paid',
         actor: 'system',
-        note: `Captured via ${this.gateway.name}`,
+        note: provider === 'cash' ? 'Cash collected by driver' : `Captured via ${this.gateway.name}`,
         patch: {
           commissionAmount: paiseToRupeeString(settlement.commissionPaise),
           driverPayout: paiseToRupeeString(settlement.poolPaise),
@@ -474,6 +668,13 @@ export class PaymentsService {
           maximumFractionDigits: 2,
         })}`,
       });
+    }
+
+    // A reward failure must never unsettle a payment.
+    try {
+      await this.referrals.rewardForBooking(bookingId);
+    } catch (error) {
+      this.logger.warn(`referral reward failed for ${bookingId}: ${String(error)}`);
     }
   }
 
@@ -708,16 +909,18 @@ export class PaymentsService {
     };
   }
 
-  private intentDto(
-    row: PaymentRow,
-    booking: PayableBooking,
-    amountPaise: number,
-  ): PaymentIntentDto {
+  private intentDto(row: PaymentRow, booking: PayableBooking): PaymentIntentDto {
+    // Amounts come off the ROW, never recomputed: a reused intent must return
+    // the wallet split the customer was originally shown.
+    const amountPaise = rupeeStringToPaise(row.amount);
+    const walletAppliedPaise = rupeeStringToPaise(row.walletApplied);
+
     return {
       paymentId: row.id,
       orderRef: row.gatewayOrderRef!,
       publicKey: this.env.RAZORPAY_KEY_ID ?? 'rzp_test_dev',
       amountPaise,
+      walletAppliedPaise,
       currency: 'INR',
       autoSettles: this.gateway.name === 'dev',
       // A REUSED intent recomputes it rather than storing it: the signature is
@@ -735,6 +938,24 @@ export class PaymentsService {
             }
           : null,
       breakdown: booking.breakdown,
+      settled: false,
+    };
+  }
+
+  /**
+   * The wallet amount and provider stored on a captured payment row. The
+   * provider drives the cash-collected debit leg in `settleInner`.
+   */
+  private async paymentLegsFor(
+    paymentId: string | null,
+  ): Promise<{ walletAppliedPaise: number; provider: string | null }> {
+    if (!paymentId) return { walletAppliedPaise: 0, provider: null };
+    const [row] = (await this.db.execute(sql`
+      select wallet_applied, provider from payments where id = ${paymentId}::uuid
+    `)) as unknown as Array<{ wallet_applied: string | null; provider: string | null } | undefined>;
+    return {
+      walletAppliedPaise: row ? rupeeStringToPaise(row.wallet_applied ?? '0') : 0,
+      provider: row?.provider ?? null,
     };
   }
 

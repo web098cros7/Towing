@@ -1,5 +1,10 @@
-import { Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
-import { customerProfileUpdateSchema, type CustomerProfileUpdate } from '@towing/api-contracts';
+import { Controller, Get, HttpCode, HttpStatus, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  customerPhotoConfirmSchema,
+  customerProfileUpdateSchema,
+  type CustomerPhotoConfirm,
+  type CustomerProfileUpdate,
+} from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { ZodBody } from '../../common/validation/zod.decorators';
 import type { AuthedRequest } from '../auth/auth.types';
@@ -29,6 +34,21 @@ export class MeController {
     @Req() request: AuthedRequest,
   ) {
     return this.me.updateProfile(customerId(request), body);
+  }
+
+  @Post('photo/presign')
+  @HttpCode(HttpStatus.OK)
+  presignPhoto(@Req() request: AuthedRequest) {
+    return this.me.presignPhoto(customerId(request));
+  }
+
+  @Post('photo/confirm')
+  @HttpCode(HttpStatus.OK)
+  confirmPhoto(
+    @ZodBody(customerPhotoConfirmSchema) body: CustomerPhotoConfirm,
+    @Req() request: AuthedRequest,
+  ) {
+    return this.me.confirmPhoto(customerId(request), body.key);
   }
 }
 

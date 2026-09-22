@@ -2,6 +2,7 @@ export * from './account-privacy';
 export * from './app-config';
 export * from './auth';
 export * from './banners';
+export * from './booking-chat';
 export * from './dispatch-config';
 export * from './enums';
 export * from './errors';

@@ -61,6 +61,8 @@ export const CUSTOMER_EVENT = {
   LOCATION_UPDATE: 'location:update',
   /** §11.5 — the smoothed arrival estimate (Phase 18). */
   ETA_UPDATE: 'eta:update',
+  /** Figma 24 — one chat message frame, delivered to the booking room. */
+  CHAT_MESSAGE: 'chat:message',
 } as const;
 export type CustomerEventName = (typeof CUSTOMER_EVENT)[keyof typeof CUSTOMER_EVENT];
 
@@ -199,4 +201,3 @@ export const ETA_RECOMPUTE = {
   /** "driver stationary > 90s (traffic)". */
   stationaryMs: 90_000,
 } as const;
-

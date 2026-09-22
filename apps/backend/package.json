@@ -20,6 +20,7 @@
     "earnings:rebuild": "tsx src/scripts/rebuild-earnings.ts",
     "sim:locations": "tsx src/scripts/simulate-locations.ts",
     "sim:drivers": "tsx src/scripts/simulate-drivers.ts",
+    "sim:job": "tsx src/scripts/sim-job.ts",
     "bench:dispatch": "tsx src/scripts/bench-dispatch.ts",
     "bench:tracking": "tsx src/scripts/bench-tracking.ts",
     "smoke:realtime": "tsx src/scripts/realtime-load.ts",
