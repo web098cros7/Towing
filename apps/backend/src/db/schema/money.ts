@@ -219,6 +219,13 @@ export const refunds = pgTable(
      * migration carries the real constraint (and `payment_id`'s).
      */
     kind: text('kind').notNull().default('full'),
+    /**
+     * Migration 0035 — where this refund goes: `gatewayAmount` back to the original
+     * UPI/card payment, `walletAmount` to the customer's MiTow wallet (the wallet part
+     * of the bill, and all of a cash trip). They always add up to `amount`.
+     */
+    gatewayAmount: money('gateway_amount').notNull().default('0'),
+    walletAmount: money('wallet_amount').notNull().default('0'),
     disputeId: uuid('dispute_id'),
     paymentId: uuid('payment_id').references(() => payments.id),
     /** Partial refunds only: `driver` | `fleet` | `platform` — who bore X. */

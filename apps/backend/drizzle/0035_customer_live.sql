@@ -91,6 +91,15 @@ ALTER TABLE "payments" ADD CONSTRAINT "ck_payments_wallet_applied" CHECK ("walle
 ALTER TABLE "payments" DROP CONSTRAINT "ck_payments_amount_positive";--> statement-breakpoint
 ALTER TABLE "payments" ADD CONSTRAINT "ck_payments_amount_positive" CHECK ("amount" >= 0 AND "amount" + "wallet_applied" > 0);--> statement-breakpoint
 
+-- Refund split: a booking is paid partly through the gateway and partly from the
+-- customer's wallet (and a cash trip entirely outside the gateway), so a refund
+-- returns each part to where it came from. `amount` stays the total refunded;
+-- `payments.refunded_amount` now sums only the gateway part.
+ALTER TABLE "refunds" ADD COLUMN "gateway_amount" numeric(12, 2) DEFAULT '0' NOT NULL;--> statement-breakpoint
+ALTER TABLE "refunds" ADD COLUMN "wallet_amount" numeric(12, 2) DEFAULT '0' NOT NULL;--> statement-breakpoint
+UPDATE "refunds" SET "gateway_amount" = "amount";--> statement-breakpoint
+ALTER TABLE "refunds" ADD CONSTRAINT "ck_refunds_split" CHECK ("gateway_amount" >= 0 AND "wallet_amount" >= 0 AND "gateway_amount" + "wallet_amount" = "amount");--> statement-breakpoint
+
 -- A cash trip debits the driver the full fare they collected; their share is
 -- still credited by the normal settlement legs, so the wallet nets to minus
 -- (commission + tax) — what the driver owes. Safe in the same file because

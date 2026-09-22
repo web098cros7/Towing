@@ -188,9 +188,9 @@ describe('refunds e2e (/v1 money, RefundsService)', () => {
     // the transition and the payment update. Under the old behaviour the
     // replay returned `replayed: true` and left exactly this mess behind.
     await db.execute(sql`
-      insert into refunds (booking_id, payment_id, amount, reason, status,
+      insert into refunds (booking_id, payment_id, amount, gateway_amount, reason, status,
                            idempotency_key, initiated_by, kind, gateway_ref)
-      select booking_id, id, 1000.00, 'cancellation', 'processed',
+      select booking_id, id, 1000.00, 1000.00, 'cancellation', 'processed',
              'rf:v1:' || booking_id::text || ':cancellation', ${adminId}, 'full', 'rfnd_dev_crashed'
         from payments where booking_id = ${bookingId}::uuid
     `);

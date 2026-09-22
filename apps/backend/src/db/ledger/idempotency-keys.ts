@@ -63,6 +63,8 @@ export const ledgerKeys = {
    */
   refundDriverDebit: (refundId: string) => `rf:v1:${refundId}:driver`,
   refundFleetDebit: (refundId: string) => `rf:v1:${refundId}:fleet`,
+  /** Migration 0035: the part of a refund returned to the customer's wallet. */
+  refundUserCredit: (refundId: string) => `rf:v1:${refundId}:user`,
 
   /**
    * W8's dispute `cancel_no_charge` exit: platform-funded driver compensation,

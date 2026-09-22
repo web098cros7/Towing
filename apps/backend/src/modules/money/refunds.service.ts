@@ -21,6 +21,7 @@ import {
   BookingStateMachineService,
   type TransitionResult,
 } from '../bookings/booking-state-machine.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { PAYMENT_GATEWAY, type PaymentGatewayPort } from './payment-gateway.port';
 import { PaymentsRepo } from './payments.repo';
 
@@ -61,6 +62,22 @@ export type RefundKeySource =
  * rule that keeps `ledgerDrift` tractable is about CREDITS, and the invariant
  * that actually guards reversals — `reversalDrift` — was designed from the
  * start to run at every status precisely so a paid booking could carry one.)
+ *
+ * WHERE A REFUND GOES. A booking can be paid through the gateway, partly or
+ * wholly from the customer's MiTow wallet, in cash to the driver, or with a
+ * coupon applied at payment time. The captured `booking` payment therefore
+ * carries TWO refundable pools:
+ *
+ *   gatewayPool = provider is 'cash' or 'wallet' ? 0 : amount
+ *   walletPool  = walletApplied + (provider === 'cash' ? amount : 0)
+ *
+ * Cash can only be returned digitally, as wallet credit — the driver already
+ * holds the notes, and reversing their pool credit while the
+ * `cash_collected_debit` stays is exactly what leaves them owing it. A full
+ * refund returns both remaining pools; a partial spends the gateway pool
+ * FIRST and only then the wallet pool. A refund with no gateway part needs no
+ * vendor call and is marked `processed` as soon as the wallet credit lands.
+ * A full refund also releases the booking's coupon.
  */
 @Injectable()
 export class RefundsService {
@@ -70,6 +87,7 @@ export class RefundsService {
     private readonly payments: PaymentsRepo,
     private readonly ledger: LedgerService,
     private readonly machine: BookingStateMachineService,
+    private readonly coupons: CouponsService,
     @Inject(DB) private readonly db: Database,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
   ) {}
@@ -158,12 +176,16 @@ export class RefundsService {
       }
     }
 
-    // The REMAINING balance, not the original amount: a booking that already
-    // carries partial refunds still reaches full coverage in total, and
-    // `reverseLedger` below reverses only the un-clawed-back portion of each
-    // credit leg, so `reversalDrift` stays exact across a chain.
-    const amountPaise =
-      rupeeStringToPaise(captured.amount) - rupeeStringToPaise(captured.refundedAmount);
+    // The REMAINING balance, split across the two pools. A booking that
+    // already carries partial refunds still reaches full coverage in total,
+    // and `reverseLedger` below reverses only the un-clawed-back portion of
+    // each credit leg, so `reversalDrift` stays exact across a chain.
+    const split = await this.refundedSplit(captured.id);
+    const gatewayPool = gatewayPoolFor(captured);
+    const walletPool = walletPoolFor(captured);
+    const remainingGateway = gatewayPool - split.gatewayPaise;
+    const remainingWallet = walletPool - split.walletPaise;
+    const amountPaise = remainingGateway + remainingWallet;
     if (amountPaise <= 0) {
       throw new ApiException(
         HttpStatus.CONFLICT,
@@ -175,8 +197,12 @@ export class RefundsService {
     const disputeId = params.keySource?.kind === 'dispute' ? params.keySource.disputeId : null;
 
     const inserted = (await this.db.execute(sql`
-      insert into refunds (booking_id, payment_id, amount, reason, status, idempotency_key, initiated_by, kind, dispute_id)
-      values (${params.bookingId}::uuid, ${captured.id}::uuid, ${paiseToRupeeString(amountPaise)}::numeric,
+      insert into refunds (booking_id, payment_id, amount, gateway_amount, wallet_amount,
+                           reason, status, idempotency_key, initiated_by, kind, dispute_id)
+      values (${params.bookingId}::uuid, ${captured.id}::uuid,
+              ${paiseToRupeeString(amountPaise)}::numeric,
+              ${paiseToRupeeString(remainingGateway)}::numeric,
+              ${paiseToRupeeString(remainingWallet)}::numeric,
               ${params.reason}, 'pending', ${key}, ${params.initiatedBy}, 'full', ${disputeId}::uuid)
       on conflict (idempotency_key) do nothing
       returning id
@@ -205,9 +231,22 @@ export class RefundsService {
       refundId,
       key,
       gatewayRef: captured.gatewayRef,
-      amountPaise,
+      gatewayPaise: remainingGateway,
       reason: params.reason,
     });
+
+    if (remainingWallet > 0) {
+      await this.creditWallet(params.bookingId, refundId, remainingWallet);
+    }
+
+    // A refund with no gateway part needs no vendor confirmation: the wallet
+    // credit above is the whole movement, so the row is done.
+    if (remainingGateway === 0) {
+      await this.db.execute(sql`
+        update refunds set status = 'processed', processed_at = now(), updated_at = now()
+         where id = ${refundId}::uuid
+      `);
+    }
 
     await this.reverseLedger(params.bookingId, refundId);
 
@@ -226,6 +265,11 @@ export class RefundsService {
             }),
           )
         : null;
+
+    // A full refund gives the coupon back — the customer did not get the trip
+    // the discount was for. In its own transaction so a coupon failure cannot
+    // roll back the money that already moved.
+    await this.db.transaction((tx) => this.coupons.releaseForBooking(tx, params.bookingId));
 
     await this.payments.applyRefund(captured.id);
 
@@ -291,14 +335,21 @@ export class RefundsService {
       );
     }
 
-    const remainingPaise =
-      rupeeStringToPaise(captured.amount) - rupeeStringToPaise(captured.refundedAmount);
+    const split = await this.refundedSplit(captured.id);
+    const remainingGateway = gatewayPoolFor(captured) - split.gatewayPaise;
+    const remainingWallet = walletPoolFor(captured) - split.walletPaise;
+    const remainingPaise = remainingGateway + remainingWallet;
     if (params.amountPaise <= 0 || params.amountPaise > remainingPaise) {
       throw ApiException.validation('The refund exceeds what is left on this payment', {
         amountPaise: params.amountPaise,
         remainingPaise,
       });
     }
+
+    // Gateway FIRST: a partial spends the gateway pool before touching the
+    // wallet pool, so the customer's wallet credit is the last resort.
+    const gatewayPaise = Math.min(params.amountPaise, remainingGateway);
+    const walletPaise = params.amountPaise - gatewayPaise;
 
     if (params.liability !== 'platform') {
       const remainingCredit = await this.remainingCreditFor(params.bookingId, params.liability);
@@ -317,10 +368,13 @@ export class RefundsService {
     const disputeId = params.keySource.kind === 'dispute' ? params.keySource.disputeId : null;
 
     const inserted = (await this.db.execute(sql`
-      insert into refunds (booking_id, payment_id, amount, reason, status, idempotency_key,
+      insert into refunds (booking_id, payment_id, amount, gateway_amount, wallet_amount,
+                           reason, status, idempotency_key,
                            initiated_by, kind, liability, dispute_id)
       values (${params.bookingId}::uuid, ${captured.id}::uuid,
               ${paiseToRupeeString(params.amountPaise)}::numeric,
+              ${paiseToRupeeString(gatewayPaise)}::numeric,
+              ${paiseToRupeeString(walletPaise)}::numeric,
               ${params.reason}, 'pending', ${key}, ${params.initiatedBy}, 'partial',
               ${params.liability}, ${disputeId}::uuid)
       on conflict (idempotency_key) do nothing
@@ -347,9 +401,20 @@ export class RefundsService {
       refundId,
       key,
       gatewayRef: captured.gatewayRef,
-      amountPaise: params.amountPaise,
+      gatewayPaise,
       reason: params.reason,
     });
+
+    if (walletPaise > 0) {
+      await this.creditWallet(params.bookingId, refundId, walletPaise);
+    }
+
+    if (gatewayPaise === 0) {
+      await this.db.execute(sql`
+        update refunds set status = 'processed', processed_at = now(), updated_at = now()
+         where id = ${refundId}::uuid
+      `);
+    }
 
     await this.clawback(params.bookingId, refundId, params.amountPaise, params.liability);
     await this.payments.applyRefund(captured.id);
@@ -387,10 +452,15 @@ export class RefundsService {
     note?: string;
   }): Promise<void> {
     const [row] = (await this.db.execute(sql`
-      select amount::text as amount, status, gateway_ref, kind, liability, idempotency_key
+      select amount::text as amount,
+             gateway_amount::text as gateway_amount,
+             wallet_amount::text as wallet_amount,
+             status, gateway_ref, kind, liability, idempotency_key
         from refunds where id = ${params.refundId}::uuid
     `)) as unknown as Array<{
       amount: string;
+      gateway_amount: string;
+      wallet_amount: string;
       status: string;
       gateway_ref: string | null;
       kind: 'full' | 'partial';
@@ -400,15 +470,42 @@ export class RefundsService {
     if (!row || row.status === 'failed') return;
 
     const amountPaise = rupeeStringToPaise(row.amount);
+    const gatewayPaise = rupeeStringToPaise(row.gateway_amount);
+    const walletPaise = rupeeStringToPaise(row.wallet_amount);
     const payment = await this.paymentForResume(params.bookingId);
-    if (!row.gateway_ref && payment?.gatewayRef) {
+
+    // The gateway call is re-issued ONLY when the row carries no `gateway_ref`
+    // AND the stored split says there was a gateway part AND the payment's ref
+    // is a real gateway ref — a cash or wallet-only payment has nothing to
+    // call.
+    if (
+      !row.gateway_ref &&
+      gatewayPaise > 0 &&
+      payment?.gatewayRef &&
+      isRealGatewayRef(payment.gatewayRef)
+    ) {
       await this.callGateway({
         refundId: params.refundId,
         key: row.idempotency_key,
         gatewayRef: payment.gatewayRef,
-        amountPaise,
+        gatewayPaise,
         reason: params.reason,
       });
+    }
+
+    // The wallet credit leg is idempotent by its refund-scoped key, so a
+    // second delivery is a replay.
+    if (walletPaise > 0) {
+      await this.creditWallet(params.bookingId, params.refundId, walletPaise);
+    }
+
+    // A refund with no gateway part is done as soon as the wallet credit
+    // lands — mark it processed if it is still pending.
+    if (gatewayPaise === 0 && row.status === 'pending') {
+      await this.db.execute(sql`
+        update refunds set status = 'processed', processed_at = now(), updated_at = now()
+         where id = ${params.refundId}::uuid
+      `);
     }
 
     // Legs: the ledger keys are refund-scoped, so a second delivery of the
@@ -418,6 +515,13 @@ export class RefundsService {
       await this.reverseLedger(params.bookingId, params.refundId);
     } else if (row.liability && row.liability !== 'platform') {
       await this.clawback(params.bookingId, params.refundId, amountPaise, row.liability);
+    }
+
+    // A full refund gives the coupon back — idempotent because
+    // `releaseForBooking` deletes the redemption row and a second call finds
+    // nothing to release.
+    if (row.kind === 'full') {
+      await this.db.transaction((tx) => this.coupons.releaseForBooking(tx, params.bookingId));
     }
 
     // The transition, skipped when the booking already reached the target —
@@ -479,19 +583,25 @@ export class RefundsService {
    * The vendor call, extracted so the first attempt and a resumed one cannot
    * drift. `attempts: 1` inside the adapter — a blind retry would issue a
    * second refund against the same payment.
+   *
+   * SKIPPED when there is no gateway part to refund (`gatewayPaise === 0`) or
+   * when the payment's ref is not a real gateway ref — a cash payment's
+   * `cash-…` and a wallet-only payment's `wallet-…` are placeholders, not
+   * handles the vendor would recognise.
    */
   private async callGateway(params: {
     refundId: string;
     key: string;
     gatewayRef: string | null;
-    amountPaise: number;
+    gatewayPaise: number;
     reason: string;
   }): Promise<void> {
-    if (!params.gatewayRef) return;
+    if (params.gatewayPaise <= 0) return;
+    if (!params.gatewayRef || !isRealGatewayRef(params.gatewayRef)) return;
     try {
       const handle = await this.gateway.refund({
         gatewayRef: params.gatewayRef,
-        amountPaise: params.amountPaise,
+        amountPaise: params.gatewayPaise,
         idempotencyKey: params.key,
         reason: params.reason,
       });
@@ -511,6 +621,59 @@ export class RefundsService {
       `);
       throw error;
     }
+  }
+
+  /**
+   * What earlier refunds have already taken from each pool of a payment.
+   *
+   * The two pools are independent: a partial that spent the gateway pool does
+   * not reduce the wallet pool, and vice versa. Summing the split columns over
+   * the payment's non-failed refunds is the exact mirror of what
+   * `applyRefund` writes back to `payments.refunded_amount`.
+   */
+  private async refundedSplit(
+    paymentId: string,
+  ): Promise<{ gatewayPaise: number; walletPaise: number }> {
+    const [row] = (await this.db.execute(sql`
+      select coalesce(sum(gateway_amount), 0)::text as gateway,
+             coalesce(sum(wallet_amount), 0)::text as wallet
+        from refunds
+       where payment_id = ${paymentId}::uuid and status <> 'failed'
+    `)) as unknown as Array<{ gateway: string; wallet: string }>;
+    return {
+      gatewayPaise: rupeeStringToPaise(row?.gateway ?? '0'),
+      walletPaise: rupeeStringToPaise(row?.wallet ?? '0'),
+    };
+  }
+
+  /**
+   * The customer's wallet credit for the wallet part of a refund.
+   *
+   * ONE leg, keyed per refund, so a resume is a ledger replay rather than a
+   * second credit. The owner is read from `bookings.user_id` — the refund row
+   * carries no user, and the booking is the source of truth for whose money
+   * this is.
+   */
+  private async creditWallet(
+    bookingId: string,
+    refundId: string,
+    amountPaise: number,
+  ): Promise<void> {
+    const [booking] = (await this.db.execute(sql`
+      select user_id from bookings where id = ${bookingId}::uuid
+    `)) as unknown as Array<{ user_id: string }>;
+    if (!booking) return;
+
+    await this.ledger.post([
+      {
+        owner: { ownerType: 'user', ownerId: booking.user_id },
+        type: 'refund_credit' as const,
+        amountPaise,
+        reason: `Refund for booking TW-${bookingId.slice(0, 8).toUpperCase()}`,
+        refId: bookingId,
+        idempotencyKey: ledgerKeys.refundUserCredit(refundId),
+      },
+    ]);
   }
 
   /** The settlement credit legs on a booking, per wallet owner. */
@@ -659,6 +822,42 @@ export class RefundsService {
        where gateway_ref = ${gatewayRef} and status = 'pending'
     `);
   }
+}
+
+/**
+ * The gateway pool of a captured `booking` payment: what the vendor actually
+ * holds and can be asked to refund. A cash payment's money is in the driver's
+ * pocket and a wallet-only payment never touched the vendor, so both are 0.
+ */
+function gatewayPoolFor(payment: { amount: string; provider: string | null }): number {
+  if (payment.provider === 'cash' || payment.provider === 'wallet') return 0;
+  return rupeeStringToPaise(payment.amount);
+}
+
+/**
+ * The wallet pool of a captured `booking` payment: what was spent from the
+ * customer's MiTow balance, PLUS the whole amount of a cash payment — cash can
+ * only be returned digitally, as wallet credit, because the driver already
+ * holds the notes.
+ */
+function walletPoolFor(payment: {
+  amount: string;
+  walletApplied: string;
+  provider: string | null;
+}): number {
+  const walletApplied = rupeeStringToPaise(payment.walletApplied);
+  if (payment.provider === 'cash') return walletApplied + rupeeStringToPaise(payment.amount);
+  return walletApplied;
+}
+
+/**
+ * A real gateway ref is anything the vendor issued. The `cash-…` and
+ * `wallet-…` prefixes are this application's own placeholders for payments
+ * that never reached the vendor, and calling `refund` with one would be a
+ * vendor error at best.
+ */
+function isRealGatewayRef(ref: string): boolean {
+  return !ref.startsWith('cash-') && !ref.startsWith('wallet-');
 }
 
 /** The v2 row key for a dispute- or finance-sourced refund. See `idempotency-keys.ts`. */

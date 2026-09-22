@@ -224,15 +224,22 @@ export class PaymentsRepo {
 
   /**
    * Bring `payments.refunded_amount` up to date from the refund rows, and flip
-   * `status` to `refunded` only at FULL coverage — amount-aware since W8.
+   * `status` to `refunded` only at FULL coverage — amount-aware since W8, and
+   * POOL-aware since refunds learned about cash and wallet.
    *
    * RECOMPUTE, NOT INCREMENT, and that is what makes it idempotent: a replayed
    * refund (W9's carry-forward: "resume the remaining idempotent steps") calls
    * this again and gets the same number, where an increment would add the same
-   * refund twice. The sum counts every non-failed refund row for this payment —
-   * full and partial alike — so "captured" survives a partial and disappears
-   * exactly when nothing is left to refund. `least()` keeps the recompute under
-   * the CHECK's cap even if rows were edited by hand.
+   * refund twice.
+   *
+   * THE TWO POOLS. `refunded_amount` sums the GATEWAY part of each non-failed
+   * refund — the money the vendor actually returned — capped at `p.amount`.
+   * The status flips to `refunded` only when BOTH pools are exhausted:
+   * `sum(gateway_amount) >= gatewayPool` AND `sum(wallet_amount) >= walletPool`,
+   * where the pools are computed from the same row (`p.amount`,
+   * `p.wallet_applied`, `p.provider`). A wallet-only payment has gatewayPool 0
+   * and a cash payment has gatewayPool 0 with walletPool = amount, so both
+   * reach `refunded` on the wallet side alone.
    */
   async applyRefund(paymentId: string): Promise<PaymentRow | null> {
     const rows = (await this.db.execute(sql`
@@ -240,20 +247,28 @@ export class PaymentsRepo {
          set refunded_amount = least(
                p.amount,
                coalesce(
-                 (select sum(r.amount) from refunds r
+                 (select sum(r.gateway_amount) from refunds r
                    where r.payment_id = p.id and r.status <> 'failed'),
                  0
                )
              ),
              status = case
-               when least(
-                      p.amount,
-                      coalesce(
-                        (select sum(r.amount) from refunds r
-                          where r.payment_id = p.id and r.status <> 'failed'),
-                        0
-                      )
-                    ) >= p.amount
+               when coalesce(
+                      (select sum(r.gateway_amount) from refunds r
+                        where r.payment_id = p.id and r.status <> 'failed'),
+                      0
+                    ) >= case
+                          when p.provider in ('cash', 'wallet') then 0
+                          else p.amount
+                        end
+                and coalesce(
+                      (select sum(r.wallet_amount) from refunds r
+                        where r.payment_id = p.id and r.status <> 'failed'),
+                      0
+                    ) >= case
+                          when p.provider = 'cash' then p.wallet_applied + p.amount
+                          else p.wallet_applied
+                        end
                  then 'refunded'::payment_status
                else p.status
              end,
