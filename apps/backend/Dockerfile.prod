@@ -4,7 +4,9 @@ RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
 WORKDIR /app
 
 # Copy workspace manifests first (layer-cache: only re-runs if lockfile changes)
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json ./
+# `tsconfig.base.json` belongs here too: every package's tsconfig extends it, so
+# without it `tsc` fails with TS5083 before compiling a line.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json tsconfig.base.json ./
 COPY packages/api-contracts/package.json ./packages/api-contracts/
 COPY packages/config/package.json         ./packages/config/
 COPY packages/theme/package.json          ./packages/theme/
@@ -12,14 +14,22 @@ COPY packages/ui/package.json             ./packages/ui/
 COPY packages/web-ui/package.json         ./packages/web-ui/
 COPY apps/backend/package.json            ./apps/backend/
 
-# Install only backend + its workspace deps
-RUN pnpm install --frozen-lockfile --filter @towing/backend...
+# Install only backend + its workspace deps. `@towing/api-contracts` is named
+# a second time on purpose: as a mere dependency it gets its bin links but not
+# its own devDependencies, so `tsc` resolves to a symlink pointing at nothing
+# and the contracts build below dies with MODULE_NOT_FOUND.
+RUN pnpm install --frozen-lockfile --filter @towing/backend... --filter @towing/api-contracts
 
 # Copy source
 COPY packages/ ./packages/
 COPY apps/backend/ ./apps/backend/
 
-# Build
+# Build. `@towing/api-contracts` FIRST, and not optionally: its package `main`
+# is `./dist/index.js`, and that `dist` is gitignored — so a clean checkout (CI,
+# or this image) has the source but no build output, and the backend starts and
+# immediately fails to resolve the module. Building the backend alone was enough
+# to pass locally, where a `dist` left over from `pnpm dev` happened to exist.
+RUN pnpm --filter @towing/api-contracts build
 RUN pnpm --filter @towing/backend build
 
 # ── Stage 2: lean runtime image ───────────────────────────────────────────────
@@ -34,7 +44,11 @@ COPY --from=builder /app/pnpm-lock.yaml ./
 COPY --from=builder /app/packages/ ./packages/
 COPY --from=builder /app/apps/backend/package.json ./apps/backend/
 COPY --from=builder /app/apps/backend/dist/ ./apps/backend/dist/
-COPY --from=builder /app/apps/backend/drizzle/ ./apps/backend/drizzle/ 2>/dev/null || true
+# `2>/dev/null || true` used to trail this line. COPY is not a shell command —
+# Docker read those as three more source paths, so the build failed on the one
+# instruction that was written to be failure-proof. The directory is committed,
+# so the plain copy is correct.
+COPY --from=builder /app/apps/backend/drizzle/ ./apps/backend/drizzle/
 
 # Install prod-only deps
 RUN pnpm install --frozen-lockfile --prod --filter @towing/backend...

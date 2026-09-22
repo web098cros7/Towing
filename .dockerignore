@@ -1,0 +1,52 @@
+# What must never enter a build context.
+#
+# There was no .dockerignore at all until now, and its absence broke the
+# production image in two separate ways.
+#
+# 1. CORRECTNESS. `COPY packages/ ./packages/` copied the HOST's node_modules
+#    straight over the ones pnpm had just installed. pnpm's node_modules are a
+#    tree of symlinks into the store, so on a Windows or macOS host those links
+#    point at host paths that do not exist inside a Linux container: the image
+#    ended up with `packages/api-contracts/node_modules/typescript` pointing at
+#    `F:/...`, and the contracts build died with MODULE_NOT_FOUND.
+#
+# 2. SECRECY. The same COPY would have baked `apps/backend/.env` into an image
+#    layer, where it stays readable to anyone who can pull the image even if a
+#    later layer deletes it.
+#
+# Everything the image needs is either committed source or built inside the
+# container, so excluding all of the below costs nothing.
+
+# Dependencies — always reinstalled in the image
+node_modules
+**/node_modules
+
+# Build output — always rebuilt in the image
+dist
+**/dist
+.next
+**/.next
+.expo
+**/.expo
+.turbo
+**/.turbo
+
+# Secrets. `.env.example` is committed documentation and stays.
+.env
+**/.env
+**/.env.*
+!**/.env.example
+
+# History, tooling and local scratch
+.git
+.gitignore
+.github
+.claude
+**/*.log
+coverage
+**/coverage
+temp_deploy
+test_standalone
+deploy-output
+tmp
+__pycache__
