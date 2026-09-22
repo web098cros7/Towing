@@ -4,6 +4,10 @@ packages:
 allowBuilds:
   # swc compiles decorators + emitDecoratorMetadata for vitest (esbuild alone
   # cannot, and Nest DI depends on that metadata); esbuild backs vitest and tsx.
+  # Jest's optional native file watcher, pulled in by jest-expo. Only `--watch`
+  # would use it, and it falls back to polling without the native build, so
+  # there is nothing to compile for a CI or one-shot run.
+  '@parcel/watcher': false
   '@swc/core': true
   esbuild: true
   # Optional native accelerator for bullmq's msgpackr. msgpackr falls back to
