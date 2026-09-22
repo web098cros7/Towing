@@ -228,7 +228,7 @@ export class SupportService {
       this.repo.messagesFor(ticketId, true),
       this.repo.eventsFor(ticketId),
     ]);
-    return { ...ticket, messages, events };
+    return this.signAttachments({ ...ticket, messages, events });
   }
 
   async assign(
@@ -514,8 +514,14 @@ export class SupportService {
   /**
    * Swaps stored `local://<key>` attachment values for fetchable signed URLs
    * on the way out. Non-`local://` values pass through untouched.
+   *
+   * Generic over any detail shape carrying `messages[].attachments` so the
+   * requester rail (`myDetail`) and the console rail (`adminDetail`) share one
+   * implementation. Signed URLs last 1 hour.
    */
-  private async signAttachments(detail: SupportTicketDetail): Promise<SupportTicketDetail> {
+  private async signAttachments<T extends { messages: Array<{ attachments: string[] }> }>(
+    detail: T,
+  ): Promise<T> {
     const messages = await Promise.all(
       detail.messages.map(async (message) => {
         if (message.attachments.length === 0) return message;

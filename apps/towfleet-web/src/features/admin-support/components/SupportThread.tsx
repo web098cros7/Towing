@@ -195,8 +195,21 @@ function ThreadBody({ ticket }: { ticket: AdminSupportTicketDetail }): React.Rea
                 </div>
                 <p className="mt-1 whitespace-pre-wrap text-sm">{message.body}</p>
                 {message.attachments.length > 0 ? (
-                  <div className="mt-1 text-xs text-text-secondary">
-                    {message.attachments.length} attachment(s)
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {message.attachments.map((url, i) => (
+                      <a
+                        key={`${message.id}-${i}`}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <img
+                          src={url}
+                          alt={`Attachment ${i + 1}`}
+                          className="h-[72px] w-[72px] rounded-[8px] object-cover"
+                        />
+                      </a>
+                    ))}
                   </div>
                 ) : null}
               </div>
