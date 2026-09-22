@@ -7,6 +7,8 @@ import { DispatchModule } from '../dispatch/dispatch.module';
 import { DriverPresenceModule } from '../driver-presence/driver-presence.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { DevJobOtpController } from './dev-job-otp.controller';
+import { DriverJobsController } from './driver-jobs.controller';
+import { DriverJobsService } from './driver-jobs.service';
 import { DriverStatsService } from './driver-stats.service';
 import { EnRouteWatcher } from './en-route.watcher';
 import { JobExecutionController } from './job-execution.controller';
@@ -51,8 +53,14 @@ import { JobExecutionService } from './job-execution.service';
     RealtimeModule,
     AdminDriversModule,
   ],
-  controllers: [JobExecutionController, DevJobOtpController],
-  providers: [JobExecutionService, JobExecutionRepo, DriverStatsService, EnRouteWatcher],
+  controllers: [JobExecutionController, DevJobOtpController, DriverJobsController],
+  providers: [
+    JobExecutionService,
+    JobExecutionRepo,
+    DriverStatsService,
+    EnRouteWatcher,
+    DriverJobsService,
+  ],
   exports: [JobExecutionService],
 })
 export class JobExecutionModule {}

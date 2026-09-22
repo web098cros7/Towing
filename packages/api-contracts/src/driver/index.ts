@@ -5,3 +5,4 @@ export * from './jobs';
 export * from './presence';
 export * from './earnings';
 export * from './payouts';
+export * from './profile';
