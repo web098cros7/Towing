@@ -1,0 +1,22 @@
+--
+-- ===========================================================================
+-- A17 — admin authorization version: role changes take effect in seconds.
+--
+-- `JwtAuthGuard` trusts `sub_role` straight off the JWT, whose 900-second
+-- life means a demoted admin keeps their powers for up to 15 minutes. The
+-- guard now re-reads `{status, sub_role, authz_version}` through a ~5 s
+-- per-process cache and 401s on drift, so the BFF's refresh-once-and-retry
+-- mints a correctly-scoped token. This single monotonic number is what the
+-- guard compares — W2 MUST bump it on every sub-role or status mutation, or
+-- the re-check cannot see the change.
+--
+-- One nullable-free integer with DEFAULT 1: every existing row reads as
+-- "version one", matching the first tokens that carry the claim.
+-- Behaviour-neutral until an admin's row is written.
+--
+-- Hand-written, like every migration from 0002 onward. W1's admin migration
+-- takes the NEXT number (0019); see the M0 report's renumber table.
+-- ===========================================================================
+--
+
+ALTER TABLE "admin_users" ADD COLUMN IF NOT EXISTS "authz_version" integer NOT NULL DEFAULT 1;--> statement-breakpoint

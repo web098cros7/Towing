@@ -187,7 +187,7 @@ Either way, migrations should run as a **one-off task before rollout** (single c
 
 | Location | Status |
 |---|---|
-| `apps/backend/drizzle/` (`0000_enable_postgis` → `0004_petite_richard_fisk` + `meta/`) | **CANONICAL** — what `db:migrate` applies; journal table `drizzle.__drizzle_migrations` |
+| `apps/backend/drizzle/` (`0000_enable_postgis` → `0035_customer_live` + `meta/`) | **CANONICAL** — what `db:migrate` applies; journal table `drizzle.__drizzle_migrations` |
 | `Aws/migrations/` | Point-in-time **copy** for reference only — do not apply from here |
 | `Aws/db/schema-snapshot.sql` | `pg_dump` schema snapshot dated 03 Aug 2026 — reference for reviewing the target schema, not a deploy artifact |
 

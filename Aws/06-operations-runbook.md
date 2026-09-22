@@ -150,7 +150,7 @@ Run after every deploy, in order:
 |---|---|---|---|
 | 1 | API liveness | `curl -i https://<api>/v1/health` | `200` with `{"status":"ok","service":"towing-backend","time":"..."}` |
 | 2 | Request correlation | Same response | `x-request-id` header present (middleware echoes/mints it) |
-| 3 | Migration journal | `SELECT count(*) FROM drizzle.__drizzle_migrations;` | **= 8** (as of 06 Aug 2026 — increases as new migrations land; must equal the entry count in `apps/backend/drizzle/meta/_journal.json` of the deployed commit) |
+| 3 | Migration journal | `SELECT count(*) FROM drizzle.__drizzle_migrations;` | **= 36** (as of 23 Sep 2026 — increases as new migrations land; must equal the entry count in `apps/backend/drizzle/meta/_journal.json` of the deployed commit) |
 | 4 | Login flow (non-prod, seeded) | Console → `lakshmi@recovery.in` / `Password123!` → OTP from the backend log → dashboard | Two-step login completes; browser holds only httpOnly `fleet_session` + `fleet_refresh` cookies |
 | 5 | Dashboard KPIs | Post-login `/` route | KPI tiles + alert feed render with real (seeded) data, not mock placeholders |
 | 6 | Mocks are off | View console page source / behavior | Data changes with the DB — if it doesn't, `NEXT_PUBLIC_USE_MOCKS` was not `false` at **build** time (rebuild required) |

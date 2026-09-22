@@ -57,6 +57,202 @@
       "when": 1786036988854,
       "tag": "0007_multi_realm_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786349586530,
+      "tag": "0008_driver_kyc_pipeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786356740043,
+      "tag": "0009_mobile_foundations_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786374017175,
+      "tag": "0010_notifications_spine",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786900598063,
+      "tag": "0011_pricing_and_dispatch_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786904827849,
+      "tag": "0012_booking_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787328000000,
+      "tag": "0013_driver_presence",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787414400000,
+      "tag": "0014_dispatch_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787500800000,
+      "tag": "0015_job_execution",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787587200000,
+      "tag": "0016_money_capture_and_ratings",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787673600000,
+      "tag": "0017_pending_driver_suspension",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787760000000,
+      "tag": "0018_admin_authz_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789732473349,
+      "tag": "0019_admin_authz_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789743184565,
+      "tag": "0020_admin_identity_audit_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789743184566,
+      "tag": "0021_admin_totp_login",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789743184567,
+      "tag": "0022_admin_authz_trigger_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789746600000,
+      "tag": "0023_dispatch_inspector",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789746600001,
+      "tag": "0024_admin_directory_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789814000000,
+      "tag": "0025_admin_bookings_disputes",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789900000000,
+      "tag": "0026_commission_guardrail",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789900000001,
+      "tag": "0027_app_and_ping_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1789900000002,
+      "tag": "0028_zone_editor",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789986400000,
+      "tag": "0029_sos",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789986400001,
+      "tag": "0030_support_and_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789986500000,
+      "tag": "0031_promotions_banners",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789986500001,
+      "tag": "0032_analytics_rollups",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789986500002,
+      "tag": "0033_privacy_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789986500003,
+      "tag": "0034_manual_quotes",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789986500004,
+      "tag": "0035_customer_live",
+      "breakpoints": true
     }
   ]
 }
