@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ENV, type Env } from '../../config/env';
+import { AdminNotesModule } from '../admin-notes/admin-notes.module';
 import { AuthModule } from '../auth/auth.module';
 import { DevPayoutAdapter } from './dev-payout.adapter';
 import { EarningsProjectorService } from './earnings-projector.service';
@@ -17,6 +18,7 @@ import { PaymentCouponService } from './payment-coupon.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { RefundsService } from './refunds.service';
+import { RefundAftermathService } from './refund-aftermath.service';
 import { WalletService } from './wallet.service';
 import { DriverEarningsRepo } from './driver-earnings.repo';
 import { DriverEarningsService } from './driver-earnings.service';
@@ -54,6 +56,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
 @Module({
   imports: [
     AuthModule,
+    AdminNotesModule,
     BookingsModule,
     CouponsModule,
     DriverPresenceModule,
@@ -82,6 +85,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     PaymentCouponService,
     PaymentReconcileService,
     RefundsService,
+    RefundAftermathService,
     WalletService,
     DriverEarningsRepo,
     DriverEarningsService,
@@ -118,6 +122,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     PaymentCouponService,
     PaymentReconcileService,
     RefundsService,
+    RefundAftermathService,
     DriverEarningsRepo,
     PayoutAccountsRepo,
     EarningsDigestService,

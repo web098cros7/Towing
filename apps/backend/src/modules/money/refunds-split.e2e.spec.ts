@@ -196,7 +196,7 @@ describe('refund split e2e (RefundsService, two pools)', () => {
     const first = await refunds.refundPartial({
       bookingId,
       amountPaise: 170_000,
-      liability: 'platform',
+      terms: { cause: 'goodwill', delivery: 'original' },
       reason: 'overcharge',
       initiatedBy: adminId,
       keySource: { kind: 'admin', adminId, clientKey: randomUUID() },
@@ -211,7 +211,7 @@ describe('refund split e2e (RefundsService, two pools)', () => {
       refunds.refundPartial({
         bookingId,
         amountPaise: 40_000,
-        liability: 'platform',
+        terms: { cause: 'goodwill', delivery: 'original' },
         reason: 'overcharge',
         initiatedBy: adminId,
         keySource: { kind: 'admin', adminId, clientKey: randomUUID() },
@@ -222,7 +222,7 @@ describe('refund split e2e (RefundsService, two pools)', () => {
     const second = await refunds.refundPartial({
       bookingId,
       amountPaise: 30_000,
-      liability: 'platform',
+      terms: { cause: 'goodwill', delivery: 'original' },
       reason: 'overcharge',
       initiatedBy: adminId,
       keySource: { kind: 'admin', adminId, clientKey: randomUUID() },

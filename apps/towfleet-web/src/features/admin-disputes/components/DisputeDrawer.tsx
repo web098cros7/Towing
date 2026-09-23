@@ -20,6 +20,7 @@ import type {
 import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
 import { useToast } from '@/components/admin/ToastProvider';
 import { NotesPanel } from '@/features/admin-notes/components/NotesPanel';
+import { bearerShortLabel } from '@/features/admin-finance/components/RefundTermsFields';
 import { formatPaise } from '@/lib/money';
 import { useAdminDispute } from '../api/adminDisputes.queries';
 import {
@@ -208,7 +209,7 @@ function DisputeBody({
             {dispute.refundAmountPaise !== null ? (
               <p className="mt-1">
                 Refunded {formatPaise(dispute.refundAmountPaise)}
-                {dispute.liability ? ` · borne by ${dispute.liability}` : ''}
+                {dispute.liability ? ` · paid by ${bearerShortLabel(dispute.liability)}` : ''}
               </p>
             ) : null}
             {dispute.resolutionNote ? (

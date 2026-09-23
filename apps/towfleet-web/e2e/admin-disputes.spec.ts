@@ -7,7 +7,7 @@ import { adminLogin } from './support/adminLogin';
  *
  * The fixture carries one dispute per origin, which is what lets this file
  * assert the EXIT TABLE as a UI property: `uphold_charge` exists only for a
- * dispute opened from `paid`, `partial_refund` insists on amount + liability,
+ * dispute opened from `paid`, `partial_refund` insists on amount + cause,
  * and nothing else takes either.
  */
 
@@ -61,10 +61,12 @@ test('the five exits are filtered by origin, and partial insists on amount + not
 
   await expect(page.getByTestId('resolve-exit-uphold_charge')).toBeVisible();
 
-  // Partial reveals amount and liability; other exits hide both again.
+  // Partial reveals the amount and ADM-6's cause, with who pays spelled out;
+  // other exits hide them again.
   await page.getByTestId('resolve-exit-partial_refund').click();
   await expect(page.getByTestId('resolve-amount')).toBeVisible();
-  await expect(page.getByTestId('resolve-liability')).toBeVisible();
+  await expect(page.getByTestId('resolve-cause')).toBeVisible();
+  await expect(page.getByTestId('resolve-who-pays')).toContainText('Shared');
 
   const submit = page.getByTestId('resolve-submit');
   await expect(submit).toBeDisabled();
@@ -100,4 +102,33 @@ test('an unassigned dispute offers "assign to me"', async ({ page }) => {
 test('an unauthenticated visitor cannot reach the dispute queue', async ({ page }) => {
   await page.goto('/admin/disputes');
   await expect(page).toHaveURL(/\/admin\/login/);
+});
+
+test('changing who pays is a deliberate step that needs a written reason (ADM-6)', async ({
+  page,
+}) => {
+  await adminLogin(page);
+  await page.goto(`/admin/disputes?dispute=${OPEN_DISPUTE}`);
+  await page.getByTestId('resolve-exit-partial_refund').click();
+  await page.getByTestId('resolve-amount').fill('300');
+  await page.getByTestId('resolve-note').fill('Driver was rude at pickup, customer upset');
+  const submit = page.getByTestId('resolve-submit');
+
+  // The cause sets the rule, and the rule is shown in words.
+  await page.getByTestId('resolve-cause').selectOption('driver_misconduct');
+  await expect(page.getByTestId('resolve-who-pays')).toContainText('The driver pays all of it');
+  await expect(submit).toBeEnabled();
+
+  // Overriding it without saying why is refused before anything is sent.
+  await page.getByTestId('resolve-override').click();
+  await page.getByTestId('resolve-bearer').selectOption('platform');
+  await expect(page.getByTestId('resolve-override-reason')).toBeVisible();
+  await expect(submit).toBeDisabled();
+  await page.getByTestId('resolve-override-reason').fill('First complaint in two years');
+  await expect(submit).toBeEnabled();
+
+  // A new cause drops the override: it was a departure from the OLD rule.
+  await page.getByTestId('resolve-cause').selectOption('goodwill');
+  await expect(page.getByTestId('resolve-who-pays')).toContainText('MiTow pays all of it');
+  await expect(submit).toBeEnabled();
 });

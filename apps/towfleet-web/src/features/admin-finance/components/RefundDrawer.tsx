@@ -10,19 +10,19 @@ import {
   DrawerTitle,
   Field,
   Input,
-  Select,
   Textarea,
 } from '@towing/web-ui';
-import type { AdminRefundIssueResponse, DisputeLiability } from '@towing/api-contracts';
+import type { AdminRefundIssueResponse } from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
 import { env } from '@/lib/env';
 import { formatPaise } from '@/lib/money';
 import { useIssueRefund } from '../api/adminFinance.mutations';
+import { RefundTermsFields, type RefundTermsState } from './RefundTermsFields';
 
 /**
  * The refund form, full or partial by shape: leave the amount blank to refund
- * the remaining captured balance in full, or type one and the liable party to
- * claw that amount back from their share.
+ * the remaining captured balance in full, or type one and say WHY — ADM-6's
+ * cause decides who pays (`RefundTermsFields`).
  *
  * THE IDEMPOTENCY KEY IS MINTED ON OPEN, not per submit — a retry of the same
  * intent must reuse it (that is the whole mechanism), while closing and
@@ -45,7 +45,7 @@ export function RefundDrawer({
   const [idempotencyKey, setIdempotencyKey] = useState('');
   const [bookingId, setBookingId] = useState('');
   const [amountRupees, setAmountRupees] = useState('');
-  const [liability, setLiability] = useState<DisputeLiability>('driver');
+  const [termsState, setTermsState] = useState<RefundTermsState>(INITIAL_TERMS);
   const [reason, setReason] = useState('');
   const [result, setResult] = useState<AdminRefundIssueResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function RefundDrawer({
       setIdempotencyKey(crypto.randomUUID());
       setBookingId('');
       setAmountRupees('');
-      setLiability('driver');
+      setTermsState(INITIAL_TERMS);
       setReason('');
       setResult(null);
       setErrorMessage(null);
@@ -72,7 +72,12 @@ export function RefundDrawer({
     bookingId.trim(),
   );
   const reasonValid = reason.trim().length >= 4;
-  const canSubmit = bookingValid && amountValid && reasonValid && !issue.isPending;
+  const canSubmit =
+    bookingValid &&
+    amountValid &&
+    reasonValid &&
+    (!isPartial || termsState.valid) &&
+    !issue.isPending;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -82,7 +87,7 @@ export function RefundDrawer({
         body: {
           bookingId: bookingId.trim(),
           reason: reason.trim(),
-          ...(isPartial ? { amountPaise: amountPaise as number, liability } : {}),
+          ...(isPartial ? { amountPaise: amountPaise as number, terms: termsState.terms } : {}),
         },
         idempotencyKey,
       });
@@ -103,8 +108,8 @@ export function RefundDrawer({
       <DrawerHeader>
         <DrawerTitle id="refund-drawer-title">Issue a refund</DrawerTitle>
         <p className="text-sm text-text-secondary">
-          A full refund moves the booking out of <strong>paid</strong>. A partial keeps it paid and
-          debits the liable party&apos;s share.
+          A full refund moves the booking out of <strong>paid</strong>. A partial keeps it paid, and
+          the reason you give decides who pays for it.
         </p>
       </DrawerHeader>
 
@@ -149,18 +154,7 @@ export function RefundDrawer({
             </Field>
 
             {isPartial ? (
-              <Field label="Borne by" htmlFor="refund-liability">
-                <Select
-                  id="refund-liability"
-                  value={liability}
-                  onChange={(event) => setLiability(event.target.value as DisputeLiability)}
-                  data-testid="refund-liability"
-                >
-                  <option value="driver">Driver</option>
-                  <option value="fleet">Fleet</option>
-                  <option value="platform">Platform (no compensating legs)</option>
-                </Select>
-              </Field>
+              <RefundTermsFields key={idempotencyKey} idPrefix="refund" onChange={setTermsState} />
             ) : null}
 
             <Field label="Reason (required)" htmlFor="refund-reason">
@@ -205,3 +199,9 @@ export function RefundDrawer({
     </Drawer>
   );
 }
+
+/** Matches `RefundTermsFields`' own starting state, so the first render submits what it shows. */
+const INITIAL_TERMS: RefundTermsState = {
+  terms: { cause: 'fare_error', delivery: 'original' },
+  valid: true,
+};

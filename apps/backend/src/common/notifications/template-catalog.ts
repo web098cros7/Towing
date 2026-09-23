@@ -329,6 +329,22 @@ export const TEMPLATES = {
     }),
   },
 
+  /**
+   * ADM-6: part of a customer refund came out of the driver's earnings. Says
+   * how much, on which trip, and why, in one push — the three things a
+   * driver needs to check it against their statement.
+   */
+  earnings_adjusted: {
+    dltTemplateId: null,
+    waTemplateName: null,
+    orderedVariables: ['amount', 'bookingRef', 'why'],
+    render: (v) => ({
+      title: `Earnings adjusted: ${v.amount ?? ''}`,
+      body: `A customer was refunded on booking ${v.bookingRef ?? ''} ${v.why ?? ''}. Tap to see your statement.`,
+      subject: null,
+    }),
+  },
+
   /** §12.2 "Weekly earnings summary" — Driver. The `weeklySummary` opt-out has shipped since Phase 13. */
   weekly_earnings: {
     dltTemplateId: null,

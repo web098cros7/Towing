@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  bearerFor,
   DISPUTE_OPENED_FROM_STATUSES,
   ErrorCodes,
   paiseToRupeeString,
@@ -33,6 +34,7 @@ import { AdminNotesService } from '../admin-notes/admin-notes.service';
 import { BookingStateMachineService } from '../bookings/booking-state-machine.service';
 import { JobExecutionService } from '../job-execution/job-execution.service';
 import { RefundsService } from '../money/refunds.service';
+import { RefundAftermathService } from '../money/refund-aftermath.service';
 import { PricingConfigRepo } from '../pricing/pricing-config.repo';
 import type { SessionContext } from '../auth/token.service';
 import { AdminBookingsRepo } from './admin-bookings.repo';
@@ -76,6 +78,7 @@ export class AdminDisputesService {
     private readonly bookings: AdminBookingsRepo,
     private readonly machine: BookingStateMachineService,
     private readonly refunds: RefundsService,
+    private readonly refundAftermath: RefundAftermathService,
     private readonly ledger: LedgerService,
     private readonly jobs: JobExecutionService,
     private readonly notes: AdminNotesService,
@@ -509,10 +512,11 @@ export class AdminDisputesService {
         );
         await this.machine.announce(transition);
 
+        const terms = body.terms!;
         const result = await this.refunds.refundPartial({
           bookingId: dispute.bookingId,
           amountPaise: body.refundAmountPaise!,
-          liability: body.liability!,
+          terms,
           reason: 'dispute',
           initiatedBy: adminId,
           keySource: { kind: 'dispute', disputeId },
@@ -520,6 +524,15 @@ export class AdminDisputesService {
         refundId = result.refundId;
         refundAmountPaise = body.refundAmountPaise!;
         bookingStatus = 'paid';
+        await this.refundAftermath.afterPartialRefund({
+          bookingId: dispute.bookingId,
+          refundId,
+          terms,
+          providerSharePaise: result.providerSharePaise,
+          adminId,
+          replayed: result.replayed,
+          context,
+        });
 
         await this.audit.record({
           adminId,
@@ -530,7 +543,11 @@ export class AdminDisputesService {
             bookingId: dispute.bookingId,
             kind: 'partial',
             amountPaise: refundAmountPaise,
-            liability: body.liability,
+            cause: body.terms!.cause,
+            bearer: bearerFor(body.terms!),
+            bearerOverrideReason: body.terms!.overrideReason ?? null,
+            providerSharePaise: result.providerSharePaise,
+            delivery: body.terms!.delivery,
           },
           reason: body.note,
           ip: context.ip ?? null,
@@ -544,7 +561,7 @@ export class AdminDisputesService {
       disputeId,
       adminId,
       resolution: body.resolution,
-      liability: body.liability ?? null,
+      liability: body.terms ? bearerFor(body.terms) : null,
       refundId,
       refundAmount: refundAmountPaise === null ? null : paiseToRupeeString(refundAmountPaise),
       note: body.note,
@@ -577,7 +594,8 @@ export class AdminDisputesService {
       after: {
         status: 'resolved',
         resolution: body.resolution,
-        liability: body.liability ?? null,
+        liability: body.terms ? bearerFor(body.terms) : null,
+        cause: body.terms?.cause ?? null,
         refundId,
         refundAmountPaise,
         bookingStatus,

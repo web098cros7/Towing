@@ -100,11 +100,12 @@ test('the refund drawer demands a real booking, an amount shape and a reason', a
   await page.getByTestId('refund-booking').fill('44444444-4444-4444-8444-444444444444');
   await expect(submit).toBeEnabled();
 
-  // Typing an amount turns this into a PARTIAL, and a partial must say who
-  // bears it — the liability select appears with it.
-  await expect(page.getByTestId('refund-liability')).toHaveCount(0);
+  // Typing an amount turns this into a PARTIAL, and a partial must say WHY
+  // (ADM-6) — the cause and where the money goes appear with it.
+  await expect(page.getByTestId('refund-cause')).toHaveCount(0);
   await page.getByTestId('refund-amount').fill('500');
-  await expect(page.getByTestId('refund-liability')).toBeVisible();
+  await expect(page.getByTestId('refund-cause')).toBeVisible();
+  await expect(page.getByTestId('refund-delivery')).toBeVisible();
   await expect(submit).toBeEnabled();
 });
 

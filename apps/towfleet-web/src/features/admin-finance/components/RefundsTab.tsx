@@ -7,6 +7,7 @@ import { useAdminIdentity } from '@/components/admin/AdminIdentityProvider';
 import { formatPaise } from '@/lib/money';
 import { useAdminRefunds } from '../api/adminFinance.queries';
 import { RefundDrawer } from './RefundDrawer';
+import { bearerShortLabel } from './RefundTermsFields';
 
 const columns: ColumnDef<AdminRefundRowDto, unknown>[] = [
   {
@@ -49,7 +50,7 @@ const columns: ColumnDef<AdminRefundRowDto, unknown>[] = [
     header: 'Borne by',
     cell: ({ row }) =>
       row.original.liability ? (
-        <span className="capitalize">{row.original.liability}</span>
+        <span className="capitalize">{bearerShortLabel(row.original.liability)}</span>
       ) : (
         // A full refund has no liability: it reverses every party's share.
         <span className="text-text-tertiary">Full reversal</span>

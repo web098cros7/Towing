@@ -54,13 +54,125 @@ export const disputeResolutionSchema = z.enum(DISPUTE_RESOLUTIONS);
 export type DisputeResolution = z.infer<typeof disputeResolutionSchema>;
 
 /**
- * Who bears a partial refund's money. `platform` writes no compensating legs —
- * the platform eats its share; `driver`/`fleet` debit that party's wallet by
- * the refunded amount, capped at what the settlement credited them.
+ * Who bore a partial refund's money, AS STORED on `refunds.liability` and
+ * `disputes.liability`.
+ *
+ * `shared`, `platform` and `provider` are what ADM-6 (23 Sep) writes: see
+ * `REFUND_BEARERS`. `driver` and `fleet` are the pre-ADM-6 values, when an
+ * admin picked one party by hand. They are still READ, because refunds already
+ * issued carry them and history is not rewritten, but nothing accepts them as
+ * input any more.
  */
-export const DISPUTE_LIABILITIES = ['driver', 'fleet', 'platform'] as const;
+export const DISPUTE_LIABILITIES = ['shared', 'platform', 'provider', 'driver', 'fleet'] as const;
 export const disputeLiabilitySchema = z.enum(DISPUTE_LIABILITIES);
 export type DisputeLiability = z.infer<typeof disputeLiabilitySchema>;
+
+/**
+ * ADM-6 (Ehsan, 23 Sep): WHY a partial refund is being given. The cause
+ * decides who pays, the way Uber, Ola and Rapido decide it, so the admin
+ * states a fact about the trip rather than picking whom to charge.
+ *
+ * - `fare_error`: the fare itself was wrong because of the job (a longer
+ *   route, a padded wait, a wrong toll). Like a fare recalculation, both sides
+ *   give back their share.
+ * - `platform_error`: MiTow got it wrong (bad estimate, app or pricing bug).
+ * - `goodwill`: the customer is unhappy and nobody clearly did anything wrong.
+ *   MiTow's cost of keeping a customer, never the driver's.
+ * - `driver_misconduct`: rude, unsafe, or the job was not done properly.
+ *
+ * Damage to the customer's vehicle is deliberately NOT a cause: that is an
+ * insurance or liability claim, not a fare refund, and it does not belong in
+ * this flow.
+ */
+export const REFUND_CAUSES = [
+  'fare_error',
+  'platform_error',
+  'goodwill',
+  'driver_misconduct',
+] as const;
+export const refundCauseSchema = z.enum(REFUND_CAUSES);
+export type RefundCause = z.infer<typeof refundCauseSchema>;
+
+/**
+ * Who bears a partial refund.
+ *
+ * - `shared`: in proportion to what each side received from the customer's
+ *   payment. The driver/fleet give back their share, MiTow gives back its
+ *   commission. The fare-recalculation rule.
+ * - `platform`: MiTow bears all of it; the driver keeps every rupee.
+ * - `provider`: the driver's side bears all of it (the driver, or their fleet
+ *   and the driver in the proportion the trip paid them). NEVER more than they
+ *   were credited for the trip: a driver cannot pay back more than they earned.
+ *
+ * There is no way to name "fleet" by hand: the engine reads who was actually
+ * paid for the trip, so a fleet that does not exist cannot be charged.
+ */
+export const REFUND_BEARERS = ['shared', 'platform', 'provider'] as const;
+export const refundBearerSchema = z.enum(REFUND_BEARERS);
+export type RefundBearer = z.infer<typeof refundBearerSchema>;
+
+/** Who pays when the admin does not override. */
+export const DEFAULT_BEARER_BY_CAUSE = {
+  fare_error: 'shared',
+  platform_error: 'platform',
+  goodwill: 'platform',
+  driver_misconduct: 'provider',
+} as const satisfies Record<RefundCause, RefundBearer>;
+
+/**
+ * Where the refunded money goes.
+ *
+ * `original`: back the way it came (the card or UPI refund, plus any wallet
+ * part back to the wallet). `wallet`: all of it as MiTow wallet credit, which
+ * is instant, costs no gateway fee, and stays spendable on the next booking.
+ * A cash trip refunds to the wallet whichever is chosen, because the driver
+ * already holds the notes.
+ */
+export const REFUND_DELIVERIES = ['original', 'wallet'] as const;
+export const refundDeliverySchema = z.enum(REFUND_DELIVERIES);
+export type RefundDelivery = z.infer<typeof refundDeliverySchema>;
+
+/**
+ * The terms of a partial refund, shared by Finance's refund and a dispute's
+ * `partial_refund` resolution.
+ *
+ * `bearer` is an OVERRIDE and costs a written reason: the cause's default is
+ * the policy, and departing from it is exactly the decision a later reader of
+ * the audit trail needs explained. Sending the default as `bearer` is not an
+ * override and needs no reason.
+ */
+export const partialRefundTermsSchema = z
+  .object({
+    cause: refundCauseSchema,
+    bearer: refundBearerSchema.optional(),
+    overrideReason: z.string().trim().min(10).max(500).optional(),
+    delivery: refundDeliverySchema.default('original'),
+  })
+  .superRefine((terms, ctx) => {
+    const overriding =
+      terms.bearer !== undefined && terms.bearer !== DEFAULT_BEARER_BY_CAUSE[terms.cause];
+    if (overriding && !terms.overrideReason) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['overrideReason'],
+        message: 'Changing who pays from the default for this cause needs a written reason',
+      });
+    }
+    if (!overriding && terms.overrideReason) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['overrideReason'],
+        message: 'An override reason is only for changing who pays',
+      });
+    }
+  });
+export type PartialRefundTerms = z.infer<typeof partialRefundTermsSchema>;
+export type PartialRefundTermsInput = z.input<typeof partialRefundTermsSchema>;
+
+/** Resolve the bearer the terms actually mean: the override, or the cause's default. */
+export function bearerFor(terms: Pick<PartialRefundTerms, 'cause' | 'bearer'>): RefundBearer {
+  return terms.bearer ?? DEFAULT_BEARER_BY_CAUSE[terms.cause];
+}
 
 /**
  * Who opened it. Only `admin` is wired today (the console route); the app-side
@@ -222,8 +334,9 @@ export type AdminDisputeNoteBody = z.infer<typeof adminDisputeNoteBodySchema>;
 /**
  * `POST /:id/resolve` — one shape, five exits.
  *
- * `partial_refund` requires both the amount and the liability; `full_refund`
- * refuses an amount (the payment's full captured value is the amount);
+ * `partial_refund` requires the amount and its `terms` (ADM-6: the cause, and
+ * optionally an overridden bearer and the delivery); `full_refund` refuses an
+ * amount (the payment's full captured value is the amount);
  * `cancel_no_charge` may ask for platform-funded driver compensation. The
  * rest takes only the note.
  */
@@ -231,8 +344,8 @@ export const adminDisputeResolveBodySchema = z
   .object({
     resolution: disputeResolutionSchema,
     note: z.string().trim().min(4).max(2000),
-    liability: disputeLiabilitySchema.optional(),
     refundAmountPaise: unsignedPaiseSchema.optional(),
+    terms: partialRefundTermsSchema.optional(),
     /** `cancel_no_charge` only: post a platform-funded driver compensation leg. */
     compensateDriver: z.boolean().optional(),
   })
@@ -245,11 +358,11 @@ export const adminDisputeResolveBodySchema = z
           message: 'A partial refund needs its amount',
         });
       }
-      if (body.liability === undefined) {
+      if (body.terms === undefined) {
         ctx.addIssue({
           code: 'custom',
-          path: ['liability'],
-          message: 'A partial refund needs the party bearing it (liability)',
+          path: ['terms'],
+          message: 'A partial refund needs its cause (terms)',
         });
       }
     } else {
@@ -260,11 +373,11 @@ export const adminDisputeResolveBodySchema = z
           message: 'Only a partial refund takes an amount',
         });
       }
-      if (body.liability !== undefined) {
+      if (body.terms !== undefined) {
         ctx.addIssue({
           code: 'custom',
-          path: ['liability'],
-          message: 'Only a partial refund takes a liability',
+          path: ['terms'],
+          message: 'Only a partial refund takes terms',
         });
       }
     }

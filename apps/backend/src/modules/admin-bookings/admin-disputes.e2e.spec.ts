@@ -448,7 +448,7 @@ describe('W8 — disputes (/v1/admin/disputes)', () => {
     await expectNoDrift();
   });
 
-  it('exit 5: partial_refund — the booking STAYS paid, the liable party is clawed back paisa-exact', async () => {
+  it('exit 5: partial_refund — the booking STAYS paid, and an overcharge is shared paisa-exact', async () => {
     const { bookingId } = await seedSettledPaid();
     const disputeId = await open(bookingId, 'overcharge');
 
@@ -459,7 +459,10 @@ describe('W8 — disputes (/v1/admin/disputes)', () => {
         resolution: 'partial_refund',
         note: 'overcharge of ₹300 refunded, the rest of the trip stands',
         refundAmountPaise: 30_000,
-        liability: 'driver',
+        // ADM-6: an overcharge is a fare error, so it is shared the way a fare
+        // recalculation is: the driver was credited 900 of the 1000, so they
+        // give back 90 % of the 300, and MiTow gives back the other 30.
+        terms: { cause: 'fare_error' },
       })
       .expect(200);
 
@@ -477,23 +480,88 @@ describe('W8 — disputes (/v1/admin/disputes)', () => {
     `)) as unknown as [{ status: string; refunded: string }];
     expect(payment).toEqual({ status: 'captured', refunded: '300.00' });
 
-    // The clawback: a refund_debit on the driver's wallet for exactly X.
+    // The clawback: the driver's 90 % of X, not all of it.
     const legs = (await db.execute(sql`
       select type, amount::text as amount from wallet_transactions
        where ref_id = ${bookingId}::uuid order by created_at
     `)) as unknown as Array<{ type: string; amount: string }>;
     expect(legs).toEqual([
       { type: 'driver_share_credit', amount: '900.00' },
-      { type: 'refund_debit', amount: '-300.00' },
+      { type: 'refund_debit', amount: '-270.00' },
     ]);
 
     const [refund] = (await db.execute(sql`
-      select kind, liability, amount::text as amount from refunds
+      select kind, liability, cause, amount::text as amount from refunds
        where booking_id = ${bookingId}::uuid
-    `)) as unknown as [{ kind: string; liability: string; amount: string }];
-    expect(refund).toEqual({ kind: 'partial', liability: 'driver', amount: '300.00' });
+    `)) as unknown as [{ kind: string; liability: string; cause: string; amount: string }];
+    expect(refund).toEqual({
+      kind: 'partial',
+      liability: 'shared',
+      cause: 'fare_error',
+      amount: '300.00',
+    });
 
     await expectNoDrift();
+  });
+
+  it('a misconduct refund notes it on the driver and tells them what was deducted', async () => {
+    // ADM-6's industry-standard half: the driver sees a deduction explained,
+    // and repeat complaints are visible on their record rather than scattered
+    // across bookings.
+    const { bookingId } = await seedSettledPaid();
+    const disputeId = await open(bookingId, 'overcharge');
+
+    await request(app.getHttpServer())
+      .post(`/v1/admin/disputes/${disputeId}/resolve`)
+      .set('Authorization', adminAuth)
+      .send({
+        resolution: 'partial_refund',
+        note: 'driver refused to load the car properly',
+        refundAmountPaise: 20_000,
+        terms: { cause: 'driver_misconduct' },
+      })
+      .expect(200);
+
+    const [booking] = (await db.execute(sql`
+      select driver_id from bookings where id = ${bookingId}::uuid
+    `)) as unknown as [{ driver_id: string }];
+
+    const notes = (await db.execute(sql`
+      select body from admin_notes
+       where subject_type = 'driver' and subject_id = ${booking.driver_id}::uuid
+    `)) as unknown as Array<{ body: string }>;
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.body).toContain('₹200.00 was deducted');
+
+    const events = (await db.execute(sql`
+      select payload from notification_events where event = 'earnings.adjusted'
+    `)) as unknown as Array<{ payload: { driverId: string; amount: string; cause: string } }>;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.payload).toMatchObject({
+      driverId: booking.driver_id,
+      amount: '₹200.00',
+      cause: 'driver_misconduct',
+    });
+
+    await expectNoDrift();
+  });
+
+  it('refuses an override of who pays without a written reason', async () => {
+    const { bookingId } = await seedSettledPaid();
+    const disputeId = await open(bookingId, 'overcharge');
+
+    const refused = await request(app.getHttpServer())
+      .post(`/v1/admin/disputes/${disputeId}/resolve`)
+      .set('Authorization', adminAuth)
+      .send({
+        resolution: 'partial_refund',
+        note: 'goodwill, but charge the driver',
+        refundAmountPaise: 10_000,
+        terms: { cause: 'goodwill', bearer: 'provider' },
+      })
+      .expect(422);
+    expect(JSON.stringify(refused.body)).toContain('overrideReason');
+    expect(await bookingStatus(bookingId)).toBe('disputed');
   });
 
   it('refuses money exits from the wrong origin and comp on the wrong exit', async () => {

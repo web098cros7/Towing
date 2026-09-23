@@ -292,7 +292,7 @@ describe('W9 — admin finance console (/v1/admin/finance)', () => {
       .send({
         bookingId,
         amountPaise: 30_000,
-        liability: 'driver',
+        terms: { cause: 'fare_error' },
         reason: 'Overcharge on distance',
       })
       .expect(200);
@@ -314,8 +314,44 @@ describe('W9 — admin finance console (/v1/admin/finance)', () => {
       .post('/v1/admin/finance/refunds')
       .set('Authorization', adminAuth)
       .set('Idempotency-Key', 'w9-partial-over')
-      .send({ bookingId, amountPaise: 999_000, liability: 'driver', reason: 'Too much' })
+      .send({ bookingId, amountPaise: 999_000, terms: { cause: 'fare_error' }, reason: 'Too much' })
       .expect(422);
+
+    await expectNoDrift();
+  });
+
+  it('refunds goodwill to the wallet with nothing taken from the driver (ADM-6)', async () => {
+    // The Uber Cash move: goodwill costs MiTow, never the driver, and landing
+    // it in the wallet is instant and keeps the money spendable on MiTow.
+    const bookingId = await seedPaidBooking();
+
+    await request(app.getHttpServer())
+      .post('/v1/admin/finance/refunds')
+      .set('Authorization', adminAuth)
+      .set('Idempotency-Key', 'adm6-goodwill-wallet')
+      .send({
+        bookingId,
+        amountPaise: 15_000,
+        terms: { cause: 'goodwill', delivery: 'wallet' },
+        reason: 'Sorry for the long wait',
+      })
+      .expect(200);
+
+    const [refund] = (await db.execute(sql`
+      select liability, delivery, status, provider_share::text as provider_share
+        from refunds where booking_id = ${bookingId}::uuid
+    `)) as unknown as [Record<string, string>];
+    expect(refund).toEqual({
+      liability: 'platform',
+      delivery: 'wallet',
+      status: 'processed',
+      provider_share: '0.00',
+    });
+    const [clawed] = (await db.execute(sql`
+      select count(*)::int as n from wallet_transactions
+       where ref_id = ${bookingId}::uuid and type = 'refund_debit'
+    `)) as unknown as [{ n: number }];
+    expect(clawed.n).toBe(0);
 
     await expectNoDrift();
   });
@@ -340,7 +376,7 @@ describe('W9 — admin finance console (/v1/admin/finance)', () => {
       .post('/v1/admin/finance/refunds')
       .set('Authorization', adminAuth)
       .set('Idempotency-Key', 'w9-invariants-1')
-      .send({ bookingId, amountPaise: 20_000, liability: 'driver', reason: 'Goodwill adjustment' })
+      .send({ bookingId, amountPaise: 20_000, terms: { cause: 'goodwill' }, reason: 'Goodwill adjustment' })
       .expect(200);
 
     const response = await request(app.getHttpServer())
@@ -405,7 +441,12 @@ describe('W9 — admin finance console (/v1/admin/finance)', () => {
       .post('/v1/admin/finance/refunds')
       .set('Authorization', adminAuth)
       .set('Idempotency-Key', 'w9-csv-1')
-      .send({ bookingId, amountPaise: 25_000, liability: 'driver', reason: 'CSV coverage refund' })
+      .send({
+        bookingId,
+        amountPaise: 25_000,
+        terms: { cause: 'fare_error' },
+        reason: 'CSV coverage refund',
+      })
       .expect(200);
 
     const istDay = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);

@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Field, Input, Select, Textarea } from '@towing/web-ui';
-import type {
-  AdminDisputeResolveBody,
-  DisputeLiability,
-  DisputeResolution,
-} from '@towing/api-contracts';
+import { Button, Field, Input, Textarea } from '@towing/web-ui';
+import type { AdminDisputeResolveBody, DisputeResolution } from '@towing/api-contracts';
+import {
+  RefundTermsFields,
+  type RefundTermsState,
+} from '@/features/admin-finance/components/RefundTermsFields';
 
 /**
  * THE FIVE EXITS (§5.6), in the console.
@@ -49,7 +49,7 @@ const EXITS: {
     value: 'partial_refund',
     label: 'Partial refund',
     consequence:
-      'Booking stays paid. The typed amount is refunded; the chosen party is debited by it.',
+      'Booking stays paid. The typed amount is refunded, and the reason you give decides who pays for it.',
   },
 ];
 
@@ -65,7 +65,12 @@ export function ResolveDisputePanel({
   const [resolution, setResolution] = useState<DisputeResolution>('complete_and_charge');
   const [note, setNote] = useState('');
   const [amountRupees, setAmountRupees] = useState('');
-  const [liability, setLiability] = useState<DisputeLiability>('driver');
+  const [termsState, setTermsState] = useState<RefundTermsState>({
+    terms: { cause: 'fare_error', delivery: 'original' },
+    valid: true,
+  });
+  // Remounts the terms fields after a submit, so the next dispute starts clean.
+  const [termsKey, setTermsKey] = useState(0);
   const [compensateDriver, setCompensateDriver] = useState(false);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -87,7 +92,7 @@ export function ResolveDisputePanel({
       : null;
   const amountReady =
     resolution !== 'partial_refund' ||
-    (amountPaise !== null && Number.isFinite(amountPaise) && amountPaise > 0);
+    (amountPaise !== null && Number.isFinite(amountPaise) && amountPaise > 0 && termsState.valid);
   const noteReady = note.trim().length >= 4;
   const busy = pending || isPending;
 
@@ -100,13 +105,15 @@ export function ResolveDisputePanel({
         resolution,
         note: note.trim(),
         ...(resolution === 'partial_refund'
-          ? { refundAmountPaise: amountPaise as number, liability }
+          ? { refundAmountPaise: amountPaise as number, terms: termsState.terms }
           : {}),
         ...(resolution === 'cancel_no_charge' ? { compensateDriver } : {}),
       });
       setNote('');
       setAmountRupees('');
       setCompensateDriver(false);
+      setTermsState({ terms: { cause: 'fare_error', delivery: 'original' }, valid: true });
+      setTermsKey((key) => key + 1);
     } catch (error) {
       setErrorMessage((error as Error).message);
     } finally {
@@ -145,7 +152,7 @@ export function ResolveDisputePanel({
       </div>
 
       {resolution === 'partial_refund' ? (
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3 flex flex-col gap-3">
           <Field label="Refund amount (₹)" htmlFor="resolve-amount">
             <Input
               id="resolve-amount"
@@ -156,18 +163,7 @@ export function ResolveDisputePanel({
               data-testid="resolve-amount"
             />
           </Field>
-          <Field label="Borne by" htmlFor="resolve-liability">
-            <Select
-              id="resolve-liability"
-              value={liability}
-              onChange={(event) => setLiability(event.target.value as DisputeLiability)}
-              data-testid="resolve-liability"
-            >
-              <option value="driver">Driver</option>
-              <option value="fleet">Fleet</option>
-              <option value="platform">Platform (no compensating legs)</option>
-            </Select>
-          </Field>
+          <RefundTermsFields key={termsKey} idPrefix="resolve" onChange={setTermsState} />
         </div>
       ) : null}
 

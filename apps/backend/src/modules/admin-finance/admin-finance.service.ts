@@ -2,6 +2,7 @@ import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { Response } from 'express';
 import {
+  bearerFor,
   ErrorCodes,
   paiseToRupeeString,
   rupeeStringToPaise,
@@ -39,6 +40,7 @@ import { PricingConfigRepo } from '../pricing/pricing-config.repo';
 import { PayoutsRepo } from '../money/payouts.repo';
 import { PayoutsService } from '../money/payouts.service';
 import { RefundsService } from '../money/refunds.service';
+import { RefundAftermathService } from '../money/refund-aftermath.service';
 import { AdminFinanceRepo } from './admin-finance.repo';
 
 /**
@@ -63,6 +65,7 @@ export class AdminFinanceService {
     private readonly payouts: PayoutsService,
     /** Named for what it is: there is also a `refunds(query)` READ on this class. */
     private readonly refundEngine: RefundsService,
+    private readonly refundAftermath: RefundAftermathService,
     private readonly financeRepo: AdminFinanceRepo,
     private readonly audit: AdminAuditService,
     private readonly pricingConfig: PricingConfigRepo,
@@ -435,9 +438,9 @@ export class AdminFinanceService {
   ): Promise<AdminRefundIssueResponse> {
     const keySource = { kind: 'admin' as const, adminId, clientKey };
 
-    let result: { refundId: string; replayed: boolean };
+    let result: { refundId: string; replayed: boolean; providerSharePaise?: number };
 
-    if (body.amountPaise === undefined || body.liability === undefined) {
+    if (body.amountPaise === undefined || body.terms === undefined) {
       const [booking] = (await this.db.execute(sql`
         select status from bookings where id = ${body.bookingId}::uuid
       `)) as unknown as Array<{ status: string }>;
@@ -461,8 +464,17 @@ export class AdminFinanceService {
         reason: body.reason,
         initiatedBy: adminId,
         amountPaise: body.amountPaise,
-        liability: body.liability,
+        terms: body.terms,
         keySource,
+      });
+      await this.refundAftermath.afterPartialRefund({
+        bookingId: body.bookingId,
+        refundId: result.refundId,
+        terms: body.terms,
+        providerSharePaise: result.providerSharePaise ?? 0,
+        adminId,
+        replayed: result.replayed,
+        context,
       });
     }
 
@@ -482,6 +494,17 @@ export class AdminFinanceService {
         kind: stored?.kind ?? null,
         amountPaise: stored ? rupeeStringToPaise(stored.amount) : null,
         replayed: result.replayed,
+        // ADM-6: why, who paid, and what the driver side gave back. The
+        // override reason is the sentence a later reader most needs.
+        ...(body.terms
+          ? {
+              cause: body.terms.cause,
+              bearer: bearerFor(body.terms),
+              bearerOverrideReason: body.terms.overrideReason ?? null,
+              providerSharePaise: result.providerSharePaise ?? 0,
+              delivery: body.terms.delivery,
+            }
+          : {}),
       },
       reason: body.reason,
       ip: context.ip,

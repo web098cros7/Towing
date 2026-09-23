@@ -3,7 +3,7 @@ import { unsignedPaiseSchema } from '../common/money';
 import { pageEnvelopeSchema, pageQuerySchema } from '../common/pagination';
 import { paymentPurposeSchema, paymentStatusSchema } from '../customer/payments';
 import { payoutApprovalStateSchema, payoutStatusSchema } from '../fleet/payouts';
-import { disputeLiabilitySchema } from './disputes';
+import { partialRefundTermsSchema } from './disputes';
 
 /**
  * §9.4.10's Finance surface — `/v1/admin/finance/*`.
@@ -292,21 +292,22 @@ export const adminRefundIssueSchema = z
     bookingId: z.uuid(),
     amountPaise: z.int().min(1).optional(),
     reason: z.string().trim().min(4).max(500),
-    liability: disputeLiabilitySchema.optional(),
+    /** ADM-6: required with `amountPaise` (a partial), refused without it. */
+    terms: partialRefundTermsSchema.optional(),
   })
   .superRefine((body, ctx) => {
-    if (body.amountPaise !== undefined && body.liability === undefined) {
+    if (body.amountPaise !== undefined && body.terms === undefined) {
       ctx.addIssue({
         code: 'custom',
-        path: ['liability'],
-        message: 'A partial refund needs the party bearing it (liability)',
+        path: ['terms'],
+        message: 'A partial refund needs its cause (terms)',
       });
     }
-    if (body.amountPaise === undefined && body.liability !== undefined) {
+    if (body.amountPaise === undefined && body.terms !== undefined) {
       ctx.addIssue({
         code: 'custom',
-        path: ['liability'],
-        message: 'Only a partial refund takes a liability',
+        path: ['terms'],
+        message: 'Only a partial refund takes terms',
       });
     }
   });

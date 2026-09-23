@@ -2,10 +2,15 @@ import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import {
   ErrorCodes,
+  bearerFor,
   paiseToRupeeString,
   rupeeStringToPaise,
   type DisputeLiability,
   type JobStatus,
+  type PartialRefundTerms,
+  type RefundBearer,
+  type RefundCause,
+  type RefundDelivery,
 } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import { DB, type Database } from '../../db/db.module';
@@ -288,29 +293,45 @@ export class RefundsService {
   }
 
   /**
-   * A PARTIAL refund (W8): gateway refund of X, and compensating legs for the
-   * LIABLE party's share — the booking stays `paid`.
+   * A PARTIAL refund (W8, reworked for ADM-6): refund X to the customer and
+   * claw back the driver side's part of it. The booking stays `paid`.
    *
-   * The liability names who bears X: `driver` debits the driver's wallet
-   * (capped at what the settlement credited them, minus anything earlier
-   * refunds already clawed back), `fleet` the fleet's, and `platform` writes no
-   * legs at all — the platform absorbs its share, which is what makes the
-   * "keep the ride, refund the overcharge" resolution possible without moving
-   * money between the trip's parties.
+   * WHO PAYS IS DECIDED BY THE CAUSE (ADM-6, Ehsan 23 Sep, after comparing
+   * Uber, Ola and Rapido). The admin states why the refund is given, and
+   * `DEFAULT_BEARER_BY_CAUSE` turns that into a bearer, which they may override
+   * with a written reason:
    *
-   * The cap is checked BEFORE the refund row and the gateway call (M0-F12's
-   * lesson: never learn an amount is impossible from the database after the
-   * money moved), and `reversalDrift` — which runs at every status — is the
-   * invariant that proves the cumulative bound held.
+   *   shared    the driver side gives back X times the share of the customer's
+   *             payment it was credited, and the platform the rest. The
+   *             fare-recalculation rule: if the fare was wrong, everyone who was
+   *             paid out of it gives back their part of the difference.
+   *   platform  nothing is clawed back; the platform absorbs X.
+   *   provider  the driver side gives back all of X.
+   *
+   * "The driver side" is whoever the trip actually credited: an independent
+   * driver, or a fleet and its driver. It is READ from the settlement legs,
+   * never named by the admin, so a fleet that does not exist cannot be charged.
+   *
+   * THE CAP: the driver side never gives back more than it was credited on
+   * this booking, minus what earlier refunds already took. A `provider` refund
+   * above that is refused, before any money moves (M0-F12's lesson: never learn
+   * an amount is impossible after the gateway call). `reversalDrift`, which runs
+   * at every status, is the invariant that proves the cumulative bound held.
+   *
+   * DELIVERY. `original` spends the gateway pool first and returns it to the
+   * card, then the wallet pool to the wallet: unchanged. `wallet` spends the
+   * pools in the same order, so the remaining balance of each stays exact for
+   * any later refund, but sends every rupee to the customer's MiTow wallet and
+   * makes no gateway call.
    */
   async refundPartial(params: {
     bookingId: string;
     amountPaise: number;
-    liability: DisputeLiability;
+    terms: PartialRefundTerms;
     reason: string;
     initiatedBy: string;
     keySource: RefundKeySource;
-  }): Promise<{ refundId: string; replayed: boolean }> {
+  }): Promise<{ refundId: string; replayed: boolean; providerSharePaise: number }> {
     const key = keyFromSource(params.bookingId, 'partial', params.keySource);
 
     // Key first, exactly like the full path: a double-submitted partial must
@@ -323,7 +344,11 @@ export class RefundsService {
         transitionTo: null,
         reason: params.reason,
       });
-      return { refundId: replayed.id, replayed: true };
+      return {
+        refundId: replayed.id,
+        replayed: true,
+        providerSharePaise: await this.storedProviderShare(replayed.id),
+      };
     }
 
     const captured = await this.payments.capturedFor(params.bookingId, 'booking');
@@ -336,8 +361,10 @@ export class RefundsService {
     }
 
     const split = await this.refundedSplit(captured.id);
-    const remainingGateway = gatewayPoolFor(captured) - split.gatewayPaise;
-    const remainingWallet = walletPoolFor(captured) - split.walletPaise;
+    const gatewayPool = gatewayPoolFor(captured);
+    const walletPool = walletPoolFor(captured);
+    const remainingGateway = gatewayPool - split.gatewayPaise;
+    const remainingWallet = walletPool - split.walletPaise;
     const remainingPaise = remainingGateway + remainingWallet;
     if (params.amountPaise <= 0 || params.amountPaise > remainingPaise) {
       throw ApiException.validation('The refund exceeds what is left on this payment', {
@@ -346,37 +373,49 @@ export class RefundsService {
       });
     }
 
-    // Gateway FIRST: a partial spends the gateway pool before touching the
-    // wallet pool, so the customer's wallet credit is the last resort.
+    // Which POOL each rupee comes from: the gateway pool first, so the
+    // customer's wallet credit is the last resort. Recorded the same way for
+    // both deliveries (see `refunds.gateway_amount`).
     const gatewayPaise = Math.min(params.amountPaise, remainingGateway);
     const walletPaise = params.amountPaise - gatewayPaise;
 
-    if (params.liability !== 'platform') {
-      const remainingCredit = await this.remainingCreditFor(params.bookingId, params.liability);
-      if (params.amountPaise > remainingCredit) {
-        throw ApiException.validation(
-          `A ${params.liability} liability cannot exceed what that party was credited on this booking`,
-          {
-            liability: params.liability,
-            amountPaise: params.amountPaise,
-            remainingCreditPaise: remainingCredit,
-          },
-        );
-      }
+    const bearer = bearerFor(params.terms);
+    const provider = await this.providerCredit(params.bookingId);
+    const providerSharePaise = providerShareFor({
+      bearer,
+      amountPaise: params.amountPaise,
+      providerCreditedPaise: provider.creditedPaise,
+      customerPaidPaise: gatewayPool + walletPool,
+    });
+    if (providerSharePaise > provider.remainingPaise) {
+      throw ApiException.validation(
+        'The driver cannot give back more than this trip paid them',
+        {
+          bearer,
+          amountPaise: params.amountPaise,
+          providerSharePaise,
+          remainingCreditPaise: provider.remainingPaise,
+        },
+      );
     }
 
     const disputeId = params.keySource.kind === 'dispute' ? params.keySource.disputeId : null;
+    const delivery = params.terms.delivery;
 
     const inserted = (await this.db.execute(sql`
       insert into refunds (booking_id, payment_id, amount, gateway_amount, wallet_amount,
                            reason, status, idempotency_key,
-                           initiated_by, kind, liability, dispute_id)
+                           initiated_by, kind, liability, dispute_id,
+                           cause, delivery, provider_share, bearer_override_reason)
       values (${params.bookingId}::uuid, ${captured.id}::uuid,
               ${paiseToRupeeString(params.amountPaise)}::numeric,
               ${paiseToRupeeString(gatewayPaise)}::numeric,
               ${paiseToRupeeString(walletPaise)}::numeric,
               ${params.reason}, 'pending', ${key}, ${params.initiatedBy}, 'partial',
-              ${params.liability}, ${disputeId}::uuid)
+              ${bearer}, ${disputeId}::uuid,
+              ${params.terms.cause}, ${delivery},
+              ${paiseToRupeeString(providerSharePaise)}::numeric,
+              ${params.terms.overrideReason ?? null})
       on conflict (idempotency_key) do nothing
       returning id
     `)) as unknown as Array<{ id: string }>;
@@ -390,41 +429,47 @@ export class RefundsService {
           transitionTo: null,
           reason: params.reason,
         });
-        return { refundId: raced.id, replayed: true };
+        return {
+          refundId: raced.id,
+          replayed: true,
+          providerSharePaise: await this.storedProviderShare(raced.id),
+        };
       }
       throw ApiException.conflict('The refund changed while this request was in flight');
     }
 
     const refundId = inserted[0]!.id;
+    const delivered = deliveredSplit({ delivery, gatewayPaise, walletPaise });
 
     await this.callGateway({
       refundId,
       key,
       gatewayRef: captured.gatewayRef,
-      gatewayPaise,
+      gatewayPaise: delivered.toGatewayPaise,
       reason: params.reason,
     });
 
-    if (walletPaise > 0) {
-      await this.creditWallet(params.bookingId, refundId, walletPaise);
+    if (delivered.toWalletPaise > 0) {
+      await this.creditWallet(params.bookingId, refundId, delivered.toWalletPaise);
     }
 
-    if (gatewayPaise === 0) {
+    if (delivered.toGatewayPaise === 0) {
       await this.db.execute(sql`
         update refunds set status = 'processed', processed_at = now(), updated_at = now()
          where id = ${refundId}::uuid
       `);
     }
 
-    await this.clawback(params.bookingId, refundId, params.amountPaise, params.liability);
+    await this.clawback(params.bookingId, refundId, providerSharePaise, params.terms.cause);
     await this.payments.applyRefund(captured.id);
 
     this.logger.log(
       `event=booking_partially_refunded booking=${params.bookingId} ` +
-        `amount_paise=${params.amountPaise} liability=${params.liability}`,
+        `amount_paise=${params.amountPaise} cause=${params.terms.cause} bearer=${bearer} ` +
+        `provider_share_paise=${providerSharePaise} delivery=${delivery}`,
     );
 
-    return { refundId, replayed: false };
+    return { refundId, replayed: false, providerSharePaise };
   }
 
   /**
@@ -455,7 +500,8 @@ export class RefundsService {
       select amount::text as amount,
              gateway_amount::text as gateway_amount,
              wallet_amount::text as wallet_amount,
-             status, gateway_ref, kind, liability, idempotency_key
+             status, gateway_ref, kind, liability, idempotency_key,
+             delivery, cause, provider_share::text as provider_share
         from refunds where id = ${params.refundId}::uuid
     `)) as unknown as Array<{
       amount: string;
@@ -466,12 +512,20 @@ export class RefundsService {
       kind: 'full' | 'partial';
       liability: DisputeLiability | null;
       idempotency_key: string;
+      delivery: RefundDelivery;
+      cause: RefundCause | null;
+      provider_share: string | null;
     }>;
     if (!row || row.status === 'failed') return;
 
     const amountPaise = rupeeStringToPaise(row.amount);
-    const gatewayPaise = rupeeStringToPaise(row.gateway_amount);
-    const walletPaise = rupeeStringToPaise(row.wallet_amount);
+    // Where the money is SENT, not which pool it came from: a `wallet`
+    // delivery sends the gateway pool's part to the wallet too.
+    const { toGatewayPaise: gatewayPaise, toWalletPaise: walletPaise } = deliveredSplit({
+      delivery: row.delivery,
+      gatewayPaise: rupeeStringToPaise(row.gateway_amount),
+      walletPaise: rupeeStringToPaise(row.wallet_amount),
+    });
     const payment = await this.paymentForResume(params.bookingId);
 
     // The gateway call is re-issued ONLY when the row carries no `gateway_ref`
@@ -513,8 +567,18 @@ export class RefundsService {
     // an already-clawed-back credit is not clawed back again.
     if (row.kind === 'full') {
       await this.reverseLedger(params.bookingId, params.refundId);
-    } else if (row.liability && row.liability !== 'platform') {
-      await this.clawback(params.bookingId, params.refundId, amountPaise, row.liability);
+    } else if (row.provider_share !== null) {
+      // ADM-6: the share decided at issue time, never recomputed (see the
+      // column). Zero for a platform-borne refund, which posts nothing.
+      await this.clawback(
+        params.bookingId,
+        params.refundId,
+        rupeeStringToPaise(row.provider_share),
+        row.cause,
+      );
+    } else if (row.liability === 'driver' || row.liability === 'fleet') {
+      // A refund issued before ADM-6: the named party bore all of X.
+      await this.legacyClawback(params.bookingId, params.refundId, amountPaise, row.liability);
     }
 
     // A full refund gives the coupon back — idempotent because
@@ -720,26 +784,6 @@ export class RefundsService {
     );
   }
 
-  /** Credited minus already-clawed, for one liability party — the partial cap. */
-  private async remainingCreditFor(
-    bookingId: string,
-    liability: Exclude<DisputeLiability, 'platform'>,
-  ): Promise<number> {
-    const credits = (await this.settlementCredits(bookingId)).filter(
-      (credit) => credit.ownerType === liability,
-    );
-    if (credits.length === 0) return 0;
-    const reversed = await this.reversedByOwner(bookingId);
-    return credits.reduce(
-      (total, credit) =>
-        total +
-        Math.max(
-          0,
-          credit.creditedPaise - (reversed.get(`${credit.ownerType}:${credit.ownerId}`) ?? 0),
-        ),
-      0,
-    );
-  }
 
   /**
    * The compensating legs: reverse the REMAINING un-reversed portion of each
@@ -783,17 +827,80 @@ export class RefundsService {
   }
 
   /**
-   * The partial refund's single clawback leg: X debited from the liable
-   * party's wallet, keyed per refund so a resume is a ledger replay rather
-   * than a second debit. `platform` writes nothing — the platform absorbs it.
+   * The driver side's part of a partial refund, taken back from whoever the
+   * trip credited, in proportion to what each still holds from it.
+   *
+   * An independent driver is one wallet. A fleet trip credits the fleet AND
+   * its driver, and both give back their proportion: charging only one of
+   * them would make the split depend on which wallet the admin happened to
+   * think of. The last owner takes the rounding remainder so the legs sum to
+   * exactly `providerSharePaise`. Keys are per refund and per owner type, so a
+   * resume is a ledger replay rather than a second debit.
    */
   private async clawback(
     bookingId: string,
     refundId: string,
-    amountPaise: number,
-    liability: DisputeLiability,
+    providerSharePaise: number,
+    cause: RefundCause | null,
   ): Promise<void> {
-    if (liability === 'platform') return;
+    if (providerSharePaise <= 0) return;
+
+    const reversed = await this.reversedByOwner(bookingId);
+    const owners = (await this.settlementCredits(bookingId))
+      .filter((credit) => credit.ownerType === 'driver' || credit.ownerType === 'fleet')
+      .map((credit) => ({
+        ...credit,
+        remaining: Math.max(
+          0,
+          credit.creditedPaise - (reversed.get(`${credit.ownerType}:${credit.ownerId}`) ?? 0),
+        ),
+      }));
+    const pool = owners.reduce((total, owner) => total + owner.remaining, 0);
+    if (pool <= 0) return;
+
+    // Safe to recompute on a resume: `ledger.post` writes every leg in ONE
+    // transaction and treats a key already present as a replay. So either
+    // none of this refund's legs landed (the proportions below are the ones
+    // the first attempt saw) or all of them did (every leg is a no-op replay,
+    // whatever amount it now computes).
+    let left = providerSharePaise;
+    const legs = owners
+      .filter((owner) => owner.remaining > 0)
+      .map((owner, index, all) => {
+        const share =
+          index === all.length - 1
+            ? left
+            : Math.round((providerSharePaise * owner.remaining) / pool);
+        left -= share;
+        return { owner, share };
+      })
+      .filter(({ share }) => share > 0)
+      .map(({ owner, share }) => ({
+        owner: { ownerType: owner.ownerType, ownerId: owner.ownerId },
+        type: 'refund_debit' as const,
+        amountPaise: -share,
+        reason: adjustmentLabel(cause),
+        refId: bookingId,
+        idempotencyKey:
+          owner.ownerType === 'fleet'
+            ? ledgerKeys.refundFleetDebit(refundId)
+            : ledgerKeys.refundDriverDebit(refundId),
+      }));
+
+    if (legs.length > 0) await this.ledger.post(legs);
+  }
+
+  /**
+   * A pre-ADM-6 partial refund's clawback: the one party the admin named bore
+   * all of X. Only reachable by resuming a refund issued before 0040; nothing
+   * issues this shape any more.
+   */
+  private async legacyClawback(
+    bookingId: string,
+    refundId: string,
+    amountPaise: number,
+    liability: 'driver' | 'fleet',
+  ): Promise<void> {
     const owner = (await this.settlementCredits(bookingId)).find(
       (credit) => credit.ownerType === liability,
     );
@@ -812,6 +919,34 @@ export class RefundsService {
             : ledgerKeys.refundDriverDebit(refundId),
       },
     ]);
+  }
+
+  /**
+   * What the driver side was credited on this booking, and how much of it
+   * earlier refunds have not already taken back.
+   */
+  private async providerCredit(
+    bookingId: string,
+  ): Promise<{ creditedPaise: number; remainingPaise: number }> {
+    const reversed = await this.reversedByOwner(bookingId);
+    let creditedPaise = 0;
+    let remainingPaise = 0;
+    for (const credit of await this.settlementCredits(bookingId)) {
+      if (credit.ownerType !== 'driver' && credit.ownerType !== 'fleet') continue;
+      creditedPaise += credit.creditedPaise;
+      remainingPaise += Math.max(
+        0,
+        credit.creditedPaise - (reversed.get(`${credit.ownerType}:${credit.ownerId}`) ?? 0),
+      );
+    }
+    return { creditedPaise, remainingPaise };
+  }
+
+  private async storedProviderShare(refundId: string): Promise<number> {
+    const [row] = (await this.db.execute(sql`
+      select provider_share::text as provider_share from refunds where id = ${refundId}::uuid
+    `)) as unknown as Array<{ provider_share: string | null }>;
+    return row?.provider_share ? rupeeStringToPaise(row.provider_share) : 0;
   }
 
   /** The webhook's confirmation that the vendor actually moved the money. */
@@ -869,4 +1004,74 @@ function keyFromSource(
   return source.kind === 'dispute'
     ? disputeRefundRowKey(bookingId, kind, source.disputeId)
     : adminRefundRowKey(bookingId, kind, source.adminId, source.clientKey);
+}
+
+/**
+ * The driver side's part of a partial refund of X.
+ *
+ * `shared` is the fare-recalculation rule: the driver side was credited
+ * `providerCredited` out of the `customerPaid` the customer handed over, so it
+ * gives back that same fraction of X. The platform's part is the rest, which
+ * is its commission's share of the refund (and the tax's, while GST is 0).
+ * Rounded to the paisa; the cap check in `refundPartial` sees the rounded
+ * figure, so rounding can never push a driver past what they were paid.
+ */
+export function providerShareFor(params: {
+  bearer: RefundBearer;
+  amountPaise: number;
+  providerCreditedPaise: number;
+  customerPaidPaise: number;
+}): number {
+  switch (params.bearer) {
+    case 'platform':
+      return 0;
+    case 'provider':
+      return params.amountPaise;
+    case 'shared':
+      if (params.customerPaidPaise <= 0) return 0;
+      return Math.round(
+        (params.amountPaise * params.providerCreditedPaise) / params.customerPaidPaise,
+      );
+  }
+}
+
+/**
+ * Where a refund's money is SENT, from which pools it was spent.
+ *
+ * `original`: each pool back the way it came. `wallet`: everything to the
+ * customer's MiTow wallet and nothing to the gateway, although the pool
+ * bookkeeping (`gateway_amount` / `wallet_amount`) is unchanged.
+ */
+export function deliveredSplit(params: {
+  delivery: RefundDelivery;
+  gatewayPaise: number;
+  walletPaise: number;
+}): { toGatewayPaise: number; toWalletPaise: number } {
+  if (params.delivery === 'wallet') {
+    return { toGatewayPaise: 0, toWalletPaise: params.gatewayPaise + params.walletPaise };
+  }
+  return { toGatewayPaise: params.gatewayPaise, toWalletPaise: params.walletPaise };
+}
+
+/**
+ * The line a driver reads on their earnings statement for a clawback.
+ *
+ * Uber's "fare adjustment" is the model: the driver sees that their earning
+ * changed and why, in words, rather than an unexplained reversal. Kept short
+ * because it renders on one line in the driver app's earnings list.
+ */
+export function adjustmentLabel(cause: RefundCause | null): string {
+  switch (cause) {
+    case 'fare_error':
+      return 'Fare adjusted: customer refund for a fare or route issue';
+    case 'driver_misconduct':
+      return 'Deducted: customer refund after a service complaint';
+    case 'platform_error':
+    case 'goodwill':
+      // Never clawed back by default; reachable only through an override,
+      // which carries its own written reason in the audit trail.
+      return 'Fare adjusted: customer refund';
+    case null:
+      return 'Fare adjusted: customer refund';
+  }
 }

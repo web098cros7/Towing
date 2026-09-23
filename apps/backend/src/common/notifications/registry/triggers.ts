@@ -1,3 +1,4 @@
+import type { RefundCause } from '@towing/api-contracts';
 import { and, eq, inArray } from 'drizzle-orm';
 import { adminUsers } from '../../../db/schema/admin';
 import { sosAlertContacts } from '../../../db/schema/sos';
@@ -67,6 +68,16 @@ export interface EarningsCreditedPayload extends Record<string, unknown> {
   bookingId: string;
   driverId: string;
   amount: string;
+}
+
+/** ADM-6: part of a customer refund was taken back from the driver's earnings. */
+export interface EarningsAdjustedPayload extends Record<string, unknown> {
+  bookingId: string;
+  refundId: string;
+  driverId: string;
+  /** Pre-formatted, e.g. `₹180.00` — the same shape `earnings.credited` sends. */
+  amount: string;
+  cause: RefundCause;
 }
 
 export interface WeeklyEarningsPayload extends Record<string, unknown> {
@@ -1040,6 +1051,41 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     variables: (p: EarningsCreditedPayload) => ({
       amount: p.amount,
       bookingRef: p.bookingId.slice(0, 8).toUpperCase(),
+    }),
+  }),
+
+  defineTrigger({
+    /**
+     * ADM-6 (23 Sep): a customer refund took part of a trip's earnings back.
+     *
+     * NOT A §12.2 ROW, and deliberately not added to `matrix-12-2.ts`, which is
+     * a literal copy of the spec. The spec predates cause-based refunds; this
+     * is the industry-standard half of them (Uber's "fare adjustment" notice),
+     * registered the way the other off-matrix trigger, `sos.ops_alert`, is.
+     *
+     * ALWAYS ON. Every other earnings message can be muted, but money leaving a
+     * driver's wallet is not a preference: a deduction they were never told
+     * about reads as theft, which is the thing this exists to prevent. Push
+     * only, like `earnings.credited` — the statement line is the durable record.
+     */
+    event: 'earnings.adjusted',
+    matrixRow: '',
+    channels: ['push'],
+    template: 'earnings_adjusted',
+    category: 'money',
+    alwaysOn: true,
+    push: { action: 'refetch', invalidate: 'driver.earnings', route: 'towpartner://earnings' },
+    dedupeKey: (p: EarningsAdjustedPayload) => p.refundId,
+    resolve: (p: EarningsAdjustedPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
+    variables: (p: EarningsAdjustedPayload) => ({
+      amount: p.amount,
+      bookingRef: p.bookingId.slice(0, 8).toUpperCase(),
+      why:
+        p.cause === 'driver_misconduct'
+          ? 'after a service complaint'
+          : p.cause === 'fare_error'
+            ? 'for a fare or route issue'
+            : 'for a customer refund',
     }),
   }),
 

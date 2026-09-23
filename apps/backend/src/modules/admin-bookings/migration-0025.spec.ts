@@ -1,6 +1,5 @@
 import {
   DISPUTE_EVIDENCE_KINDS,
-  DISPUTE_LIABILITIES,
   DISPUTE_OPENED_BY_TYPES,
   DISPUTE_OPENED_FROM_STATUSES,
   DISPUTE_REASON_CODES,
@@ -22,6 +21,9 @@ import { describe, expect, it } from 'vitest';
  * not `= 'open'` — because "one OPEN dispute per booking, history may
  * accumulate" is the behaviour the resolver relies on.
  */
+
+/** What 0025 allowed, before ADM-6 (0040) added `shared` and `provider`. */
+const LIABILITIES_AT_0025 = ['driver', 'fleet', 'platform'];
 
 const MIGRATION = resolve(__dirname, '../../../drizzle/0025_admin_bookings_disputes.sql');
 
@@ -98,7 +100,9 @@ describe('migration 0025 admin bookings and disputes', () => {
     expect(sql).toContain(`ADD COLUMN IF NOT EXISTS "liability" text`);
     expect(sql).toContain('DROP CONSTRAINT IF EXISTS "ck_refunds_kind"');
     expect(checkList(sql, 'ck_refunds_kind')).toEqual([...REFUND_KINDS].sort());
-    expect(checkList(sql, 'ck_refunds_liability')).toEqual([...DISPUTE_LIABILITIES].sort());
+    // The three values 0025 wrote. 0040 widened the constraint for ADM-6; its
+    // own spec pins the current list to the contract.
+    expect(checkList(sql, 'ck_refunds_liability')).toEqual(LIABILITIES_AT_0025);
   });
 
   it('pins every union CHECK to its contract constant', () => {
@@ -106,7 +110,7 @@ describe('migration 0025 admin bookings and disputes', () => {
     expect(checkList(sql, 'ck_disputes_reason_code')).toEqual([...DISPUTE_REASON_CODES].sort());
     expect(checkList(sql, 'ck_disputes_status')).toEqual([...DISPUTE_STATUSES].sort());
     expect(checkList(sql, 'ck_disputes_resolution')).toEqual([...DISPUTE_RESOLUTIONS].sort());
-    expect(checkList(sql, 'ck_disputes_liability')).toEqual([...DISPUTE_LIABILITIES].sort());
+    expect(checkList(sql, 'ck_disputes_liability')).toEqual(LIABILITIES_AT_0025);
     expect(checkList(sql, 'ck_disputes_opened_by_type')).toEqual(
       [...DISPUTE_OPENED_BY_TYPES].sort(),
     );

@@ -220,16 +220,41 @@ export const refunds = pgTable(
      */
     kind: text('kind').notNull().default('full'),
     /**
-     * Migration 0035 — where this refund goes: `gatewayAmount` back to the original
-     * UPI/card payment, `walletAmount` to the customer's MiTow wallet (the wallet part
-     * of the bill, and all of a cash trip). They always add up to `amount`.
+     * Migration 0035 — which of the payment's two POOLS this refund spent:
+     * `gatewayAmount` from what was paid by UPI/card, `walletAmount` from the
+     * MiTow wallet part of the bill (and all of a cash trip). They always add
+     * up to `amount`, and summing them is how the remaining refundable balance
+     * of each pool is known.
+     *
+     * Since 0040 this is the pool, NOT necessarily the destination: a refund
+     * with `delivery = 'wallet'` spends the gateway pool first as usual but
+     * sends all of it to the customer's wallet instead of back to the card.
+     * Keeping the pool arithmetic unchanged is what stops a later full refund
+     * from returning the same card money a second time.
      */
     gatewayAmount: money('gateway_amount').notNull().default('0'),
     walletAmount: money('wallet_amount').notNull().default('0'),
     disputeId: uuid('dispute_id'),
     paymentId: uuid('payment_id').references(() => payments.id),
-    /** Partial refunds only: `driver` | `fleet` | `platform` — who bore X. */
+    /**
+     * Partial refunds only: who bore X. `shared` | `platform` | `provider`
+     * since ADM-6 (0040); `driver` | `fleet` on refunds issued before it.
+     */
     liability: text('liability'),
+    /** ADM-6 (0040), partial refunds only: why it was given — `RefundCause`. */
+    cause: text('cause'),
+    /** ADM-6 (0040): `original` (back the way it came) or `wallet` (all as MiTow credit). */
+    delivery: text('delivery').notNull().default('original'),
+    /**
+     * ADM-6 (0040): the part of X the driver's side bears, fixed when the
+     * refund is issued. STORED rather than recomputed because a resumed refund
+     * re-runs the clawback: recomputing a `shared` split then would read the
+     * credits after the first clawback and take a different number, and using
+     * `amount` would charge the driver the whole refund.
+     */
+    providerShare: money('provider_share'),
+    /** ADM-6 (0040): why the admin changed who pays from the cause's default. */
+    bearerOverrideReason: text('bearer_override_reason'),
     failureReason: text('failure_reason'),
     processedAt: timestamp('processed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
