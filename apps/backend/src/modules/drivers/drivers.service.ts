@@ -1,11 +1,13 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   ErrorCodes,
+  PERFORMANCE_WINDOW_DAYS,
   rupeeStringToPaise,
   type AssignTruckRequest,
   type DriverInviteRequest,
   type DriversListResponse,
   type FleetDriverDto,
+  type FleetDriverPerformance,
   type FleetId,
 } from '@towing/api-contracts';
 import type { PageQuery } from '@towing/api-contracts';
@@ -143,5 +145,36 @@ export class DriversService {
       updated.assignedTruckId ? (plates.get(updated.assignedTruckId) ?? null) : null,
       undefined,
     );
+  }
+
+  /** ADM-23: a driver's performance panel. Another fleet's driver is a 404, like a made-up id. */
+  async performance(fleetId: FleetId, driverId: string): Promise<FleetDriverPerformance> {
+    const rows = await this.repo.performance(fleetId, driverId, PERFORMANCE_WINDOW_DAYS);
+    if (!rows) throw ApiException.notFound('Driver not found');
+
+    const net = (ownerType: string): number => {
+      const row = rows.earnings.find((entry) => entry.owner_type === ownerType);
+      return row ? rupeeStringToPaise(row.net) : 0;
+    };
+    const pct = (value: string | null): number | null => (value === null ? null : Number(value));
+
+    return {
+      driverId: rows.driver.id,
+      name: rows.driver.name,
+      windowDays: PERFORMANCE_WINDOW_DAYS,
+      trips: rows.trips,
+      acceptanceRatePct: pct(rows.driver.acceptance_rate),
+      completionRatePct: pct(rows.driver.completion_rate),
+      rating: pct(rows.driver.rating),
+      ratingsCount: rows.ratingsCount,
+      earnings: { fleetSharePaise: net('fleet'), driverSharePaise: net('driver') },
+      recentJobs: rows.recent.map((job) => ({
+        id: job.id,
+        code: `TW-${job.id.slice(0, 8).toUpperCase()}`,
+        status: job.status,
+        grossPaise: Math.max(0, rupeeStringToPaise(job.total)),
+        createdAt: new Date(job.created_at).toISOString(),
+      })),
+    };
   }
 }

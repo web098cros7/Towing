@@ -30,6 +30,12 @@ export class DriversController {
     return this.drivers.invite(fleetId, body);
   }
 
+  /** ADM-23: the per-driver performance panel. Another fleet's driver is a 404. */
+  @Get(':id/performance')
+  performance(@CurrentFleet() fleetId: FleetId, @ZodParam(z.uuid(), 'id') driverId: string) {
+    return this.drivers.performance(fleetId, driverId);
+  }
+
   @Post(':id/assign-truck')
   @HttpCode(HttpStatus.OK)
   assignTruck(

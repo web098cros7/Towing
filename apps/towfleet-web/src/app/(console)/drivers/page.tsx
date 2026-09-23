@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Badge, Button, DataTable, FilterBar, SearchInput, type ColumnDef } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { useDrivers } from '@/features/drivers/api/drivers.queries';
+import { DriverPerformanceDrawer } from '@/features/drivers/components/DriverPerformanceDrawer';
 import { KYC_LABEL, type FleetDriver, type KycStatus } from '@/features/drivers/types';
 import { formatPaise } from '@/lib/money';
 
@@ -69,6 +70,7 @@ const columns: ColumnDef<FleetDriver, unknown>[] = [
 export default function DriversPage() {
   const { data, isLoading, isError, refetch } = useDrivers();
   const [q, setQ] = useState('');
+  const [openDriverId, setOpenDriverId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -106,6 +108,8 @@ export default function DriversPage() {
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}
+        // ADM-23: a row opens the driver's performance panel.
+        onRowClick={(driver) => setOpenDriverId(driver.id)}
         emptyTitle={q ? 'No drivers match' : 'No drivers yet'}
         emptyDescription={
           q
@@ -113,6 +117,8 @@ export default function DriversPage() {
             : 'Invite drivers — they onboard through the TowPartner app and appear here with live KYC status.'
         }
       />
+
+      <DriverPerformanceDrawer driverId={openDriverId} onClose={() => setOpenDriverId(null)} />
     </div>
   );
 }

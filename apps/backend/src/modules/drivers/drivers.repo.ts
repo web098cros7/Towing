@@ -111,4 +111,66 @@ export class DriversRepo {
       .returning();
     return row;
   }
+
+  /**
+   * ADM-23: one driver's performance, or null when the driver is not in this
+   * fleet. Tenancy is the WHERE clause on every read: jobs and earnings are
+   * this fleet's jobs for this driver, so a driver who moved fleets shows only
+   * what they did here.
+   */
+  async performance(fleetId: FleetId, driverId: string, windowDays: number) {
+    const [driver] = (await this.db.execute(sql`
+      select id, name, rating::text as rating,
+             acceptance_rate::text as acceptance_rate,
+             completion_rate::text as completion_rate
+        from drivers where id = ${driverId}::uuid and fleet_id = ${fleetId}::uuid
+    `)) as unknown as Array<{
+      id: string;
+      name: string;
+      rating: string | null;
+      acceptance_rate: string | null;
+      completion_rate: string | null;
+    }>;
+    if (!driver) return null;
+
+    const since = sql`now() - make_interval(days => ${windowDays})`;
+
+    const [trips] = (await this.db.execute(sql`
+      select count(*) filter (where status in ('completed', 'paid', 'refunded'))::int as completed,
+             count(*) filter (where status = 'cancelled')::int as cancelled,
+             count(*) filter (where unable_reason is not null)::int as unable
+        from bookings
+       where driver_id = ${driverId}::uuid and fleet_id = ${fleetId}::uuid
+         and created_at >= ${since}
+    `)) as unknown as Array<{ completed: number; cancelled: number; unable: number }>;
+
+    const [ratings] = (await this.db.execute(sql`
+      select count(*)::int as n from ratings
+       where driver_id = ${driverId}::uuid and direction = 'customer_to_driver'
+    `)) as unknown as Array<{ n: number }>;
+
+    // Net of clawbacks: settlement credits plus the (negative) refund legs,
+    // on this fleet's bookings for this driver inside the window.
+    const earnings = (await this.db.execute(sql`
+      select w.owner_type, coalesce(sum(t.amount), 0)::text as net
+        from wallet_transactions t
+        join wallets w on w.id = t.wallet_id
+        join bookings b on b.id = t.ref_id
+       where b.driver_id = ${driverId}::uuid and b.fleet_id = ${fleetId}::uuid
+         and b.created_at >= ${since}
+         and w.owner_type in ('fleet', 'driver')
+         and t.type in ('fleet_share_credit', 'driver_share_credit', 'fare_credit', 'refund_debit')
+       group by w.owner_type
+    `)) as unknown as Array<{ owner_type: string; net: string }>;
+
+    const recent = (await this.db.execute(sql`
+      select id, status, total::text as total, created_at
+        from bookings
+       where driver_id = ${driverId}::uuid and fleet_id = ${fleetId}::uuid
+       order by created_at desc
+       limit 10
+    `)) as unknown as Array<{ id: string; status: string; total: string; created_at: Date | string }>;
+
+    return { driver, trips: trips!, ratingsCount: ratings?.n ?? 0, earnings, recent };
+  }
 }

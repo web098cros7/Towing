@@ -3,7 +3,7 @@ import { login } from './support/login';
 
 /**
  * ADM-23's job page, mocks-on: a fleet owner opens a job from the list and
- * can answer "why did I earn this on that job?" \u2014 the fare, where the money
+ * can answer "why did I earn this on that job?": the fare, where the money
  * went, and what happened when. The real split (read from the ledger) and the
  * other-fleet 404 are asserted in the backend's `jobs.e2e.spec.ts`.
  */

@@ -1,3 +1,4 @@
+import type { FleetDriverPerformance } from '@towing/api-contracts';
 import type { FleetDriver } from '../types';
 
 export const driversMock: FleetDriver[] = [
@@ -90,3 +91,35 @@ export const driversMock: FleetDriver[] = [
     monthNetPaise: 0,
   },
 ];
+
+/** A panel consistent with the list row: a month's net split 30/70, a few recent jobs. */
+export function driverPerformanceMock(driver: FleetDriver): FleetDriverPerformance {
+  const fleetShare = Math.round(driver.monthNetPaise * 0.3);
+  return {
+    driverId: driver.id,
+    name: driver.name,
+    windowDays: 30,
+    trips: { completed: Math.min(driver.tripsTotal, 38), cancelled: 2, unable: 0 },
+    acceptanceRatePct: driver.tripsTotal > 0 ? 86.5 : null,
+    completionRatePct: driver.tripsTotal > 0 ? 97 : null,
+    rating: driver.rating,
+    ratingsCount: Math.round(driver.tripsTotal * 0.6),
+    earnings: { fleetSharePaise: fleetShare, driverSharePaise: driver.monthNetPaise - fleetShare },
+    recentJobs: [
+      {
+        id: 'tw-88102',
+        code: 'TW-88102',
+        status: 'paid',
+        grossPaise: 449_900,
+        createdAt: new Date(Date.now() - 9 * 3_600_000).toISOString(),
+      },
+      {
+        id: 'tw-88054',
+        code: 'TW-88054',
+        status: 'paid',
+        grossPaise: 449_900,
+        createdAt: new Date(Date.now() - 75 * 3_600_000).toISOString(),
+      },
+    ],
+  };
+}

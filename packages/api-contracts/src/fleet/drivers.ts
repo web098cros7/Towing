@@ -43,3 +43,52 @@ export const assignTruckSchema = z.object({
   truckId: z.uuid().nullable(),
 });
 export type AssignTruckRequest = z.infer<typeof assignTruckSchema>;
+
+/**
+ * ADM-23: one driver's performance, for the fleet that employs them. The spec
+ * asks for "per-driver performance (trips, rating, earnings)"; the list row has
+ * only lifetime totals.
+ *
+ * The window is the last `PERFORMANCE_WINDOW_DAYS` days for trips and
+ * earnings. Rating and the two rates are the driver's standing figures (the
+ * ones dispatch scores them on), not per-window.
+ */
+export const PERFORMANCE_WINDOW_DAYS = 30;
+
+export const fleetDriverPerformanceSchema = z.object({
+  driverId: z.uuid(),
+  name: z.string(),
+  windowDays: z.number().int(),
+  trips: z.object({
+    /** Finished trips: completed, paid, or refunded afterwards. */
+    completed: z.number().int(),
+    cancelled: z.number().int(),
+    /** Jobs the driver could not complete and handed back. */
+    unable: z.number().int(),
+  }),
+  /** 0–100, what dispatch scores the driver on. Null until there is history. */
+  acceptanceRatePct: z.number().nullable(),
+  completionRatePct: z.number().nullable(),
+  /** 1–5 from customers, and how many ratings it rests on (all time). */
+  rating: z.number().nullable(),
+  ratingsCount: z.number().int(),
+  /**
+   * What this driver's jobs earned in the window, NET of refund clawbacks,
+   * split the way the ledger credited it.
+   */
+  earnings: z.object({
+    fleetSharePaise: z.number().int(),
+    driverSharePaise: z.number().int(),
+  }),
+  /** The ten most recent jobs, newest first, each openable at `/jobs/[id]`. */
+  recentJobs: z.array(
+    z.object({
+      id: z.uuid(),
+      code: z.string(),
+      status: z.string(),
+      grossPaise: unsignedPaiseSchema,
+      createdAt: z.iso.datetime(),
+    }),
+  ),
+});
+export type FleetDriverPerformance = z.infer<typeof fleetDriverPerformanceSchema>;

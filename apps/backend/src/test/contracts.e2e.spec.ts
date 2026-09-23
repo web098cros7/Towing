@@ -834,6 +834,9 @@ const EXCLUDED = new Set([
   // ADM-23's job page: parameterised, and asserted against `jobDetailSchema`
   // in `jobs.e2e.spec.ts` with a settled job whose split is known.
   '/v1/fleet/jobs/:id',
+  // ADM-23's driver panel: parameterised, asserted against
+  // `fleetDriverPerformanceSchema` in `drivers.e2e.spec.ts`.
+  '/v1/fleet/drivers/:id/performance',
   // Session identity, asserted in the auth specs.
   '/v1/fleet/auth/me',
   // ── A REAL GAP, NAMED RATHER THAN HIDDEN ────────────────────────────────

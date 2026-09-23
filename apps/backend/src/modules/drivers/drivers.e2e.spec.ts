@@ -1,9 +1,13 @@
 import type { INestApplication } from '@nestjs/common';
+import { fleetDriverPerformanceSchema } from '@towing/api-contracts';
+import { sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { istMonthStart } from '../../common/time/ist';
 import { authHeaderFor, createTestApp } from '../../test/app';
+import { expectMatchesContract } from '../../test/contracts';
 import {
+  seedCustomer,
   seedDriver,
   seedFleet,
   setupTestDatabase,
@@ -169,5 +173,50 @@ describe('drivers e2e (/v1/fleet/drivers)', () => {
       .set('Authorization', authA)
       .expect(200);
     expect(after.body.kpis.utilizationPct).toBe(100);
+  });
+
+  describe('GET /v1/fleet/drivers/:id/performance (ADM-23)', () => {
+    it("reports trips, rates and this fleet's earnings from the driver's jobs", async () => {
+      const driverId = await seedDriver(db, { fleetId: fleetA, name: 'Arjun' });
+      await db.execute(sql`
+        update drivers set rating = 4.6, acceptance_rate = 82.50, completion_rate = 97.00
+         where id = ${driverId}::uuid
+      `);
+      const customerId = await seedCustomer(db);
+      const paid = await seedBooking(db, {
+        userId: customerId, fleetId: fleetA, driverId, status: 'paid', total: '1000.00',
+      });
+      await seedBooking(db, {
+        userId: customerId, fleetId: fleetA, driverId, status: 'cancelled',
+      });
+      await seedWalletWithLedger(db, { ownerType: 'fleet', ownerId: fleetA }, [
+        { type: 'fleet_share_credit', amount: '270.00', refId: paid },
+      ]);
+      await seedWalletWithLedger(db, { ownerType: 'driver', ownerId: driverId }, [
+        { type: 'driver_share_credit', amount: '630.00', refId: paid },
+        // A later refund took some back; the panel shows the net.
+        { type: 'refund_debit', amount: '-126.00', refId: paid },
+      ]);
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/fleet/drivers/${driverId}/performance`)
+        .set('Authorization', authA)
+        .expect(200);
+
+      const panel = expectMatchesContract(fleetDriverPerformanceSchema, res.body);
+      expect(panel.trips).toEqual({ completed: 1, cancelled: 1, unable: 0 });
+      expect(panel.rating).toBe(4.6);
+      expect(panel.acceptanceRatePct).toBe(82.5);
+      expect(panel.earnings).toEqual({ fleetSharePaise: 27_000, driverSharePaise: 50_400 });
+      expect(panel.recentJobs).toHaveLength(2);
+    });
+
+    it("404s another fleet's driver", async () => {
+      const theirs = await seedDriver(db, { fleetId: fleetB });
+      await request(app.getHttpServer())
+        .get(`/v1/fleet/drivers/${theirs}/performance`)
+        .set('Authorization', authA)
+        .expect(404);
+    });
   });
 });
