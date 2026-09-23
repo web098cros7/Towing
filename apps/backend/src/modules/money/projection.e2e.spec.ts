@@ -192,6 +192,19 @@ describe('earnings_daily projection (e2e)', () => {
     expect(JSON.stringify(res.body)).not.toContain(fleetA);
   });
 
+  it('reconcile reports NO drift for a clean fleet trip inside its window', async () => {
+    // Found 24 Sep: every fleet trip read as drift, ledger exactly double the
+    // projection. A fleet trip settles as TWO legs (fleet share + driver
+    // share) and the check summed the booking's total once per leg. The test
+    // above could not see it: its trip is dated 15 July, outside the check's
+    // 7-day window, so it passed without checking anything.
+    await settleAt(new Date());
+    await rebuildEarnings(db, {});
+
+    const report = await projector.reconcile('manual');
+    expect(report.projectionDrift).toBe(0);
+  });
+
   it('reconcile detects injected wallet drift, surfaces it, and THROWS', async () => {
     await settleAt(new Date('2026-07-15T09:00:00Z'));
 

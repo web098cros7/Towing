@@ -206,17 +206,27 @@ export async function projectionDrift(
   const since = new Date(now.getTime() - (options.sinceDays ?? 7) * 86_400_000);
 
   const rows = (await db.execute(sql`
-    with truth as (
-      select b.fleet_id,
+    -- ONE ROW PER BOOKING before summing, exactly as \`projectCell\` groups
+    -- its legs. A fleet trip settles as two legs (fleet share + driver share),
+    -- and summing \`b.total\` once per leg made every fleet trip read as double
+    -- its projection: a false drift on each one, found 24 Sep.
+    with per_booking as (
+      select b.id,
+             b.fleet_id,
              ${IST_DAY} as day,
              b.driver_id,
-             sum(b.total) as gross
+             b.total
         from wallet_transactions t
         join bookings b on b.id = t.ref_id
        where t.type in ${EARNING_TYPES}
          and b.fleet_id is not null
          and b.driver_id is not null
          and t.created_at >= ${since.toISOString()}::timestamptz
+       group by b.id, b.fleet_id, day, b.driver_id, b.total
+    ),
+    truth as (
+      select fleet_id, day, driver_id, sum(total) as gross
+        from per_booking
        group by 1, 2, 3
     )
     select coalesce(truth.fleet_id, e.fleet_id) as fleet_id,
