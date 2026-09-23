@@ -21,16 +21,6 @@
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
   },
-  "pnpm": {
-    "overrides": {
-      "react": "19.2.3",
-      "react-dom": "19.2.3",
-      "react-native": "0.86.2"
-    },
-    "onlyBuiltDependencies": [
-      "sharp"
-    ]
-  },
   "devDependencies": {
     "prettier": "^3.4.2",
     "turbo": "^2.5.5",

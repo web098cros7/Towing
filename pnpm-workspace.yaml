@@ -14,7 +14,17 @@ allowBuilds:
   # pure JS without it (verified: enqueue→process round-trips fine), and every
   # native build we skip is one less thing to compile in the ECS image.
   msgpackr-extract: false
-  # Next's image optimizer. Matches `pnpm.onlyBuiltDependencies` in the root
-  # package.json, which already declares the intent.
+  # Next's image optimizer.
   sharp: true
   unrs-resolver: false
+
+# One React, one React Native, everywhere. These lived in package.json under
+# `pnpm.overrides`, which pnpm 11 silently ignores (the lockfile carried no
+# overrides block), so they only held because every app happened to declare
+# the same versions. Here they are enforced: a new dependency that asks for a
+# different React gets this one instead of a second copy, which in React Native
+# is a crash ("Invalid hook call") rather than a warning.
+overrides:
+  react: 19.2.3
+  react-dom: 19.2.3
+  react-native: 0.86.2
