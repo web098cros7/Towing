@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { serviceTypeSchema } from '@towing/api-contracts';
 import { adminLogin } from './support/adminLogin';
 
 /**
@@ -89,8 +90,10 @@ test('the band-to-service map is derived from the shared band rule', async ({ pa
 
   const mapping = page.getByTestId('band-mapping');
   await expect(mapping).toBeVisible();
-  // Six service types, three distance buckets.
-  await expect(mapping.locator('tbody tr')).toHaveCount(6);
+  // One row per service type. Counted off the shared enum, not a literal: this
+  // said 6 and went stale twice (Lockout, then Winch Out) without the screen
+  // being wrong either time.
+  await expect(mapping.locator('tbody tr')).toHaveCount(serviceTypeSchema.options.length);
   // §3.3: accident recovery is never Band A, whatever the distance.
   const accidentRow = mapping.locator('tbody tr', { hasText: 'accident recovery' });
   await expect(accidentRow).toContainText('B');

@@ -238,6 +238,12 @@ export const ErrorCodes = {
    * still-live challenge instead.
    */
   PASSWORD_CHANGE_REQUIRED: 'password_change_required',
+  /**
+   * ADM-16: a Super Admin or Finance admin with no authenticator app. The
+   * session is real but reaches only its own identity, sessions and the 2FA
+   * routes until enrolment completes; every other admin route answers this.
+   */
+  TOTP_ENROLMENT_REQUIRED: 'totp_enrolment_required',
 
   INTERNAL: 'internal_error',
 } as const;

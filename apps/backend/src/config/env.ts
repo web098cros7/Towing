@@ -45,6 +45,23 @@ const EnvSchema = z.object({
    */
   ADMIN_AUTHZ_TTL_MS: z.coerce.number().int().min(0).default(5000),
 
+  /**
+   * ADM-16: Super Admin and Finance must enrol an authenticator app before the
+   * console does anything else for them. ON unless explicitly turned off.
+   *
+   * The off switch exists for two reasons and neither is "production doesn't
+   * want it". The test suite signs in as Super Admin and Finance hundreds of
+   * times without an authenticator, and every one of those specs is about
+   * something else (`test/setup.ts` turns it off; `admin-totp-required.e2e`
+   * turns it back on). And if the authenticator path ever broke in production,
+   * the choice would otherwise be between a redeploy and nobody being able to
+   * approve a payout.
+   */
+  ADMIN_TOTP_REQUIRED: z
+    .string()
+    .default('true')
+    .transform((v) => v !== '0' && v.toLowerCase() !== 'false'),
+
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
 

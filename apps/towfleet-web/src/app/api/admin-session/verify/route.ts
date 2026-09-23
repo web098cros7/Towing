@@ -25,6 +25,7 @@ export async function POST(request: Request) {
         name: 'Mock Admin',
         subRole: 'operations',
         twofaEnabled: false,
+        twofaEnrolmentRequired: false,
       },
     });
     setAdminSessionCookies(response, { accessToken: 'mock-admin-session', refreshToken: 'mock-admin-refresh' });

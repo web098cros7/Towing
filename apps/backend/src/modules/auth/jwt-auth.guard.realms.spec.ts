@@ -37,6 +37,10 @@ describe('JwtAuthGuard realms and roles', () => {
   };
   const authz = {
     read: async (adminId: string) => authzRows[adminId] ?? null,
+    // ADM-16's enrolment rule is off here: these rows are Support and
+    // Operations, which it never covers, and the rule itself is proven against
+    // a real database in `admin-totp-required.e2e.spec.ts`.
+    totpEnrolmentRequired: () => false,
   };
 
   beforeAll(() => {

@@ -5,6 +5,7 @@ import type { AdminSubRole, RealmName } from './auth.types';
 export const REALMS_KEY = 'auth:realms';
 export const ROLES_KEY = 'auth:roles';
 export const PERMISSIONS_KEY = 'auth:permissions';
+export const TOTP_ENROLMENT_ROUTE_KEY = 'auth:totp-enrolment-route';
 
 /**
  * Which auth realms a controller or handler accepts (§15.2).
@@ -45,3 +46,17 @@ export const Roles = (...subRoles: AdminSubRole[]): MethodDecorator & ClassDecor
  */
 export const Permissions = (...permissions: AdminPermission[]): MethodDecorator & ClassDecorator =>
   SetMetadata(PERMISSIONS_KEY, permissions);
+
+/**
+ * ADM-16: a route an admin may still reach while their role requires an
+ * authenticator they have not set up.
+ *
+ * The list is deliberately the setup and nothing else: who am I, my sessions,
+ * and the 2FA routes themselves. Everything else answers
+ * `totp_enrolment_required`, so a Super Admin without an authenticator can
+ * enrol and cannot approve a payout, change a price or read a customer.
+ * Opt-IN per route, so a new admin route is covered by the rule without anyone
+ * remembering to add it.
+ */
+export const AllowDuringTotpEnrolment = (): MethodDecorator =>
+  SetMetadata(TOTP_ENROLMENT_ROUTE_KEY, true);

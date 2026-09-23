@@ -59,6 +59,16 @@ process.env.PAYOUT_DEV_SETTLE_MS ??= '1';
 process.env.METRICS_ENABLED = 'false';
 
 /**
+ * ADM-16's authenticator requirement OFF by default.
+ *
+ * Hundreds of specs sign in as Super Admin or Finance to test something that
+ * is not 2FA; with the requirement on, each would need an enrolled secret and a
+ * live code first. `admin-totp-required.e2e.spec.ts` turns it back on and is
+ * where the rule itself is proven.
+ */
+process.env.ADMIN_TOTP_REQUIRED = 'false';
+
+/**
  * Throttling OFF by default — a Phase 8 consequence, not a convenience.
  *
  * The counter now lives in Redis, so it is shared by every app in the run AND

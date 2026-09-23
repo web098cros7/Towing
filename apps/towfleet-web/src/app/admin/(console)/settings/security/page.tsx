@@ -34,8 +34,10 @@ import { useAdminSessions } from '@/features/admin-security/api/adminSecurity.qu
  * possession by typing one code, and only then is the factor enabled. Recovery
  * codes are issued separately and shown ONCE.
  *
- * G14 default is recorded here in the copy: TOTP is optional in W2 and becomes
- * required for super_admin and finance after M2 — no screen claims otherwise.
+ * ADM-16 (G14's default, now enforced): super_admin and finance MUST enrol.
+ * Until they do, the server answers every other admin route with
+ * `totp_enrolment_required` and the identity provider sends them here — so for
+ * them this page is the whole console, and it says why.
  */
 export default function AdminSecurityPage() {
   const { admin } = useAdminIdentity();
@@ -63,6 +65,8 @@ export default function AdminSecurityPage() {
   };
 
   const enabled = admin?.twofaEnabled ?? false;
+  const required = admin?.twofaEnrolmentRequired ?? false;
+  const requiredForRole = admin?.subRole === 'super_admin' || admin?.subRole === 'finance';
 
   return (
     <div>
@@ -76,10 +80,22 @@ export default function AdminSecurityPage() {
           <CardTitle>Two-factor authentication</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {required ? (
+            <p
+              className="rounded-md bg-warning-soft-bg p-3 text-sm text-warning-soft-fg"
+              role="alert"
+              data-testid="totp-required-notice"
+            >
+              Your role can approve payouts and change prices, so it needs an authenticator app,
+              not SMS alone. Set one up below to open the rest of the console.
+            </p>
+          ) : null}
           <p className="text-sm text-text-secondary">
             {enabled
               ? 'An authenticator app code is required every time you sign in.'
-              : 'Add an authenticator app. Optional for now; required for super admins and finance after M2.'}
+              : requiredForRole
+                ? 'Scan the code with an authenticator app, then type the six digits it shows.'
+                : 'Add an authenticator app. Optional for your role, and stronger than SMS.'}
           </p>
 
           {error && <p className="text-sm text-error">{error}</p>}

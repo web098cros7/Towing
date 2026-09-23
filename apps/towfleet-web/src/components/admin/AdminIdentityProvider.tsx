@@ -1,9 +1,10 @@
 'use client';
 
-import { createContext, useContext, type ReactNode } from 'react';
-import { usePathname } from 'next/navigation';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { adminIdentitySchema, type AdminIdentity } from '@towing/api-contracts';
+import { TOTP_ENROLMENT_PATH } from '@/lib/adminApiClient';
 
 interface AdminIdentityValue {
   admin: AdminIdentity | null;
@@ -52,6 +53,7 @@ async function fetchAdminIdentity(): Promise<AdminIdentity | null> {
  */
 export function AdminIdentityProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const query = useQuery({
     queryKey: ['admin-identity'],
     queryFn: fetchAdminIdentity,
@@ -64,6 +66,11 @@ export function AdminIdentityProvider({ children }: { children: ReactNode }) {
     // `/admin` because the role effect never fires).
     enabled: pathname !== '/admin/login',
   });
+
+  const mustEnrol = query.data?.twofaEnrolmentRequired ?? false;
+  useEffect(() => {
+    if (mustEnrol && pathname !== TOTP_ENROLMENT_PATH) router.replace(TOTP_ENROLMENT_PATH);
+  }, [mustEnrol, pathname, router]);
 
   return (
     <AdminIdentityContext.Provider

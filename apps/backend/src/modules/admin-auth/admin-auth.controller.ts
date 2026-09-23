@@ -32,7 +32,7 @@ import {
   type RefreshRequest,
 } from '../auth/auth.types';
 import { JwtAuthGuard, Public } from '../auth/jwt-auth.guard';
-import { Realms, Roles } from '../auth/realm.decorator';
+import { AllowDuringTotpEnrolment, Realms, Roles } from '../auth/realm.decorator';
 import { sessionContextFrom } from '../auth/token.service';
 import { AdminAuthService } from './admin-auth.service';
 
@@ -106,6 +106,7 @@ export class AdminAuthController {
    * bucket (5/min), same mechanics as `refresh` below.
    */
   @Get('me')
+  @AllowDuringTotpEnrolment()
   @ThrottleBucket('reads') // Every authenticated admin may read their own identity — spelled out as
   // all four sub-roles rather than left undecorated, so the route-walk spec
   // (every /v1/admin/* route carries a role or permission decorator) holds
@@ -130,6 +131,7 @@ export class AdminAuthController {
    * undecorated, per the route-walk rule.
    */
   @Get('sessions')
+  @AllowDuringTotpEnrolment()
   @Roles('super_admin', 'operations', 'support', 'finance')
   @ThrottleBucket('reads')
   sessions(@Req() request: AuthedRequest) {
@@ -143,6 +145,7 @@ export class AdminAuthController {
    * not a money one, and the `auth` bucket is 5/min shared with login.
    */
   @Delete('sessions/:id')
+  @AllowDuringTotpEnrolment()
   @Roles('super_admin', 'operations', 'support', 'finance')
   @ThrottleBucket('refresh')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -178,6 +181,7 @@ export class AdminAuthController {
    * budget shared with login.
    */
   @Post('2fa/enroll')
+  @AllowDuringTotpEnrolment()
   @Roles('super_admin', 'operations', 'support', 'finance')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
@@ -186,6 +190,7 @@ export class AdminAuthController {
   }
 
   @Post('2fa/confirm')
+  @AllowDuringTotpEnrolment()
   @Roles('super_admin', 'operations', 'support', 'finance')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)
@@ -208,6 +213,7 @@ export class AdminAuthController {
   }
 
   @Post('2fa/recovery-codes')
+  @AllowDuringTotpEnrolment()
   @Roles('super_admin', 'operations', 'support', 'finance')
   @ThrottleBucket('money')
   @HttpCode(HttpStatus.OK)

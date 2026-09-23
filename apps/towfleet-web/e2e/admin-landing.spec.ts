@@ -34,6 +34,7 @@ test('a finance admin keeps the neutral quick links instead of a 403', async ({ 
           name: 'Mock Finance',
           subRole: 'finance',
           twofaEnabled: false,
+          twofaEnrolmentRequired: false,
         },
       },
     });

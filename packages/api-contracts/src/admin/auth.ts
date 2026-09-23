@@ -39,6 +39,14 @@ export const adminOtpVerifyRequestSchema = z.object({
 });
 export type AdminOtpVerifyRequest = z.infer<typeof adminOtpVerifyRequestSchema>;
 
+/**
+ * ADM-16 (Ehsan's default, 18 Sep): the roles that must use an authenticator
+ * app, not SMS alone. Super Admin can change anything; Finance approves
+ * payouts. SMS codes can be taken over with a SIM swap, and these two accounts
+ * are the ones worth taking over. Operations and Support keep SMS.
+ */
+export const TOTP_REQUIRED_SUB_ROLES = ['super_admin', 'finance'] as const;
+
 export const adminIdentitySchema = z.object({
   id: z.uuid(),
   email: z.string(),
@@ -46,6 +54,12 @@ export const adminIdentitySchema = z.object({
   subRole: adminSubRoleSchema,
   /** W2: the console gates the TOTP enrolment prompt on this (additive, A7 rule). */
   twofaEnabled: z.boolean(),
+  /**
+   * ADM-16: this admin's role requires an authenticator and they have not set
+   * one up, so the session reaches the 2FA setup and nothing else. Additive
+   * (A7 rule): false for every admin who is either enrolled or not required.
+   */
+  twofaEnrolmentRequired: z.boolean(),
 });
 export type AdminIdentity = z.infer<typeof adminIdentitySchema>;
 

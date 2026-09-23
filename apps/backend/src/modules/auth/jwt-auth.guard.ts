@@ -1,6 +1,12 @@
-import { type CanActivate, type ExecutionContext, Injectable, SetMetadata } from '@nestjs/common';
+import {
+  type CanActivate,
+  type ExecutionContext,
+  HttpStatus,
+  Injectable,
+  SetMetadata,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { adminCan, type AdminPermission } from '@towing/api-contracts';
+import { ErrorCodes, adminCan, type AdminPermission } from '@towing/api-contracts';
 import { ApiException } from '../../common/errors/api-exception';
 import {
   FLEET_REALM,
@@ -9,7 +15,12 @@ import {
   type AuthedRequest,
   type RealmName,
 } from './auth.types';
-import { PERMISSIONS_KEY, REALMS_KEY, ROLES_KEY } from './realm.decorator';
+import {
+  PERMISSIONS_KEY,
+  REALMS_KEY,
+  ROLES_KEY,
+  TOTP_ENROLMENT_ROUTE_KEY,
+} from './realm.decorator';
 import { AdminAuthzService } from './admin-authz.service';
 import { TokenService } from './token.service';
 
@@ -116,6 +127,23 @@ export class JwtAuthGuard implements CanActivate {
         row.authzVersion > version
       ) {
         throw ApiException.unauthorized('Admin session is stale — refreshing');
+      }
+
+      // ADM-16. A 403, not a 401: the session is valid and refreshing will not
+      // change the answer — only enrolling will, so the console must route the
+      // admin to the setup screen rather than loop on refresh-and-retry.
+      if (this.adminAuthz.totpEnrolmentRequired(row)) {
+        const allowed = this.reflector.getAllAndOverride<boolean>(TOTP_ENROLMENT_ROUTE_KEY, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        if (!allowed) {
+          throw new ApiException(
+            HttpStatus.FORBIDDEN,
+            ErrorCodes.TOTP_ENROLMENT_REQUIRED,
+            'Set up an authenticator app to continue — your role requires it',
+          );
+        }
       }
     }
 

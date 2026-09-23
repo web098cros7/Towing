@@ -149,3 +149,25 @@ test('the history drawer reads the version trail back', async ({ page }) => {
   await expect(page.getByTestId('pricing-history-list')).toContainText('Band added');
   await expect(page.getByTestId('pricing-history-list')).toContainText('Band retired');
 });
+
+test('an unpriced roadside service says it is not offered, and needs a fare to launch', async ({
+  page,
+}) => {
+  // Winch Out ships with no fare. The row has to say so: an empty cell would
+  // read as a fare of zero or a failed load, and launching it is a separate,
+  // deliberate click rather than part of "Save fares" (the backend round trip
+  // is `pricing.e2e.spec.ts`).
+  await adminLogin(page);
+  await page.goto('/admin/pricing');
+
+  const row = page.getByTestId('pricing-unpriced-winch_out');
+  await expect(row).toBeVisible();
+  await expect(row.getByText('Not offered — no fare set')).toBeVisible();
+  // The five priced services keep their ordinary editable fare.
+  await expect(page.getByTestId('pricing-unpriced-battery')).toHaveCount(0);
+
+  await page.getByTestId('pricing-offer-winch_out').click();
+  await expect(page.getByTestId('pricing-error')).toHaveText(
+    'Enter a fare above zero before offering Winch out.',
+  );
+});

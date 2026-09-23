@@ -34,6 +34,7 @@ import { ADMIN_SESSION_LIMITS } from '../auth/policies/admin.policy';
 import { TokenService, type SessionContext } from '../auth/token.service';
 import { AdminAuditService } from './admin-audit.service';
 import { TotpService, hashRecoveryCode } from './totp.service';
+import { AdminAuthzService } from '../auth/admin-authz.service';
 
 const ADMIN_REALM = 'admin';
 
@@ -81,6 +82,7 @@ export class AdminAuthService {
     private readonly tokens: TokenService,
     private readonly totp: TotpService,
     private readonly audit: AdminAuditService,
+    private readonly adminAuthz: AdminAuthzService,
   ) {}
 
   /**
@@ -574,6 +576,7 @@ export class AdminAuthService {
       userAgent: context.userAgent ?? null,
     });
 
+    this.adminAuthz.forget(adminId);
     return { enabled: true };
   }
 
@@ -622,6 +625,7 @@ export class AdminAuthService {
     });
 
     await this.tokens.revokeSubject(adminId, ADMIN_REALM, '2fa_disabled');
+    this.adminAuthz.forget(adminId);
     await this.redis.publish(
       ADMIN_REVOKE_CHANNEL,
       JSON.stringify({ adminId, reason: '2fa_disabled', at: now.toISOString() }),
@@ -837,6 +841,7 @@ export class AdminAuthService {
       name: admin.name,
       subRole: admin.subRole,
       twofaEnabled: admin.twofaEnabled,
+      twofaEnrolmentRequired: this.adminAuthz.totpEnrolmentRequired(admin),
     };
   }
 

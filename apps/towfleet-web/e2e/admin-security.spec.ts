@@ -31,3 +31,33 @@ test('the two-factor card still owns the page', async ({ page }) => {
   // screen — the enrol flow itself is proven in `e2e-live/admin-totp.spec.ts`.
   await expect(page.getByRole('button', { name: 'Set up authenticator' })).toBeVisible();
 });
+
+test('a super admin with no authenticator is sent to set one up, from anywhere', async ({
+  page,
+}) => {
+  // ADM-16. The server refuses such an admin every other route, so the console
+  // must not leave them on a page that can only render errors. Signed in
+  // FIRST, then given the enrolment-owing identity: the redirect fires the
+  // moment identity loads, which would otherwise pre-empt the login helper's
+  // own landing check.
+  await adminLogin(page);
+  await page.route('/api/admin-session', async (route) => {
+    await route.fulfill({
+      json: {
+        admin: {
+          id: '00000000-0000-4000-8000-000000000003',
+          email: 'owner@towing.local',
+          name: 'Mock Owner',
+          subRole: 'super_admin',
+          twofaEnabled: false,
+          twofaEnrolmentRequired: true,
+        },
+      },
+    });
+  });
+  await page.goto('/admin/finance');
+
+  await expect(page).toHaveURL(/\/admin\/settings\/security$/);
+  await expect(page.getByTestId('totp-required-notice')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Set up authenticator' })).toBeVisible();
+});

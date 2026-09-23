@@ -1,5 +1,12 @@
-import { apiErrorSchema } from '@towing/api-contracts';
+import { ErrorCodes, apiErrorSchema } from '@towing/api-contracts';
 import { ApiError } from './apiClient';
+
+/**
+ * ADM-16: where an admin who owes an authenticator enrolment is sent. The
+ * server refuses them everything else (`totp_enrolment_required`), so any
+ * other screen would only render a wall of errors.
+ */
+export const TOTP_ENROLMENT_PATH = '/admin/settings/security';
 
 /**
  * Fetch through the admin BFF proxy (`/api/admin-proxy/<path>` → `/v1/admin/<path>`).
@@ -41,6 +48,16 @@ export async function adminApiFetch<T>(path: string, init?: RequestInit): Promis
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => null);
     const parsed = apiErrorSchema.safeParse(body);
+    // ADM-16: the backstop for a cached identity that has not caught up (it is
+    // held for a minute). Same destination the identity provider uses.
+    if (
+      parsed.success &&
+      parsed.data.error.code === ErrorCodes.TOTP_ENROLMENT_REQUIRED &&
+      typeof window !== 'undefined' &&
+      window.location.pathname !== TOTP_ENROLMENT_PATH
+    ) {
+      window.location.assign(TOTP_ENROLMENT_PATH);
+    }
     if (parsed.success) {
       throw new ApiError(
         res.status,

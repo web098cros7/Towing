@@ -63,6 +63,7 @@ export async function GET() {
         name: 'Mock Admin',
         subRole,
         twofaEnabled: false,
+        twofaEnrolmentRequired: false,
       },
     });
   }
