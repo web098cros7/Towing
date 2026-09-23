@@ -3,6 +3,11 @@ import { bookings, dispatchConfig, drivers, serviceZones } from '../../db/schema
 import { seedDriver, type TestDatabase } from '../../test/db';
 import { driverGeoKey, driverHashKey } from '../../redis/redis.constants';
 import { testRedis } from '../../test/redis';
+import {
+  OPTIONAL_SERVICE_TYPES,
+  type OptionalServiceType,
+  type ServiceType,
+} from '@towing/api-contracts';
 
 /**
  * Shared fixtures for the dispatch specs.
@@ -59,6 +64,8 @@ export interface SeedSearchingBookingOptions {
   userId: string;
   zoneId?: string | null;
   vehicleClass?: 'flatbed' | 'wheel_lift';
+  /** Defaults to `tow`, whose match is vehicle class alone — pass a roadside type to exercise the opt-in filter. */
+  serviceType?: ServiceType;
   /** Band C is the §3.2 long-distance opt-in gate. */
   commissionBand?: 'A' | 'B' | 'C';
   total?: string;
@@ -81,7 +88,7 @@ export async function seedSearchingBooking(
     .values({
       userId: options.userId,
       zoneId: options.zoneId ?? null,
-      serviceType: 'tow',
+      serviceType: options.serviceType ?? 'tow',
       vehicleClass: options.vehicleClass ?? 'flatbed',
       pickupLat: PICKUP.lat,
       pickupLng: PICKUP.lng,
@@ -117,6 +124,12 @@ export interface SeedOnlineDriverOptions {
   completionRate?: string | null;
   isOnline?: boolean;
   truckId?: string | null;
+  /**
+   * The driver's roadside opt-ins. Defaults to ALL FIVE, so every spec that
+   * predates the opt-in keeps testing the rule it was written for rather than
+   * silently becoming a `service_not_offered` test.
+   */
+  services?: OptionalServiceType[];
 }
 
 /**
@@ -147,6 +160,7 @@ export async function seedOnlineDriver(
       currentLocation: { lat: PICKUP.lat, lng },
       lastPingAt: new Date(Date.now() - (options.pingAgeMs ?? 0)),
       longDistanceEnabled: options.longDistance ?? false,
+      services: options.services ?? [...OPTIONAL_SERVICE_TYPES],
       ...(options.rating !== undefined ? { rating: options.rating } : {}),
       ...(options.acceptanceRate !== undefined ? { acceptanceRate: options.acceptanceRate } : {}),
       ...(options.completionRate !== undefined ? { completionRate: options.completionRate } : {}),

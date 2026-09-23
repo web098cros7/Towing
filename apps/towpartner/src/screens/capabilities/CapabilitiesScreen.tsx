@@ -13,7 +13,12 @@ import {
   useCapabilities,
   useUpdateCapabilities,
 } from '@/features/capabilities/api/capabilities.queries';
-import { VEHICLE_CLASS_OPTIONS, type VehicleClass } from '@/features/capabilities/types';
+import {
+  SERVICE_OPTIONS,
+  VEHICLE_CLASS_OPTIONS,
+  type OptionalServiceType,
+  type VehicleClass,
+} from '@/features/capabilities/types';
 import type { RootStackParamList } from '@/navigation/types';
 
 /**
@@ -27,6 +32,7 @@ export function CapabilitiesScreen() {
   const { data, isPending, isError, refetch } = useCapabilities();
   const [vehicleClass, setVehicleClass] = useState<VehicleClass | null>(null);
   const [longDistanceEnabled, setLongDistanceEnabled] = useState(false);
+  const [services, setServices] = useState<OptionalServiceType[]>([]);
   const [dirty, setDirty] = useState(false);
   const update = useUpdateCapabilities();
 
@@ -36,7 +42,15 @@ export function CapabilitiesScreen() {
     if (!data || dirty) return;
     setVehicleClass(data.vehicleClass);
     setLongDistanceEnabled(data.longDistanceEnabled);
+    setServices(data.services);
   }, [data, dirty]);
+
+  const toggleService = (value: OptionalServiceType) => {
+    setServices((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
+    );
+    setDirty(true);
+  };
 
   const onSave = async () => {
     if (!vehicleClass) return;
@@ -46,9 +60,15 @@ export function CapabilitiesScreen() {
         // Only flatbeds do long-haul (spec) — never send the flag true for a
         // wheel-lift pick, even if it was left on from a prior selection.
         longDistanceEnabled: vehicleClass === 'flatbed' ? longDistanceEnabled : false,
+        // Always sent, including when empty: [] is the real answer for a driver
+        // who only tows, and omitting the key would mean "leave it alone" — so
+        // unticking the last service would appear to save and quietly not.
+        services,
       });
       setVehicleClass(result.vehicleClass);
       setLongDistanceEnabled(result.longDistanceEnabled);
+      setServices(result.services);
+      setDirty(false);
     } catch (error) {
       if (error instanceof ApiClientError && error.status === 403) {
         const reason = (error.details as { reason?: string } | undefined)?.reason;
@@ -129,6 +149,31 @@ export function CapabilitiesScreen() {
             }
           />
         ) : null}
+
+        <View style={{ gap: 10 }}>
+          <Text weight="semibold" style={{ fontSize: 15 }}>
+            Roadside services
+          </Text>
+          <Text color="secondary" style={{ fontSize: 12, lineHeight: 17 }}>
+            Tick only what you can actually do — you'll be offered these jobs
+            alongside tows. Leave them all off if you only tow.
+          </Text>
+          <View style={{ gap: 8 }}>
+            {SERVICE_OPTIONS.map((option) => (
+              <ListRow
+                key={option.value}
+                title={option.label}
+                subtitle={option.kit}
+                trailing={
+                  <Toggle
+                    value={services.includes(option.value)}
+                    onValueChange={() => toggleService(option.value)}
+                  />
+                }
+              />
+            ))}
+          </View>
+        </View>
 
         {update.isError && !(update.error instanceof ApiClientError && update.error.status === 403) ? (
           <Text color="error" style={{ fontSize: 13 }}>

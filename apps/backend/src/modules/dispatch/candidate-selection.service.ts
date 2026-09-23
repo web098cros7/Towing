@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { isCoreServiceType } from '../../common/drivers/services';
 import { haversineMeters } from '../pricing/pricing.math';
 import { DispatchConfigRepo } from '../bookings/dispatch-config.repo';
 import { DriverCandidatesRepo } from '../driver-presence/driver-candidates.repo';
@@ -24,6 +25,7 @@ export type ExclusionReason =
   | 'fleet_suspended'
   | 'offline'
   | 'wrong_vehicle_class'
+  | 'service_not_offered'
   | 'no_long_distance'
   | 'zone_restricted'
   | 'truck_non_compliant'
@@ -234,6 +236,18 @@ export class CandidateSelectionService {
       // no class at all is not offered a tow — the class decides the equipment.
       if (row.vehicleClass !== booking.vehicleClass) {
         count('wrong_vehicle_class', row.driverId);
+        continue;
+      }
+      // The roadside opt-in the driver made at onboarding. Vehicle class says
+      // nothing about whether a truck carries a jump pack or a lockout kit —
+      // the `service_type` enum has always noted that roadside work is open to
+      // both classes, which until now meant open to everyone in range. Tow and
+      // accident recovery skip this: their match IS the class check above.
+      if (
+        !isCoreServiceType(booking.serviceType) &&
+        !row.services.includes(booking.serviceType)
+      ) {
+        count('service_not_offered', row.driverId);
         continue;
       }
       // §3.2's Band C opt-in — a long haul needs a willing driver, not a

@@ -1,16 +1,24 @@
 import { ApiClientError } from '@/lib/api/errors';
 import { getMockKycStatus } from '@/features/kyc/api/kycMockSource';
+import type { OptionalServiceType } from '../types';
 import type { CapabilitiesDataSource } from './capabilitiesDataSource';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 let mockVehicleClass: 'wheel_lift' | 'flatbed' | null = null;
 let mockLongDistanceEnabled = false;
+// Empty, like a real new driver's row — mocks-on, the services card opens
+// with nothing ticked, which is the state onboarding has to be designed for.
+let mockServices: OptionalServiceType[] = [];
 
 export const capabilitiesMockSource: CapabilitiesDataSource = {
   async get() {
     await delay(200);
-    return { vehicleClass: mockVehicleClass, longDistanceEnabled: mockLongDistanceEnabled };
+    return {
+      vehicleClass: mockVehicleClass,
+      longDistanceEnabled: mockLongDistanceEnabled,
+      services: mockServices,
+    };
   },
   async update(body) {
     await delay(300);
@@ -21,6 +29,12 @@ export const capabilitiesMockSource: CapabilitiesDataSource = {
     }
     if (body.vehicleClass !== undefined) mockVehicleClass = body.vehicleClass;
     if (body.longDistanceEnabled !== undefined) mockLongDistanceEnabled = body.longDistanceEnabled;
-    return { vehicleClass: mockVehicleClass, longDistanceEnabled: mockLongDistanceEnabled };
+    // The whole set, not a merge — same as the server, so an untick sticks.
+    if (body.services !== undefined) mockServices = [...body.services];
+    return {
+      vehicleClass: mockVehicleClass,
+      longDistanceEnabled: mockLongDistanceEnabled,
+      services: mockServices,
+    };
   },
 };

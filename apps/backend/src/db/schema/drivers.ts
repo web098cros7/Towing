@@ -1,4 +1,5 @@
 import type { SubjectNotificationPrefs } from '@towing/api-contracts';
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -17,6 +18,7 @@ import {
   driverDocTypeEnum,
   driverLevelEnum,
   kycStatusEnum,
+  serviceTypeEnum,
   vehicleClassEnum,
 } from './enums';
 import { adminUsers } from './admin';
@@ -57,6 +59,29 @@ export const drivers = pgTable(
     vehicleClass: vehicleClassEnum('vehicle_class'),
     // §3.2 Band C opt-in — long hauls need a willing driver, not a pricier plan.
     longDistanceEnabled: boolean('long_distance_enabled').notNull().default(false),
+
+    /**
+     * The ROADSIDE services this driver opted into at onboarding — the
+     * `OPTIONAL_SERVICE_TYPES` half of the enum only.
+     *
+     * Tow and accident recovery are absent by design: `vehicle_class` already
+     * decides those, and duplicating them here would give two sources of truth
+     * for the same match. Dispatch reads this column only for the other five.
+     *
+     * An array column rather than a `driver_services` join table, because the
+     * eligibility read is one batched SELECT over every driver a wave found
+     * (see `DispatchRepo.eligibility`) and the comment there is explicit that
+     * the wave's single query stays single. A join would make it two, per wave.
+     *
+     * Defaults to empty for a NEW driver — they tick what they carry. Migration
+     * 0038 backfills every EXISTING driver with all five, because they were
+     * already being offered these jobs and a migration is no place to silently
+     * withdraw supply.
+     */
+    services: serviceTypeEnum('services')
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::service_type[]`),
 
     /**
      * Last known position, flushed from the ping pipeline every ~30s and on

@@ -117,6 +117,70 @@ describe('dispatch eligibility (§3.2) and scoring (§6.2)', () => {
       expect((await selectFor(bookingId)).excluded.fleet_suspended?.count).toBe(1);
     });
 
+    it('excludes a driver who did not opt into the roadside service booked', async () => {
+      // The gap this filter closed: `service_type` has always said roadside
+      // work is "open to both truck classes", which meant dispatch checked
+      // nothing at all for it and offered a battery job to whoever was nearest.
+      // Its own customer: `uq_bookings_one_active_per_user` means the
+      // `beforeEach` tow booking already owns this zone's default customer.
+      const batteryBooking = await seedSearchingBooking(db, {
+        userId: await seedCustomer(db),
+        zoneId,
+        serviceType: 'battery',
+      });
+      await seedOnlineDriver(db, { zoneId, services: ['fuel'] });
+
+      const result = await selectFor(batteryBooking);
+
+      expect(result.candidates).toEqual([]);
+      expect(result.excluded.service_not_offered?.count).toBe(1);
+    });
+
+    it('offers the roadside job to a driver who did opt in', async () => {
+      // The other half, asserted separately: a filter that excluded everyone
+      // would pass the test above just as happily.
+      // Its own customer: `uq_bookings_one_active_per_user` means the
+      // `beforeEach` tow booking already owns this zone's default customer.
+      const batteryBooking = await seedSearchingBooking(db, {
+        userId: await seedCustomer(db),
+        zoneId,
+        serviceType: 'battery',
+      });
+      const driverId = await seedOnlineDriver(db, { zoneId, services: ['battery'] });
+
+      expect((await selectFor(batteryBooking)).candidates.map((c) => c.driverId)).toEqual([
+        driverId,
+      ]);
+    });
+
+    it('still offers a TOW to a driver who opted into no roadside services', async () => {
+      // A plain tow operator with an empty set is not a half-configured driver,
+      // and the opt-in must not leak into the one job every tow truck can do.
+      // Vehicle class already decided this booking and goes on deciding it.
+      const driverId = await seedOnlineDriver(db, { zoneId, services: [] });
+
+      expect((await selectFor(bookingId)).candidates.map((c) => c.driverId)).toEqual([driverId]);
+      expect((await selectFor(bookingId)).excluded.service_not_offered).toBeUndefined();
+    });
+
+    it('excludes on the service BEFORE reaching a driver with the right class', async () => {
+      // Order matters for the counters, not just the outcome: a driver with the
+      // wrong class AND no opt-in must be counted once, under the reason that
+      // actually stopped them first, or the wave log's tallies double-count and
+      // stop adding up to `considered`.
+      const lockoutBooking = await seedSearchingBooking(db, {
+        userId: await seedCustomer(db),
+        zoneId,
+        serviceType: 'lockout',
+      });
+      await seedOnlineDriver(db, { zoneId, vehicleClass: 'wheel_lift', services: [] });
+
+      const result = await selectFor(lockoutBooking);
+
+      expect(result.excluded.wrong_vehicle_class?.count).toBe(1);
+      expect(result.excluded.service_not_offered).toBeUndefined();
+    });
+
     it('excludes a driver whose vehicle class cannot take the job', async () => {
       // A wheel-lift cannot carry a flatbed job. The class decides the
       // equipment, and equipment is not a preference.

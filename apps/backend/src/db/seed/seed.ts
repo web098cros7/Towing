@@ -64,7 +64,7 @@ import {
   type DriverFixture,
   type FleetFixture,
 } from './fixtures';
-import type { SurgeBand } from '@towing/api-contracts';
+import { OPTIONAL_SERVICE_TYPES, type SurgeBand } from '@towing/api-contracts';
 import { DEFAULT_CHARGE_CONFIG, DEFAULT_PRICING_RULES } from '../../modules/pricing/pricing.math';
 import {
   BAND_PCT,
@@ -720,6 +720,14 @@ export async function runSeed(
           kycStatus: fixture.kycStatus,
           vehicleClass: fixture.vehicleClass,
           longDistanceEnabled: fixture.longDistance,
+          // The roadside opt-in (migration 0038). Deliberately NOT all five for
+          // everyone: a seed where every driver does every service can never
+          // show the filter working, and "why did this battery job find only
+          // two drivers" is exactly the question the local data should be able
+          // to answer. Drawn off the seeded rng, so it is the same every run.
+          services: approved
+            ? OPTIONAL_SERVICE_TYPES.filter(() => rng() < 0.7)
+            : [],
           rating: fixture.rating,
           totalTrips: fixture.totalTrips,
           acceptanceRate: approved ? (78 + rng() * 18).toFixed(2) : null,

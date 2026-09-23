@@ -16,6 +16,7 @@ import { useDriverStatusStore } from '@/features/dashboard/store/driverStatusSto
 import { OnlineStatusCard } from '@/features/dashboard/components/OnlineStatusCard';
 import { usePresence } from '@/features/presence/api/presence.queries';
 import { ActiveJobBanner } from '@/features/offers/components/ActiveJobBanner';
+import { SetUpCapabilitiesBanner } from '@/features/capabilities/components/SetUpCapabilitiesBanner';
 import { useResumeActiveJob } from '@/features/offers/hooks/useResumeActiveJob';
 import { LocationDisclosureSheet } from '@/features/presence/components/LocationDisclosureSheet';
 import { useAuthStore } from '@/features/auth/store/authStore';
@@ -118,6 +119,8 @@ export function HomeScreen() {
           zoneName={zoneName}
           failure={failure}
         />
+
+        <SetUpCapabilitiesBanner />
 
         <ActiveJobBanner />
 

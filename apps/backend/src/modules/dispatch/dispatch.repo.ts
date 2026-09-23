@@ -43,6 +43,11 @@ export interface DriverEligibilityRow {
   isOnline: boolean;
   vehicleClass: string | null;
   longDistanceEnabled: boolean;
+  /**
+   * The roadside services this driver opted into (`drivers.services`). Empty is
+   * a real answer — a plain tow operator — not a missing one.
+   */
+  services: string[];
   fleetId: string | null;
   truckId: string | null;
   /** `null` for an independent driver — they operate no fleet truck by construction. */
@@ -205,6 +210,7 @@ export class DispatchRepo {
         isOnline: drivers.isOnline,
         vehicleClass: drivers.vehicleClass,
         longDistanceEnabled: drivers.longDistanceEnabled,
+        services: drivers.services,
         fleetId: drivers.fleetId,
         truckId: drivers.assignedTruckId,
         truckStatus: fleetTrucks.status,

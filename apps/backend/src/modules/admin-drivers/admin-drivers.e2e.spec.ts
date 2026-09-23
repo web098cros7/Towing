@@ -350,7 +350,7 @@ describe('admin drivers (/v1/admin/drivers)', () => {
         .set('Authorization', await adminAuthHeaderFor(app, { adminId: admin.id }))
         .send({ longDistanceEnabled: false })
         .expect(200);
-      expect(res.body).toEqual({ vehicleClass: 'flatbed', longDistanceEnabled: false });
+      expect(res.body).toEqual({ vehicleClass: 'flatbed', longDistanceEnabled: false, services: [] });
 
       const driverAuth = await driverAuthHeaderFor(app, { driverId, kycStatus: 'approved' });
       const status = await request(app.getHttpServer())

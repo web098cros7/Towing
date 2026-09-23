@@ -13,6 +13,7 @@ import { ApiException } from '../../common/errors/api-exception';
 import { PresignedUploadService } from '../../common/storage/presigned-upload.helper';
 import { DB, type Database } from '../../db/db.module';
 import { driverDocumentVersions, driverDocuments, drivers } from '../../db/schema';
+import { toOptionalServices } from '../../common/drivers/services';
 
 /** The 5 documents §3.1 requires before a driver can reach `pending`. */
 export const REQUIRED_KYC_DOC_TYPES: readonly DriverDocType[] = [
@@ -184,13 +185,14 @@ export class DriverKycService {
       .select({
         vehicleClass: drivers.vehicleClass,
         longDistanceEnabled: drivers.longDistanceEnabled,
+        services: drivers.services,
       })
       .from(drivers)
       .where(eq(drivers.id, driverId))
       .limit(1);
 
     if (!driver) throw ApiException.notFound('Driver not found');
-    return driver;
+    return { ...driver, services: toOptionalServices(driver.services) };
   }
 
   async updateCapabilities(
@@ -204,12 +206,20 @@ export class DriverKycService {
         ...(body.longDistanceEnabled !== undefined
           ? { longDistanceEnabled: body.longDistanceEnabled }
           : {}),
+        // Deduplicated, because the column is a set in meaning and an array in
+        // storage: a client that sends `battery` twice must not make the GIN
+        // containment check read two batteries.
+        ...(body.services !== undefined ? { services: [...new Set(body.services)] } : {}),
         updatedAt: new Date(),
       })
       .where(eq(drivers.id, driverId))
-      .returning({ vehicleClass: drivers.vehicleClass, longDistanceEnabled: drivers.longDistanceEnabled });
+      .returning({
+        vehicleClass: drivers.vehicleClass,
+        longDistanceEnabled: drivers.longDistanceEnabled,
+        services: drivers.services,
+      });
 
     if (!updated) throw ApiException.notFound('Driver not found');
-    return updated;
+    return { ...updated, services: toOptionalServices(updated.services) };
   }
 }

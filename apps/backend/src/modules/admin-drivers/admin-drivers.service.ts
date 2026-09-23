@@ -30,6 +30,7 @@ import type { KycStatus } from '../auth/auth.types';
 import { TokenService, type SessionContext } from '../auth/token.service';
 import { DriverPresenceService } from '../driver-presence/driver-presence.service';
 import { AdminAuditService } from '../admin-auth/admin-audit.service';
+import { toOptionalServices } from '../../common/drivers/services';
 
 /** Where each driver-level decision lands. */
 const NEXT_STATUS: Record<AdminKycDecision['decision'], KycStatus> = {
@@ -937,7 +938,15 @@ export class AdminDriversService implements OnModuleInit {
     };
   }
 
-  /** §3.2 — admin can revoke (or grant) the Band C long-haul opt-in and reclassify vehicle class. */
+  /**
+   * §3.2 — admin can revoke (or grant) the Band C long-haul opt-in, reclassify
+   * vehicle class, and correct the roadside services the driver claimed.
+   *
+   * The services correction is the point of the admin path: a driver ticks
+   * "battery" at onboarding and an inspection finds no jump pack, and ops needs
+   * to take it off them without waiting for the driver to agree. The audit row
+   * carries the before and after sets, so a removal has a name against it.
+   */
   async updateCapabilities(
     adminId: string,
     driverId: string,
@@ -948,6 +957,7 @@ export class AdminDriversService implements OnModuleInit {
       .select({
         vehicleClass: drivers.vehicleClass,
         longDistanceEnabled: drivers.longDistanceEnabled,
+        services: drivers.services,
       })
       .from(drivers)
       .where(eq(drivers.id, driverId))
@@ -961,12 +971,14 @@ export class AdminDriversService implements OnModuleInit {
         ...(body.longDistanceEnabled !== undefined
           ? { longDistanceEnabled: body.longDistanceEnabled }
           : {}),
+        ...(body.services !== undefined ? { services: [...new Set(body.services)] } : {}),
         updatedAt: new Date(),
       })
       .where(eq(drivers.id, driverId))
       .returning({
         vehicleClass: drivers.vehicleClass,
         longDistanceEnabled: drivers.longDistanceEnabled,
+        services: drivers.services,
       });
 
     await this.audit.record({
@@ -980,6 +992,6 @@ export class AdminDriversService implements OnModuleInit {
       userAgent: context.userAgent ?? null,
     });
 
-    return after!;
+    return { ...after!, services: toOptionalServices(after!.services) };
   }
 }

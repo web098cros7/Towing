@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { docReviewStatusSchema, driverDocTypeSchema, kycStatusSchema } from '../common/enums';
+import {
+  docReviewStatusSchema,
+  driverDocTypeSchema,
+  kycStatusSchema,
+  serviceTypeSchema,
+} from '../common/enums';
 import { vehicleClassSchema } from '../fleet/trucks';
 
 /**
@@ -52,19 +57,83 @@ export const driverKycSubmitResponseSchema = z.object({
 });
 export type DriverKycSubmitResponse = z.infer<typeof driverKycSubmitResponseSchema>;
 
-/** §3.2 — vehicle class and the Band C long-haul opt-in, both admin-revocable (`admin/drivers.ts`). */
+/**
+ * The two service types a tow truck offers by being a tow truck.
+ *
+ * `vehicle_class` already decides these (`service_type` enum: "roadside
+ * services are open to both truck classes; tows are not"), so they are NOT
+ * driver-selectable — a wheel-lift is matched to a wheel-lift job and that is
+ * the whole rule. They are named here so dispatch and the app agree on which
+ * half of the enum the driver's own choice governs.
+ */
+export const CORE_SERVICE_TYPES = ['tow', 'accident_recovery'] as const;
+
+/**
+ * The roadside jobs a driver opts into during onboarding.
+ *
+ * Every one of these needs kit or training the truck class says nothing about:
+ * a jump pack, a spare-change trolley jack, a fuel can, a lockout kit. A
+ * flatbed that carries none of it should not be offered a flat-tyre job, which
+ * is exactly what happened before this list existed — dispatch matched on
+ * vehicle class alone and sent whoever was nearest.
+ *
+ * Adding a new roadside service (Winch Out) means adding it to `serviceType`
+ * and to this list; drivers then see a new unticked row and are not offered it
+ * until they tick it. That is deliberate — a silent opt-in would offer the job
+ * to everyone on day one.
+ */
+export const OPTIONAL_SERVICE_TYPES = [
+  'battery',
+  'flat_tyre',
+  'fuel',
+  'breakdown',
+  'lockout',
+] as const;
+
+/**
+ * Compile-time exhaustiveness: every `serviceType` is either core or optional.
+ * Add a value to the enum without classifying it above and this line stops
+ * compiling — which is the point. An unclassified service would match the core
+ * branch of no filter and the opt-in list of no driver, so it would be bookable
+ * and permanently undispatchable, with nothing to show for it but an empty
+ * candidate list.
+ */
+const _everyServiceTypeIsClassified:
+  | (typeof CORE_SERVICE_TYPES)[number]
+  | (typeof OPTIONAL_SERVICE_TYPES)[number] = undefined as unknown as z.infer<
+  typeof serviceTypeSchema
+>;
+void _everyServiceTypeIsClassified;
+
+/** One of the roadside services a driver can tick — `serviceType` minus the core two. */
+export const optionalServiceTypeSchema = z.enum(OPTIONAL_SERVICE_TYPES);
+export type OptionalServiceType = z.infer<typeof optionalServiceTypeSchema>;
+
+/** §3.2 — vehicle class, the Band C long-haul opt-in and the roadside services, all admin-revocable (`admin/drivers.ts`). */
 export const driverCapabilitiesUpdateSchema = z
   .object({
     vehicleClass: vehicleClassSchema.optional(),
     longDistanceEnabled: z.boolean().optional(),
+    /**
+     * The complete roadside set, not a delta — sending `[]` means "I offer no
+     * roadside jobs", which is a legitimate answer for a plain tow operator.
+     * Omitting the key leaves the stored set alone, so a client that predates
+     * this field cannot wipe it.
+     */
+    services: z.array(optionalServiceTypeSchema).max(OPTIONAL_SERVICE_TYPES.length).optional(),
   })
-  .refine((body) => body.vehicleClass !== undefined || body.longDistanceEnabled !== undefined, {
-    message: 'At least one of vehicleClass or longDistanceEnabled must be provided',
-  });
+  .refine(
+    (body) =>
+      body.vehicleClass !== undefined ||
+      body.longDistanceEnabled !== undefined ||
+      body.services !== undefined,
+    { message: 'At least one of vehicleClass, longDistanceEnabled or services must be provided' },
+  );
 export type DriverCapabilitiesUpdate = z.infer<typeof driverCapabilitiesUpdateSchema>;
 
 export const driverCapabilitiesResponseSchema = z.object({
   vehicleClass: vehicleClassSchema.nullable(),
   longDistanceEnabled: z.boolean(),
+  services: z.array(optionalServiceTypeSchema),
 });
 export type DriverCapabilitiesResponse = z.infer<typeof driverCapabilitiesResponseSchema>;

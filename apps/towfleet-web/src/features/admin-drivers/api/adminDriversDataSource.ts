@@ -1,5 +1,6 @@
 import type {
   AdminCapabilitiesResponse,
+  OptionalServiceType,
   AdminDocumentReviewResult,
   AdminKycResult,
 } from '@towing/api-contracts';
@@ -26,6 +27,12 @@ import type {
 export interface CapabilitiesUpdateInput {
   vehicleClass?: VehicleClass;
   longDistanceEnabled?: boolean;
+  /**
+   * The driver's roadside opt-ins, as a COMPLETE set. Omit the key to leave
+   * them alone; send `[]` to take them all away. Ops uses this to correct a
+   * driver who ticked kit they turned out not to carry.
+   */
+  services?: OptionalServiceType[];
 }
 
 export interface AdminDriversDataSource {
@@ -173,6 +180,7 @@ const mockSource: AdminDriversDataSource = {
     return {
       vehicleClass: input.vehicleClass ?? null,
       longDistanceEnabled: input.longDistanceEnabled ?? false,
+      services: input.services ?? [],
     };
   },
 };
