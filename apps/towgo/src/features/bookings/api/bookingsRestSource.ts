@@ -1,3 +1,4 @@
+import type { PaymentCaptureRequest } from '@towing/api-contracts';
 import type {
   Booking as ApiBooking,
   BookingCancelResponse,
@@ -133,10 +134,14 @@ export const bookingsRestSource: BookingsDataSource = {
     return toBookingDetail(created);
   },
 
-  cancelBooking: (bookingId: string, reason?: string): Promise<BookingCancelResponse> =>
+  cancelBooking: (
+    bookingId: string,
+    reason?: string,
+    payment?: PaymentCaptureRequest,
+  ): Promise<BookingCancelResponse> =>
     apiFetch<BookingCancelResponse>(`bookings/${bookingId}/cancel`, {
       method: 'POST',
-      body: JSON.stringify(reason ? { reason } : {}),
+      body: JSON.stringify({ ...(reason ? { reason } : {}), ...(payment ? { payment } : {}) }),
       idempotent: true,
     }),
 

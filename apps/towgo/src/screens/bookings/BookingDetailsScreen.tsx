@@ -20,7 +20,7 @@ import {
   mitowLayout,
 } from '@/design';
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
-import { useBooking, useCancelBooking } from '@/features/bookings/api/bookings.queries';
+import { useBooking, useCancelBooking, CancellationFeeNotPaidError } from '@/features/bookings/api/bookings.queries';
 import { callDriver } from '@/features/calling/callDriver';
 import { openDriverChat } from '@/features/chat/openDriverChat';
 import { useShareTrip } from '@/features/tracking/api/tracking.queries';
@@ -193,10 +193,12 @@ export function BookingDetailsScreen() {
             setCancelOpen(false);
             goHome();
           },
-          onError: () => {
+          onError: (error) => {
+            // Closing the fee's payment sheet is a choice, not a failure.
+            if (error instanceof CancellationFeeNotPaidError) return;
             setCancelOpen(false);
-            // The tracking screen's existing failure copy. 21 draws no failure state,
-            // and a chargeable tier has no payment step yet (DATA-GAPS-20-21.md).
+            // The tracking screen's existing failure copy. 21 draws no failure
+            // state; a chargeable tier now pays its fee first (useCancelBooking).
             Alert.alert(
               'Could not cancel',
               'This trip cannot be cancelled here. Please call your driver or contact support.',

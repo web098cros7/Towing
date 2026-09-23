@@ -13,8 +13,7 @@ import { useSearchProgress } from '@/features/booking/hooks/useSearchProgress';
 import {
   useBooking,
   useCancelBooking,
-  useRetrySearch,
-} from '@/features/bookings/api/bookings.queries';
+  useRetrySearch, CancellationFeeNotPaidError } from '@/features/bookings/api/bookings.queries';
 import { bookingsKeys } from '@/features/bookings/api/bookings.keys';
 import type { BookingStatus } from '@/features/bookings/types';
 import type { RootStackParamList } from '@/navigation/types';
@@ -132,7 +131,12 @@ export function SearchingScreen() {
       { bookingId, reason: 'Cancelled during search' },
       {
         onSuccess: goHome,
-        onError: (error) => Alert.alert('Cancel Request', cancelMessage(error)),
+        onError: (error) => {
+          // A driver can be matched between the tap and the cancel, making it
+          // chargeable; closing that fee's sheet is a choice, not a failure.
+          if (error instanceof CancellationFeeNotPaidError) return;
+          Alert.alert('Cancel Request', cancelMessage(error));
+        },
       },
     );
   }, [cancelPending, cancelBooking, bookingId, goHome]);

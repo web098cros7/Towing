@@ -35,7 +35,7 @@ import {
   MiText,
 } from '@/design';
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
-import { useBooking, useCancelBooking } from '@/features/bookings/api/bookings.queries';
+import { useBooking, useCancelBooking, CancellationFeeNotPaidError } from '@/features/bookings/api/bookings.queries';
 import { callDriver } from '@/features/calling/callDriver';
 import { openDriverChat } from '@/features/chat/openDriverChat';
 import { recordMockCodeShown } from '@/features/tracking/api/mockTripClock';
@@ -430,7 +430,10 @@ export function TrackingScreen() {
             setCancelOpen(false);
             goHome();
           },
-          onError: () => {
+          onError: (error) => {
+            // Closing the fee's payment sheet is a choice, not a failure: the
+            // trip goes on and 21 stays open where they left it.
+            if (error instanceof CancellationFeeNotPaidError) return;
             setCancelOpen(false);
             Alert.alert(
               'Could not cancel',

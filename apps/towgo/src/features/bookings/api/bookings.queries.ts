@@ -1,7 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BookingCreate } from '@towing/api-contracts';
 import { useMemo } from 'react';
+import { ErrorCodes } from '@towing/api-contracts';
+import { ApiClientError } from '@/lib/api/errors';
 import { newIdempotencyKey } from '@/lib/api/idempotency';
+import { paymentsDataSource } from '@/features/payments/api/paymentsDataSource';
+import { CheckoutDismissedError, openCheckout } from '@/features/payments/razorpay';
 import { isActiveBooking, type Booking } from '../types';
 import { bookingsDataSource } from './bookingsDataSource';
 import { bookingsKeys } from './bookings.keys';
@@ -98,11 +102,61 @@ export function useCreateBooking() {
 }
 
 /** §3.5 — free branches only until Phase 19 can collect a fee. */
+/**
+ * Thrown when the customer closes the payment sheet for a cancellation fee.
+ * Not a failure: they chose not to pay, so the trip simply goes on. Callers
+ * keep the cancel sheet open and say nothing.
+ */
+export class CancellationFeeNotPaidError extends Error {
+  constructor() {
+    super('The cancellation fee was not paid');
+    this.name = 'CancellationFeeNotPaidError';
+  }
+}
+
+/**
+ * Cancel a trip, paying §3.5's fee first when there is one (B15/B17).
+ *
+ * THE SERVER DECIDES WHETHER A FEE IS DUE, at the moment of the cancel — not
+ * the quote the sheet showed a few seconds earlier, which a driver moving can
+ * have changed. So the first call goes without payment; a chargeable tier is
+ * refused with `cancellation_requires_payment`, and only then is the fee
+ * collected (`purpose: 'cancellation_fee'`, the same checkout 27 uses) and the
+ * cancel sent again carrying it. Before this, every chargeable cancel ended at
+ * that refusal and a "Could not cancel" alert.
+ *
+ * No new screen: the fee and its tier are already on 21's sheet, and the
+ * payment sheet is Razorpay's own.
+ */
 export function useCancelBooking() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ bookingId, reason }: { bookingId: string; reason?: string }) =>
-      bookingsDataSource.cancelBooking(bookingId, reason),
+    mutationFn: async ({ bookingId, reason }: { bookingId: string; reason?: string }) => {
+      try {
+        return await bookingsDataSource.cancelBooking(bookingId, reason);
+      } catch (error) {
+        if (
+          !(error instanceof ApiClientError) ||
+          error.code !== ErrorCodes.CANCELLATION_REQUIRES_PAYMENT
+        ) {
+          throw error;
+        }
+      }
+
+      const intent = await paymentsDataSource.createIntent(
+        bookingId,
+        'cancellation_fee',
+        newIdempotencyKey(),
+      );
+      let payment;
+      try {
+        payment = await openCheckout(intent);
+      } catch (error) {
+        if (error instanceof CheckoutDismissedError) throw new CancellationFeeNotPaidError();
+        throw error;
+      }
+      return bookingsDataSource.cancelBooking(bookingId, reason, payment);
+    },
     onSuccess: (_result, { bookingId }) => {
       void queryClient.invalidateQueries({ queryKey: bookingsKeys.detail(bookingId) });
       void queryClient.invalidateQueries({ queryKey: bookingsKeys.list() });

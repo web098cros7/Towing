@@ -1,3 +1,4 @@
+import type { PaymentCaptureRequest } from '@towing/api-contracts';
 import type { BookingCancelResponse, BookingCreate, BookingOtpResponse } from '@towing/api-contracts';
 import { env } from '@/lib/env';
 import type { Booking, BookingDetail } from '../types';
@@ -19,7 +20,16 @@ export interface BookingsDataSource {
    * attempt — see `useCreateBooking`.
    */
   createBooking(input: BookingCreate, idempotencyKey: string): Promise<BookingDetail>;
-  cancelBooking(bookingId: string, reason?: string): Promise<BookingCancelResponse>;
+  /**
+   * `payment` is the checkout result for a chargeable cancellation's fee
+   * (`purpose: 'cancellation_fee'`), sent on the second call once the first
+   * was refused with `cancellation_requires_payment`.
+   */
+  cancelBooking(
+    bookingId: string,
+    reason?: string,
+    payment?: PaymentCaptureRequest,
+  ): Promise<BookingCancelResponse>;
   /** §9.1.7 — only valid once a driver is assigned. */
   getOtp(bookingId: string): Promise<BookingOtpResponse>;
   /** §9.1.6's "retry / widen" — re-searches the SAME booking, keeping its locked fare. */
