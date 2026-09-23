@@ -51,6 +51,7 @@ import {
 } from '@/features/tracking/components/TrackingMap';
 import { useCollectionCode } from '@/features/tracking/hooks/useCollectionCode';
 import { useCollectionCodeHelp } from '@/features/tracking/hooks/useCollectionCodeHelp';
+import { trackingExitFor } from './tracking/trackingExit';
 import { useLiveTracking } from '@/features/tracking/hooks/useLiveTracking';
 import { track } from '@/lib/analytics/analytics';
 import { env } from '@/lib/env';
@@ -216,14 +217,15 @@ export function TrackingScreen() {
 
   /**
    * `cancelled` draws nothing of its own: the screen goes Home at once (below),
-   * so it keeps the design that was up for that instant. `trackingDesignFor`
+   * so it keeps the design that was up for that instant. So do the T15 exits
+   * (`isLeaving`): back to searching goes to 16, a dispute or refund to 20. `trackingDesignFor`
    * gives it `legacy`, which would flash the old sheet and swap the live map for
    * the legacy one (reloading it) just before Home. Before any status, 18.
    */
   const lastDesign = useRef<TrackingDesign>('enRoute18');
   const statusDesign = trackingDesignFor(status);
-  if (status !== 'cancelled') lastDesign.current = statusDesign;
-  const design = status === 'cancelled' ? lastDesign.current : statusDesign;
+  if (!isLeaving(status)) lastDesign.current = statusDesign;
+  const design = isLeaving(status) ? lastDesign.current : statusDesign;
 
   /**
    * 25's payload for the instant before the hand-off. On `completed` and `paid`
@@ -340,6 +342,20 @@ export function TrackingScreen() {
    * it goes Home.
    */
   const settledOnce = useRef(false);
+  /**
+   * T15: whether THIS screen has seen a driver on the trip. Going back to
+   * `searching` only means "your driver dropped out" when there was one; a
+   * trip opened here before its first driver just belongs on 16.
+   */
+  const hadDriver = useRef(false);
+  if (
+    status === 'assigned' ||
+    status === 'en_route' ||
+    status === 'arrived' ||
+    status === 'in_progress'
+  ) {
+    hadDriver.current = true;
+  }
 
   const atThisRoute = useCallback(
     (action: NavigationAction): NavigationAction => ({
@@ -352,15 +368,16 @@ export function TrackingScreen() {
 
   useEffect(() => {
     if (!status || settledOnce.current) return;
+    const exit = trackingExitFor(status, hadDriver.current);
+    if (!exit) return;
+    settledOnce.current = true;
 
-    if (status === 'completed') {
-      settledOnce.current = true;
+    if (exit.to === 'Payment') {
       navigation.dispatch(atThisRoute(StackActions.replace('Payment', { bookingId })));
       return;
     }
 
-    if (status === 'paid') {
-      settledOnce.current = true;
+    if (exit.to === 'BookingDetails') {
       const { routes } = navigation.getState();
       const below = routes[routes.findIndex((r) => r.key === route.key) - 1];
       const detailsBelow =
@@ -376,17 +393,28 @@ export function TrackingScreen() {
       return;
     }
 
-    if (status === 'cancelled') {
-      settledOnce.current = true;
-      if (navigation.isFocused()) {
-        goHome();
-        return;
+    if (exit.to === 'Searching') {
+      // The fare was locked at confirm and the re-search keeps it, so "your
+      // fare stays the same" is true.
+      navigation.dispatch(atThisRoute(StackActions.replace('Searching', { bookingId })));
+      if (exit.tellDriverDroppedOut) {
+        Alert.alert(
+          'Your driver had to drop out',
+          "We're finding you another driver now. Your fare stays the same.",
+        );
       }
-      navigation.dispatch((s) => {
-        const routes = s.routes.filter((r) => r.key !== route.key);
-        return CommonActions.reset({ ...s, routes, index: routes.length - 1 });
-      });
+      return;
     }
+
+    // Home.
+    if (navigation.isFocused()) {
+      goHome();
+      return;
+    }
+    navigation.dispatch((s) => {
+      const routes = s.routes.filter((r) => r.key !== route.key);
+      return CommonActions.reset({ ...s, routes, index: routes.length - 1 });
+    });
   }, [atThisRoute, bookingId, goHome, navigation, route.key, status]);
 
   const onShare = useCallback(async () => {
@@ -935,5 +963,26 @@ function StopSharing({ onPress }: { onPress: () => void }) {
 
 /** Terminal statuses, from this screen's point of view. */
 function isSettled(status: string | undefined): boolean {
-  return status === 'completed' || status === 'paid' || status === 'cancelled';
+  return (
+    status === 'completed' ||
+    status === 'paid' ||
+    status === 'cancelled' ||
+    status === 'disputed' ||
+    status === 'refunded'
+  );
+}
+
+/**
+ * T15: statuses this screen hands off from without drawing anything of its own,
+ * so it keeps the sheet that was up for that instant instead of flashing the
+ * old app's sheet (`trackingDesignFor` gives them `legacy`).
+ */
+function isLeaving(status: string | undefined): boolean {
+  return (
+    status === 'cancelled' ||
+    status === 'disputed' ||
+    status === 'refunded' ||
+    status === 'searching' ||
+    status === 'no_drivers_found'
+  );
 }
