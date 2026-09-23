@@ -37,3 +37,24 @@ test('a failed decision shows why, and the error clears on close', async ({ page
   await expect(page.getByRole('heading', { name: 'Prakash Naik' })).toBeVisible();
   await expect(page.getByTestId('kyc-error')).toHaveCount(0);
 });
+
+/**
+ * The roadside services the driver ticked, shown so ops can correct a driver
+ * who over-claimed. A render check only (the house rule above); the write and
+ * its audit row are asserted in the backend's capabilities specs.
+ */
+test('the drawer shows the roadside services the driver ticked', async ({ page }) => {
+  await adminLogin(page);
+  await page.goto('/admin/drivers');
+  await page.getByText('Prakash Naik').click();
+
+  const services = page.getByTestId('kyc-services');
+  await expect(services).toBeVisible();
+  await expect(services.getByLabel(/Jump start/)).toBeChecked();
+  await expect(services.getByLabel(/Winch out/)).not.toBeChecked();
+
+  // A driver who only tows ticked none.
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByText('Meena Iyer').click();
+  await expect(page.getByTestId('kyc-services').getByLabel(/Jump start/)).not.toBeChecked();
+});

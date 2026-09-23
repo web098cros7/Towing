@@ -8,7 +8,7 @@ import {
   adminDriversDirectoryResponseSchema,
   adminPendingDriversResponseSchema,
 } from '@towing/api-contracts';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -196,7 +196,11 @@ describe('admin directory drivers (W6)', () => {
   it('keeps GET /v1/admin/drivers/pending on the KYC queue, not the :id route', async () => {
     // The regression the second `admin/drivers` controller could break:
     // `pending` must be matched by the module registered first.
-    await seedDriver(db, { name: 'Queued Driver', kycStatus: 'pending' });
+    const queued = await seedDriver(db, { name: 'Queued Driver', kycStatus: 'pending' });
+    // What the driver ticked, so the KYC drawer can show it and ops can correct it.
+    await db.execute(
+      sql`update drivers set services = array['battery', 'fuel']::service_type[] where id = ${queued}::uuid`,
+    );
 
     const res = await request(app.getHttpServer())
       .get('/v1/admin/drivers/pending')
@@ -205,6 +209,7 @@ describe('admin directory drivers (W6)', () => {
     expectMatchesContract(adminPendingDriversResponseSchema, res.body);
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].name).toBe('Queued Driver');
+    expect(res.body.items[0].services).toEqual(['battery', 'fuel']);
   });
 
   it('serves detail and trips, and 404s an unknown driver', async () => {

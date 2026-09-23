@@ -24,7 +24,13 @@ import {
   useReviewDocument,
   useUpdateDriverCapabilities,
 } from '../api/adminDrivers.mutations';
-import { DOC_TYPE_LABEL, type AdminDocumentVersion, type AdminPendingDriver, type DocReviewStatus } from '../types';
+import {
+  DOC_TYPE_LABEL,
+  ROADSIDE_SERVICES,
+  type AdminDocumentVersion,
+  type AdminPendingDriver,
+  type DocReviewStatus,
+} from '../types';
 import { DocumentViewer } from './DocumentViewer';
 
 const DOC_STATUS_VARIANT: Record<DocReviewStatus, 'success' | 'warning' | 'error'> = {
@@ -226,6 +232,44 @@ export function DriverKycDrawer({
               })
             }
           />
+        </div>
+
+        {/*
+          The roadside services the driver ticked. Ops unticks one a driver
+          turned out not to have the kit for; the server writes an audit row
+          with the before and after sets. Each change sends the whole set.
+        */}
+        <div className="rounded-card border border-border p-3" data-testid="kyc-services">
+          <div className="text-sm font-medium">Roadside services</div>
+          <p className="mb-2 text-xs text-text-secondary">
+            What this driver says they can do. Untick anything they don&apos;t carry the kit for.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {ROADSIDE_SERVICES.map((service) => (
+              <label key={service.value} className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={driver.services.includes(service.value)}
+                  disabled={updateCapabilities.isPending}
+                  onChange={(event) =>
+                    updateCapabilities.mutate({
+                      driverId: driver.id,
+                      input: {
+                        services: event.target.checked
+                          ? [...driver.services, service.value]
+                          : driver.services.filter((value) => value !== service.value),
+                      },
+                    })
+                  }
+                />
+                <span>
+                  {service.label}
+                  <span className="block text-xs text-text-tertiary">{service.kit}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
 
         {/* W7: "GPS on map", as the last known position it actually is. */}

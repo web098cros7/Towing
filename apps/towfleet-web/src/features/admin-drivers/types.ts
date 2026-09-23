@@ -1,7 +1,22 @@
+import type { OptionalServiceType } from '@towing/api-contracts';
+
 export type DocReviewStatus = 'pending' | 'approved' | 'rejected';
 export type DriverDocType = 'license' | 'rc' | 'gov_id' | 'inspection' | 'selfie';
 export type VehicleClass = 'wheel_lift' | 'flatbed';
 export type KycStatus = 'pending' | 'incomplete' | 'approved' | 'rejected' | 'suspended';
+
+/**
+ * The driver app's own words for each roadside service, and the kit behind it,
+ * so a reviewer reads exactly what the driver ticked.
+ */
+export const ROADSIDE_SERVICES: readonly { value: OptionalServiceType; label: string; kit: string }[] = [
+  { value: 'battery', label: 'Jump start', kit: 'Jump pack or booster cables' },
+  { value: 'flat_tyre', label: 'Flat tyre', kit: 'Jack and wheel spanner' },
+  { value: 'fuel', label: 'Fuel delivery', kit: 'Approved fuel can' },
+  { value: 'lockout', label: 'Car lockout', kit: 'Lockout kit' },
+  { value: 'breakdown', label: 'Breakdown help', kit: 'Minor roadside repairs' },
+  { value: 'winch_out', label: 'Winch out', kit: 'Working winch and recovery straps' },
+];
 
 export const DOC_TYPE_LABEL: Record<DriverDocType, string> = {
   license: 'Driving licence',
@@ -36,6 +51,8 @@ export type AdminPendingDriver = {
   mobile: string;
   vehicleClass: VehicleClass | null;
   longDistanceEnabled: boolean;
+  /** The roadside services the driver says they can do. */
+  services: OptionalServiceType[];
   kycSubmittedAt: string | null;
   lastKnownLocation: AdminPendingDriverLocation | null;
   documents: AdminDriverDocument[];

@@ -607,6 +607,7 @@ export class AdminDriversService implements OnModuleInit {
         mobile: drivers.mobile,
         vehicleClass: drivers.vehicleClass,
         longDistanceEnabled: drivers.longDistanceEnabled,
+        services: drivers.services,
         kycSubmittedAt: drivers.kycSubmittedAt,
         currentLocation: drivers.currentLocation,
         lastPingAt: drivers.lastPingAt,
@@ -657,6 +658,7 @@ export class AdminDriversService implements OnModuleInit {
         mobile: row.mobile,
         vehicleClass: row.vehicleClass,
         longDistanceEnabled: row.longDistanceEnabled,
+        services: toOptionalServices(row.services),
         kycSubmittedAt: row.kycSubmittedAt?.toISOString() ?? null,
         // W7's "GPS on map" is the LAST KNOWN location, and it says so: no
         // document carries capture-time coordinates, and a position without a

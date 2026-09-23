@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { docReviewStatusSchema, driverDocTypeSchema, kycStatusSchema } from '../common/enums';
 import { pageEnvelopeSchema, pageQuerySchema } from '../common/pagination';
-import { driverCapabilitiesResponseSchema, driverCapabilitiesUpdateSchema } from '../driver/kyc';
+import {
+  driverCapabilitiesResponseSchema,
+  driverCapabilitiesUpdateSchema,
+  optionalServiceTypeSchema,
+} from '../driver/kyc';
 import { vehicleClassSchema } from '../fleet/trucks';
 import { adminKycResultSchema } from './auth';
 import { adminDirectoryBooleanQuerySchema, adminDirectoryBookingSchema } from './directory';
@@ -47,6 +51,8 @@ export const adminPendingDriverSchema = z.object({
   mobile: z.string(),
   vehicleClass: vehicleClassSchema.nullable(),
   longDistanceEnabled: z.boolean(),
+  /** The roadside services the driver says they can do, so a reviewer can correct them. */
+  services: z.array(optionalServiceTypeSchema),
   kycSubmittedAt: z.iso.datetime().nullable(),
   /** Null for a driver who never pinged — the drawer says so instead of drawing an empty map. */
   lastKnownLocation: adminPendingDriverLocationSchema.nullable(),

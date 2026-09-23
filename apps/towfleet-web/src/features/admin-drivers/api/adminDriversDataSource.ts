@@ -175,12 +175,21 @@ const mockSource: AdminDriversDataSource = {
     };
   },
 
-  updateCapabilities: async (_driverId, input) => {
+  updateCapabilities: async (driverId, input) => {
     await mockDelay();
+    // Kept on the mock row, so the drawer shows the change on its next read.
+    const driver = adminDriversMock.find((row) => row.id === driverId);
+    if (driver) {
+      if (input.vehicleClass !== undefined) driver.vehicleClass = input.vehicleClass;
+      if (input.longDistanceEnabled !== undefined) {
+        driver.longDistanceEnabled = input.longDistanceEnabled;
+      }
+      if (input.services !== undefined) driver.services = input.services;
+    }
     return {
-      vehicleClass: input.vehicleClass ?? null,
-      longDistanceEnabled: input.longDistanceEnabled ?? false,
-      services: input.services ?? [],
+      vehicleClass: driver?.vehicleClass ?? input.vehicleClass ?? null,
+      longDistanceEnabled: driver?.longDistanceEnabled ?? input.longDistanceEnabled ?? false,
+      services: driver?.services ?? input.services ?? [],
     };
   },
 };

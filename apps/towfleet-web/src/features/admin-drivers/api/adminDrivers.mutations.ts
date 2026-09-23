@@ -102,6 +102,7 @@ export function useUpdateDriverCapabilities() {
                           response.longDistanceEnabled ??
                           input.longDistanceEnabled ??
                           row.longDistanceEnabled,
+                        services: response.services ?? input.services ?? row.services,
                       }
                     : row,
                 ),

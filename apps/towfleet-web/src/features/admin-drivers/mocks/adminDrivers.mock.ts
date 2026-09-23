@@ -63,6 +63,8 @@ export const adminDriversMock: AdminPendingDriver[] = NAMES.map(
       mobile,
       vehicleClass,
       longDistanceEnabled,
+      // Every other driver ticked all five; the rest only tow.
+      services: index % 2 === 0 ? ['battery', 'flat_tyre', 'fuel', 'lockout', 'breakdown'] : [],
       kycSubmittedAt: submittedAt,
       // W7's "GPS on map" is the LAST KNOWN location. Driver 1 pinged in
       // Bengaluru; driver 2 never did — both states ship so the drawer's two
