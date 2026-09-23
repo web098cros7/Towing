@@ -11,7 +11,10 @@ import {
   truncateAll,
   type TestDatabase,
 } from '../../test/db';
-import { seedBooking } from '../../test/fixtures';
+import { jobDetailSchema } from '@towing/api-contracts';
+import { sql } from 'drizzle-orm';
+import { expectMatchesContract } from '../../test/contracts';
+import { seedBooking, seedWalletWithLedger } from '../../test/fixtures';
 
 describe('jobs e2e (/v1/fleet/jobs)', () => {
   let app: INestApplication;
@@ -195,5 +198,97 @@ describe('jobs e2e (/v1/fleet/jobs)', () => {
     const planText = JSON.stringify(rows);
     expect(planText).toContain('idx_bookings_fleet_feed');
     expect(planText).not.toContain('"Sort Key"');
+  });
+
+  describe('GET /v1/fleet/jobs/:id (ADM-23)', () => {
+    /** A settled job: 1000 paid, 100 commission, 900 pool split 270 fleet / 630 driver. */
+    async function settledJob(
+      options: { refundedRupees?: string } = {},
+    ): Promise<{ bookingId: string; driverId: string }> {
+      const driverId = await seedDriver(db, { fleetId: fleetA, name: 'Arjun' });
+      const bookingId = await seedBooking(db, {
+        userId: customerId,
+        fleetId: fleetA,
+        driverId,
+        status: 'paid',
+        total: '1000.00',
+        commissionAmount: '100.00',
+        driverPayout: '900.00',
+      });
+      await seedWalletWithLedger(db, { ownerType: 'fleet', ownerId: fleetA }, [
+        { type: 'fleet_share_credit', amount: '270.00', refId: bookingId },
+      ]);
+      await seedWalletWithLedger(db, { ownerType: 'driver', ownerId: driverId }, [
+        { type: 'driver_share_credit', amount: '630.00', refId: bookingId },
+        ...(options.refundedRupees
+          ? [{ type: 'refund_debit' as const, amount: `-${options.refundedRupees}`, refId: bookingId }]
+          : []),
+      ]);
+      await db.execute(sql`
+        insert into booking_status_history (booking_id, status, actor, created_at)
+        values (${bookingId}::uuid, 'assigned', 'system', now() - interval '40 minutes'),
+               (${bookingId}::uuid, 'in_progress', 'driver', now() - interval '20 minutes'),
+               (${bookingId}::uuid, 'paid', 'admin', now())
+      `);
+      return { bookingId, driverId };
+    }
+
+    it('answers "why did I earn this on that job" from the ledger', async () => {
+      const { bookingId } = await settledJob();
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/fleet/jobs/${bookingId}`)
+        .set('Authorization', authA)
+        .expect(200);
+
+      const job = expectMatchesContract(jobDetailSchema, res.body);
+      expect(job.fare.totalPaise).toBe(100_000);
+      expect(job.split).toEqual({
+        settled: true,
+        commissionPaise: 10_000,
+        fleetSharePaise: 27_000,
+        driverSharePaise: 63_000,
+        refundedPaise: 0,
+      });
+      expect(job.driverName).toBe('Arjun');
+      // The timeline in order, and an admin's step shows as MiTow, not a person.
+      expect(job.timeline.map((entry) => `${entry.status}:${entry.actor}`)).toEqual([
+        'assigned:system',
+        'in_progress:driver',
+        'paid:mitow',
+      ]);
+    });
+
+    it('shows what a refund took back from the fleet side', async () => {
+      const { bookingId } = await settledJob({ refundedRupees: '126.00' });
+
+      const res = await request(app.getHttpServer())
+        .get(`/v1/fleet/jobs/${bookingId}`)
+        .set('Authorization', authA)
+        .expect(200);
+      expect(res.body.split.refundedPaise).toBe(12_600);
+    });
+
+    it("404s another fleet's job, exactly like a job that does not exist", async () => {
+      const { bookingId } = await settledJob();
+
+      const theirs = await request(app.getHttpServer())
+        .get(`/v1/fleet/jobs/${bookingId}`)
+        .set('Authorization', authB)
+        .expect(404);
+      const nobody = await request(app.getHttpServer())
+        .get('/v1/fleet/jobs/00000000-0000-4000-8000-000000000000')
+        .set('Authorization', authB)
+        .expect(404);
+      // Same body: the answer must not confirm the id exists elsewhere.
+      expect(theirs.body.error.message).toBe(nobody.body.error.message);
+    });
+
+    it('still serves the CSV export at its literal path', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/fleet/jobs/export.csv')
+        .set('Authorization', authA)
+        .expect(200);
+    });
   });
 });

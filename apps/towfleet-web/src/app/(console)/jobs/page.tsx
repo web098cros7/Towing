@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Download } from 'lucide-react';
 import {
   Badge,
@@ -137,6 +137,7 @@ function JobsList() {
   // Palette deep-link (`/jobs?q=TF-…`) seeds the filter; typing afterwards
   // stays local so the back button keeps working.
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [q, setQ] = useState(() => searchParams.get('q') ?? '');
 
   const filtered = useMemo(() => {
@@ -203,6 +204,8 @@ function JobsList() {
       <DataTable
         columns={columns}
         data={filtered}
+        // ADM-23: a row opens its job — the list only has the totals.
+        onRowClick={(job) => router.push(`/jobs/${job.id}`)}
         isLoading={isLoading}
         isError={isError}
         onRetry={() => void refetch()}

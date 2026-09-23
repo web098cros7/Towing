@@ -1,8 +1,8 @@
-import type { JobsListResponse } from '@towing/api-contracts';
+import type { JobDetail, JobsListResponse } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/apiClient';
 import { env } from '@/lib/env';
 import { resolveMock } from '@/lib/mockUtils';
-import { jobsMock } from '../mocks/jobs.mock';
+import { jobDetailMock, jobsMock } from '../mocks/jobs.mock';
 import type { Job, JobStatus } from '../types';
 
 export type JobsFilter = {
@@ -11,6 +11,8 @@ export type JobsFilter = {
 
 export interface JobsDataSource {
   list(filter: JobsFilter): Promise<Job[]>;
+  /** ADM-23: one job with its timeline, fare lines and the ledger split. */
+  detail(id: string): Promise<JobDetail>;
 }
 
 const mockSource: JobsDataSource = {
@@ -18,6 +20,12 @@ const mockSource: JobsDataSource = {
     const all = await resolveMock(env.mockJobsState, jobsMock, []);
     if (!filter.status || filter.status === 'all') return all;
     return all.filter((j) => j.status === filter.status);
+  },
+  detail: async (id) => {
+    await resolveMock(env.mockJobsState, null, null);
+    const job = jobsMock.find((row) => row.id === id);
+    if (!job) throw new Error('Job not found');
+    return jobDetailMock(job);
   },
 };
 
@@ -28,6 +36,7 @@ const restSource: JobsDataSource = {
     if (filter.status && filter.status !== 'all') params.set('status', filter.status);
     return (await apiFetch<JobsListResponse>(`jobs?${params}`)).items;
   },
+  detail: (id) => apiFetch<JobDetail>(`jobs/${encodeURIComponent(id)}`),
 };
 
 export const jobsDataSource: JobsDataSource = env.useMocks ? mockSource : restSource;

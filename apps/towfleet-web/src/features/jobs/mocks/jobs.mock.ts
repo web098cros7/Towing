@@ -1,4 +1,5 @@
-import type { Job, JobStatus } from '../types';
+import type { JobDetail, JobStatus } from '@towing/api-contracts';
+import type { Job } from '../types';
 
 const HOUR = 3_600_000;
 
@@ -56,3 +57,58 @@ export const jobsMock: Job[] = seeds.map(
     };
   },
 );
+
+/**
+ * A believable detail for a mock row: fare lines that add up to its gross, a
+ * 30/70 fleet/driver split of the pool once it is paid, and a timeline that
+ * walks the statuses a job of that status passed through.
+ */
+export function jobDetailMock(job: Job): JobDetail {
+  const paid = job.status === 'paid';
+  const walk: JobStatus[] = ['assigned', 'en_route', 'arrived', 'in_progress', 'completed', 'paid'];
+  const reached =
+    job.status === 'cancelled'
+      ? ['cancelled' as const]
+      : walk.slice(0, walk.indexOf(job.status) + 1);
+  const start = new Date(job.createdAt).getTime();
+  const fleetShare = Math.round(job.poolPaise * 0.3);
+  return {
+    ...job,
+    pickupAddress: `${job.pickupArea}, Bengaluru`,
+    dropAddress: job.dropArea ? `${job.dropArea}, Bengaluru` : null,
+    paymentMethod: paid ? 'upi' : null,
+    fare: {
+      basePaise: job.grossPaise,
+      distancePaise: 0,
+      nightPaise: 0,
+      highwayPaise: 0,
+      accidentPaise: 0,
+      waitingPaise: 0,
+      surgePaise: 0,
+      discountPaise: 0,
+      taxPaise: 0,
+      totalPaise: job.grossPaise,
+    },
+    split: {
+      settled: paid,
+      commissionPaise: job.commissionPaise,
+      fleetSharePaise: paid ? fleetShare : null,
+      driverSharePaise: paid ? job.poolPaise - fleetShare : null,
+      refundedPaise: 0,
+    },
+    cancellation:
+      job.status === 'cancelled'
+        ? {
+            by: 'customer',
+            reason: 'Found another way home',
+            feePaise: 0,
+            driverCompensationPaise: 0,
+          }
+        : null,
+    timeline: reached.map((status, index) => ({
+      status,
+      actor: status === 'cancelled' ? 'customer' : index === 0 ? 'system' : 'driver',
+      at: new Date(start + index * 9 * 60_000).toISOString(),
+    })),
+  };
+}

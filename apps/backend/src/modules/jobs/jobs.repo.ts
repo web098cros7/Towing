@@ -1,14 +1,23 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { FleetId, JobsQuery } from '@towing/api-contracts';
+import { rupeeStringToPaise, type FleetId, type JobsQuery } from '@towing/api-contracts';
 import { and, eq, gte, lt, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { DB, type Database } from '../../db/db.module';
-import { bookings, drivers, fleetTrucks } from '../../db/schema';
+import { bookingStatusHistory, bookings, drivers, fleetTrucks } from '../../db/schema';
 import type { JobsCursor } from './jobs.cursor';
 
 export interface JobFeedRow {
   booking: typeof bookings.$inferSelect;
   driverName: string | null;
   truckPlate: string | null;
+}
+
+export interface JobDetailRows extends JobFeedRow {
+  /** The truck the booking recorded as running the job, when it did. */
+  jobTruckPlate: string | null;
+  history: Array<{ status: string; actor: string; createdAt: Date }>;
+  /** Settlement credits and refund clawbacks on this booking, per wallet owner type. */
+  ledger: Array<{ ownerType: string; type: string; amountPaise: number }>;
 }
 
 const DAY_MS = 86_400_000;
@@ -64,5 +73,62 @@ export class JobsRepo {
       .limit(limit);
 
     return rows;
+  }
+
+  /**
+   * One job, only if it belongs to `fleetId` (ADM-23).
+   *
+   * Tenancy is the WHERE clause, not a check after the read: another fleet's
+   * booking id returns nothing, exactly as a made-up id does, so the route can
+   * answer 404 for both and never confirm that the id exists elsewhere.
+   */
+  async detail(fleetId: FleetId, bookingId: string): Promise<JobDetailRows | null> {
+    const jobTruck = alias(fleetTrucks, 'job_truck');
+    const [row] = await this.db
+      .select({
+        booking: bookings,
+        driverName: drivers.name,
+        truckPlate: fleetTrucks.plate,
+        jobTruckPlate: jobTruck.plate,
+      })
+      .from(bookings)
+      .leftJoin(drivers, eq(drivers.id, bookings.driverId))
+      .leftJoin(fleetTrucks, eq(fleetTrucks.id, drivers.assignedTruckId))
+      .leftJoin(jobTruck, eq(jobTruck.id, bookings.truckId))
+      .where(and(eq(bookings.id, bookingId), eq(bookings.fleetId, fleetId)))
+      .limit(1);
+    if (!row) return null;
+
+    const history = await this.db
+      .select({
+        status: bookingStatusHistory.status,
+        actor: bookingStatusHistory.actor,
+        createdAt: bookingStatusHistory.createdAt,
+      })
+      .from(bookingStatusHistory)
+      .where(eq(bookingStatusHistory.bookingId, bookingId))
+      .orderBy(bookingStatusHistory.createdAt);
+
+    // Only the fleet side of the trip: the fleet's and its driver's wallets.
+    // The customer's wallet legs on the same booking are not the fleet's
+    // business, and a platform leg does not exist as a wallet.
+    const ledger = (await this.db.execute(sql`
+      select w.owner_type, t.type, t.amount::text as amount
+        from wallet_transactions t
+        join wallets w on w.id = t.wallet_id
+       where t.ref_id = ${bookingId}::uuid
+         and w.owner_type in ('fleet', 'driver')
+         and t.type in ('fleet_share_credit', 'driver_share_credit', 'fare_credit', 'refund_debit')
+    `)) as unknown as Array<{ owner_type: string; type: string; amount: string }>;
+
+    return {
+      ...row,
+      history,
+      ledger: ledger.map((leg) => ({
+        ownerType: leg.owner_type,
+        type: leg.type,
+        amountPaise: rupeeStringToPaise(leg.amount),
+      })),
+    };
   }
 }

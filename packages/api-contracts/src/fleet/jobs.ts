@@ -60,3 +60,76 @@ export type JobsQuery = z.infer<typeof jobsQuerySchema>;
 
 export const jobsListResponseSchema = cursorEnvelopeSchema(jobSchema);
 export type JobsListResponse = z.infer<typeof jobsListResponseSchema>;
+
+/**
+ * ADM-23: one job, as the fleet owner needs to answer "why did I earn this on
+ * that job?" The spec promises a timeline, the fare and how the money was
+ * split; the list row has only the totals.
+ */
+
+/** Who moved a job to a status. `mitow` is an admin: fleets see the role, never the person. */
+export const jobActorSchema = z.enum(['customer', 'driver', 'fleet_owner', 'mitow', 'system']);
+export type JobActor = z.infer<typeof jobActorSchema>;
+
+export const jobTimelineEntrySchema = z.object({
+  status: jobStatusSchema,
+  actor: jobActorSchema,
+  at: z.iso.datetime(),
+});
+export type JobTimelineEntry = z.infer<typeof jobTimelineEntrySchema>;
+
+/** Every line of the customer's fare, as it was locked when they confirmed. */
+export const jobFareSchema = z.object({
+  basePaise: paiseSchema,
+  distancePaise: paiseSchema,
+  nightPaise: paiseSchema,
+  highwayPaise: paiseSchema,
+  accidentPaise: paiseSchema,
+  waitingPaise: paiseSchema,
+  surgePaise: paiseSchema,
+  /** A coupon's value. Shown as a deduction; the split below already absorbs it. */
+  discountPaise: paiseSchema,
+  taxPaise: paiseSchema,
+  totalPaise: paiseSchema,
+});
+export type JobFare = z.infer<typeof jobFareSchema>;
+
+/**
+ * Where the money went.
+ *
+ * The shares are READ FROM THE LEDGER, not recomputed: they are what the fleet
+ * and the driver were actually credited, which is what reconciles against a
+ * statement. Null until the job settles. `refundedPaise` is what later
+ * refunds took back from this fleet's side of the trip.
+ */
+export const jobMoneySplitSchema = z.object({
+  settled: z.boolean(),
+  commissionPaise: paiseSchema,
+  fleetSharePaise: paiseSchema.nullable(),
+  driverSharePaise: paiseSchema.nullable(),
+  refundedPaise: paiseSchema,
+});
+export type JobMoneySplit = z.infer<typeof jobMoneySplitSchema>;
+
+export const jobDetailSchema = jobSchema.extend({
+  pickupAddress: z.string().nullable(),
+  dropAddress: z.string().nullable(),
+  /**
+   * The truck that RAN this job, when the booking recorded it; otherwise the
+   * driver's current truck, as on the list.
+   */
+  truckPlate: z.string().nullable(),
+  paymentMethod: z.enum(['upi', 'card', 'cash', 'wallet']).nullable(),
+  fare: jobFareSchema,
+  split: jobMoneySplitSchema,
+  cancellation: z
+    .object({
+      by: jobActorSchema.nullable(),
+      reason: z.string().nullable(),
+      feePaise: paiseSchema,
+      driverCompensationPaise: paiseSchema,
+    })
+    .nullable(),
+  timeline: z.array(jobTimelineEntrySchema),
+});
+export type JobDetail = z.infer<typeof jobDetailSchema>;

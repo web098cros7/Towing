@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   paiseToRupeeString,
   type FleetId,
+  type JobDetail,
   type JobDto,
   type JobsListResponse,
   type JobsQuery,
@@ -9,7 +10,8 @@ import {
 import type { Response } from 'express';
 import { streamCsv } from '../../common/csv/csv';
 import { decodeCursor, encodeCursor } from './jobs.cursor';
-import { toJobDto } from './jobs.mapper';
+import { toJobDetail, toJobDto } from './jobs.mapper';
+import { ApiException } from '../../common/errors/api-exception';
 import { JobsRepo } from './jobs.repo';
 
 const CSV_HEADER = [
@@ -34,6 +36,13 @@ const EXPORT_BATCH = 1_000;
 @Injectable()
 export class JobsService {
   constructor(private readonly repo: JobsRepo) {}
+
+  /** ADM-23: one of this fleet's jobs. Another fleet's id is a 404, like a made-up one. */
+  async detail(fleetId: FleetId, bookingId: string): Promise<JobDetail> {
+    const rows = await this.repo.detail(fleetId, bookingId);
+    if (!rows) throw ApiException.notFound('Job not found');
+    return toJobDetail(rows);
+  }
 
   async list(fleetId: FleetId, query: JobsQuery): Promise<JobsListResponse> {
     const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;

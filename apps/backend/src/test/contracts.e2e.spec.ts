@@ -831,6 +831,9 @@ const EXCLUDED = new Set([
   // `truckImportSchema`, which needs an import to exist first.
   '/v1/fleet/trucks/bulk',
   '/v1/fleet/trucks/bulk/:importId',
+  // ADM-23's job page: parameterised, and asserted against `jobDetailSchema`
+  // in `jobs.e2e.spec.ts` with a settled job whose split is known.
+  '/v1/fleet/jobs/:id',
   // Session identity, asserted in the auth specs.
   '/v1/fleet/auth/me',
   // ── A REAL GAP, NAMED RATHER THAN HIDDEN ────────────────────────────────
