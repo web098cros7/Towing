@@ -29,6 +29,7 @@ import {
   complianceDocuments,
   contentPages,
   dispatchConfig,
+  disputes,
   driverDocuments,
   drivers,
   emergencyContacts,
@@ -266,6 +267,8 @@ export interface SeedSummary {
   adminUsers: number;
   /** `driver_documents` rows across the non-`approved` KYC fixtures (Phase 11). */
   driverDocuments: number;
+  /** Open `disputes` rows, one per seeded `disputed` booking. */
+  disputes: number;
 }
 
 export interface SeedInvariants {
@@ -414,6 +417,7 @@ export async function runSeed(
     earningsCells: 0,
     adminUsers: 0,
     driverDocuments: 0,
+    disputes: 0,
   };
 
   const env = loadEnv();
@@ -1295,6 +1299,37 @@ export async function runSeed(
       200,
     );
     summary.historyRows = historyRows.length;
+
+    // ── Disputes ────────────────────────────────────────────────────────────
+    // The admin Disputes queue lists `disputes` rows, not booking statuses, so
+    // a booking seeded as `disputed` with no row behind it was a dispute nobody
+    // could open or close (21 Sep console walk-through). Each one gets the open
+    // dispute its status implies: raised by the customer on the finished,
+    // unpaid trip, which is how the app opens one.
+    const DISPUTE_STORIES = [
+      ['overcharge', 'The final fare was much higher than the estimate I was shown.'],
+      ['vehicle_damage', 'There is a new scratch on the rear bumper after the tow.'],
+      ['service_not_completed', 'The driver left before my car was unloaded at the drop.'],
+    ] as const;
+    const disputeRows: Array<typeof disputes.$inferInsert> = [];
+    perBooking.forEach((b, i) => {
+      if (b.status !== 'disputed') return;
+      const [reasonCode, description] = DISPUTE_STORIES[disputeRows.length % DISPUTE_STORIES.length]!;
+      const openedAt = new Date(b.createdAt.getTime() + 9 * MINUTE_MS);
+      disputeRows.push({
+        bookingId: bookingIds[i]!,
+        openedByType: 'customer',
+        openedById: bookingRows[i]!.userId,
+        reasonCode,
+        description,
+        status: 'open',
+        openedFromStatus: 'completed',
+        createdAt: openedAt,
+        updatedAt: openedAt,
+      });
+    });
+    if (disputeRows.length > 0) await tx.insert(disputes).values(disputeRows);
+    summary.disputes = disputeRows.length;
 
     await insertChunked(
       async (chunk) => {

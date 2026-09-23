@@ -4,6 +4,7 @@ import { loadEnv } from '../../config/env';
 import { loadDotenv } from '../../config/load-dotenv';
 import * as schema from '../schema';
 import { ADMIN_FIXTURES, FLEETS, SEED_PASSWORD } from './fixtures';
+import { backfillRollups } from '../../modules/analytics/analytics-backfill';
 import { runSeed, verifySeedInvariants } from './seed';
 
 /**
@@ -59,6 +60,12 @@ async function main(): Promise<void> {
     if (drift > 0) {
       throw new Error('seed invariants violated — see counts above');
     }
+
+    // The analytics screens read W17's rollup tables, which only the nightly
+    // cron writes. Without this a fresh seed shows 90 days of bookings and
+    // every analytics chart at zero (21 Sep console walk-through).
+    const rollups = await backfillRollups(db, 90, new Date());
+    console.log(`[seed] analytics rollups written for ${rollups.start}..${rollups.end}`);
 
     console.log('[seed] done:', JSON.stringify(summary));
     console.log('');

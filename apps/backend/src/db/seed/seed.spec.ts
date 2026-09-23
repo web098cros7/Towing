@@ -92,6 +92,26 @@ describe('seed (deterministic dataset + §14 invariants)', () => {
     expect(pendingNames.map((r) => r.name)).toEqual(['Prakash Naik']);
   });
 
+  /**
+   * The admin Disputes queue lists `disputes` rows. A booking seeded as
+   * `disputed` with no open dispute behind it could be neither opened nor
+   * closed from the console (21 Sep walk-through).
+   */
+  it('gives every disputed booking exactly one open dispute', async () => {
+    const disputedBookings = await count(
+      sql`select count(*)::int as count from bookings where status = 'disputed'`,
+    );
+    expect(disputedBookings).toBeGreaterThan(0);
+    expect(summary.disputes).toBe(disputedBookings);
+    expect(
+      await count(sql`
+        select count(*)::int as count from bookings b
+         where b.status = 'disputed'
+           and (select count(*) from disputes d where d.booking_id = b.id and d.status = 'open') <> 1
+      `),
+    ).toBe(0);
+  });
+
   it('refuses to reseed a non-empty database without reset', async () => {
     await expect(runSeed(db, { reset: false })).resolves.toBeNull();
   });

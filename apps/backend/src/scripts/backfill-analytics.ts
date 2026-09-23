@@ -3,7 +3,7 @@ import postgres from 'postgres';
 import { loadEnv } from '../config/env';
 import { loadDotenv } from '../config/load-dotenv';
 import * as schema from '../db/schema';
-import { purgeWaveLogs, writeDay } from '../modules/analytics/analytics-rollup';
+import { backfillRollups } from '../modules/analytics/analytics-backfill';
 
 /**
  * Backfill W17's rollup tables from domain history. `pnpm analytics:backfill`.
@@ -29,9 +29,6 @@ import { purgeWaveLogs, writeDay } from '../modules/analytics/analytics-rollup';
  * ⚠ Writes to whatever `DATABASE_URL` points at. Dev stack only: refuses
  * `NODE_ENV=production` like `db:seed` does.
  */
-
-const IST_MS = 5.5 * 3_600_000;
-const DAY_MS = 86_400_000;
 
 const DEFAULT_DAYS = 90;
 
@@ -61,15 +58,6 @@ function parseArgs(argv: readonly string[]): number {
   return days;
 }
 
-/** Yesterday in IST — the newest closed day. */
-function yesterdayIST(now: Date): string {
-  return new Date(now.getTime() - DAY_MS + IST_MS).toISOString().slice(0, 10);
-}
-
-function addDays(day: string, delta: number): string {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + delta * DAY_MS).toISOString().slice(0, 10);
-}
-
 async function main(): Promise<void> {
   const days = parseArgs(process.argv.slice(2));
   loadDotenv();
@@ -81,22 +69,15 @@ async function main(): Promise<void> {
   const client = postgres(env.DATABASE_URL, { max: 5, prepare: false, onnotice: () => {} });
   const db = drizzle(client, { schema });
 
-  const end = yesterdayIST(new Date());
-  const start = addDays(end, -(days - 1));
-  console.log(`[backfill] recomputing ${days} closed day(s): ${start}..${end}`);
+  console.log(`[backfill] recomputing ${days} closed day(s), ending yesterday (IST)`);
 
   const started = Date.now();
-  for (let i = 0; i < days; i++) {
-    const day = addDays(start, i);
-    await writeDay(db, day);
-    if ((i + 1) % 10 === 0 || i === days - 1) {
-      console.log(`[backfill] ${i + 1}/${days} — through ${day}`);
-    }
-  }
-
-  const purged = await purgeWaveLogs(db);
+  const { start, end, purged } = await backfillRollups(db, days, new Date(), (done, day) => {
+    if (done % 10 === 0 || done === days)
+      console.log(`[backfill] ${done}/${days} — through ${day}`);
+  });
   console.log(
-    `[backfill] done in ${((Date.now() - started) / 1000).toFixed(1)}s; ` +
+    `[backfill] ${start}..${end} done in ${((Date.now() - started) / 1000).toFixed(1)}s; ` +
       `purged ${purged} dispatch_wave_logs row(s) > 30d`,
   );
   await client.end();
