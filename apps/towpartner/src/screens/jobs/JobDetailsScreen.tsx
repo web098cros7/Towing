@@ -13,6 +13,7 @@ import { JOB_STATUS_META, statusBadgeTone } from '@/features/jobs/statusMeta';
 import { driverColors } from '@/theme/driverColors';
 import { formatPaise } from '@/utils/format';
 import type { RootStackParamList } from '@/navigation/types';
+import { yourEarningsText } from '@/features/offers/yourEarnings';
 
 const HAIRLINE = '#E5E7EB';
 const INK_SOFT = '#4B5563';
@@ -177,7 +178,7 @@ export function JobDetailsScreen() {
                   tabular
                   style={{ fontSize: 18, lineHeight: 24, color: driverColors.online }}
                 >
-                  {formatPaise(job.earnings.netPaise)}
+                  {yourEarningsText(job.earnings)}
                 </Text>
               </View>
             </Card>

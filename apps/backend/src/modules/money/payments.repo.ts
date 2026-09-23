@@ -297,9 +297,23 @@ export class PaymentsRepo {
     const rows = (await tx.execute(sql`
       select b.id, b.status, b.user_id, b.driver_id, b.fleet_id,
              b.commission_band, b.commission_pct, b.total, b.tax_amount,
-             fds.driver_share as driver_share_pct,
+             -- 0042: the driver's share, RESOLVED. The split locked at
+             -- acceptance wins; a booking accepted before 0042 falls back to
+             -- the owner's per-driver override, then the fleet's own setting.
+             -- Null only for an independent driver. (Before 0042 a fleet
+             -- driver with no override row settled at 0 %, although their
+             -- offer had shown them the whole payout.)
+             case
+               when b.driver_pay_model = 'independent' then null
+               when b.driver_pay_model = 'salary' then 0
+               when b.driver_pay_model = 'share' then b.driver_share_pct
+               when b.fleet_id is null then null
+               when f.driver_pay_model = 'salary' then 0
+               else coalesce(fds.driver_share, f.driver_share_pct)
+             end as driver_share_pct,
              p.id as payment_id, p.amount as payment_amount, p.wallet_applied
         from bookings b
+        left join fleets f on f.id = b.fleet_id
         left join fleet_driver_shares fds
                on fds.fleet_id = b.fleet_id and fds.driver_id = b.driver_id
         left join payments p

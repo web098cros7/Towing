@@ -24,6 +24,11 @@ import { loadJobPayment } from '../money/job-payment';
 import { projectEarnings } from '../money/settlement';
 import { CandidateSelectionService, type ScoredCandidate } from './candidate-selection.service';
 import { DispatchRepo, type DispatchBookingRow } from './dispatch.repo';
+import {
+  lockedPayTerms,
+  payTermsForDriver,
+  type DriverPayTerms,
+} from '../money/driver-pay-terms';
 
 /**
  * §6.3's offer lifecycle: make one, resolve it, and assign the job when a driver
@@ -328,6 +333,10 @@ export class OfferService {
 
       // (1) and (4) together, in the caller's transaction — which is exactly
       // what `transition` takes a `tx` for.
+      // 0042: lock how this driver is paid for THIS job, read inside the
+      // same transaction. The offer showed them these terms; an owner
+      // changing the setting mid-trip must not change what they are paid.
+      const terms = await payTermsForDriver(tx, driverId);
       await this.machine.transition(tx, {
         bookingId,
         to: 'assigned',
@@ -336,6 +345,8 @@ export class OfferService {
           driverId,
           fleetId: eligible.fleetId,
           truckId: eligible.truckId,
+          driverPayModel: terms.model,
+          driverSharePct: terms.model === 'share' ? String(terms.driverSharePct) : null,
         },
       });
 
@@ -508,6 +519,9 @@ export class OfferService {
 
     if (!row) return null;
     const booking = row.booking;
+    // The terms locked when they accepted; a job accepted before 0042 has
+    // none, and shows the driver's current terms instead.
+    const terms = lockedPayTerms(booking) ?? (await payTermsForDriver(this.db, driverId));
 
     return {
       bookingId: booking.id,
@@ -515,7 +529,7 @@ export class OfferService {
       status: booking.status,
       serviceType: booking.serviceType,
       vehicleClass: booking.vehicleClass,
-      earnings: earningsOf(booking),
+      earnings: earningsOf(booking, terms),
       payment: await loadJobPayment(this.db, booking),
       pickup: { lat: booking.pickupLat, lng: booking.pickupLng },
       pickupAddress: booking.pickupAddress,
@@ -572,7 +586,9 @@ export class OfferService {
       serviceType: booking.serviceType as JobOffer['serviceType'],
       vehicleClass: booking.vehicleClass as JobOffer['vehicleClass'],
       expiresAt: expiresAt.toISOString(),
-      earnings: earningsOf(booking),
+      // The recipient's CURRENT terms: an offer is what the job would pay THIS
+      // driver, and accepting it locks exactly these.
+      earnings: earningsOf(booking, await payTermsForDriver(this.db, candidate.driverId)),
       pickup: { lat: booking.pickupLat, lng: booking.pickupLng },
       pickupAddress: booking.pickupAddress,
       drop:
@@ -656,17 +672,21 @@ function reference(bookingId: string): string {
  * rather than read from `commission_amount`/`driver_payout`, which stay at
  * '0.00' until settlement.
  */
-function earningsOf(booking: {
-  total: string;
-  taxAmount: string;
-  commissionBand: 'A' | 'B' | 'C' | null;
-  commissionPct: string | null;
-}): JobOffer['earnings'] {
+function earningsOf(
+  booking: {
+    total: string;
+    taxAmount: string;
+    commissionBand: 'A' | 'B' | 'C' | null;
+    commissionPct: string | null;
+  },
+  payTerms: DriverPayTerms,
+): JobOffer['earnings'] {
   return projectEarnings({
     totalRupees: booking.total,
     taxRupees: booking.taxAmount,
     band: booking.commissionBand,
     commissionPct: booking.commissionPct,
+    payTerms,
   });
 }
 

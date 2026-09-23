@@ -1,8 +1,10 @@
-import { Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Post, Put, UseGuards } from '@nestjs/common';
 import {
   assignTruckSchema,
   driverInviteSchema,
   driversListQuerySchema,
+  fleetDriverShareUpdateSchema,
+  type FleetDriverShareUpdate,
   type AssignTruckRequest,
   type DriverInviteRequest,
   type FleetId,
@@ -34,6 +36,19 @@ export class DriversController {
   @Get(':id/performance')
   performance(@CurrentFleet() fleetId: FleetId, @ZodParam(z.uuid(), 'id') driverId: string) {
     return this.drivers.performance(fleetId, driverId);
+  }
+
+  /**
+   * 0042: one driver's share of each job under the fleet's `share` model, or
+   * null to follow the fleet's default again. Another fleet's driver is a 404.
+   */
+  @Put(':id/share')
+  updateShare(
+    @CurrentFleet() fleetId: FleetId,
+    @ZodParam(z.uuid(), 'id') driverId: string,
+    @ZodBody(fleetDriverShareUpdateSchema) body: FleetDriverShareUpdate,
+  ) {
+    return this.drivers.updateShare(fleetId, driverId, body.driverSharePct);
   }
 
   @Post(':id/assign-truck')

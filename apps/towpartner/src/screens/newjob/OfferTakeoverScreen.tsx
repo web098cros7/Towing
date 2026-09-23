@@ -16,9 +16,10 @@ import { CountdownRing } from '@/features/offers/components/CountdownRing';
 import { OfferCard } from '@/features/offers/components/OfferCard';
 import { useOfferCountdown } from '@/features/offers/hooks/useOfferCountdown';
 import { driverColors } from '@/theme/driverColors';
-import { formatPaise } from '@/utils/format';
 import type { RootStackParamList } from '@/navigation/types';
 import { Pressable, haptics } from '@/motion';
+import type { JobEarnings } from '@towing/api-contracts';
+import { acceptLabel, earningsBreakdownText, yourEarningsText } from '@/features/offers/yourEarnings';
 
 /**
  * §6.3's offer, as a full-screen takeover.
@@ -174,7 +175,7 @@ export function OfferTakeoverScreen() {
               tabular
               style={{ fontSize: 30, lineHeight: 36, color: driverColors.online }}
             >
-              {formatPaise(offer.earnings.netPaise)}
+              {yourEarningsText(offer.earnings)}
             </Text>
             <EarningsBreakdown earnings={offer.earnings} />
             {offer.customerRating !== null || offer.customerName !== null ? (
@@ -248,7 +249,7 @@ export function OfferTakeoverScreen() {
               label={
                 accept.isPending
                   ? 'Accepting…'
-                  : `Accept · ${formatPaise(offer.earnings.netPaise)}`
+                  : acceptLabel(offer.earnings)
               }
               fullWidth
               loading={accept.isPending}
@@ -303,17 +304,13 @@ function RaceLostState() {
  * §9.2.2 asks for it, and the reason is that a deduction a driver cannot explain
  * is a deduction they assume is wrong. The percentage shown is the one LOCKED on
  * the booking at confirm (§3.4), so it is also the rate they will actually be
- * paid at — an admin editing the rate card mid-search cannot move it.
+ * paid at — an admin editing the rate card mid-search cannot move it. A fleet
+ * driver on a split also sees the fleet's part, so the number above adds up.
  */
-function EarningsBreakdown({
-  earnings,
-}: {
-  earnings: { grossPaise: number; commissionPaise: number; commissionPct: number | null };
-}) {
+function EarningsBreakdown({ earnings }: { earnings: JobEarnings }) {
   return (
     <Text tabular style={{ fontSize: 12, lineHeight: 17, color: '#6B7280' }}>
-      {formatPaise(earnings.grossPaise)} fare − {formatPaise(earnings.commissionPaise)}
-      {earnings.commissionPct === null ? '' : ` (${earnings.commissionPct}%)`} platform fee
+      {earningsBreakdownText(earnings)}
     </Text>
   );
 }

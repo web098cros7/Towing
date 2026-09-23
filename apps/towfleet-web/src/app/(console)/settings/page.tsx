@@ -5,6 +5,7 @@ import { Card, CardContent, ErrorState, Skeleton, buttonVariants, cn } from '@to
 import { PageHeader } from '@/components/PageHeader';
 import { useFleetSettings } from '@/features/settings/api/settings.queries';
 import { BusinessProfileForm } from '@/features/settings/components/BusinessProfileForm';
+import { DriverPayCard } from '@/features/settings/components/DriverPayCard';
 import { NotificationPrefsCard } from '@/features/settings/components/NotificationPrefsCard';
 import { PayoutAccountCard } from '@/features/settings/components/PayoutAccountCard';
 
@@ -24,7 +25,7 @@ export default function SettingsPage() {
     <div>
       <PageHeader
         title="Settings"
-        description="Business profile, payout bank account and notification preferences."
+        description="Business profile, payout bank account, how your drivers are paid, and notification preferences."
       />
 
       {/*
@@ -60,6 +61,7 @@ export default function SettingsPage() {
           <>
             <BusinessProfileForm settings={data} />
             <PayoutAccountCard settings={data} />
+            <DriverPayCard settings={data} />
             <NotificationPrefsCard settings={data} />
           </>
         )}

@@ -6,6 +6,7 @@ import { DB, type Database } from '../../db/db.module';
 import { bookings, drivers, users } from '../../db/schema';
 import { loadJobPayment } from '../money/job-payment';
 import { projectEarnings } from '../money/settlement';
+import { lockedPayTerms, payTermsForDriver } from '../money/driver-pay-terms';
 
 /** The booking as the §5.2 machine needs it — authorisation, timing and the locked money. */
 export interface JobRow {
@@ -121,6 +122,11 @@ export class JobExecutionRepo {
         taxRupees: booking.taxAmount,
         band: booking.commissionBand,
         commissionPct: booking.commissionPct,
+        payTerms:
+          lockedPayTerms(booking) ??
+          (booking.driverId
+            ? await payTermsForDriver(this.db, booking.driverId)
+            : { model: 'independent' }),
       }),
       payment: await loadJobPayment(this.db, booking),
       pickup: { lat: booking.pickupLat, lng: booking.pickupLng },

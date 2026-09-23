@@ -22,6 +22,7 @@ import { projectEarnings } from '../money/settlement';
 import { decodeCursor, encodeCursor } from '../jobs/jobs.cursor';
 import { toComplianceDtos } from '../trucks/trucks.mapper';
 import { JobExecutionRepo } from './job-execution.repo';
+import { lockedPayTerms, payTermsForDriver } from '../money/driver-pay-terms';
 
 /** Insurance leads: an expired one is what makes the truck `non_compliant` and stops offers. */
 const DOC_ORDER = ['insurance', 'rc', 'puc', 'permit'] as const;
@@ -247,6 +248,8 @@ export class DriverJobsService {
         taxAmount: bookings.taxAmount,
         commissionBand: bookings.commissionBand,
         commissionPct: bookings.commissionPct,
+        driverPayModel: bookings.driverPayModel,
+        driverSharePct: bookings.driverSharePct,
         paymentMethod: bookings.paymentMethod,
         createdAt: bookings.createdAt,
         completedAt: bookings.completedAt,
@@ -260,6 +263,7 @@ export class DriverJobsService {
     const page = hasMore ? rows.slice(0, query.limit) : rows;
     const last = page[page.length - 1];
 
+    const currentTerms = await payTermsForDriver(this.db, driverId);
     const items: DriverJobHistoryItem[] = page.map((b) => ({
       bookingId: b.id,
       reference: `TW-${b.id.slice(0, 8).toUpperCase()}`,
@@ -274,6 +278,8 @@ export class DriverJobsService {
         taxRupees: b.taxAmount,
         band: b.commissionBand,
         commissionPct: b.commissionPct,
+        // Locked at acceptance; a job from before 0042 shows today's terms.
+        payTerms: lockedPayTerms(b) ?? currentTerms,
       }),
       paymentMethod:
         b.paymentMethod === null

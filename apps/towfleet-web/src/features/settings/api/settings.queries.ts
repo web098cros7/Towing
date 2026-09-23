@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { FleetDriverPayUpdate } from '@towing/api-contracts';
 import { earningsKeys } from '@/features/earnings/api/earnings.keys';
 import { settingsKeys } from './settings.keys';
 import { settingsDataSource } from './settingsDataSource';
@@ -52,4 +53,9 @@ export function useUnlinkPayoutAccount() {
 
 export function useAdvanceOnboarding() {
   return useSettingsMutation((from: OnboardingStep) => settingsDataSource.advanceOnboarding(from));
+}
+
+/** 0042: share each job with the driver, or keep it and pay a salary. */
+export function useUpdateDriverPay() {
+  return useSettingsMutation((pay: FleetDriverPayUpdate) => settingsDataSource.updateDriverPay(pay));
 }

@@ -1,11 +1,12 @@
 import type { INestApplication } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { bookings, dispatchAttempts, drivers } from '../../db/schema';
 import { createTestApp, driverAuthHeaderFor } from '../../test/app';
 import {
   seedCustomer,
+  seedFleet,
   setupTestDatabase,
   testDb,
   truncateAll,
@@ -113,6 +114,24 @@ describe('dispatch offers (§6.3)', () => {
         netPaise: 108_000,
         band: 'A',
         commissionPct: 10,
+        // 0042: an independent driver's own number is the whole payout.
+        payModel: 'independent',
+        driverSharePaise: 108_000,
+      });
+    });
+
+    it("tells a salaried fleet driver they are paid by their fleet, not ₹0 (0042)", async () => {
+      const fleet = await seedFleet(db, 'Salary Fleet');
+      await db.execute(sql`update fleets set driver_pay_model = 'salary' where id = ${fleet.fleetId}::uuid`);
+      const driverId = await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId });
+
+      await offerTo(bookingId, driverId);
+
+      expect((await offers.currentOffer(driverId))?.earnings).toMatchObject({
+        netPaise: 108_000,
+        payModel: 'salary',
+        driverSharePaise: 0,
+        fleetSharePaise: 108_000,
       });
     });
 
@@ -182,6 +201,22 @@ describe('dispatch offers (§6.3)', () => {
         .from(bookings)
         .where(eq(bookings.id, bookingId));
       expect(row).toMatchObject({ status: 'assigned', driverId });
+    });
+
+    it("locks how the driver is paid onto the booking at the moment they accept (0042)", async () => {
+      // The offer showed these terms; the owner changing their setting later
+      // must not change what this job pays (settlement reads the lock).
+      const fleet = await seedFleet(db, 'Locking Fleet');
+      const driverId = await seedOnlineDriver(db, { zoneId, fleetId: fleet.fleetId });
+      await offerTo(bookingId, driverId);
+
+      await offers.accept(bookingId, driverId);
+
+      const [row] = await db
+        .select({ model: bookings.driverPayModel, pct: bookings.driverSharePct })
+        .from(bookings)
+        .where(eq(bookings.id, bookingId));
+      expect(row).toEqual({ model: 'share', pct: '80.00' });
     });
 
     it('EXACTLY ONE of two simultaneous accepts wins', async () => {

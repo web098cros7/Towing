@@ -22,6 +22,7 @@ import {
 import { offersKeys } from '../api/offers.keys';
 import { RateCustomerSheet } from './RateCustomerSheet';
 import { UnableSheet } from './UnableSheet';
+import { yourEarningsText } from '@/features/offers/yourEarnings';
 
 /**
  * §5.2's chain, as the driver drives it: arrive → OTP → start → complete, with
@@ -351,7 +352,9 @@ export function JobActionRail({ job }: { job: DriverJob }) {
                 {payment.method === 'cash' ? 'Cash received' : 'Paid in the app'}
               </Text>
               <Text style={{ fontSize: 14, lineHeight: 20 }}>
-                You earned {formatPaise(job.earnings.netPaise)}
+                {job.earnings.payModel === 'salary'
+                  ? 'Paid by your fleet'
+                  : `You earned ${yourEarningsText(job.earnings)}`}
               </Text>
               {/*
                 The rating is OPT-IN — a visible button, never a sheet that

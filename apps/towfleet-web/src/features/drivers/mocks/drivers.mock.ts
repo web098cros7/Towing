@@ -93,6 +93,9 @@ export const driversMock: FleetDriver[] = [
 ];
 
 /** A panel consistent with the list row: a month's net split 30/70, a few recent jobs. */
+/** Per-driver share overrides set from the panel, so a save shows on the next read. */
+export const mockShareOverrides = new Map<string, number | null>();
+
 export function driverPerformanceMock(driver: FleetDriver): FleetDriverPerformance {
   const fleetShare = Math.round(driver.monthNetPaise * 0.3);
   return {
@@ -105,6 +108,11 @@ export function driverPerformanceMock(driver: FleetDriver): FleetDriverPerforman
     rating: driver.rating,
     ratingsCount: Math.round(driver.tripsTotal * 0.6),
     earnings: { fleetSharePaise: fleetShare, driverSharePaise: driver.monthNetPaise - fleetShare },
+    pay: {
+      model: 'share',
+      fleetDefaultPct: 80,
+      overridePct: mockShareOverrides.get(driver.id) ?? null,
+    },
     recentJobs: [
       {
         id: 'tw-88102',

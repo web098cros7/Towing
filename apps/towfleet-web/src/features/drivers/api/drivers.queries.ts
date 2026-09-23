@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { driversKeys } from './drivers.keys';
 import { driversDataSource } from './driversDataSource';
 
@@ -15,5 +15,16 @@ export function useDrivers() {
   return useQuery({
     queryKey: driversKeys.list(),
     queryFn: () => driversDataSource.list(),
+  });
+}
+
+/** 0042: set one driver's share, or clear it (null) to follow the fleet's default. */
+export function useUpdateDriverShare(driverId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (driverSharePct: number | null) =>
+      driversDataSource.updateShare(driverId, driverSharePct),
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: driversKeys.performance(driverId) }),
   });
 }

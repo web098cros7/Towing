@@ -7,6 +7,8 @@ import {
   type FleetSettingsUpdate,
   type OnboardingAdvanceRequest,
   type PayoutAccountLinkRequest,
+  fleetDriverPayUpdateSchema,
+  type FleetDriverPayUpdate,
 } from '@towing/api-contracts';
 import { ThrottleBucket } from '../../common/throttling/throttler.config';
 import { CurrentFleet } from '../../common/tenancy/current-fleet.decorator';
@@ -46,6 +48,15 @@ export class SettingsController {
    * it carries the money throttle bucket and the §9.3.1 gate — Route needs the
    * legal name, GSTIN and address that the profile step collects.
    */
+  /** 0042: share each job with the driver, or keep it and pay a salary. */
+  @Put('driver-pay')
+  updateDriverPay(
+    @CurrentFleet() fleetId: FleetId,
+    @ZodBody(fleetDriverPayUpdateSchema) body: FleetDriverPayUpdate,
+  ) {
+    return this.settings.updateDriverPay(fleetId, body);
+  }
+
   @Post('payout-account')
   @ThrottleBucket('money')
   @UseGuards(ProfileCompleteGuard)

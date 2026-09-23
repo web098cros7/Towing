@@ -72,12 +72,49 @@ export type PayoutAccountDto = z.infer<typeof payoutAccountSchema>;
 export const onboardingStepSchema = z.enum(['profile', 'payout_account', 'notifications', 'done']);
 export type OnboardingStep = z.infer<typeof onboardingStepSchema>;
 
+/**
+ * How a fleet owner pays their drivers (Ehsan, 24 Sep).
+ *
+ * `share`: each job's payout (after MiTow's commission) is split, the driver
+ * getting `driverSharePct` and the fleet the rest, with an optional override
+ * per driver. `salary`: the fleet keeps all of it and pays its drivers outside
+ * MiTow. The split is locked on a job when the driver accepts it, so a change
+ * here applies to jobs accepted afterwards.
+ */
+export const fleetDriverPayModelSchema = z.enum(['share', 'salary']);
+export type FleetDriverPayModel = z.infer<typeof fleetDriverPayModelSchema>;
+
+export const fleetDriverPaySchema = z.object({
+  model: fleetDriverPayModelSchema,
+  /** 0–100, used under `share`. Kept under `salary` so switching back restores it. */
+  driverSharePct: z.number().min(0).max(100),
+});
+export type FleetDriverPay = z.infer<typeof fleetDriverPaySchema>;
+
+/** `PUT /v1/fleet/settings/driver-pay`. */
+export const fleetDriverPayUpdateSchema = z.object({
+  model: fleetDriverPayModelSchema,
+  driverSharePct: z.number().min(0).max(100).multipleOf(0.01),
+});
+export type FleetDriverPayUpdate = z.infer<typeof fleetDriverPayUpdateSchema>;
+
+/**
+ * `PUT /v1/fleet/drivers/:id/share` — one driver's share under `share`, or
+ * `null` to follow the fleet's default again.
+ */
+export const fleetDriverShareUpdateSchema = z.object({
+  driverSharePct: z.number().min(0).max(100).multipleOf(0.01).nullable(),
+});
+export type FleetDriverShareUpdate = z.infer<typeof fleetDriverShareUpdateSchema>;
+
 export const fleetSettingsSchema = z.object({
   businessName: z.string(),
   gstin: z.string().nullable(),
   address: z.string().nullable(),
   notificationPrefs: notificationPrefsSchema,
   payoutAccount: payoutAccountSchema,
+  /** How this fleet pays its drivers (0042). */
+  driverPay: fleetDriverPaySchema,
   onboarding: z.object({
     /**
      * A monotonic high-water mark, never "the step currently shown" — editing

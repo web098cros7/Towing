@@ -21,10 +21,10 @@ import {
 } from '@/features/offers/store/jobEndedStore';
 import { useChatUnreadStore } from '@/features/offers/store/chatUnreadStore';
 import { driverColors } from '@/theme/driverColors';
-import { formatPaise } from '@/utils/format';
 import { JOB_STATUS_META, statusBadgeTone } from '@/features/jobs/statusMeta';
 import type { RootStackParamList } from '@/navigation/types';
 import { Pressable } from '@/motion';
+import { earningsBreakdownText, yourEarningsText } from '@/features/offers/yourEarnings';
 
 const HAIRLINE = '#E5E7EB';
 const INK_SOFT = '#4B5563';
@@ -293,12 +293,10 @@ export function AssignedJobScreen() {
                     tabular
                     style={{ fontSize: 28, lineHeight: 34, color: driverColors.online }}
                   >
-                    {formatPaise(job.earnings.netPaise)}
+                    {yourEarningsText(job.earnings)}
                   </Text>
                   <Text tabular style={{ fontSize: 12, lineHeight: 17, color: '#6B7280' }}>
-                    {formatPaise(job.earnings.grossPaise)} fare −{' '}
-                    {formatPaise(job.earnings.commissionPaise)}
-                    {job.earnings.commissionPct === null ? '' : ` (${job.earnings.commissionPct}%)`}
+                    {earningsBreakdownText(job.earnings)}
                   </Text>
                 </View>
               </View>

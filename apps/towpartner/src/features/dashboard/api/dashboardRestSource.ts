@@ -38,9 +38,9 @@ export const dashboardRestSource: DashboardDataSource = {
         vehicleName: serviceLabel(item),
         pickup: item.pickupAddress ?? 'Pickup',
         drop: item.dropAddress ?? 'At the spot',
-        // The DRIVER's net, not the gross — the dashboard is the driver's own
-        // view of what they earned, and the gross includes the platform's cut.
-        farePaise: item.earnings.netPaise,
+        // The DRIVER's own take (0042), not the job's payout: on a fleet split
+        // the fleet keeps part of it, and on salary the driver keeps none.
+        farePaise: item.earnings.driverSharePaise,
         status: item.status,
       })),
     };

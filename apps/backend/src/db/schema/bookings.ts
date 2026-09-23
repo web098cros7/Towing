@@ -228,6 +228,13 @@ export const bookings = pgTable(
      * carry a truck_id" comment.
      */
     truckId: uuid('truck_id').references(() => fleetTrucks.id),
+    /**
+     * The driver's pay terms, LOCKED at acceptance (0042): `independent`,
+     * `share` (with `driverSharePct`) or `salary`. Null on bookings accepted
+     * before 0042, which settlement resolves from the current setting.
+     */
+    driverPayModel: text('driver_pay_model'),
+    driverSharePct: numeric('driver_share_pct', { precision: 5, scale: 2 }),
 
     /**
      * Durable §6.4 wave state. In-memory search progress does not survive a

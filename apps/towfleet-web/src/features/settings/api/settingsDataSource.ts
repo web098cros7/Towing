@@ -1,3 +1,4 @@
+import type { FleetDriverPayUpdate } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/apiClient';
 import { env } from '@/lib/env';
 import { mockDelay } from '@/lib/mockUtils';
@@ -10,6 +11,7 @@ export interface SettingsDataSource {
   linkPayoutAccount(input: PayoutAccountLink, idempotencyKey: string): Promise<FleetSettings>;
   unlinkPayoutAccount(): Promise<FleetSettings>;
   advanceOnboarding(from: OnboardingStep): Promise<FleetSettings>;
+  updateDriverPay(pay: FleetDriverPayUpdate): Promise<FleetSettings>;
 }
 
 const STEP_ORDER: OnboardingStep[] = ['profile', 'payout_account', 'notifications', 'done'];
@@ -88,6 +90,11 @@ const mockSource: SettingsDataSource = {
     mockState = { ...mockState, onboarding: { ...mockState.onboarding, step: next } };
     return mockState;
   },
+  updateDriverPay: async (pay) => {
+    await mockDelay();
+    mockState = { ...mockState, driverPay: pay };
+    return mockState;
+  },
 };
 
 const restSource: SettingsDataSource = {
@@ -113,6 +120,12 @@ const restSource: SettingsDataSource = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ from }),
+    }),
+  updateDriverPay: (pay) =>
+    apiFetch<FleetSettings>('settings/driver-pay', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pay),
     }),
 };
 

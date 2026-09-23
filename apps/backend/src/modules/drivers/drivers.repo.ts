@@ -173,4 +173,61 @@ export class DriversRepo {
 
     return { driver, trips: trips!, ratingsCount: ratings?.n ?? 0, earnings, recent };
   }
+
+  /** 0042: the fleet's pay model and default, and this driver's override. */
+  async payTerms(
+    fleetId: FleetId,
+    driverId: string,
+  ): Promise<{ model: 'share' | 'salary'; fleetDefaultPct: number; overridePct: number | null }> {
+    const [row] = (await this.db.execute(sql`
+      select f.driver_pay_model, f.driver_share_pct::text as fleet_pct,
+             fds.driver_share::text as override_pct
+        from fleets f
+        left join fleet_driver_shares fds
+               on fds.fleet_id = f.id and fds.driver_id = ${driverId}::uuid
+       where f.id = ${fleetId}::uuid
+    `)) as unknown as Array<{
+      driver_pay_model: 'share' | 'salary';
+      fleet_pct: string;
+      override_pct: string | null;
+    }>;
+    return {
+      model: row?.driver_pay_model ?? 'share',
+      fleetDefaultPct: Number(row?.fleet_pct ?? 80),
+      overridePct: row?.override_pct == null ? null : Number(row.override_pct),
+    };
+  }
+
+  async belongsToFleet(fleetId: FleetId, driverId: string): Promise<boolean> {
+    const [row] = (await this.db.execute(sql`
+      select 1 from drivers where id = ${driverId}::uuid and fleet_id = ${fleetId}::uuid
+    `)) as unknown as Array<unknown>;
+    return row !== undefined;
+  }
+
+  /** Upsert or clear a driver's share (the fleet keeps the rest). */
+  async setShare(fleetId: FleetId, driverId: string, driverSharePct: number | null): Promise<void> {
+    if (driverSharePct === null) {
+      await this.db.execute(sql`
+        delete from fleet_driver_shares
+         where fleet_id = ${fleetId}::uuid and driver_id = ${driverId}::uuid
+      `);
+      return;
+    }
+    const driverShare = driverSharePct.toFixed(2);
+    const fleetShare = (100 - driverSharePct).toFixed(2);
+    const updated = (await this.db.execute(sql`
+      update fleet_driver_shares
+         set driver_share = ${driverShare}::numeric, fleet_share = ${fleetShare}::numeric,
+             updated_at = now()
+       where fleet_id = ${fleetId}::uuid and driver_id = ${driverId}::uuid
+       returning id
+    `)) as unknown as Array<unknown>;
+    if (updated.length === 0) {
+      await this.db.execute(sql`
+        insert into fleet_driver_shares (fleet_id, driver_id, driver_share, fleet_share)
+        values (${fleetId}::uuid, ${driverId}::uuid, ${driverShare}::numeric, ${fleetShare}::numeric)
+      `);
+    }
+  }
 }

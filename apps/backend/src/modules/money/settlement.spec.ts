@@ -121,6 +121,7 @@ describe('projectEarnings — the driver-facing projection', () => {
       taxRupees: '0',
       band: 'A',
       commissionPct: '10.00',
+      payTerms: { model: 'independent' },
     });
     expect(p.grossPaise).toBe(200_000);
     expect(p.commissionPaise).toBe(20_000);
@@ -135,6 +136,7 @@ describe('projectEarnings — the driver-facing projection', () => {
       taxRupees: '180.00',
       band: 'A',
       commissionPct: '10.00',
+      payTerms: { model: 'independent' },
     });
     expect(p.grossPaise).toBe(200_000);
     expect(p.commissionPaise).toBe(20_000);
@@ -156,7 +158,7 @@ describe('projectEarnings — the driver-facing projection', () => {
     ];
 
     for (const c of cases) {
-      const p = projectEarnings(c);
+      const p = projectEarnings({ ...c, payTerms: { model: 'independent' } });
       const s = computeSettlement({
         totalPaise: p.grossPaise,
         band: c.band ?? 'A',
@@ -174,6 +176,7 @@ describe('projectEarnings — the driver-facing projection', () => {
       taxRupees: '0',
       band: null,
       commissionPct: null,
+      payTerms: { model: 'independent' },
     });
     expect(p.grossPaise).toBe(100_000);
     expect(p.commissionPaise).toBe(0);
@@ -221,3 +224,27 @@ describe('splitPoolN — N-way largest remainder', () => {
     expect(() => splitPoolN(100, [0, 0])).toThrow();
   });
 });
+
+describe('projectEarnings — how this driver is paid (0042)', () => {
+  const job = { totalRupees: '2000.00', taxRupees: '0', band: 'A' as const, commissionPct: '10.00' };
+
+  it('an independent driver is shown the whole payout', () => {
+    const p = projectEarnings({ ...job, payTerms: { model: 'independent' } });
+    expect(p).toMatchObject({ payModel: 'independent', driverSharePaise: 180_000, fleetSharePaise: 0 });
+  });
+
+  it("a fleet driver on a share is shown THEIR share, the same split settlement pays", () => {
+    const p = projectEarnings({ ...job, payTerms: { model: 'share', driverSharePct: 70 } });
+    const s = computeSettlement({ totalPaise: 200_000, band: 'A', commissionPct: 10, driverSharePct: 70 });
+    expect(p.payModel).toBe('share');
+    expect(p.driverSharePaise).toBe(s.driverSharePaise);
+    expect(p.fleetSharePaise).toBe(s.fleetSharePaise);
+    expect(p.driverSharePaise + p.fleetSharePaise).toBe(p.netPaise);
+  });
+
+  it('a salaried driver is shown nothing per job, and the fleet everything', () => {
+    const p = projectEarnings({ ...job, payTerms: { model: 'salary' } });
+    expect(p).toMatchObject({ payModel: 'salary', driverSharePaise: 0, fleetSharePaise: 180_000 });
+  });
+});
+

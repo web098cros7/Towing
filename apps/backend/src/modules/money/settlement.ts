@@ -5,6 +5,7 @@ import {
   splitPool,
   type Band,
 } from '@towing/api-contracts';
+import { sharePctOf, type DriverPayTerms } from './driver-pay-terms';
 
 /**
  * §14.3 booking settlement, as pure arithmetic: gross → commission → pool →
@@ -125,12 +126,17 @@ export function projectEarnings(input: {
   taxRupees: string | null;
   band: Band | null;
   commissionPct: string | number | null;
+  /** 0042: how this driver is paid, so the card leads with THEIR number. */
+  payTerms: DriverPayTerms;
 }): {
   grossPaise: number;
   band: Band | null;
   commissionPct: number | null;
   commissionPaise: number;
   netPaise: number;
+  payModel: DriverPayTerms['model'];
+  driverSharePaise: number;
+  fleetSharePaise: number;
 } {
   const totalPaise = rupeeStringToPaise(input.totalRupees);
   const taxPaise = input.taxRupees === null ? 0 : rupeeStringToPaise(input.taxRupees);
@@ -148,11 +154,21 @@ export function projectEarnings(input: {
         ? commissionPaise(grossPaise, input.band)
         : 0;
 
+  const netPaise = grossPaise - commission;
+  // The same split settlement will make (`computeSettlement` → `splitPool`),
+  // on the same share, so the offer and the payout agree to the paisa.
+  const sharePct = sharePctOf(input.payTerms);
+  const split =
+    sharePct === null ? { driverPaise: netPaise, fleetPaise: 0 } : splitPool(netPaise, sharePct);
+
   return {
     grossPaise,
     band: input.band,
     commissionPct,
     commissionPaise: commission,
-    netPaise: grossPaise - commission,
+    netPaise,
+    payModel: input.payTerms.model,
+    driverSharePaise: split.driverPaise,
+    fleetSharePaise: split.fleetPaise,
   };
 }

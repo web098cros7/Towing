@@ -12,6 +12,8 @@ export interface FleetSettingsRow {
   profileCompletedAt: Date | null;
   ownerEmail: string | null;
   ownerPhone: string | null;
+  /** 0042: how this fleet pays its drivers. */
+  driverPay: { model: 'share' | 'salary'; driverSharePct: number };
 }
 
 export interface PayoutAccountRow {
@@ -34,6 +36,7 @@ export class SettingsRepo {
     const rows = (await this.db.execute(sql`
       select f.business_name, f.gstin, f.address, f.notification_prefs,
              f.onboarding_step, f.profile_completed_at,
+             f.driver_pay_model, f.driver_share_pct::text as driver_share_pct,
              u.email as owner_email, u.mobile as owner_mobile
         from fleets f
         join users u on u.id = f.owner_id
@@ -48,6 +51,8 @@ export class SettingsRepo {
       // hands timestamps back as strings. Coerced here so nothing downstream
       // has to know which query style produced the row.
       profile_completed_at: string | null;
+      driver_pay_model: 'share' | 'salary';
+      driver_share_pct: string;
       owner_email: string | null;
       owner_mobile: string | null;
     }>;
@@ -64,7 +69,22 @@ export class SettingsRepo {
       profileCompletedAt: row.profile_completed_at ? new Date(row.profile_completed_at) : null,
       ownerEmail: row.owner_email,
       ownerPhone: row.owner_mobile,
+      driverPay: { model: row.driver_pay_model, driverSharePct: Number(row.driver_share_pct) },
     };
+  }
+
+  /** 0042: how this fleet pays its drivers. Applies to jobs accepted from now on. */
+  async updateDriverPay(
+    fleetId: FleetId,
+    pay: { model: 'share' | 'salary'; driverSharePct: number },
+  ): Promise<void> {
+    await this.db.execute(sql`
+      update fleets
+         set driver_pay_model = ${pay.model},
+             driver_share_pct = ${pay.driverSharePct.toFixed(2)}::numeric,
+             updated_at = now()
+       where id = ${fleetId}::uuid
+    `);
   }
 
   async payoutAccount(fleetId: FleetId): Promise<PayoutAccountRow | null> {

@@ -34,9 +34,9 @@ function toJob(item: DriverJobHistoryItem): Job {
     vehicleName: serviceLabel(item),
     pickup: item.pickupAddress ?? 'Pickup',
     drop: item.dropAddress ?? 'At the spot',
-    // `netPaise` is what the DRIVER earns — gross minus the platform's
-    // commission. The card shows the driver's take, not the customer's fare.
-    farePaise: item.earnings.netPaise,
+    // The DRIVER's own take (0042): their share on a fleet split, all of the
+    // payout when independent, and nothing per job on a fleet salary.
+    farePaise: item.earnings.driverSharePaise,
     payment: item.paymentMethod,
     status: item.status,
     towTypeLabel: item.vehicleClass === 'flatbed' ? 'Flatbed' : 'Wheel-lift',

@@ -5,11 +5,11 @@ import { Card, Text, Skeleton, type IconComponent } from '@towing/ui';
 import { MapPin, Wallet, Truck, Route, Clock, Car, MessageCircle } from '@/icons';
 import { Pill } from '@/components/Pill';
 import { driverColors } from '@/theme/driverColors';
-import { formatPaise } from '@/utils/format';
 import type { JobPayment } from '@/features/jobs/types';
 import type { JobOffer } from '../types';
 import { isAtTheSpot, serviceLabel } from '../serviceLabels';
 import { Pressable } from '@/motion';
+import { yourEarningsText } from '@/features/offers/yourEarnings';
 
 /** A Record, not a ternary — a new payment method becomes a compile error, not a silent "Online". */
 const PAYMENT_LABEL: Record<JobPayment, string> = { online: 'Online', cash: 'Cash' };
@@ -115,7 +115,7 @@ export function OfferCard({
         />
         <View style={{ alignItems: 'flex-end' }}>
           <Text weight="medium" tabular style={{ fontSize: 22, lineHeight: 29 }}>
-            {formatPaise(offer.earnings.netPaise)}
+            {yourEarningsText(offer.earnings)}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Text style={{ fontSize: 14, lineHeight: 22, color: driverColors.online }}>

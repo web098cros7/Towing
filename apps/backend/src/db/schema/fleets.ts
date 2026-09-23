@@ -46,6 +46,14 @@ export const fleets = pgTable(
     suspendedAt: timestamp('suspended_at', { withTimezone: true }),
     suspendedBy: uuid('suspended_by').references(() => adminUsers.id),
     suspensionReason: text('suspension_reason'),
+    /**
+     * How the owner pays their drivers (0042): `share` (each job's payout split,
+     * `driverSharePct` to the driver) or `salary` (all of it to the fleet; the
+     * owner pays drivers outside MiTow).
+     */
+    driverPayModel: text('driver_pay_model').notNull().default('share'),
+    /** The driver's share of each job's payout under `share`, 0–100. Spec §14.3's default 80. */
+    driverSharePct: numeric('driver_share_pct', { precision: 5, scale: 2 }).notNull().default('80'),
     ...timestamps,
   },
   (t) => [index('idx_fleets_owner').on(t.ownerId), index('idx_fleets_status').on(t.status)],

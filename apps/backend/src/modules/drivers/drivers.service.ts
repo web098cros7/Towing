@@ -151,6 +151,7 @@ export class DriversService {
   async performance(fleetId: FleetId, driverId: string): Promise<FleetDriverPerformance> {
     const rows = await this.repo.performance(fleetId, driverId, PERFORMANCE_WINDOW_DAYS);
     if (!rows) throw ApiException.notFound('Driver not found');
+    const pay = await this.repo.payTerms(fleetId, driverId);
 
     const net = (ownerType: string): number => {
       const row = rows.earnings.find((entry) => entry.owner_type === ownerType);
@@ -168,6 +169,7 @@ export class DriversService {
       rating: pct(rows.driver.rating),
       ratingsCount: rows.ratingsCount,
       earnings: { fleetSharePaise: net('fleet'), driverSharePaise: net('driver') },
+      pay,
       recentJobs: rows.recent.map((job) => ({
         id: job.id,
         code: `TW-${job.id.slice(0, 8).toUpperCase()}`,
@@ -176,5 +178,22 @@ export class DriversService {
         createdAt: new Date(job.created_at).toISOString(),
       })),
     };
+  }
+
+  /**
+   * 0042: set one driver's share, or clear it (null) to follow the fleet's
+   * default. Stored as the driver/fleet pair `fleet_driver_shares` has always
+   * held, which settlement reads first. Applies to jobs accepted from now on.
+   */
+  async updateShare(
+    fleetId: FleetId,
+    driverId: string,
+    driverSharePct: number | null,
+  ): Promise<{ driverId: string; driverSharePct: number | null }> {
+    if (!(await this.repo.belongsToFleet(fleetId, driverId))) {
+      throw ApiException.notFound('Driver not found');
+    }
+    await this.repo.setShare(fleetId, driverId, driverSharePct);
+    return { driverId, driverSharePct };
   }
 }

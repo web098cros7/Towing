@@ -5,6 +5,7 @@ import {
   NOTIFICATION_PREF_DEFAULTS,
   type FleetId,
   type FleetSettingsDto,
+  type FleetDriverPayUpdate,
   type FleetSettingsUpdate,
   type OnboardingStep,
   type PayoutAccountLinkRequest,
@@ -42,6 +43,7 @@ export class SettingsService {
       // it for a fleet whose stored object predates it.
       notificationPrefs: { ...NOTIFICATION_PREF_DEFAULTS, ...fleet.notificationPrefs },
       payoutAccount: toAccountDto(account),
+      driverPay: fleet.driverPay,
       onboarding: {
         step: fleet.onboardingStep,
         profileComplete: fleet.profileCompletedAt !== null,
@@ -49,6 +51,17 @@ export class SettingsService {
         completedAt: fleet.profileCompletedAt?.toISOString() ?? null,
       },
     };
+  }
+
+  /**
+   * 0042: how the owner pays their drivers — a share of each job, or a salary
+   * with the fleet keeping the payout. Applies to jobs accepted AFTER the
+   * change: each job locks its split when the driver accepts it, so nobody is
+   * paid differently for a job they already took.
+   */
+  async updateDriverPay(fleetId: FleetId, pay: FleetDriverPayUpdate): Promise<FleetSettingsDto> {
+    await this.repo.updateDriverPay(fleetId, pay);
+    return this.get(fleetId);
   }
 
   async update(fleetId: FleetId, patch: FleetSettingsUpdate): Promise<FleetSettingsDto> {

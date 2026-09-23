@@ -80,6 +80,16 @@ export const fleetDriverPerformanceSchema = z.object({
     fleetSharePaise: z.number().int(),
     driverSharePaise: z.number().int(),
   }),
+  /**
+   * 0042: how this driver is paid on jobs they accept from now on. Under
+   * `share`, `overridePct` is the owner's figure for this one driver (null =
+   * the fleet's default applies).
+   */
+  pay: z.object({
+    model: z.enum(['share', 'salary']),
+    fleetDefaultPct: z.number(),
+    overridePct: z.number().nullable(),
+  }),
   /** The ten most recent jobs, newest first, each openable at `/jobs/[id]`. */
   recentJobs: z.array(
     z.object({

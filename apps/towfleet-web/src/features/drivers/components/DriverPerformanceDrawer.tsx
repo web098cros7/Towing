@@ -12,6 +12,7 @@ import {
 } from '@towing/web-ui';
 import { formatPaise } from '@/lib/money';
 import { useDriverPerformance } from '../api/drivers.queries';
+import { DriverShareSection } from './DriverShareSection';
 
 const pct = (value: number | null): string => (value === null ? '\u2014' : `${value.toFixed(1)}%`);
 
@@ -76,6 +77,8 @@ export function DriverPerformanceDrawer({
                 {data.trips.unable > 0 ? ` \u00b7 ${data.trips.unable} handed back unfinished` : ''}
               </p>
             </section>
+
+            <DriverShareSection driverId={data.driverId} name={data.name} pay={data.pay} />
 
             <section>
               <h3 className="mb-2 text-sm font-semibold">Recent jobs</h3>

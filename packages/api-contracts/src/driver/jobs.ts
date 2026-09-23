@@ -35,8 +35,18 @@ export const jobEarningsSchema = z.object({
   /** The locked percentage, e.g. 8.00. Shown so the deduction is explicable, not just applied. */
   commissionPct: z.number().nullable(),
   commissionPaise: unsignedPaiseSchema,
-  /** `gross - commission`. The number the driver is deciding on. */
+  /** `gross - commission`: the job's payout, before any fleet share. */
   netPaise: unsignedPaiseSchema,
+  /**
+   * How this driver is paid for it (0042). `independent`: all of `netPaise`.
+   * `share`: their fleet's split of it. `salary`: nothing per job — their
+   * fleet pays them a salary, and the app says so instead of showing ₹0.
+   */
+  payModel: z.enum(['independent', 'share', 'salary']),
+  /** What THIS driver is paid for the job. The number an offer should lead with. */
+  driverSharePaise: unsignedPaiseSchema,
+  /** What their fleet keeps. 0 for an independent driver. */
+  fleetSharePaise: unsignedPaiseSchema,
 });
 export type JobEarnings = z.infer<typeof jobEarningsSchema>;
 

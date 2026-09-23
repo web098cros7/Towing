@@ -23,6 +23,7 @@ export const settingsMock: FleetSettings = {
     failureReason: null,
     linkedAt: new Date(Date.now() - 45 * 86_400_000).toISOString(),
   },
+  driverPay: { model: 'share', driverSharePct: 80 },
   onboarding: {
     step: 'done',
     profileComplete: true,
@@ -46,6 +47,7 @@ export const settingsOnboardingMock: FleetSettings = {
     failureReason: null,
     linkedAt: null,
   },
+  driverPay: { model: 'share', driverSharePct: 80 },
   onboarding: {
     step: 'profile',
     profileComplete: false,
