@@ -52,6 +52,8 @@ describe('every booking status change is announced (A18)', () => {
     'modules/dispatch/dispatch-fixtures.ts',
     'scripts/simulate-locations.ts',
     'scripts/bench-tracking.ts',
+    // Inserts completed trips as the starting state for a payments load test.
+    'scripts/bench-payments.ts',
   ];
 
   it('every file calling transition( also calls announce(', () => {
