@@ -1,5 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import {
+  ErrorCodes,
+  TRIP_ISSUE_WINDOW_DAYS,
   adminSupportTicketDetailSchema,
   adminSupportTicketsResponseSchema,
   supportTicketCreateResponseSchema,
@@ -9,7 +11,7 @@ import {
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { adminActions, notificationEvents, notifications } from '../../db/schema';
+import { adminActions, bookings, notificationEvents, notifications } from '../../db/schema';
 import { supportTicketEvents, supportTickets } from '../../db/schema/support';
 import {
   adminAuthHeaderFor,
@@ -161,6 +163,46 @@ describe('support tickets (/v1/support + /v1/admin/support, W15)', () => {
 
     await createTicket(customerAuth, { bookingId: mine });
     await createTicket(customerAuth, { bookingId: stranger }, 404);
+  });
+
+  describe('the trip-issue window (Uber/Ola: about a month, 23 Sep)', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const tripFinished = async (daysAgo: number, userId = customerId) => {
+      const bookingId = await seedBooking(db, { userId, status: 'paid' });
+      await db
+        .update(bookings)
+        .set({ completedAt: new Date(Date.now() - daysAgo * DAY_MS) })
+        .where(eq(bookings.id, bookingId));
+      return bookingId;
+    };
+
+    it('takes a report about a trip up to 30 days after it finished', async () => {
+      await createTicket(customerAuth, { bookingId: await tripFinished(29) });
+    });
+
+    it('refuses a trip report after 30 days, and says why', async () => {
+      const refused = await createTicket(
+        customerAuth,
+        { bookingId: await tripFinished(31) },
+        422,
+      );
+      expect(refused.body.error.code).toBe(ErrorCodes.TRIP_ISSUE_WINDOW_CLOSED);
+      expect(refused.body.error.details).toEqual({ windowDays: TRIP_ISSUE_WINDOW_DAYS });
+    });
+
+    it('never refuses a safety report, however old the trip', async () => {
+      // Uber's rule, and the only humane one: a person who was unsafe is not
+      // told they took too long to say so.
+      await createTicket(customerAuth, {
+        bookingId: await tripFinished(200),
+        category: 'safety',
+        subject: 'Driver was threatening',
+      });
+    });
+
+    it('still takes a general report with no trip attached', async () => {
+      await createTicket(customerAuth, {});
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -81,7 +81,16 @@ export class SupportRepo {
   }
 
   /** A booking the requester owns, in any status — the link's security check. */
-  async findOwnedBooking(requester: TicketRequester, bookingId: string): Promise<boolean> {
+  /**
+   * The requester's booking, and when its trip happened, or null when it is
+   * not theirs. "When" is when it finished, else when it was booked for, else
+   * when it was booked: the moment a customer could first have noticed a
+   * problem with it.
+   */
+  async findOwnedBooking(
+    requester: TicketRequester,
+    bookingId: string,
+  ): Promise<{ tripAt: Date } | null> {
     const ownerFilter =
       requester.requesterType === 'user'
         ? eq(bookings.userId, requester.requesterId)
@@ -90,11 +99,16 @@ export class SupportRepo {
           : eq(bookings.fleetId, requester.requesterId);
 
     const [row] = await this.db
-      .select({ id: bookings.id })
+      .select({
+        completedAt: bookings.completedAt,
+        scheduledAt: bookings.scheduledAt,
+        createdAt: bookings.createdAt,
+      })
       .from(bookings)
       .where(and(eq(bookings.id, bookingId), ownerFilter))
       .limit(1);
-    return Boolean(row);
+    if (!row) return null;
+    return { tripAt: row.completedAt ?? row.scheduledAt ?? row.createdAt };
   }
 
   // -------------------------------------------------------------------------

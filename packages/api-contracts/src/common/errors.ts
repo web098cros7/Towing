@@ -244,6 +244,11 @@ export const ErrorCodes = {
    * routes until enrolment completes; every other admin route answers this.
    */
   TOTP_ENROLMENT_REQUIRED: 'totp_enrolment_required',
+  /**
+   * A customer reported a problem with a trip that finished more than
+   * `TRIP_ISSUE_WINDOW_DAYS` ago. Safety reports are never refused.
+   */
+  TRIP_ISSUE_WINDOW_CLOSED: 'trip_issue_window_closed',
 
   INTERNAL: 'internal_error',
 } as const;

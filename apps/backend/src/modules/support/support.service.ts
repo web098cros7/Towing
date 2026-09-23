@@ -1,7 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import {
+  ErrorCodes,
   SUPPORT_STATUS_TRANSITIONS,
+  TRIP_ISSUE_WINDOW_DAYS,
+  tripIssueWindowOpen,
   type AdminSupportAssignBody,
   type AdminSupportLinkBookingBody,
   type AdminSupportNoteBody,
@@ -92,8 +95,24 @@ export class SupportService {
 
     let bookingId: string | null = null;
     if (body.bookingId) {
-      if (!(await this.repo.findOwnedBooking(requester, body.bookingId))) {
+      const owned = await this.repo.findOwnedBooking(requester, body.bookingId);
+      if (!owned) {
         throw ApiException.notFound('Booking not found');
+      }
+      // The trip-issue window: customers, non-safety reports only (see
+      // `TRIP_ISSUE_WINDOW_DAYS`). Refused rather than filed unlinked, so the
+      // app can say why instead of quietly dropping the trip from the report.
+      if (
+        requester.requesterType === 'user' &&
+        body.category !== 'safety' &&
+        !tripIssueWindowOpen(owned.tripAt)
+      ) {
+        throw new ApiException(
+          422,
+          ErrorCodes.TRIP_ISSUE_WINDOW_CLOSED,
+          `Problems with a trip can be reported for ${TRIP_ISSUE_WINDOW_DAYS} days after it`,
+          { windowDays: TRIP_ISSUE_WINDOW_DAYS },
+        );
       }
       bookingId = body.bookingId;
     }

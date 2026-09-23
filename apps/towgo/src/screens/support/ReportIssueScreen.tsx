@@ -21,7 +21,9 @@ import {
   type MiBookingCardProps,
   type MiStatusBadgeStatus,
 } from '@/design';
+import { ErrorCodes, TRIP_ISSUE_WINDOW_DAYS, tripIssueWindowOpen } from '@towing/api-contracts';
 import { useBookings } from '@/features/bookings/api/bookings.queries';
+import { ApiClientError } from '@/lib/api/errors';
 import type { Booking } from '@/features/bookings/types';
 import { useCreateSupportTicket } from '@/features/support/api/support.queries';
 import { uploadSupportPhotos } from '@/features/support/api/uploadAttachments';
@@ -155,10 +157,22 @@ export function ReportIssueScreen() {
   const theme = useTheme();
   const Pressable = usePressablePrimitive();
 
-  const { items } = useBookings();
+  const { items: allBookings } = useBookings();
   const createTicket = useCreateSupportTicket();
 
   const [issue, setIssue] = useState<IssueType | null>(null);
+
+  /**
+   * The trips this report can be about: those that happened in the last
+   * `TRIP_ISSUE_WINDOW_DAYS`, like Uber and Ola (Ehsan, 23 Sep). A safety
+   * report ("Driver behaviour") can be about any trip at any time — the server
+   * applies the same rule, and dating a trip by when it was booked for keeps
+   * this list a day stricter than the server, never looser.
+   */
+  const items = useMemo(() => {
+    if (issue && ISSUE_CATEGORY[issue] === 'safety') return allBookings;
+    return allBookings.filter((trip) => tripIssueWindowOpen(trip.scheduledAt ?? trip.createdAt));
+  }, [allBookings, issue]);
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [focused, setFocused] = useState(false);
@@ -247,7 +261,15 @@ export function ReportIssueScreen() {
         `We've logged ${result.reference}. Our team will get back to you soon.`,
         [{ text: 'OK', onPress: () => navigation.goBack() }],
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiClientError && error.code === ErrorCodes.TRIP_ISSUE_WINDOW_CLOSED) {
+        Alert.alert(
+          'This trip is too old to report',
+          `Problems with a trip can be reported for ${TRIP_ISSUE_WINDOW_DAYS} days after it. ` +
+            'For anything else, write to us from Help Center.',
+        );
+        return;
+      }
       Alert.alert('Could not send your report', 'Please check your connection and try again.');
     } finally {
       setSubmitting(false);

@@ -68,10 +68,11 @@ export const RETENTION_POLICY_DEFAULTS: readonly RetentionPolicyDefault[] = [
    * ADM-18's gap, closed 23 Sep. The chat did not exist when G16's schedule
    * was written, so it was kept forever.
    *
-   * 90 days is ADM-18's "message logs" default. Ehsan set the dispute window
-   * at three hours at most, so disputes alone would allow far less; the rest
-   * of the margin is for what arrives later than a dispute — a safety
-   * complaint, a police request about a trip. A dispute still OPEN holds its
+   * 90 days is ADM-18's "message logs" default. A customer can report a
+   * problem with a trip for `TRIP_ISSUE_WINDOW_DAYS` (30, following Uber and
+   * Ola), so the chat outlives the window with room for the dispute to be
+   * worked; the rest of the margin is for what arrives later still — a
+   * safety report (never time-limited), a police request about a trip. A dispute still OPEN holds its
    * booking's chat past the cutoff (see `sweepRetention`), because the chat is
    * the evidence the dispute is being decided on.
    *

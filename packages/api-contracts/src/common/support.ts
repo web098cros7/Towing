@@ -115,6 +115,32 @@ export const supportTicketMessageSchema = z.object({
 });
 export type SupportTicketMessage = z.infer<typeof supportTicketMessageSchema>;
 
+/**
+ * How long after a trip a customer can report a problem with it (Ehsan,
+ * 23 Sep: "follow what Uber and Ola follow").
+ *
+ * Neither publishes one fixed number; both let a rider raise a fare or trip
+ * issue from a past trip's help page for about a month, because a customer
+ * often only notices a charge, or a scratch, days later. Thirty days, counted
+ * from when the trip finished (or, for a trip that never ran, when it was
+ * booked for).
+ *
+ * SAFETY IS EXEMPT, as it is on Uber: a report that someone was unsafe is
+ * accepted about any trip at any time. A clock on that would tell a person
+ * who was harmed that they took too long to say so.
+ *
+ * Customers only. Drivers and fleets raise trip tickets about their own
+ * earnings and jobs, which this decision did not cover.
+ */
+export const TRIP_ISSUE_WINDOW_DAYS = 30;
+
+const TRIP_ISSUE_WINDOW_MS = TRIP_ISSUE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+/** Is a trip that happened at `tripAt` still inside the window? */
+export function tripIssueWindowOpen(tripAt: Date | string, now: Date = new Date()): boolean {
+  return now.getTime() - new Date(tripAt).getTime() <= TRIP_ISSUE_WINDOW_MS;
+}
+
 /** The requester's create — `POST /v1/support/tickets`. */
 export const supportTicketCreateRequestSchema = z.object({
   category: supportTicketCategorySchema,
