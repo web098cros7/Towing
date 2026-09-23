@@ -1,0 +1,19 @@
+--
+-- When an admin last confirmed a driver's name against their driving licence.
+--
+-- A driver's name is the one on their licence (Ehsan, 23 Sep). The single KYC
+-- review has a "Name on the licence" box that an admin reads off the document;
+-- bulk approval has no such box and cannot carry a name per driver, so a driver
+-- approved in bulk kept whatever name the fleet typed at invite, unverified,
+-- and nothing recorded that it was never checked.
+--
+-- Set by a single approval that carries the licence name. Bulk approval now
+-- refuses a driver whose name has never been confirmed (that driver goes
+-- through the single review), so the name on every approved driver has been
+-- read off a licence by a person.
+--
+-- NOT backfilled. Nobody confirmed the names of drivers approved before this,
+-- and pretending otherwise would be the exact thing this column exists to stop.
+-- It only matters to bulk approval, which acts on drivers awaiting review.
+--
+ALTER TABLE "drivers" ADD COLUMN IF NOT EXISTS "name_verified_at" timestamp with time zone;

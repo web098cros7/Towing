@@ -16,7 +16,7 @@ import type {
   AdminPendingDriversResponse,
 } from '@towing/api-contracts';
 import { ErrorCodes } from '@towing/api-contracts';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { ApiException } from '../../common/errors/api-exception';
 import { DeviceRegistryService } from '../../common/notifications/device-registry.service';
 import { NotificationService } from '../../common/notifications/notification.service';
@@ -146,7 +146,8 @@ export class AdminDriversService implements OnModuleInit {
         // a ternary to `before.name`, so that omitting it leaves the column
         // untouched rather than rewriting it with its own value on every
         // decision.
-        ...(approving && body.licenceName ? { name: body.licenceName } : {}),
+        // 0043: and the moment it was confirmed, which bulk approval checks.
+        ...(approving && body.licenceName ? { name: body.licenceName, nameVerifiedAt: now } : {}),
         rejectionReason: ['reject', 'request_info'].includes(body.decision)
           ? (body.reason ?? null)
           : null,
@@ -791,7 +792,32 @@ export class AdminDriversService implements OnModuleInit {
   ): Promise<AdminKycBulkResponse> {
     const results: AdminKycBulkItemResult[] = [];
 
+    // 0043: a bulk run cannot read a name off each licence, so a bulk APPROVAL
+    // skips any driver whose name nobody has ever confirmed. They are reported
+    // as that driver's failure, like any other, and go through the single
+    // review. A bulk rejection approves no name, so it is not checked.
+    const unconfirmed = new Set<string>();
+    if (body.decision === 'approve') {
+      const rows = await this.db
+        .select({ id: drivers.id })
+        .from(drivers)
+        .where(and(inArray(drivers.id, body.driverIds), isNull(drivers.nameVerifiedAt)));
+      for (const row of rows) unconfirmed.add(row.id);
+    }
+
     for (const driverId of body.driverIds) {
+      if (unconfirmed.has(driverId)) {
+        results.push({
+          driverId,
+          ok: false,
+          kycStatus: null,
+          error: {
+            code: ErrorCodes.KYC_NAME_UNCONFIRMED,
+            message: 'Open this driver and confirm the name on their licence first',
+          },
+        });
+        continue;
+      }
       try {
         const decided = await this.decide(
           adminId,

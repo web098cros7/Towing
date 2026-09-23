@@ -302,6 +302,13 @@
       "when": 1789986500011,
       "tag": "0042_fleet_driver_pay",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789986500012,
+      "tag": "0043_driver_name_verified",
+      "breakpoints": true
     }
   ]
 }

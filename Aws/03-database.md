@@ -9,7 +9,7 @@ Everything an AWS engineer needs to provision PostgreSQL for the Towing platform
 | Engine | PostgreSQL **16** (local dev image: `postgis/postgis:16-3.4`; schema snapshot was dumped from 16.4) |
 | Required extension | **PostGIS 3.4** — the *only* extension the app itself requires (see §2) |
 | ORM / driver | Drizzle ORM (`drizzle-orm ^0.45.2`) over **postgres.js** (`postgres ^3.4.9`) |
-| Migrations | 43 SQL files, drizzle-kit format — **canonical location: `apps/backend/drizzle/`** (`Aws/migrations/` is a point-in-time copy) |
+| Migrations | 44 SQL files, drizzle-kit format — **canonical location: `apps/backend/drizzle/`** (`Aws/migrations/` is a point-in-time copy) |
 | Migration journal | Table `drizzle.__drizzle_migrations` (`id`, `hash`, `created_at`), created automatically by the migrator |
 | Migration runner | `apps/backend/src/db/migrate.ts` via `pnpm --filter @towing/backend db:migrate` — dedicated single connection (`max: 1`) |
 | App tables | 24 tables in schema `public`, 21 enums, all PKs `uuid DEFAULT gen_random_uuid()` (core Postgres, no extra extension needed) |
@@ -29,7 +29,7 @@ Everything an AWS engineer needs to provision PostgreSQL for the Towing platform
 Pipeline: TypeScript schema DSL → generated SQL → journaled runner.
 
 1. **Authoring.** The schema lives in `apps/backend/src/db/schema/` (entry `index.ts`). `pnpm --filter @towing/backend db:generate` (drizzle-kit) diffs the DSL against the last snapshot and emits a new SQL file into `apps/backend/drizzle/`, plus a snapshot under `meta/`. Statements within a generated file are separated by `--> statement-breakpoint` markers, which the migrator uses to split execution. Migrations 0002 is fully hand-authored, and 0004, 0005, 0006 and 0007 each carry a hand-written tail (things the DSL can't express — GIST indexes, CHECK constraints, partial unique indexes); 0002 has no breakpoint markers and runs as one batch.
-2. **Ordering.** `apps/backend/drizzle/meta/_journal.json` lists entries `idx` 0–42 with millisecond `when` timestamps; the migrator applies them in that order.
+2. **Ordering.** `apps/backend/drizzle/meta/_journal.json` lists entries `idx` 0–43 with millisecond `when` timestamps; the migrator applies them in that order.
 3. **Running.** `pnpm --filter @towing/backend db:migrate` executes `src/db/migrate.ts`: it loads `.env`/environment, opens a **dedicated postgres.js connection with `max: 1`** (migrations must run serially on one session so advisory locks and DDL transactions behave), calls the drizzle postgres-js migrator against `apps/backend/drizzle/`, prints `migrations applied`, and closes the connection. Exit code is non-zero on failure.
 4. **Bookkeeping.** Applied migrations are recorded in `drizzle.__drizzle_migrations` (schema `drizzle` is created for you). The runner is idempotent — already-applied entries are skipped — so it is safe to run on every deploy before the app rolls out.
 5. **drizzle-kit config** (`apps/backend/drizzle.config.ts`): dialect `postgresql`, schema `./src/db/schema/index.ts`, out `./drizzle`, and `tablesFilter: ['!spatial_ref_sys', '!geography_columns', '!geometry_columns']` — without that filter drizzle-kit would try to drop PostGIS-owned objects. Keep the filter if you ever run `db:generate` against a live database.
@@ -138,7 +138,7 @@ From `apps/backend/src/db/db.module.ts` and `src/config/env.ts`:
 
 | Artifact | What it is |
 |---|---|
-| `Aws/migrations/` (+ `meta/`) | Point-in-time **copy** of the migration set through idx 42 (`0042_fleet_driver_pay`), refreshed 24 Sep 2026. **Canonical source is `apps/backend/drizzle/`** — always deploy from there; treat this copy as review material that may lag. |
+| `Aws/migrations/` (+ `meta/`) | Point-in-time **copy** of the migration set through idx 43 (`0043_driver_name_verified`), refreshed 24 Sep 2026. **Canonical source is `apps/backend/drizzle/`** — always deploy from there; treat this copy as review material that may lag. |
 | `Aws/db/schema-snapshot.sql` | Schema-only `pg_dump` (server/pg_dump 16.4) taken **05 Aug 2026** after migrations 0000–0005. Useful to review the final DDL without running anything. It also captures PostGIS-owned artifacts the dev image installed (`tiger`/`tiger_data`/`topology` schemas; `fuzzystrmatch`, `postgis_tiger_geocoder`, `postgis_topology` extensions) — the app owns only the 32 `public`-schema tables plus `drizzle.__drizzle_migrations`. **Do not restore this dump to provision**; provision by running the migrations. |
 
 **Refreshing these artifacts.** Whenever a migration merges: copy `apps/backend/drizzle/` (including `meta/`) over `Aws/migrations/`; regenerate `Aws/db/schema-snapshot.sql` against **any** local dev database that is fully migrated, with `docker exec <container> pg_dump -U towfleet -d towfleet --schema-only --no-owner --no-privileges` (the repo's own compose project is named `towfleet`, so its container is `towfleet-postgres-1`; a hand-started one will be called something else — check `docker ps` and confirm `select count(*) from drizzle.__drizzle_migrations` equals the journal entry count before dumping); update the dated lines wherever they appear in this pack; and bump the expected journal count in the runbook verification checklist ([06 §3](06-operations-runbook.md), check 3) — all in the **same commit**, so the snapshots never silently lag the canonical set.

@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
-import { adminDriverDocumentVersionsResponseSchema } from '@towing/api-contracts';
-import { and, eq } from 'drizzle-orm';
+import { adminDriverDocumentVersionsResponseSchema, ErrorCodes } from '@towing/api-contracts';
+import { and, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -357,10 +357,56 @@ describe('W7 — KYC finish (/v1/admin/drivers)', () => {
   });
 
   describe('POST /kyc/bulk — bulk approve/reject', () => {
+    /** A driver whose name an admin has already read off their licence (0043). */
+    async function confirmName(...driverIds: string[]) {
+      await db
+        .update(drivers)
+        .set({ nameVerifiedAt: new Date() })
+        .where(inArray(drivers.id, driverIds));
+    }
+
+    it("refuses to bulk-approve a driver whose name nobody has confirmed, and approves the rest", async () => {
+      // A bulk run cannot read a name off each licence, so a driver approved in
+      // bulk used to keep the name the fleet typed at invite, unverified (0043).
+      const admin = await headerFor('operations');
+      const confirmed = await seedDriver(db, { kycStatus: 'pending' });
+      const unconfirmed = await seedDriver(db, { kycStatus: 'pending' });
+      await confirmName(confirmed);
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/admin/drivers/kyc/bulk')
+        .set('Authorization', admin.header)
+        .send({ decision: 'approve', driverIds: [confirmed, unconfirmed] })
+        .expect(200);
+
+      expect(res.body).toMatchObject({ succeeded: 1, failed: 1 });
+      expect(res.body.results[1]).toMatchObject({
+        driverId: unconfirmed,
+        ok: false,
+        error: { code: ErrorCodes.KYC_NAME_UNCONFIRMED },
+      });
+      const [left] = await db.select().from(drivers).where(eq(drivers.id, unconfirmed));
+      expect(left!.kycStatus).toBe('pending');
+    });
+
+    it('does not check names on a bulk rejection, which approves no name', async () => {
+      const admin = await headerFor('operations');
+      const driverId = await seedDriver(db, { kycStatus: 'pending' });
+
+      const res = await request(app.getHttpServer())
+        .post('/v1/admin/drivers/kyc/bulk')
+        .set('Authorization', admin.header)
+        .send({ decision: 'reject', driverIds: [driverId], reason: 'Documents are unreadable' })
+        .expect(200);
+
+      expect(res.body).toMatchObject({ succeeded: 1, failed: 0 });
+    });
+
     it('approves every driver, one audit row each plus a summary row', async () => {
       const admin = await headerFor('operations');
       const first = await seedDriver(db, { kycStatus: 'pending' });
       const second = await seedDriver(db, { kycStatus: 'pending' });
+      await confirmName(first, second);
 
       const res = await request(app.getHttpServer())
         .post('/v1/admin/drivers/kyc/bulk')
@@ -398,6 +444,7 @@ describe('W7 — KYC finish (/v1/admin/drivers)', () => {
       const admin = await headerFor('operations');
       const good = await seedDriver(db, { kycStatus: 'pending' });
       const missing = randomUUID();
+      await confirmName(good);
 
       const res = await request(app.getHttpServer())
         .post('/v1/admin/drivers/kyc/bulk')

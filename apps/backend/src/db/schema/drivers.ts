@@ -103,6 +103,12 @@ export const drivers = pgTable(
     // wrote it; repointing it post-launch would be a data migration.
     approvedBy: uuid('approved_by').references(() => adminUsers.id),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
+    /**
+     * 0043: when an admin last confirmed the name against the driving licence
+     * (a single approval carrying `licenceName`). Null = never confirmed, and
+     * bulk approval refuses that driver.
+     */
+    nameVerifiedAt: timestamp('name_verified_at', { withTimezone: true }),
     rejectionReason: text('rejection_reason'),
     /**
      * Set when a driver completes `POST /v1/driver/kyc/submit` (Phase 11). Drives

@@ -34,7 +34,7 @@ Towing/
 ├── apps/
 │   ├── backend/            @towing/backend — NestJS 11 API (the shared backend)
 │   │   ├── docker-compose.yml   local Postgres+PostGIS & Redis (dev + test profiles)
-│   │   ├── drizzle/             ★ CANONICAL SQL migrations (0000–0042)
+│   │   ├── drizzle/             ★ CANONICAL SQL migrations (0000–0043)
 │   │   └── src/                 modules, db/migrate.ts, db/seed/, scripts/simulate-locations.ts
 │   ├── towfleet-web/       Next.js 15 fleet-owner console (the deployable web app)
 │   ├── towgo/              Expo customer app (real auth + REST; mocks are the default toggle)
@@ -154,7 +154,7 @@ Backend env vars (see `apps/backend/.env.example` for the full annotated list): 
 | Product spec v3 | `docs/Towing-Project-Specification_v3.md` | Single source of truth for product behavior; §15 = AWS architecture, §19 = SLOs |
 | Implementation plan & progress | `docs/TowFleet-Implementation-Plan-V2.md` | Engineering source of truth: what is built, locked decisions, phase details, hard-won engineering notes. **V2 supersedes `docs/TowFleet-Implementation-Plan.md` (V1)** — same phase numbering, re-homed into ownership lanes; read V2 |
 | **This AWS handover pack** | `Aws/` | Deployment-focused docs; this file (`01-project-overview.md`) is the overview |
-| Migrations snapshot | `Aws/migrations/` (0000–0042 + drizzle journal) | **Point-in-time copy for reference only** — `apps/backend/drizzle/` is CANONICAL; always run migrations from there |
+| Migrations snapshot | `Aws/migrations/` (0000–0043 + drizzle journal) | **Point-in-time copy for reference only** — `apps/backend/drizzle/` is CANONICAL; always run migrations from there |
 | Schema snapshot | `Aws/db/schema-snapshot.sql` | `pg_dump` of the schema as of 24 Sep 2026 — orientation aid, not an apply script |
 | Older spec | `docs/Towing-Project-Specification_1.md` | Superseded by v3; historical only |
 

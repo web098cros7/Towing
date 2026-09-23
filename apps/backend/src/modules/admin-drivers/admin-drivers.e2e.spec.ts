@@ -95,6 +95,8 @@ describe('admin drivers (/v1/admin/drivers)', () => {
 
       const [driver] = await db.select().from(drivers).where(eq(drivers.id, driverId));
       expect(driver!.name).toBe('Ravi Kumar Sharma');
+      // 0043: and it is recorded as confirmed, which bulk approval checks.
+      expect(driver!.nameVerifiedAt).toBeInstanceOf(Date);
 
       // The rename is answerable later, not silent: renaming a person on the
       // strength of a document is the kind of change an audit trail is for.
@@ -115,6 +117,7 @@ describe('admin drivers (/v1/admin/drivers)', () => {
 
       const [driver] = await db.select().from(drivers).where(eq(drivers.id, driverId));
       expect(driver!.name).toBe('Ravi K');
+      expect(driver!.nameVerifiedAt).toBeNull();
     });
 
     /**

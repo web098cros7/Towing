@@ -255,6 +255,12 @@ export const ErrorCodes = {
    * becoming unlimited guesses at the code.
    */
   OTP_RENEWALS_EXHAUSTED: 'otp_renewals_exhausted',
+  /**
+   * Bulk KYC approval refused one driver: nobody has ever confirmed their name
+   * against their driving licence, and a bulk run cannot. Review that driver on
+   * their own (0043).
+   */
+  KYC_NAME_UNCONFIRMED: 'kyc_name_unconfirmed',
 
   INTERNAL: 'internal_error',
 } as const;

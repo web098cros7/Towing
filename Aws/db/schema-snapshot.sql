@@ -1406,7 +1406,8 @@ CREATE TABLE public.drivers (
     suspended_at timestamp with time zone,
     suspended_by uuid,
     suspension_reason text,
-    services public.service_type[] DEFAULT ARRAY[]::public.service_type[] NOT NULL
+    services public.service_type[] DEFAULT ARRAY[]::public.service_type[] NOT NULL,
+    name_verified_at timestamp with time zone
 );
 
 
