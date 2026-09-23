@@ -1,5 +1,6 @@
 import {
   BAND_PCT,
+  OPTIONAL_SERVICE_TYPES,
   commissionPaise,
   paiseToRupeeString,
   resolveBand,
@@ -130,6 +131,34 @@ export const LONG_DISTANCE_FLOOR_KM = 100;
  */
 export const CUSTOM_QUOTE_ABOVE_KM = 600;
 
+/**
+ * Thrown when a roadside service has no active flat fare.
+ *
+ * THE ALTERNATIVE WAS A SILENT WRONG PRICE. `baseFarePaise` used to look the
+ * service up in the roadside table and, finding nothing, carry on into the tow
+ * slabs — so a roadside job with no fare row was quoted as a short tow, with
+ * no error and nothing in the breakdown to say so. That was latent while every
+ * roadside service had a seeded fare; it stopped being latent the moment a
+ * service could exist before an admin priced it (Winch Out), or a fare could be
+ * retired from the admin panel.
+ *
+ * The catalogue hides an unpriced roadside service, so a customer should never
+ * reach this. It is the backstop for a stale catalogue on the client.
+ */
+export class ServiceNotPricedError extends Error {
+  constructor(readonly service: ServiceType) {
+    super(`No active fare for roadside service "${service}"`);
+    this.name = 'ServiceNotPricedError';
+  }
+}
+
+const ROADSIDE_SERVICE_TYPES = new Set<string>(OPTIONAL_SERVICE_TYPES);
+
+/** Is this a flat-fare roadside service, priced from the roadside table and nothing else? */
+export function isRoadsideService(service: ServiceType): boolean {
+  return ROADSIDE_SERVICE_TYPES.has(service);
+}
+
 /** Thrown when §7.3 hands the distance to a human. Callers turn it into a 422. */
 export class CustomQuoteRequiredError extends Error {
   constructor(readonly distanceKm: number) {
@@ -167,6 +196,8 @@ export function baseFarePaise(
 ): number {
   const roadside = rules.roadside[service];
   if (roadside !== undefined) return roadside;
+  // A roadside service is flat-rated or it is not offered — never a tow slab.
+  if (isRoadsideService(service)) throw new ServiceNotPricedError(service);
 
   if (distanceKm > LONG_DISTANCE_FLOOR_KM) {
     if (distanceKm > CUSTOM_QUOTE_ABOVE_KM) throw new CustomQuoteRequiredError(distanceKm);

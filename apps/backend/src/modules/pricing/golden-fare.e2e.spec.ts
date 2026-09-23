@@ -1,4 +1,4 @@
-import { rupeeStringToPaise, resolveBand } from '@towing/api-contracts';
+import { rupeeStringToPaise, resolveBand, type ServiceType } from '@towing/api-contracts';
 import { isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bookings } from '../../db/schema';
@@ -34,14 +34,7 @@ describe('golden file — re-pricing the seed through the live engine', () => {
   let db: TestDatabase;
   let rows: Array<{
     id: string;
-    serviceType:
-      | 'tow'
-      | 'battery'
-      | 'flat_tyre'
-      | 'fuel'
-      | 'breakdown'
-      | 'accident_recovery'
-      | 'lockout';
+    serviceType: ServiceType;
     vehicleClass: 'wheel_lift' | 'flatbed';
     distanceKm: string | null;
     baseFare: string;

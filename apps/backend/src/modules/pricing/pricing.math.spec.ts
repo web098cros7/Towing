@@ -5,6 +5,8 @@ import {
   CUSTOM_QUOTE_ABOVE_KM,
   CustomQuoteRequiredError,
   DEFAULT_CHARGE_CONFIG,
+  DEFAULT_PRICING_RULES,
+  ServiceNotPricedError,
   baseFarePaise,
   commissionPaise,
   computeFare,
@@ -113,6 +115,35 @@ describe('baseFarePaise (§7 slabs)', () => {
     expect(baseFarePaise('battery', 'wheel_lift', 3)).toBe(79_900);
     expect(baseFarePaise('battery', 'flatbed', 3)).toBe(79_900);
     expect(baseFarePaise('breakdown', 'wheel_lift', 9)).toBe(99_900);
+  });
+
+  it('refuses a roadside service with no fare instead of pricing it as a tow', () => {
+    // Winch Out ships unpriced. Before this, the lookup missed and fell through
+    // to the tow slabs: ₹999 for a winch job, and nothing said so.
+    expect(() => baseFarePaise('winch_out', 'wheel_lift', 0)).toThrow(ServiceNotPricedError);
+
+    const withoutLockout = {
+      ...DEFAULT_PRICING_RULES,
+      roadside: { ...DEFAULT_PRICING_RULES.roadside, lockout: undefined },
+    };
+    expect(() => baseFarePaise('lockout', 'flatbed', 2, withoutLockout)).toThrow(
+      ServiceNotPricedError,
+    );
+  });
+
+  it('prices Winch Out from its fare once one exists', () => {
+    const priced = {
+      ...DEFAULT_PRICING_RULES,
+      roadside: { ...DEFAULT_PRICING_RULES.roadside, winch_out: 149_900 },
+    };
+    expect(baseFarePaise('winch_out', 'wheel_lift', 0, priced)).toBe(149_900);
+  });
+
+  it('still prices a tow and an accident recovery from the slabs', () => {
+    // The throw is for roadside services only. These two have never had a flat
+    // fare and must not start failing because the roadside table lacks them.
+    expect(baseFarePaise('tow', 'wheel_lift', 3)).toBe(99_900);
+    expect(baseFarePaise('accident_recovery', 'flatbed', 3)).toBe(199_900);
   });
 
   it('long-distance quotes stay inside the §7.3 range and are whole rupees', () => {

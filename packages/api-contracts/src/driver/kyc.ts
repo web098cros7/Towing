@@ -88,6 +88,7 @@ export const OPTIONAL_SERVICE_TYPES = [
   'fuel',
   'breakdown',
   'lockout',
+  'winch_out',
 ] as const;
 
 /**

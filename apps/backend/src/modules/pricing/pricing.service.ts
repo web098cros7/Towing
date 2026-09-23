@@ -12,6 +12,7 @@ import { ROUTING, type RoutingPort } from '../../common/routing/routing.port';
 import { PricingConfigRepo, type RateCard } from './pricing-config.repo';
 import {
   CustomQuoteRequiredError,
+  ServiceNotPricedError,
   computeFare,
   type FareResult,
   type VehicleClass,
@@ -180,6 +181,13 @@ export class PricingService {
           'This trip is long enough to need a manual quote',
           { distanceKm: Math.round(context.distanceKm * 100) / 100 },
         );
+      }
+      if (error instanceof ServiceNotPricedError) {
+        // Same answer `requireBySlug` gives a retired slug: the catalogue the
+        // client holds is stale, and the service is not on offer right now.
+        throw ApiException.validation(`Unknown service "${request.serviceSlug}"`, {
+          serviceSlug: 'not in the active catalogue',
+        });
       }
       throw error;
     }

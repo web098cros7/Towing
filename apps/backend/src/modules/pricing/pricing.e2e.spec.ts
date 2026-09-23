@@ -106,6 +106,96 @@ describe('pricing (/v1/services, /v1/pricing/estimate)', () => {
     });
   });
 
+  describe('a roadside service goes live when an admin prices it (Winch Out)', () => {
+    /**
+     * Ehsan, 23 Sep: service prices belong in the admin panel. Winch Out ships
+     * with a catalogue row and NO fare, so these walk the whole path an admin
+     * takes, through the real admin route, with no cache flush anywhere: the
+     * write is what has to make it visible, not a TTL expiring.
+     */
+    let financeAuth: string;
+
+    beforeEach(async () => {
+      const admin = await seedAdmin(db, { subRole: 'finance' });
+      financeAuth = await adminAuthHeaderFor(app, { adminId: admin.id, subRole: 'finance' });
+    });
+
+    const catalogueSlugs = async (): Promise<string[]> =>
+      (
+        await request(app.getHttpServer())
+          .get('/v1/services')
+          .set('Authorization', customerAuth)
+          .expect(200)
+      ).body.map((service: { slug: string }) => service.slug);
+
+    const estimateWinch = () =>
+      request(app.getHttpServer())
+        .post('/v1/pricing/estimate')
+        .set('Authorization', customerAuth)
+        .send({
+          serviceSlug: 'winch_out',
+          vehicleClass: 'wheel_lift',
+          pickup: BENGALURU,
+          scheduledAt: '2026-08-16T06:30:00.000Z',
+        });
+
+    it('keeps an unpriced roadside service off the catalogue', async () => {
+      // The row exists (the seed wrote it) and is active — only the fare is
+      // missing, and that alone has to keep it off the customer's screen.
+      expect(await catalogueSlugs()).not.toContain('winch_out');
+    });
+
+    it('refuses to quote it rather than pricing it as a tow', async () => {
+      // THE BUG THIS REPLACES: with no roadside fare, the engine fell through to
+      // the tow slabs and quoted a short tow — ₹999 for a winch job, no error.
+      const response = await estimateWinch().expect(422);
+      expect(response.body.error.details).toEqual({ serviceSlug: 'not in the active catalogue' });
+    });
+
+    it('lists and quotes it the moment an admin saves a fare', async () => {
+      await request(app.getHttpServer())
+        .post('/v1/admin/pricing/rules')
+        .set('Authorization', financeAuth)
+        .send({ ruleKind: 'roadside', serviceType: 'winch_out', pricePaise: 149_900 })
+        .expect(200);
+
+      expect(await catalogueSlugs()).toContain('winch_out');
+      const quote = await estimateWinch().expect(200);
+      expect(quote.body.breakdown.basePaise).toBe(149_900);
+    });
+
+    it('takes it back off the catalogue when the fare is retired', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/v1/admin/pricing/rules')
+        .set('Authorization', financeAuth)
+        .send({ ruleKind: 'roadside', serviceType: 'winch_out', pricePaise: 149_900 })
+        .expect(200);
+      expect(await catalogueSlugs()).toContain('winch_out');
+
+      await request(app.getHttpServer())
+        .post(`/v1/admin/pricing/rules/${created.body.id}/deactivate`)
+        .set('Authorization', financeAuth)
+        .send({ reason: 'Pausing winch jobs' })
+        .expect(200);
+
+      expect(await catalogueSlugs()).not.toContain('winch_out');
+      await estimateWinch().expect(422);
+    });
+
+    it('applies the same rule to an existing service whose fare is retired', async () => {
+      // Not a Winch Out special case: any roadside service without an active
+      // fare is not on offer. Retiring Lockout's fare must not quietly turn
+      // lockout jobs into short tows.
+      await db
+        .update(pricingRules)
+        .set({ isActive: false })
+        .where(eq(pricingRules.serviceType, 'lockout'));
+      await flushTestRedis(); // a raw DB edit, not an admin write — nothing invalidated the card
+
+      expect(await catalogueSlugs()).not.toContain('lockout');
+    });
+  });
+
   describe('POST /v1/pricing/estimate', () => {
     it('returns a §7 breakdown for a city tow', async () => {
       const response = await request(app.getHttpServer())

@@ -1,3 +1,4 @@
+import type { ServiceType } from '@towing/api-contracts';
 import type { DispatchConfigOverride } from '@towing/api-contracts';
 import type { LatLng } from '../geography';
 
@@ -189,7 +190,7 @@ export const STANDALONE_ZONES: readonly ZoneFixture[] = [
  */
 export interface ServiceFixture {
   slug: string;
-  serviceType: 'tow' | 'battery' | 'flat_tyre' | 'fuel' | 'breakdown' | 'accident_recovery' | 'lockout';
+  serviceType: ServiceType;
   defaultVehicleClass: 'wheel_lift' | 'flatbed' | null;
   name: string;
   description: string;
@@ -278,6 +279,17 @@ export const SERVICE_CATALOG: readonly ServiceFixture[] = [
     name: 'Accident recovery',
     description: 'Post-accident recovery with specialist equipment.',
     requiresDrop: true,
+  },
+  {
+    // Seeded WITHOUT a fare (`DEFAULT_PRICING_RULES.roadside` has none), so a
+    // fresh database shows exactly what production does before an admin
+    // prices it: the row exists and the customer catalogue does not list it.
+    slug: 'winch_out',
+    serviceType: 'winch_out',
+    defaultVehicleClass: null,
+    name: 'Winch out',
+    description: 'Stuck in a ditch, mud or sand? We pull you out.',
+    requiresDrop: false,
   },
 ];
 

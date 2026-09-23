@@ -36,6 +36,7 @@ export const SERVICE_OPTIONS = [
   { value: 'fuel', label: 'Fuel delivery', kit: 'You carry an approved fuel can' },
   { value: 'lockout', label: 'Car lockout', kit: 'You carry a lockout kit' },
   { value: 'breakdown', label: 'Breakdown help', kit: 'You can do minor roadside repairs' },
+  { value: 'winch_out', label: 'Winch out', kit: 'Your truck has a working winch and recovery straps' },
 ] as const satisfies readonly { value: OptionalServiceType; label: string; kit: string }[];
 
 /**

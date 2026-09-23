@@ -9,6 +9,7 @@ export const serviceTypeEnum = pgEnum('service_type', [
   'breakdown',
   'accident_recovery',
   'lockout',
+  'winch_out',
 ]);
 
 export const vehicleClassEnum = pgEnum('vehicle_class', ['wheel_lift', 'flatbed']);

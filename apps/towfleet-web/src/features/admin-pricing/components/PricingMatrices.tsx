@@ -2,13 +2,32 @@
 
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@towing/web-ui';
-import type { AdminPricingConfig, AdminPricingRule } from '@towing/api-contracts';
+import {
+  OPTIONAL_SERVICE_TYPES,
+  type AdminPricingConfig,
+  type AdminPricingRule,
+  type OptionalServiceType,
+} from '@towing/api-contracts';
 import { useToast } from '@/components/admin/ToastProvider';
 import {
   useCreatePricingRule,
   useDeactivatePricingRule,
   useUpdatePricing,
 } from '../api/adminPricing.mutations';
+
+/** What the roadside table calls each service. A Record, so a new service fails to compile until it is named. */
+const ROADSIDE_LABELS: Record<OptionalServiceType, string> = {
+  battery: 'Battery jump start',
+  flat_tyre: 'Flat tyre',
+  fuel: 'Fuel delivery',
+  breakdown: 'Breakdown help',
+  lockout: 'Car lockout',
+  winch_out: 'Winch out',
+};
+
+function serviceLabel(serviceType: OptionalServiceType): string {
+  return ROADSIDE_LABELS[serviceType];
+}
 
 /** Non-null form of the contract's vehicle class — the matrices are per class. */
 type VehicleClass = NonNullable<AdminPricingRule['vehicleClass']>;
@@ -56,6 +75,8 @@ export function PricingMatrices({
     wheel_lift: { maxKm: '', price: '' },
     flatbed: { maxKm: '', price: '' },
   });
+  /** roadside service with no active fare → rupees typed into its "set a fare" field. */
+  const [newFares, setNewFares] = useState<Partial<Record<OptionalServiceType, string>>>({});
   const [pendingRetire, setPendingRetire] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -155,6 +176,35 @@ export function PricingMatrices({
       await create.mutateAsync({ ruleKind: 'slab', vehicleClass, maxKm, pricePaise });
       setNewBand((current) => ({ ...current, [vehicleClass]: { maxKm: '', price: '' } }));
       toast(`Band added: ${maxKm} km · ₹${pricePaise / 100}`, 'success');
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    }
+  };
+
+  /**
+   * Price a roadside service that has no active fare, which is what puts it on
+   * the customer's catalogue.
+   *
+   * A CREATE, not part of "Save fares": that button sends a diff of rows that
+   * already exist, and there is no row here yet. Kept a separate, deliberate
+   * click because this one does more than change a number — it launches a
+   * service to customers, and the button says so.
+   */
+  const offerService = async (serviceType: OptionalServiceType) => {
+    const typed = newFares[serviceType] ?? '';
+    const pricePaise = toPaise(typed);
+    if (typed === '' || !Number.isFinite(pricePaise) || pricePaise <= 0) {
+      setErrorMessage(`Enter a fare above zero before offering ${serviceLabel(serviceType)}.`);
+      return;
+    }
+    setErrorMessage(null);
+    try {
+      await create.mutateAsync({ ruleKind: 'roadside', serviceType, pricePaise });
+      setNewFares((current) => ({ ...current, [serviceType]: '' }));
+      toast(
+        `${serviceLabel(serviceType)} is live at ₹${pricePaise / 100} — customers can book it now`,
+        'success',
+      );
     } catch (error) {
       setErrorMessage((error as Error).message);
     }
@@ -370,25 +420,75 @@ export function PricingMatrices({
                 </tr>
               </thead>
               <tbody>
-                {config.rules
-                  .filter((rule) => rule.ruleKind === 'roadside' && rule.isActive)
-                  .map((rule) => (
-                    <tr key={rule.id} className="border-t border-border">
-                      <td className="py-1.5">{rule.serviceType?.replace(/_/g, ' ')}</td>
+                {OPTIONAL_SERVICE_TYPES.map((serviceType) => {
+                  const rule = config.rules.find(
+                    (candidate) =>
+                      candidate.ruleKind === 'roadside' &&
+                      candidate.isActive &&
+                      candidate.serviceType === serviceType,
+                  );
+                  if (rule) {
+                    return (
+                      <tr key={serviceType} className="border-t border-border">
+                        <td className="py-1.5">{serviceLabel(serviceType)}</td>
+                        <td className="py-1.5">
+                          <Input
+                            aria-label={`${serviceType} fare`}
+                            inputMode="decimal"
+                            value={prices[rule.id] ?? ''}
+                            disabled={!canEdit}
+                            onChange={(event) =>
+                              setPrices((current) => ({ ...current, [rule.id]: event.target.value }))
+                            }
+                            data-testid={`pricing-price-roadside-${serviceType}`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  }
+                  // No active fare: the service exists but customers cannot see
+                  // or book it. Said on the row, so an empty cell does not read
+                  // as a fare of zero or a failed load.
+                  return (
+                    <tr
+                      key={serviceType}
+                      className="border-t border-border"
+                      data-testid={`pricing-unpriced-${serviceType}`}
+                    >
                       <td className="py-1.5">
-                        <Input
-                          aria-label={`${rule.serviceType} fare`}
-                          inputMode="decimal"
-                          value={prices[rule.id] ?? ''}
-                          disabled={!canEdit}
-                          onChange={(event) =>
-                            setPrices((current) => ({ ...current, [rule.id]: event.target.value }))
-                          }
-                          data-testid={`pricing-price-roadside-${rule.serviceType}`}
-                        />
+                        <div className="flex flex-col gap-1">
+                          <span>{serviceLabel(serviceType)}</span>
+                          <Badge variant="warning">Not offered — no fare set</Badge>
+                        </div>
+                      </td>
+                      <td className="py-1.5">
+                        <div className="flex gap-2">
+                          <Input
+                            aria-label={`${serviceType} new fare`}
+                            inputMode="decimal"
+                            placeholder="Fare (₹)"
+                            value={newFares[serviceType] ?? ''}
+                            disabled={!canEdit}
+                            onChange={(event) =>
+                              setNewFares((current) => ({
+                                ...current,
+                                [serviceType]: event.target.value,
+                              }))
+                            }
+                            data-testid={`pricing-new-roadside-${serviceType}`}
+                          />
+                          <Button
+                            onClick={() => void offerService(serviceType)}
+                            disabled={!canEdit || create.isPending}
+                            data-testid={`pricing-offer-${serviceType}`}
+                          >
+                            Set fare &amp; offer
+                          </Button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
               </tbody>
             </table>
           </CardContent>

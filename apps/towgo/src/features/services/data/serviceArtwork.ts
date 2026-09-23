@@ -12,14 +12,13 @@ import type { IconComponent } from '@towing/ui';
  * server supplies the name, the description, the order and whether the row is
  * still active.
  *
- * TWO SERVICES DISAPPEARED IN THE SWAP, and that is the correction, not a
- * regression. The static list carried `lockout` ("Lockout Assistance") and
- * `winch_out` ("Winch Out"); neither is in Appendix B, neither has a
- * `service_type`, and neither has a §7 fare — the app was advertising two
- * services the platform cannot price, quote or dispatch. It was also missing
- * four that Appendix B does define (bike tow, flatbed tow, wheel-lift tow,
- * breakdown, accident recovery) and its six ids matched the backend enum on
- * exactly zero of them.
+ * TWO SERVICES DISAPPEARED IN THE SWAP, and both have since come back properly.
+ * The static list carried `lockout` and `winch_out` before either had a
+ * `service_type` or a fare, so the app was advertising services the platform
+ * could not price, quote or dispatch. Lockout returned with Figma 09 (migration
+ * 0035). Winch Out now exists server-side (migration 0039) and is priced from
+ * the admin panel, but no customer screen offers it: it has no card in the
+ * Figma this app is built from, so it has no artwork here either.
  *
  * An unknown slug falls back to `Wrench` rather than rendering nothing, so an
  * admin adding a catalogue row does not need an app release to make it visible.

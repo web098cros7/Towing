@@ -5,6 +5,8 @@ import { CacheService } from '../../common/cache/cache.service';
 import { ApiException } from '../../common/errors/api-exception';
 import { DB, type Database } from '../../db/db.module';
 import { services } from '../../db/schema';
+import { PricingConfigRepo } from './pricing-config.repo';
+import { isRoadsideService } from './pricing.math';
 
 /**
  * `GET /v1/services` (§16.2) — Appendix B's nine-entry catalogue.
@@ -24,9 +26,33 @@ export class ServicesService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly cache: CacheService,
+    private readonly pricing: PricingConfigRepo,
   ) {}
 
+  /**
+   * The active catalogue, minus any roadside service nobody has priced.
+   *
+   * A roadside service exists in the catalogue BEFORE it has a fare: Winch Out
+   * was added that way on purpose, so it could ship without a made-up price and
+   * go live the moment an admin sets one. Listing it unpriced would put a tile
+   * on the customer's home screen that fails at the estimate, so it stays off
+   * the list until its fare row is active — and comes back off it if an admin
+   * retires the fare.
+   *
+   * The filter runs OUTSIDE the catalogue cache, against the rate card, which
+   * every admin pricing write invalidates. Inside it, a newly priced service
+   * would stay hidden for up to five minutes after the admin was told "saved".
+   */
   async list(): Promise<ServiceCatalogItem[]> {
+    const [catalogue, rateCard] = await Promise.all([this.activeRows(), this.pricing.load()]);
+    return catalogue.filter(
+      (item) =>
+        !isRoadsideService(item.serviceType) ||
+        rateCard.rules.roadside[item.serviceType] !== undefined,
+    );
+  }
+
+  private activeRows(): Promise<ServiceCatalogItem[]> {
     return this.cache.getOrSet(CATALOG_CACHE_KEY, CATALOG_TTL_SECONDS, async () => {
       const rows = await this.db
         .select()

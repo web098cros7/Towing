@@ -8,6 +8,7 @@ import {
   Lock,
   Wrench,
   Shield,
+  Cable,
 } from '@/icons';
 
 /**
@@ -26,6 +27,7 @@ export const SERVICE_LABEL: Record<ServiceType, string> = {
   lockout: 'Car Lockout',
   breakdown: 'Minor Mechanical Help',
   accident_recovery: 'Accident Recovery',
+  winch_out: 'Winch Out',
 };
 
 /** The icon that stands for each service, wherever a service is named. */
@@ -37,6 +39,7 @@ export const SERVICE_ICON: Record<ServiceType, IconComponent> = {
   lockout: Lock,
   breakdown: Wrench,
   accident_recovery: Shield,
+  winch_out: Cable,
 };
 
 /**

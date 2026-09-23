@@ -76,6 +76,12 @@ export const serviceTypeSchema = z.enum([
   'accident_recovery',
   /** Figma 09's Car Lockout (migration 0035). A flat roadside fare. */
   'lockout',
+  /**
+   * Pulling a car out of a ditch, mud or sand (migration 0039). A flat roadside
+   * fare, and the first service that shipped BEFORE it was priced: it stays off
+   * the customer's catalogue until an admin sets its fare in Pricing.
+   */
+  'winch_out',
 ]);
 export type ServiceType = z.infer<typeof serviceTypeSchema>;
 
