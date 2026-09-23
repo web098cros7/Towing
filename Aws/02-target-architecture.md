@@ -15,7 +15,7 @@
 |---|---|---|---|
 | API compute (§15.3) | Long-running containers (persistent WebSockets rule out Lambda) | **ECS on Fargate** | NestJS 11 app, `node dist/main.js`, port from `PORT` (default 4000), global prefix `/v1`, health `GET /v1/health`, graceful-shutdown hooks for clean task drain |
 | Load balancing (§15.3) | WebSocket upgrade + sticky sessions | **Application Load Balancer** | HTTP only today; WS stickiness + idle timeout ≥ 75 s required from Phase 5 |
-| Relational + spatial (§15.4) | PostgreSQL + PostGIS, Drizzle ORM | **RDS for PostgreSQL 16** (+ RDS Proxy in the generated CDK) | Migrations 0000–0035 in `apps/backend/drizzle` (canonical); `0000_enable_postgis.sql` runs `CREATE EXTENSION IF NOT EXISTS postgis` |
+| Relational + spatial (§15.4) | PostgreSQL + PostGIS, Drizzle ORM | **RDS for PostgreSQL 16** (+ RDS Proxy in the generated CDK) | Migrations 0000–0042 in `apps/backend/drizzle` (canonical); `0000_enable_postgis.sql` runs `CREATE EXTENSION IF NOT EXISTS postgis` |
 | Ephemeral / realtime state (§15.4) | Redis | **ElastiCache for Redis** | ioredis, two connections (commands + subscriber); usage inventory in §5.2 below |
 | Files / KYC docs (§15.5) | S3 SSE-KMS, private + pre-signed | **S3 + KMS** | `StoragePort` seam with a disk adapter (`local://` URLs); S3 adapter is a Phase 9 deliverable |
 | CDN (§15.5) | CloudFront for public assets | **CloudFront** | Nothing in code depends on it yet |
@@ -134,7 +134,7 @@ Notes on the diagram:
 ### 4.1 RDS PostgreSQL 16 + PostGIS
 
 - **Engine:** PostgreSQL 16 with PostGIS — local dev runs `postgis/postgis:16-3.4` (`apps/backend/docker-compose.yml`, dev ports 5432/6379, tmpfs test profile on 5433/6380). RDS ships PostGIS as an allow-listed extension; migration `0000_enable_postgis.sql` (`CREATE EXTENSION IF NOT EXISTS postgis`) registers it in the target database, so the migrate one-off task handles the bootstrap — but it must run as a role with `rds_superuser` membership (the RDS master user qualifies).
-- **Migrations:** `apps/backend/drizzle` is **CANONICAL** — 36 files, `0000_enable_postgis` through `0035_customer_live`. `Aws/migrations/` is a **point-in-time snapshot** of the same files and `Aws/db/schema-snapshot.sql` is a pg_dump schema snapshot dated 23 Sep 2026 — use them for review/sizing, never as the deploy source.
+- **Migrations:** `apps/backend/drizzle` is **CANONICAL** — 43 files, `0000_enable_postgis` through `0042_fleet_driver_pay`. `Aws/migrations/` is a **point-in-time snapshot** of the same files and `Aws/db/schema-snapshot.sql` is a pg_dump schema snapshot dated 24 Sep 2026 — use them for review/sizing, never as the deploy source.
 - **Access pattern:** postgres.js pool (`DATABASE_POOL_MAX`, default 10) per API task. The generated CDK fronts RDS with an **RDS Proxy**; verify postgres.js prepared-statement behavior against proxy pinning before committing to it (see Decisions).
 - **Spatial:** `geography(Point)` columns with GIST indexes; PostGIS KNN is the authoritative nearest-driver path behind the Redis GEO hot path (spec §6.1) — dispatch itself is out of current scope (seams only).
 

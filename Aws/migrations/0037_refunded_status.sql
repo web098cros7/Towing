@@ -1,0 +1,24 @@
+--
+-- A booking that was refunded says so.
+--
+-- A full refund on a paid booking moved it to `disputed`, because that was the
+-- only status that meant "settled, then unsettled". Nothing opened a dispute,
+-- so the admin console listed bookings as disputed that nobody had disputed,
+-- and every finance report counted them that way. Ehsan's call (23 Sep): give
+-- the thing its own name.
+--
+-- `disputed` keeps its meaning — a customer or ops actually contesting a trip.
+-- `refunded` is the money coming back, whoever decided it.
+--
+-- ADD VALUE, not a rewrite of the enum: existing rows keep their status, and
+-- the bookings currently sitting in `disputed` because of a refund stay there.
+-- They are history and this migration does not relabel them; anything from
+-- here lands in the right place. There is no down migration for the same
+-- reason Postgres makes one awkward — dropping an enum value that rows may
+-- reference is not a safe operation, and this one is additive.
+--
+-- `IF NOT EXISTS` so a re-run is a no-op. This statement cannot be followed by
+-- a use of the new value inside the same transaction, which is why nothing
+-- else happens in this file.
+--
+ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'refunded';

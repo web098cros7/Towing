@@ -1,0 +1,21 @@
+--
+-- Winch Out: pulling a car out of a ditch, mud or sand.
+--
+-- The first service added before anyone priced it. Ehsan's call (23 Sep):
+-- service prices belong in the admin panel, not in a deploy. So this adds the
+-- service and NO fare. The customer catalogue hides a roadside service with no
+-- active fare row, and the estimate refuses one, so Winch Out is invisible and
+-- unbookable until an admin enters its price under Pricing, and live the
+-- moment they save.
+--
+-- Drivers are offered it only if they tick it (migration 0038). Unlike the
+-- other five, existing drivers are NOT backfilled with it: they were never
+-- offered winch jobs, so there is no supply to protect, and nobody should be
+-- assumed to carry a winch.
+--
+-- Nothing else happens in this file. The migrator applies every pending file
+-- in ONE transaction, and Postgres refuses a new enum value's use in the
+-- transaction that added it, which is also why the catalogue row comes from
+-- the seed, as Lockout's did (0035).
+--
+ALTER TYPE service_type ADD VALUE IF NOT EXISTS 'winch_out';

@@ -205,7 +205,8 @@ CREATE TYPE public.booking_status AS ENUM (
     'paid',
     'cancelled',
     'no_drivers_found',
-    'disputed'
+    'disputed',
+    'refunded'
 );
 
 
@@ -423,7 +424,8 @@ CREATE TYPE public.service_type AS ENUM (
     'fuel',
     'breakdown',
     'accident_recovery',
-    'lockout'
+    'lockout',
+    'winch_out'
 );
 
 
@@ -931,8 +933,12 @@ CREATE TABLE public.bookings (
     invoice_generated_at timestamp with time zone,
     paid_at timestamp with time zone,
     driver_compensation numeric(12,2) DEFAULT 0.00 NOT NULL,
+    driver_pay_model text,
+    driver_share_pct numeric(5,2),
     CONSTRAINT ck_bookings_cancellation_fee_needs_cancel CHECK (((cancellation_fee = (0)::numeric) OR (cancelled_by IS NOT NULL))),
     CONSTRAINT ck_bookings_commission_pct_guardrail CHECK (((commission_pct IS NULL) OR ((commission_pct > (0)::numeric) AND (commission_pct <= (30)::numeric)))),
+    CONSTRAINT ck_bookings_driver_pay_model CHECK (((driver_pay_model IS NULL) OR (driver_pay_model = ANY (ARRAY['independent'::text, 'share'::text, 'salary'::text])))),
+    CONSTRAINT ck_bookings_driver_share_pct CHECK (((driver_share_pct IS NULL) OR ((driver_share_pct >= (0)::numeric) AND (driver_share_pct <= (100)::numeric)))),
     CONSTRAINT ck_bookings_non_negative CHECK (((total >= (0)::numeric) AND (commission_amount >= (0)::numeric) AND (driver_payout >= (0)::numeric) AND (discount >= (0)::numeric) AND (tax_amount >= (0)::numeric) AND (cancellation_fee >= (0)::numeric) AND (driver_compensation >= (0)::numeric))),
     CONSTRAINT ck_bookings_otp_attempts_non_negative CHECK ((otp_attempts >= 0)),
     CONSTRAINT ck_bookings_otp_verified_needs_hash CHECK (((otp_verified = false) OR (booking_otp_hash IS NOT NULL))),
@@ -1079,6 +1085,8 @@ CREATE TABLE public.consent_records (
     consented_at timestamp with time zone DEFAULT now() NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    action text DEFAULT 'granted'::text NOT NULL,
+    CONSTRAINT ck_consent_records_action CHECK ((action = ANY (ARRAY['granted'::text, 'withdrawn'::text]))),
     CONSTRAINT ck_consent_records_policy_type CHECK ((policy_type = ANY (ARRAY['privacy_policy'::text, 'terms_of_service'::text]))),
     CONSTRAINT ck_consent_records_subject_type CHECK ((subject_type = ANY (ARRAY['user'::text, 'driver'::text])))
 );
@@ -1301,7 +1309,7 @@ CREATE TABLE public.disputes (
     resolved_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT ck_disputes_liability CHECK ((liability = ANY (ARRAY['driver'::text, 'fleet'::text, 'platform'::text]))),
+    CONSTRAINT ck_disputes_liability CHECK ((liability = ANY (ARRAY['shared'::text, 'platform'::text, 'provider'::text, 'driver'::text, 'fleet'::text]))),
     CONSTRAINT ck_disputes_opened_by_type CHECK ((opened_by_type = ANY (ARRAY['admin'::text, 'customer'::text, 'driver'::text]))),
     CONSTRAINT ck_disputes_opened_from_status CHECK ((opened_from_status = ANY (ARRAY['in_progress'::text, 'completed'::text, 'paid'::text]))),
     CONSTRAINT ck_disputes_reason_code CHECK ((reason_code = ANY (ARRAY['service_not_completed'::text, 'vehicle_damage'::text, 'overcharge'::text, 'driver_conduct'::text, 'customer_conduct'::text, 'payment_issue'::text, 'unable_to_deliver'::text, 'other'::text]))),
@@ -1397,7 +1405,8 @@ CREATE TABLE public.drivers (
     pending_suspension_at timestamp with time zone,
     suspended_at timestamp with time zone,
     suspended_by uuid,
-    suspension_reason text
+    suspension_reason text,
+    services public.service_type[] DEFAULT ARRAY[]::public.service_type[] NOT NULL
 );
 
 
@@ -1527,6 +1536,10 @@ CREATE TABLE public.fleets (
     suspended_at timestamp with time zone,
     suspended_by uuid,
     suspension_reason text,
+    driver_pay_model text DEFAULT 'share'::text NOT NULL,
+    driver_share_pct numeric(5,2) DEFAULT 80 NOT NULL,
+    CONSTRAINT ck_fleets_driver_pay_model CHECK ((driver_pay_model = ANY (ARRAY['share'::text, 'salary'::text]))),
+    CONSTRAINT ck_fleets_driver_share_pct CHECK (((driver_share_pct >= (0)::numeric) AND (driver_share_pct <= (100)::numeric))),
     CONSTRAINT ck_fleets_notification_prefs_object CHECK ((jsonb_typeof(notification_prefs) = 'object'::text)),
     CONSTRAINT ck_fleets_profile_completed_requires_address CHECK (((profile_completed_at IS NULL) OR ((address IS NOT NULL) AND (length(btrim(address)) > 0))))
 );
@@ -1878,9 +1891,16 @@ CREATE TABLE public.refunds (
     kind text DEFAULT 'full'::text NOT NULL,
     payment_id uuid,
     liability text,
+    cause text,
+    delivery text DEFAULT 'original'::text NOT NULL,
+    provider_share numeric(12,2),
+    bearer_override_reason text,
     CONSTRAINT ck_refunds_amount_positive CHECK ((amount > (0)::numeric)),
+    CONSTRAINT ck_refunds_cause CHECK (((cause IS NULL) OR (cause = ANY (ARRAY['fare_error'::text, 'platform_error'::text, 'goodwill'::text, 'driver_misconduct'::text])))),
+    CONSTRAINT ck_refunds_delivery CHECK ((delivery = ANY (ARRAY['original'::text, 'wallet'::text]))),
     CONSTRAINT ck_refunds_kind CHECK ((kind = ANY (ARRAY['full'::text, 'partial'::text]))),
-    CONSTRAINT ck_refunds_liability CHECK (((liability IS NULL) OR (liability = ANY (ARRAY['driver'::text, 'fleet'::text, 'platform'::text]))))
+    CONSTRAINT ck_refunds_liability CHECK (((liability IS NULL) OR (liability = ANY (ARRAY['shared'::text, 'platform'::text, 'provider'::text, 'driver'::text, 'fleet'::text])))),
+    CONSTRAINT ck_refunds_provider_share CHECK (((provider_share IS NULL) OR ((provider_share >= (0)::numeric) AND (provider_share <= amount))))
 );
 
 
@@ -3275,6 +3295,13 @@ CREATE INDEX idx_consent_records_subject ON public.consent_records USING btree (
 
 
 --
+-- Name: idx_consent_records_subject_policy; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_consent_records_subject_policy ON public.consent_records USING btree (subject_id, subject_type, policy_type, consented_at DESC);
+
+
+--
 -- Name: idx_content_pages_kind_order; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3398,6 +3425,13 @@ CREATE INDEX idx_drivers_name_trgm ON public.drivers USING gin (name public.gin_
 --
 
 CREATE INDEX idx_drivers_online_geo ON public.drivers USING gist (current_location) WHERE (is_online AND (kyc_status = 'approved'::public.kyc_status) AND (current_location IS NOT NULL));
+
+
+--
+-- Name: idx_drivers_services; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_drivers_services ON public.drivers USING gin (services);
 
 
 --

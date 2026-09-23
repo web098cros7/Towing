@@ -253,6 +253,55 @@
       "when": 1789986500004,
       "tag": "0035_customer_live",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789986500005,
+      "tag": "0036_consent_withdrawal",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789986500006,
+      "tag": "0037_refunded_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789986500007,
+      "tag": "0038_driver_services",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789986500008,
+      "tag": "0039_winch_out",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789986500009,
+      "tag": "0040_refund_causes",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789986500010,
+      "tag": "0041_chat_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789986500011,
+      "tag": "0042_fleet_driver_pay",
+      "breakpoints": true
     }
   ]
 }
