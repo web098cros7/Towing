@@ -148,6 +148,9 @@ export const bookingsRestSource: BookingsDataSource = {
   getOtp: (bookingId: string): Promise<BookingOtpResponse> =>
     apiFetch<BookingOtpResponse>(`bookings/${bookingId}/otp`),
 
+  renewOtp: (bookingId: string): Promise<BookingOtpResponse> =>
+    apiFetch<BookingOtpResponse>(`bookings/${bookingId}/otp/renew`, { method: 'POST' }),
+
   async retrySearch(bookingId: string): Promise<BookingDetail> {
     const retried = await apiFetch<ApiBookingDetail>(`bookings/${bookingId}/retry-search`, {
       method: 'POST',

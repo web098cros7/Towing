@@ -153,7 +153,11 @@ export function JobActionRail({ job }: { job: DriverJob }) {
           setOtpError(
             typeof remaining === 'number' && remaining > 0
               ? `That code is not correct — ${remaining} ${remaining === 1 ? 'try' : 'tries'} left.`
-              : 'That code is not correct. Ask the customer to check it in their app.',
+              : remaining === 0
+                ? // L17: the code is now locked. The customer's app offers them a
+                  // new one at once, so that is what the driver should ask for.
+                  'Too many wrong codes. Ask the customer for the new code their app offers them.'
+                : 'That code is not correct. Ask the customer to check it in their app.',
           );
         },
       },

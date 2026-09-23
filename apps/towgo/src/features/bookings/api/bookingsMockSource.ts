@@ -334,7 +334,15 @@ export const bookingsMockSource: BookingsDataSource = {
       expiresAt = now + MOCK_OTP_WINDOW_MS;
       mockOtpExpiresAt.set(bookingId, expiresAt);
     }
-    return { code: '482719', expiresAt: new Date(expiresAt).toISOString() };
+    return { code: '482719', expiresAt: new Date(expiresAt).toISOString(), locked: false };
+  },
+
+  /** L17's renewal: a fresh window on a different code, never locked. */
+  async renewOtp(bookingId: string): Promise<BookingOtpResponse> {
+    await delay(300);
+    const expiresAt = Date.now() + MOCK_OTP_WINDOW_MS;
+    mockOtpExpiresAt.set(bookingId, expiresAt);
+    return { code: '615203', expiresAt: new Date(expiresAt).toISOString(), locked: false };
   },
 
   /**

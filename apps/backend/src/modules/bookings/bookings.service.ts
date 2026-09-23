@@ -468,7 +468,50 @@ export class BookingsService {
     }
 
     const issued = await this.otp.issue(this.db, bookingId);
-    return { code: issued.code, expiresAt: issued.expiresAt.toISOString() };
+    return {
+      code: issued.code,
+      expiresAt: issued.expiresAt.toISOString(),
+      locked: issued.locked,
+    };
+  }
+
+  /**
+   * L17: the customer asks for a new collection code — typically because the
+   * driver typed a wrong one too many times and the old code locked.
+   *
+   * Same gate as reading the code (assigned until the tow starts), the
+   * customer's own booking only, and at most `BookingOtpService.MAX_RENEWALS`
+   * per trip. Past the cap the answer names support rather than letting the
+   * reset become unlimited guesses.
+   */
+  async renewOtp(userId: string, bookingId: string): Promise<BookingOtpResponse> {
+    const detail = await this.repo.detail(userId, bookingId);
+    if (!detail) throw ApiException.notFound('Booking not found');
+
+    if (!isOtpAvailable(detail.status)) {
+      throw new ApiException(
+        409,
+        ErrorCodes.OTP_NOT_AVAILABLE,
+        'Your booking OTP appears once a driver is assigned',
+        { status: detail.status },
+      );
+    }
+    if (!(await this.otp.takeRenewal(bookingId))) {
+      throw new ApiException(
+        429,
+        ErrorCodes.OTP_RENEWALS_EXHAUSTED,
+        'You have asked for a new code too many times on this trip. Please contact support.',
+        { maxRenewals: BookingOtpService.MAX_RENEWALS },
+      );
+    }
+
+    const issued = await this.otp.renew(this.db, bookingId);
+    this.logger.log(`event=booking_otp_renewed booking=${bookingId}`);
+    return {
+      code: issued.code,
+      expiresAt: issued.expiresAt.toISOString(),
+      locked: false,
+    };
   }
 
   /**

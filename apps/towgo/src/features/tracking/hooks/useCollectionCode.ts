@@ -11,6 +11,8 @@ const EXPIRY_MARGIN_MS = 1_000;
  * read again after this long, until the server's window has closed too.
  */
 const LAPSED_RETRY_MS = 5_000;
+/** L17: how often 24 re-reads the code while it is showing. */
+const LOCK_CHECK_MS = 15_000;
 
 /**
  * Figma 24's collection code: the six digits, or `null` while there is no code
@@ -30,6 +32,10 @@ export function useCollectionCode(bookingId: string, available: boolean): string
   const { data, isError, isFetching, errorUpdatedAt, dataUpdatedAt, refetch } = useBookingOtp(
     bookingId,
     available,
+    // L17: re-read while 24 is up, so a code the driver has locked is noticed
+    // within seconds (see `useCollectionCodeHelp`). Inside the window the
+    // server returns the same code, so this never changes the digits by itself.
+    LOCK_CHECK_MS,
   );
   const [now, setNow] = useState(() => Date.now());
 

@@ -77,9 +77,9 @@ export class BookingOtpService {
     db: DatabaseExecutor,
     bookingId: string,
     now = new Date(),
-  ): Promise<{ code: string; expiresAt: Date }> {
+  ): Promise<{ code: string; expiresAt: Date; locked: boolean }> {
     const [row] = await db
-      .select({ expiresAt: bookings.otpExpiresAt })
+      .select({ expiresAt: bookings.otpExpiresAt, attempts: bookings.otpAttempts })
       .from(bookings)
       .where(eq(bookings.id, bookingId))
       .limit(1);
@@ -89,9 +89,38 @@ export class BookingOtpService {
       // A cache miss inside a live window means Redis was flushed or evicted.
       // Minting a replacement is the recoverable answer; failing the request
       // would strand a customer whose driver is standing in front of them.
-      if (cached) return { code: cached, expiresAt: row.expiresAt };
+      if (cached) {
+        return {
+          code: cached,
+          expiresAt: row.expiresAt,
+          // `verify` refuses once the count passes the cap, so the code is dead
+          // from the attempt that reaches it.
+          locked: row.attempts >= this.env.OTP_MAX_ATTEMPTS,
+        };
+      }
     }
 
+    return this.mint(db, bookingId, now);
+  }
+
+  /**
+   * L17: a new code NOW, whatever the window, with its attempts reset.
+   *
+   * Only the customer reaches this (the controller checks ownership and the
+   * renewal cap). That is the whole safety argument: the person guessing at a
+   * code is the driver side, and a reset only the customer's phone can ask for
+   * is not a way to buy more guesses. Rotating automatically on lock-out would
+   * be exactly that.
+   */
+  renew(db: DatabaseExecutor, bookingId: string, now = new Date()) {
+    return this.mint(db, bookingId, now);
+  }
+
+  private async mint(
+    db: DatabaseExecutor,
+    bookingId: string,
+    now: Date,
+  ): Promise<{ code: string; expiresAt: Date; locked: boolean }> {
     const code = generateOtp();
     const expiresAt = new Date(now.getTime() + BookingOtpService.WINDOW_MS);
 
@@ -108,8 +137,28 @@ export class BookingOtpService {
       .where(eq(bookings.id, bookingId));
 
     await this.cache(bookingId, code);
-    return { code, expiresAt };
+    return { code, expiresAt, locked: false };
   }
+
+  /**
+   * Counts a renewal and says whether it is allowed. `OTP_MAX_RENEWALS` per
+   * booking, counted in Redis for a day — far longer than any handover. A
+   * Redis failure allows the renewal: stranding a customer at the roadside
+   * is worse than one uncounted reset.
+   */
+  async takeRenewal(bookingId: string): Promise<boolean> {
+    try {
+      const key = `booking:otp:renewals:${bookingId}`;
+      const used = await this.redis.incr(key);
+      if (used === 1) await this.redis.expire(key, 24 * 60 * 60);
+      return used <= BookingOtpService.MAX_RENEWALS;
+    } catch {
+      return true;
+    }
+  }
+
+  /** L17: how many fresh codes a customer can ask for on one trip. */
+  static readonly MAX_RENEWALS = 3;
 
   /**
    * Verify a driver's entry (Phase 18 calls this; it lives beside the mint

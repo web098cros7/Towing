@@ -249,6 +249,12 @@ export const ErrorCodes = {
    * `TRIP_ISSUE_WINDOW_DAYS` ago. Safety reports are never refused.
    */
   TRIP_ISSUE_WINDOW_CLOSED: 'trip_issue_window_closed',
+  /**
+   * L17: the customer has asked for a new collection code as many times as a
+   * trip allows. Support can help; the cap is what stops the reset from
+   * becoming unlimited guesses at the code.
+   */
+  OTP_RENEWALS_EXHAUSTED: 'otp_renewals_exhausted',
 
   INTERNAL: 'internal_error',
 } as const;

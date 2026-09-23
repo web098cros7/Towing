@@ -195,6 +195,14 @@ export type BookingListResponse = z.infer<typeof bookingListResponseSchema>;
 export const bookingOtpResponseSchema = z.object({
   code: z.string().length(6),
   expiresAt: z.iso.datetime(),
+  /**
+   * L17: the driver has typed a wrong code too many times, so THIS code no
+   * longer works even though its window is open. The customer can ask for a new
+   * one (`POST /bookings/:id/otp/renew`); nothing else unlocks it before the
+   * window runs out, which used to mean a driver standing at the car for up to
+   * thirty minutes.
+   */
+  locked: z.boolean(),
 });
 export type BookingOtpResponse = z.infer<typeof bookingOtpResponseSchema>;
 

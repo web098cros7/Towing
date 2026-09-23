@@ -50,6 +50,7 @@ import {
   type TrackingMapVariant,
 } from '@/features/tracking/components/TrackingMap';
 import { useCollectionCode } from '@/features/tracking/hooks/useCollectionCode';
+import { useCollectionCodeHelp } from '@/features/tracking/hooks/useCollectionCodeHelp';
 import { useLiveTracking } from '@/features/tracking/hooks/useLiveTracking';
 import { track } from '@/lib/analytics/analytics';
 import { env } from '@/lib/env';
@@ -314,6 +315,8 @@ export function TrackingScreen() {
     bookingId,
     (booking?.otpAvailable ?? false) && design === 'arrived23',
   );
+  // L16/L17: a locked code or one that will not load is said out loud.
+  useCollectionCodeHelp(bookingId, (booking?.otpAvailable ?? false) && design === 'arrived23');
 
   /**
    * The end of the trip leaves this screen, once (a poll landing before the

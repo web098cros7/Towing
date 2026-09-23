@@ -181,4 +181,63 @@ describe('GET /v1/bookings/:id/otp', () => {
       await request(app.getHttpServer()).get(`/v1/bookings/${id}/otp`).expect(401);
     });
   });
+
+  describe('L17 — a locked code, and the customer asking for a new one', () => {
+    const renew = (id: string, as = auth) =>
+      request(app.getHttpServer()).post(`/v1/bookings/${id}/otp/renew`).set('Authorization', as);
+
+    /** Five wrong guesses from the driver side, the way `start()` makes them. */
+    async function lockOut(id: string): Promise<void> {
+      const otp = app.get(BookingOtpService);
+      for (let i = 0; i < 5; i += 1) await otp.verify(db, id, '999999');
+    }
+
+    it('reports the code as locked once the driver has used up the attempts', async () => {
+      const id = await seedAssigned();
+      const first = await fetchOtp(id).expect(200);
+      expect(first.body.locked).toBe(false);
+
+      await lockOut(id);
+
+      const after = await fetchOtp(id).expect(200);
+      // Same code, same window, and now honest that it no longer works.
+      expect(after.body.code).toBe(first.body.code);
+      expect(after.body.locked).toBe(true);
+    });
+
+    it('gives the customer a new, working code at once, and kills the old one', async () => {
+      const id = await seedAssigned();
+      const old = (await fetchOtp(id).expect(200)).body.code as string;
+      await lockOut(id);
+
+      const renewed = await renew(id).expect(200);
+      expectMatchesContract(bookingOtpResponseSchema, renewed.body);
+      expect(renewed.body.locked).toBe(false);
+      expect(renewed.body.code).not.toBe(old);
+
+      const otp = app.get(BookingOtpService);
+      expect(await otp.verify(db, id, old)).toBe(false);
+      expect(await otp.verify(db, id, renewed.body.code)).toBe(true);
+      // And reading it again returns the new code, not a fresh rotation.
+      expect((await fetchOtp(id).expect(200)).body.code).toBe(renewed.body.code);
+    });
+
+    it('allows three renewals a trip, then points to support', async () => {
+      // The cap is what stops "reset" becoming unlimited guesses at the code.
+      const id = await seedAssigned();
+      for (let i = 0; i < 3; i += 1) await renew(id).expect(200);
+
+      const refused = await renew(id).expect(429);
+      expect(refused.body.error.code).toBe('otp_renewals_exhausted');
+    });
+
+    it("404s another customer's booking and 409s before assignment", async () => {
+      const theirs = await seedAssigned(await seedCustomer(db));
+      await renew(theirs).expect(404);
+
+      const searching = await seedBooking(db, { userId, status: 'paid' });
+      await db.update(bookings).set({ status: 'searching' }).where(eq(bookings.id, searching));
+      await renew(searching).expect(409);
+    });
+  });
 });

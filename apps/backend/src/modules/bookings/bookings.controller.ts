@@ -87,6 +87,19 @@ export class BookingsController {
   }
 
   /**
+   * L17 — a new collection code, for when the driver has locked the old one
+   * with wrong guesses. The customer's own booking only, capped per trip.
+   */
+  @Post(':id/otp/renew')
+  @HttpCode(HttpStatus.OK)
+  renewOtp(
+    @ZodParam(z.uuid(), 'id') bookingId: string,
+    @Req() request: AuthedRequest,
+  ): Promise<BookingOtpResponse> {
+    return this.bookings.renewOtp(customerId(request), bookingId);
+  }
+
+  /**
    * §9.1.6's "retry / widen" (Phase 17).
    *
    * RE-ENTERS THE SEARCH ON THE SAME BOOKING, which is the whole point.

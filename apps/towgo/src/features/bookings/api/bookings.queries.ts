@@ -188,7 +188,12 @@ export function useRetrySearch() {
  * §9.1.7's OTP card. `enabled` mirrors the server's own rule so the app never
  * fires a request it knows will 409.
  */
-export function useBookingOtp(bookingId: string, available: boolean) {
+export function useBookingOtp(
+  bookingId: string,
+  available: boolean,
+  /** L17: how often to re-read while the code is on screen, to notice a lock. */
+  refetchIntervalMs?: number,
+) {
   return useQuery({
     queryKey: bookingsKeys.otp(bookingId),
     queryFn: () => bookingsDataSource.getOtp(bookingId),
@@ -196,5 +201,18 @@ export function useBookingOtp(bookingId: string, available: boolean) {
     // The server rotates a lapsed code; refetching inside the window returns
     // the same one, so this is cheap and keeps a long trip's card live.
     staleTime: 5 * 60 * 1000,
+    refetchInterval: available && refetchIntervalMs ? refetchIntervalMs : false,
+  });
+}
+
+/**
+ * L17: ask for a new collection code. The answer replaces the cached code at
+ * once, so the six digits on 24 change the moment the new code exists.
+ */
+export function useRenewBookingOtp(bookingId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => bookingsDataSource.renewOtp(bookingId),
+    onSuccess: (fresh) => queryClient.setQueryData(bookingsKeys.otp(bookingId), fresh),
   });
 }

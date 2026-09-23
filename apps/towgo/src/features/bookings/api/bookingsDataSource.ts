@@ -32,6 +32,8 @@ export interface BookingsDataSource {
   ): Promise<BookingCancelResponse>;
   /** §9.1.7 — only valid once a driver is assigned. */
   getOtp(bookingId: string): Promise<BookingOtpResponse>;
+  /** L17: a new collection code, for when the driver has locked the old one. */
+  renewOtp(bookingId: string): Promise<BookingOtpResponse>;
   /** §9.1.6's "retry / widen" — re-searches the SAME booking, keeping its locked fare. */
   retrySearch(bookingId: string): Promise<BookingDetail>;
 }
