@@ -161,9 +161,12 @@ export class NotificationService {
       // Resolution is a handful of indexed reads, cheap enough to sit in the
       // producer's transaction — and doing it here is what lets the inbox be
       // written now rather than in the worker.
+      // The resolver runs on THIS transaction's connection, never the pool:
+      // a pool query from in here waits for a second connection while holding
+      // the first, and a burst of emits the size of the pool deadlocked it.
       const recipients = await asResolve(trigger)(payload, {
         db: tx as unknown as Database,
-        resolver: this.resolver,
+        resolver: this.resolver.within(tx),
       });
 
       // AN EXPLICIT ALLOWLIST, not "everything except the ops pseudo-subject".

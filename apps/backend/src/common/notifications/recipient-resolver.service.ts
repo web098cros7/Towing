@@ -4,7 +4,7 @@ import {
   SUBJECT_NOTIFICATION_PREF_DEFAULTS,
   type SubjectNotificationPrefs,
 } from '@towing/api-contracts';
-import { DB, type Database } from '../../db/db.module';
+import { DB, type Database, type DatabaseExecutor } from '../../db/db.module';
 import { devices } from '../../db/schema/devices';
 import { drivers } from '../../db/schema/drivers';
 import { fleets } from '../../db/schema/fleets';
@@ -29,6 +29,19 @@ import type { Recipient } from './registry/trigger.types';
 @Injectable()
 export class RecipientResolverService {
   constructor(@Inject(DB) private readonly db: Database) {}
+
+  /**
+   * The same lookups, run on `executor` instead of the pool.
+   *
+   * `NotificationService.emit` resolves recipients INSIDE the transaction that
+   * writes the event. Querying the pool from in there holds one connection and
+   * waits for a second, and a burst of emits as large as the pool deadlocked
+   * it for good (found by `bench:payments`, 24 Sep). Passing the transaction
+   * makes an emit need exactly one connection, whatever the load.
+   */
+  within(executor: DatabaseExecutor): RecipientResolverService {
+    return new RecipientResolverService(executor as unknown as Database);
+  }
 
   async resolveUser(userId: string): Promise<Recipient | null> {
     const [row] = await this.db
