@@ -20,7 +20,12 @@ import { PaymentFailedView } from './failed/PaymentFailedView';
 import { PaymentReview } from './review/PaymentReview';
 import { buildPaymentBill } from './review/paymentBill';
 import { useFreshBooking } from './useFreshBooking';
-import { usePaymentSession, type PaymentFailure } from './usePaymentSession';
+import { showPaymentNotice } from './paymentNotice';
+import {
+  usePaymentSession,
+  type PaymentFailure,
+  type PaymentOutcome,
+} from './usePaymentSession';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -44,8 +49,9 @@ const BACK_ACTIONS: ReadonlySet<string> = new Set(['GO_BACK', 'POP']);
  * - A definite decline → 29. Its Back chevron, Android back, the iOS back swipe and "Use Another
  *   Method" all return to 27's list in the same session; Try Again pays again with the same
  *   method on the same intent and key.
- * - Anything else (a dismissed checkout, a payment that could not start, a bank still
- *   confirming) stays where it is: nothing is drawn for those (DATA-GAPS-27-30).
+ * - Anything else stays where it is. A dismissed checkout shows nothing (the customer closed it).
+ *   A payment that could not start, and a bank still confirming, have no Figma screen, so each
+ *   shows a system alert (P19, `paymentNotice.ts`); the second offers "Check again".
  */
 export function PaymentScreen() {
   const navigation = useNavigation<Nav>();
@@ -55,7 +61,7 @@ export function PaymentScreen() {
   // and 29's Reference ID. Read fresh on arrival, never from the persisted cache: until that
   // read lands, the price and the reference keep their bars and no coupon can be checked.
   const booking = useFreshBooking(bookingId);
-  const { intent, paying, pay: payWith, changeCoupon } = usePaymentSession(bookingId);
+  const { intent, paying, pay: payWith, recheck, changeCoupon } = usePaymentSession(bookingId);
 
   /** UPI is drawn selected; kept on the phone only (the server takes no method, Data gap 1). */
   const [method, setMethod] = useState<PaymentMethodKind>('upi');
@@ -122,35 +128,45 @@ export function PaymentScreen() {
 
   // --- Paying ------------------------------------------------------------------------------
 
+  /** Where a Pay, a Try Again or an alert's Check again leads. */
+  const handleOutcome = useCallback(
+    (outcome: PaymentOutcome) => {
+      if (outcome.kind === 'paid') {
+        paidRef.current = true;
+        const params: RootStackParamList['PaymentSuccess'] = {
+          bookingId,
+          payment: {
+            method: outcome.method,
+            transactionId: outcome.transactionId,
+            paidAt: outcome.paidAt,
+            amountPaise: outcome.amountPaise,
+          },
+        };
+        // `navigation.reset`, routed through `exit` so 29's hold lets it through.
+        setExit(
+          CommonActions.reset({
+            index: 1,
+            routes: [{ name: 'Tabs' }, { name: 'PaymentSuccess', params }],
+          }),
+        );
+      } else if (outcome.kind === 'failed') {
+        setFailure(outcome.failure);
+      } else if (outcome.kind === 'cash') {
+        // 31b · Pay Cash to Driver: the driver confirms the cash, and 31b polls for that.
+        navigation.navigate('PayCash', { bookingId, amountPaise: outcome.amountPaise });
+      } else if (outcome.notice) {
+        // P19: Figma has no screen for these, so a system alert over 27 (or 29).
+        showPaymentNotice(outcome.notice, () => void recheck().then(handleOutcome));
+      }
+      // A plain 'stay' (a dismissed checkout): 27, or 29, stays as it is.
+    },
+    [bookingId, navigation, recheck],
+  );
+
   /** 27's Pay and 29's Try Again: the same call, with 27's method. */
   const pay = useCallback(async () => {
-    const outcome = await payWith(method);
-    if (outcome.kind === 'paid') {
-      paidRef.current = true;
-      const params: RootStackParamList['PaymentSuccess'] = {
-        bookingId,
-        payment: {
-          method: outcome.method,
-          transactionId: outcome.transactionId,
-          paidAt: outcome.paidAt,
-          amountPaise: outcome.amountPaise,
-        },
-      };
-      // `navigation.reset`, routed through `exit` so 29's hold lets it through.
-      setExit(
-        CommonActions.reset({
-          index: 1,
-          routes: [{ name: 'Tabs' }, { name: 'PaymentSuccess', params }],
-        }),
-      );
-    } else if (outcome.kind === 'failed') {
-      setFailure(outcome.failure);
-    } else if (outcome.kind === 'cash') {
-      // 31b · Pay Cash to Driver: the driver confirms the cash, and 31b polls for that.
-      navigation.navigate('PayCash', { bookingId, amountPaise: outcome.amountPaise });
-    }
-    // 'stay': nothing drawn; 27 (or 29, after a dismissed Try Again) stays as it is.
-  }, [bookingId, method, navigation, payWith]);
+    handleOutcome(await payWith(method));
+  }, [handleOutcome, method, payWith]);
 
   /** A tap selects a row. */
   const selectMethod = useCallback(

@@ -58,10 +58,14 @@ export type PaymentOutcome =
    */
   | { kind: 'cash'; amountPaise: number }
   /**
-   * Nothing to show: the customer closed the checkout (not a failure), the payment could not
-   * start, or the bank is still confirming. Stay where you are (29 spec D3; not drawn).
+   * Stay where you are (29 spec D3: 29 is for definite declines only). `notice` says whether
+   * the customer needs telling, which Figma has no screen for, so 27 shows a system alert (P19):
+   * - absent: the customer closed the checkout themselves, or a Pay was already in flight;
+   * - `not_started`: the payment never started, so nothing was charged;
+   * - `confirming`: the bank has not answered yet, and money may already have left. `recheck`
+   *   asks again.
    */
-  | { kind: 'stay' };
+  | { kind: 'stay'; notice?: 'not_started' | 'confirming' };
 
 /** One intent request: its idempotency key and the coupon it was created with. */
 type Attempt = { key: string; couponCode: string | null };
@@ -83,10 +87,10 @@ type Attempt = { key: string; couponCode: string | null };
  * - Razorpay's sheet rejects with anything but a dismissal (`CheckoutFailedError`);
  * - the capture throws 422 `payment_not_captured` with `gatewayStatus: 'failed'`.
  *
- * Everything else draws nothing, so the screen stays put: a dismissal; a checkout that could
- * not start (no dev result, the native module missing); a capture that is still confirming
- * (422 with `pending` / `authorized`) or failed in transit. For those last two the booking is
- * read again, and a booking that turned `paid` goes to 30 anyway.
+ * Everything else stays on 27: a dismissal (silently); a checkout that could not start (no dev
+ * result, the native module missing, no intent) as `not_started`; a capture that is still
+ * confirming (422 with `pending` / `authorized`) or failed in transit as `confirming`. For those
+ * last two the booking is read again first, and a booking that turned `paid` goes to 30 anyway.
  */
 export function usePaymentSession(bookingId: string) {
   const queryClient = useQueryClient();
@@ -162,6 +166,13 @@ export function usePaymentSession(bookingId: string) {
     [applyCoupon, bookingId, removeCoupon],
   );
 
+  /** The last unclear capture, for `recheck`. Cleared once it resolves either way. */
+  const unclear = useRef<{
+    method: PaymentMethodKind;
+    transactionId: string | null;
+    amountPaise: number;
+  } | null>(null);
+
   /** Read the booking again after an unclear capture: it may have been paid after all. */
   const settleFromBooking = useCallback(
     async (
@@ -175,14 +186,28 @@ export function usePaymentSession(bookingId: string) {
           queryFn: () => bookingsDataSource.getBooking(bookingId),
           staleTime: 0,
         });
-        if (booking?.status === 'paid') return paidOutcome(method, transactionId, amountPaise);
+        if (booking?.status === 'paid') {
+          unclear.current = null;
+          return paidOutcome(method, transactionId, amountPaise);
+        }
       } catch {
-        // Nothing drawn for this either; the customer can pay again from 27.
+        // Could not read it either; still unclear.
       }
-      return { kind: 'stay' };
+      unclear.current = { method, transactionId, amountPaise };
+      return { kind: 'stay', notice: 'confirming' };
     },
     [bookingId, queryClient],
   );
+
+  /**
+   * The alert's "Check again" after a `confirming` outcome: reads the booking once more. The
+   * webhook settles a late capture server-side, so this turns `paid` without a second charge.
+   */
+  const recheck = useCallback(async (): Promise<PaymentOutcome> => {
+    const last = unclear.current;
+    if (!last) return { kind: 'stay' };
+    return settleFromBooking(last.method, last.transactionId, last.amountPaise);
+  }, [settleFromBooking]);
 
   /**
    * 27's Pay and 29's Try Again. Three paths:
@@ -217,8 +242,10 @@ export function usePaymentSession(bookingId: string) {
       }
 
       if (!intent) {
-        if (intentFailed) void requestIntent(current.current);
-        return { kind: 'stay' };
+        // Still being created: Pay waits for the amount. Failed: ask again, and say so.
+        if (!intentFailed) return { kind: 'stay' };
+        void requestIntent(current.current);
+        return { kind: 'stay', notice: 'not_started' };
       }
       const key = current.current.key;
 
@@ -234,8 +261,10 @@ export function usePaymentSession(bookingId: string) {
               outcome = paidOutcome('wallet', null, intent.walletAppliedPaise);
             }
           } catch {
-            // The server may have closed the intent; ask for a fresh one and stay.
+            // The server may have closed the intent; ask for a fresh one and stay. A wallet
+            // debit is one database write, so a failure here took nothing.
             void requestIntent(current.current);
+            outcome = { kind: 'stay', notice: 'not_started' };
           }
           return outcome;
         }
@@ -249,7 +278,8 @@ export function usePaymentSession(bookingId: string) {
           if (error instanceof CheckoutFailedError) {
             outcome = failedOutcome(method, intent.amountPaise, error.reason);
           }
-          // Anything else: the payment never started. Nothing is drawn for it (DATA-GAPS-27-30).
+          // Anything else: the payment never started, so nothing was charged (P19).
+          else outcome = { kind: 'stay', notice: 'not_started' };
           return outcome;
         }
 
@@ -295,6 +325,8 @@ export function usePaymentSession(bookingId: string) {
     /** True while a Pay / Try Again is between the tap and its outcome. */
     paying,
     pay,
+    /** After a `confirming` outcome: has the bank answered yet? */
+    recheck,
     changeCoupon,
   };
 }
