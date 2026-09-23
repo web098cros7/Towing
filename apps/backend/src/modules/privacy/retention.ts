@@ -64,10 +64,37 @@ export const RETENTION_POLICY_DEFAULTS: readonly RetentionPolicyDefault[] = [
     retentionDays: 90,
     description: 'Raw provider webhook payloads — 90 days. Swept nightly.',
   },
+  /**
+   * ADM-18's gap, closed 23 Sep. The chat did not exist when G16's schedule
+   * was written, so it was kept forever.
+   *
+   * 90 days is ADM-18's "message logs" default. Ehsan set the dispute window
+   * at three hours at most, so disputes alone would allow far less; the rest
+   * of the margin is for what arrives later than a dispute — a safety
+   * complaint, a police request about a trip. A dispute still OPEN holds its
+   * booking's chat past the cutoff (see `sweepRetention`), because the chat is
+   * the evidence the dispute is being decided on.
+   *
+   * Added by migration 0041, not 0033: `migration-0033.spec.ts` pins 0033's
+   * seed to every entry here EXCEPT this one.
+   */
+  {
+    policyKey: 'chat_messages',
+    retentionDays: 90,
+    description: "booking_messages (driver-customer chat) — 90 days. Swept nightly, except on a booking with a dispute still open.",
+  },
 ];
 
+/** Keys added to the schedule after 0033 seeded it, each by its own migration. */
+export const POLICY_KEYS_ADDED_AFTER_0033 = ['chat_messages'] as const;
+
 /** The three keys `sweepRetention` honours — the console renders this as `enforced`. */
-export const SWEPT_POLICY_KEYS = ['location_paths', 'delivery_logs', 'webhook_events'] as const;
+export const SWEPT_POLICY_KEYS = [
+  'location_paths',
+  'delivery_logs',
+  'webhook_events',
+  'chat_messages',
+] as const;
 export type SweptPolicyKey = (typeof SWEPT_POLICY_KEYS)[number];
 
 export interface RetentionSweepResult {
@@ -123,6 +150,20 @@ export async function sweepRetention(db: Database): Promise<RetentionSweepResult
         delete from notification_events where created_at < ${cutoff} returning id
       `)) as unknown as unknown[];
       deleted = deliveries.length + events.length;
+    } else if (policyKey === 'chat_messages') {
+      // A dispute that is not yet resolved holds its booking's chat: it is the
+      // evidence being decided on, and deleting it mid-case because a clock ran
+      // out would destroy the one record both sides can point to.
+      const rows = (await db.execute(sql`
+        delete from booking_messages m
+         where m.created_at < ${cutoff}
+           and not exists (
+             select 1 from disputes d
+              where d.booking_id = m.booking_id and d.status <> 'resolved'
+           )
+         returning m.id
+      `)) as unknown as unknown[];
+      deleted = rows.length;
     } else {
       // `received_at`, not `created_at`: a webhook row is a fact that happened
       // and carries no timestamps pair (see the schema's note). Reading the

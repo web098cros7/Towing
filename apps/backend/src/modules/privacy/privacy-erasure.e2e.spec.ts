@@ -569,6 +569,48 @@ describe('privacy erasure and retention (W19 §20.4)', () => {
     });
   });
 
+  describe('the chat retention (ADM-18, 23 Sep)', () => {
+    it('deletes chat past 90 days, but never while its booking has an open dispute', async () => {
+      // The chat arrived after G16's schedule and used to be kept forever.
+      // Ehsan: disputes are raised within three hours at most, so 90 days is
+      // generous — but a dispute still open holds its evidence regardless.
+      // ISO strings: a raw `sql` parameter is not serialised from a Date.
+      const old = new Date(Date.now() - 120 * DAY_MS).toISOString();
+      const recent = new Date(Date.now() - 5 * DAY_MS).toISOString();
+      const settled = await seedBooking(db, { userId: await seedCustomer(db) });
+      const inDispute = await seedBooking(db, { userId: await seedCustomer(db) });
+      const sender = randomUUID();
+
+      await db.execute(sql`
+        insert into booking_messages (booking_id, sender_type, sender_id, body, created_at)
+        values (${settled}::uuid, 'customer', ${sender}::uuid, 'old, no dispute', ${old}::timestamptz),
+               (${settled}::uuid, 'driver', ${sender}::uuid, 'recent', ${recent}::timestamptz),
+               (${inDispute}::uuid, 'customer', ${sender}::uuid, 'old, dispute open', ${old}::timestamptz)
+      `);
+      await db.execute(sql`
+        insert into disputes (booking_id, opened_by_type, reason_code, description,
+                              status, opened_from_status)
+        values (${inDispute}::uuid, 'admin', 'overcharge', 'Customer says the fare was padded',
+                'open', 'paid')
+      `);
+
+      await erasure.sweep('manual');
+
+      const left = (await db.execute(sql`
+        select body from booking_messages order by body
+      `)) as unknown as Array<{ body: string }>;
+      expect(left.map((row) => row.body)).toEqual(['old, dispute open', 'recent']);
+
+      // Once the dispute resolves, the hold lifts on the next sweep.
+      await db.execute(sql`update disputes set status = 'resolved' where booking_id = ${inDispute}::uuid`);
+      await erasure.sweep('manual');
+      const after = (await db.execute(sql`
+        select body from booking_messages
+      `)) as unknown as Array<{ body: string }>;
+      expect(after.map((row) => row.body)).toEqual(['recent']);
+    });
+  });
+
   describe('the console lane', () => {
     it('gates the queue on privacy.handle and the retention editor on admin.manage', async () => {
       const userId = await seedCustomer(db);

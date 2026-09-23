@@ -6,7 +6,11 @@ import {
   OPEN_DELETION_REQUEST_STATUSES,
   DELETION_REQUEST_STATUSES as STATUSES_ROW,
 } from '../../db/schema';
-import { RETENTION_POLICY_DEFAULTS, SWEPT_POLICY_KEYS } from '../privacy/retention';
+import {
+  POLICY_KEYS_ADDED_AFTER_0033,
+  RETENTION_POLICY_DEFAULTS,
+  SWEPT_POLICY_KEYS,
+} from '../privacy/retention';
 
 /**
  * Migration 0033 (W19): the privacy/retention tables and the widened
@@ -70,7 +74,11 @@ describe('migration 0033 privacy retention', () => {
 
   it('seeds exactly the G16 policy rows the code declares', () => {
     const sql = migrationSql();
-    for (const policy of RETENTION_POLICY_DEFAULTS) {
+    // 0033 seeded the original six. Later keys arrive by their own migration
+    // (0041: `chat_messages`) and are pinned by that migration's spec.
+    const addedLater = new Set<string>(POLICY_KEYS_ADDED_AFTER_0033);
+    const at0033 = RETENTION_POLICY_DEFAULTS.filter((policy) => !addedLater.has(policy.policyKey));
+    for (const policy of at0033) {
       expect(sql).toContain(
         `('${policy.policyKey}', ${policy.retentionDays}, '${policy.description.replaceAll("'", "''")}')`,
       );

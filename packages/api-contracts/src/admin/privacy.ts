@@ -96,6 +96,7 @@ export const RETENTION_ENFORCED_KEYS = [
   'location_paths',
   'delivery_logs',
   'webhook_events',
+  'chat_messages',
 ] as const;
 
 export const adminRetentionPolicySchema = z.object({
