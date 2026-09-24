@@ -55,5 +55,4 @@ yarn-error.*
 /package-lock.json
 /yarn.lock
 
-apps/towgo/google-services.json
 apps/towgo/google-plist.json
