@@ -7,7 +7,12 @@
  *
  * Refuses to hit a production host unless `--i-know` is passed AND
  * `MITOW_SIM_ALLOW_REMOTE=1` is set in the environment.
+ *
+ * The truck drives along the job's road route (the line the customer sees)
+ * when the server has one, and in a straight line when it has none.
  */
+
+import { decodePolyline } from '@towing/api-contracts';
 
 const PROD_HOST = 'api.mitow.in';
 
@@ -235,6 +240,9 @@ type DriverJob = {
   status: string;
   pickup: LatLng;
   drop: LatLng | null;
+  /** The road routes the customer's map draws; null until the server has one. */
+  routePolyline?: string | null;
+  routeDropPolyline?: string | null;
 };
 
 async function main(): Promise<void> {
@@ -376,9 +384,59 @@ async function main(): Promise<void> {
   }
 
   // ---- d) Drive to pickup -------------------------------------------------
-  const driveTo = async (target: LatLng, arriveWithinM: number): Promise<void> => {
+
+  /**
+   * The leg's road route, as the customer's map draws it. The server computes
+   * it just after accept (and the drop leg at start), so it is polled briefly;
+   * null means a straight line.
+   */
+  const routeFor = async (leg: 'pickup' | 'drop'): Promise<LatLng[] | null> => {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const res = await client.get<{ job: DriverJob | null }>('/v1/driver/jobs/current');
+      const encoded = leg === 'pickup' ? res?.job?.routePolyline : res?.job?.routeDropPolyline;
+      if (encoded) {
+        const points = decodePolyline(encoded);
+        if (points.length >= 2) return points.map((p) => ({ lat: p.lat, lng: p.lng }));
+      }
+      await sleep(1500);
+    }
+    return null;
+  };
+
+  const driveTo = async (
+    target: LatLng,
+    arriveWithinM: number,
+    route: LatLng[] | null = null,
+  ): Promise<void> => {
+    const meters = (args.speed * 1000 * args.tick) / 3_600_000;
+    // Road route first: start from its point nearest the truck, then follow it.
+    if (route) {
+      let nearest = 0;
+      route.forEach((p, i) => {
+        if (haversine(pos, p) < haversine(pos, route[nearest]!)) nearest = i;
+      });
+      const queue = route.slice(nearest);
+      while (queue.length > 0 && haversine(pos, target) > arriveWithinM) {
+        let budget = meters;
+        let next = pos;
+        while (budget > 0 && queue.length > 0) {
+          const d = haversine(next, queue[0]!);
+          if (d <= budget) {
+            next = queue.shift()!;
+            budget -= d;
+          } else {
+            next = stepToward(next, queue[0]!, budget);
+            budget = 0;
+          }
+        }
+        const same = next.lat === pos.lat && next.lng === pos.lng;
+        const heading = same ? undefined : Math.round(bearing(pos, next) * 10) / 10;
+        await postLocation(next, heading);
+        await sleep(args.tick);
+      }
+    }
+    // The rest (or all of it, with no route): a straight line.
     while (haversine(pos, target) > arriveWithinM) {
-      const meters = (args.speed * 1000 * args.tick) / 3_600_000;
       const next = stepToward(pos, target, meters);
       const same = next.lat === pos.lat && next.lng === pos.lng;
       const heading = same ? undefined : Math.round(bearing(pos, next) * 10) / 10;
@@ -388,8 +446,11 @@ async function main(): Promise<void> {
   };
 
   if (job.status === 'assigned' || job.status === 'en_route') {
-    log(`driving to pickup ${job.reference}`);
-    await driveTo(job.pickup, 60);
+    const route = await routeFor('pickup');
+    log(
+      `driving to pickup ${job.reference} (${route ? `road route, ${route.length} points` : 'straight line'})`,
+    );
+    await driveTo(job.pickup, 60, route);
     await client.post(`/v1/jobs/${job.bookingId}/arrived`, {});
     log(`arrived ${job.reference}`);
   }
@@ -407,8 +468,13 @@ async function main(): Promise<void> {
 
   // ---- f) Drive to drop ---------------------------------------------------
   if (job.drop) {
-    log(`driving to drop ${job.reference}`);
-    await driveTo(job.drop, 60);
+    // Loading the vehicle takes a moment before the truck leaves the pickup.
+    await sleep(8000);
+    const route = await routeFor('drop');
+    log(
+      `driving to drop ${job.reference} (${route ? `road route, ${route.length} points` : 'straight line'})`,
+    );
+    await driveTo(job.drop, 60, route);
   } else {
     log('roadside job — waiting 20s at pickup');
     await sleep(20_000);
