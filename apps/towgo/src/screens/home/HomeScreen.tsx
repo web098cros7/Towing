@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
@@ -23,6 +23,7 @@ import { useLocationStore } from '@/features/location/locationStore';
 import { useNearestPartner } from '@/features/home/api/home.queries';
 import { useBookingStore } from '@/features/booking/store/bookingStore';
 import { track } from '@/lib/analytics/analytics';
+import { env } from '@/lib/env';
 import type { RootStackParamList } from '@/navigation/types';
 import { HomeMap, type HomeMapHandle } from './components/HomeMap';
 
@@ -87,6 +88,14 @@ export function HomeScreen() {
 
   const pickup = useLocationStore((s) => s.pickup);
   const resolveCurrentLocation = useLocationStore((s) => s.resolveCurrentLocation);
+
+  // Home opens on the customer's own position (owner decision, 24 Sep 2026):
+  // the permission prompt on first open, then the map moves to the fix. Live
+  // mode only; mock mode keeps the drawn example ("MG Road, Bengaluru").
+  // Refused permission leaves the default where it is.
+  useEffect(() => {
+    if (!env.useMocks) void resolveCurrentLocation();
+  }, [resolveCurrentLocation]);
   const setServiceSlug = useBookingStore((s) => s.setServiceSlug);
 
   // A partner only when a truck is actually nearby; otherwise just the customer's location.
@@ -194,8 +203,8 @@ export function HomeScreen() {
       {/* 2. Help chip 228:257 at (283.7, 48.5), right inset 14.3. */}
       <MiHelpChip
         onPress={() => navigation.navigate('Support')}
-        // Root 58. The tab navigator's placeholder route is `SupportTab`, so
-        // this bubbles past the tabs to the root stack (see BottomTabs).
+        // Root 58: the tab navigator has no `Support` route, so this bubbles
+        // past the tabs to the root stack.
         style={{ position: 'absolute', right: 14.3, top: chromeTop + 48.5 }}
       />
 

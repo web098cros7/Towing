@@ -7,6 +7,7 @@ import { mitowLayout, MiButton, MiNavBar, MiScreen } from '@/design';
 import { LocationFields } from '@/features/booking/components/LocationFields';
 import { BookingPills } from '@/features/booking/components/BookingPills';
 import { LocationActions } from '@/features/booking/components/enter-location/LocationActions';
+import { PlaceSuggestions } from '@/features/booking/components/enter-location/PlaceSuggestions';
 import { SavedRecentSection } from '@/features/booking/components/enter-location/SavedRecentSection';
 import {
   useRecentPlaces,
@@ -30,7 +31,9 @@ const INDICATOR_ZONE = 34;
  *
  * Column (side margin 21, gap 16): Nav bar → Pills → Locations card → Actions →
  * Saved & Recent. Continue is pinned at the bottom, independent of the column.
- * Nothing else is drawn in any state: no search list, no error line.
+ * While the customer types in Pickup or Drop, the matching places replace
+ * Actions and Saved & Recent (owner decision, 24 Sep 2026; Figma draws no
+ * search list). No error line is drawn.
  */
 export function BookLocationScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -125,21 +128,27 @@ export function BookLocationScreen() {
           locating={editing.locating}
         />
 
-        <LocationActions
-          onSelectOnMap={onSelectOnMap}
-          // Drawn enabled. Bookings carry one pickup and one drop (no stops in
-          // the contract) and no add-stop screen is drawn, so the press gives
-          // its feedback and goes nowhere yet.
-          onAddStop={() => {}}
-        />
+        {editing.searchingField ? (
+          <PlaceSuggestions suggestions={editing.suggestions} onSelect={editing.selectSuggestion} />
+        ) : (
+          <>
+            <LocationActions
+              onSelectOnMap={onSelectOnMap}
+              // Drawn enabled. Bookings carry one pickup and one drop (no stops in
+              // the contract) and no add-stop screen is drawn, so the press gives
+              // its feedback and goes nowhere yet.
+              onAddStop={() => {}}
+            />
 
-        <SavedRecentSection
-          saved={saved}
-          recents={recents}
-          onSelectSaved={onSelectSaved}
-          onSelectRecent={onSelectRecent}
-          onClearRecents={clearRecents}
-        />
+            <SavedRecentSection
+              saved={saved}
+              recents={recents}
+              onSelectSaved={onSelectSaved}
+              onSelectRecent={onSelectRecent}
+              onClearRecents={clearRecents}
+            />
+          </>
+        )}
       </ScrollView>
     </MiScreen>
   );

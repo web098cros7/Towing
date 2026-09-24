@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as Location from 'expo-location';
+import { placesDataSource } from '@/features/places/api/placesDataSource';
 import type { LocationStatus, PickupLocation } from './types';
 
 const DEFAULT_PICKUP: PickupLocation = {
@@ -22,7 +23,7 @@ type LocationState = {
   resolveCurrentLocation: () => Promise<void>;
 };
 
-export const useLocationStore = create<LocationState>((set) => ({
+export const useLocationStore = create<LocationState>((set, get) => ({
   status: 'ready',
   pickup: DEFAULT_PICKUP,
   setPickup: (pickup) => set({ pickup }),
@@ -35,20 +36,26 @@ export const useLocationStore = create<LocationState>((set) => ({
       return;
     }
 
+    let coords: { latitude: number; longitude: number };
     try {
       const position = await Location.getCurrentPositionAsync();
-      // No reverse-geocode helper exists yet anywhere in the app (that's a
-      // later phase's integration, not this one's) — "Current Location" is
-      // the label until one does.
-      set({
-        status: 'ready',
-        pickup: {
-          label: 'Current Location',
-          coords: { latitude: position.coords.latitude, longitude: position.coords.longitude },
-        },
-      });
+      coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
     } catch {
       set({ status: 'denied' });
+      return;
+    }
+    // The fix first, labelled "Current Location", so the map moves at once;
+    // then the street address from the reverse lookup when it answers.
+    set({ status: 'ready', pickup: { label: 'Current Location', coords } });
+    try {
+      const place = await placesDataSource.reverse(coords);
+      const current = get().pickup.coords;
+      // Only if the pickup is still this fix (nothing picked meanwhile).
+      if (current?.latitude === coords.latitude && current.longitude === coords.longitude) {
+        set({ pickup: { label: place.label, coords } });
+      }
+    } catch {
+      // Offline or no match: "Current Location" stays.
     }
   },
 }));

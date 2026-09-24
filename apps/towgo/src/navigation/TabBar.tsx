@@ -18,7 +18,7 @@ import type { RootTabParamList } from './types';
 const TABS: Record<keyof RootTabParamList, { label: string; icon: MiLineIconName }> = {
   Home: { label: 'Home', icon: 'home' },
   Bookings: { label: 'Bookings', icon: 'calendar' },
-  SupportTab: { label: 'Support', icon: 'headset-filled' },
+  Services: { label: 'Services', icon: 'tow-truck' },
   Profile: { label: 'Profile', icon: 'user' },
 };
 

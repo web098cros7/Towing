@@ -28,8 +28,19 @@ const GRID_GAP = 10;
  * chip stay on screen while the rest scrolls; at rest the layout is the frame's.
  * The only space added below the banner is the OS bottom inset, so the banner
  * clears the gesture bar at the end of a scroll.
+ *
+ * `variant="tab"` is the same screen as the Services tab (owner decision, 24 Sep
+ * 2026: Services replaces Support in the tab bar, since Help already opens
+ * Support): titled "Services", no back chevron, and the tab bar below it takes
+ * the bottom inset.
  */
-export function RoadsideAssistanceScreen() {
+/** The Services tab: the services screen as a tab scene. */
+export function ServicesTabScreen() {
+  return <RoadsideAssistanceScreen variant="tab" />;
+}
+
+export function RoadsideAssistanceScreen({ variant = 'pushed' }: { variant?: 'pushed' | 'tab' }) {
+  const isTab = variant === 'tab';
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const setServiceSlug = useBookingStore((s) => s.setServiceSlug);
@@ -52,9 +63,9 @@ export function RoadsideAssistanceScreen() {
       {/* 1. Nav bar `259:1606` (Trailing=Help): 351×46 at content y 0. */}
       <View style={{ paddingHorizontal: mitowLayout.sideMargin }}>
         <MiNavBar
-          title="Roadside Assistance"
+          title={isTab ? 'Services' : 'Roadside Assistance'}
           trailing="help"
-          onBack={() => navigation.goBack()}
+          onBack={isTab ? undefined : () => navigation.goBack()}
           onHelp={() => navigation.navigate('Support')}
         />
       </View>
@@ -64,7 +75,7 @@ export function RoadsideAssistanceScreen() {
         contentContainerStyle={{
           paddingTop: mitowLayout.blockGap,
           paddingHorizontal: mitowLayout.sideMargin,
-          paddingBottom: insets.bottom,
+          paddingBottom: isTab ? mitowLayout.blockGap : insets.bottom,
           gap: mitowLayout.blockGap,
         }}
         showsVerticalScrollIndicator={false}

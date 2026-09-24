@@ -13,14 +13,11 @@ export type RootTabParamList = {
   Home: undefined;
   Bookings: NavigatorScreenParams<BookingsStackParamList> | undefined;
   /**
-   * The design's third tab (Figma Tab Item "Support", icon/headset). It has no
-   * scene of its own: pressing it is intercepted in `BottomTabs` and pushes the
-   * ROOT route `Support` (58), which Figma draws with a back chevron and no tab
-   * bar. Never navigate to this tab directly; navigate to root `Support`. Named
-   * `SupportTab` so a `navigate('Support')` from a tab scene cannot be caught by
-   * the tab navigator (it handles any route name it owns).
+   * The services list (screen 09's content) as the third tab, where Figma draws
+   * Support (owner decision, 24 Sep 2026). Support stays the ROOT route
+   * `Support` (58), opened by every Help chip.
    */
-  SupportTab: undefined;
+  Services: undefined;
   Profile: undefined;
 };
 

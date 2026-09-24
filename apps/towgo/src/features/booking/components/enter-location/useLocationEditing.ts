@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Keyboard, type TextInput } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import type { PlaceDetail } from '@towing/api-contracts';
+import type { PlaceDetail, PlacePrediction } from '@towing/api-contracts';
 import { env } from '@/lib/env';
 import { haptics } from '@/motion';
 import type { LatLng } from '@/types/geo';
@@ -36,13 +36,13 @@ const coordinateValue = (p: LatLng) => `${p.latitude.toFixed(5)}, ${p.longitude.
 /**
  * Editing Figma 10's Pickup and Drop values.
  *
- * ⚠ NO SEARCH UI IS DRAWN. The board says "Search pickup and drop, or use
- * recents", but no frame draws a suggestions list, so nothing is shown while
- * the customer types: Saved & Recent stays exactly as drawn. Typed text is a
- * local draft; when editing ends (keyboard Done / Next, focus leaving the
- * field, or Continue) the draft resolves to the best-matching place and its
- * coordinate. If nothing matches, the field returns to the place it held, with
- * an error haptic, because the design has no error copy.
+ * SUGGESTIONS WHILE TYPING (owner decision, 24 Sep 2026; Figma 10 draws no
+ * list): the focused field's text is searched and `suggestions` lists the
+ * matches, and `selectSuggestion` fills the field with the one tapped. Typed
+ * text is a local draft; when editing ends without a pick (keyboard Done /
+ * Next, focus leaving the field, or Continue) the draft still resolves to the
+ * best-matching place and its coordinate. If nothing matches, the field
+ * returns to the place it held, with an error haptic.
  *
  * THE COORDINATE MOVES WITH THE LABEL, ALWAYS: the booking store only ever
  * receives a label together with its coordinate, so the fare engine never
@@ -82,15 +82,16 @@ export function useLocationEditing({
     setDrafts(draftsRef.current);
   }, []);
 
-  // Warms the (debounced, cached) search for text the customer has actually
-  // typed, so ending the edit usually resolves from cache. Focusing a field
-  // without changing it searches nothing. Nothing is drawn from it.
+  // The (debounced, cached) search for text the customer has actually typed.
+  // It feeds the suggestions list, and ending the edit usually resolves from
+  // cache. Focusing a field without changing it searches nothing.
   const focusedDraft = focusedField ? drafts[focusedField] : null;
   const focusedStored = focusedField === 'pickup' ? pickupAddress : dropAddress;
-  usePlaceAutocomplete(
-    focusedDraft !== null && focusedDraft.trim() !== focusedStored.trim() ? focusedDraft : '',
-    devicePoint,
-  );
+  const typed =
+    focusedDraft !== null && focusedDraft.trim() !== focusedStored.trim() ? focusedDraft : '';
+  const autocomplete = usePlaceAutocomplete(typed, devicePoint);
+  const suggestions: PlacePrediction[] =
+    typed.trim().length >= 2 ? (autocomplete.data?.predictions ?? []) : [];
 
   /** Writes a place into a field. Clears that field's draft first, so a following blur has nothing to resolve. */
   const apply = useCallback(
@@ -180,6 +181,46 @@ export function useLocationEditing({
       void commit(field);
     },
     [commit],
+  );
+
+  /**
+   * A tapped suggestion fills the field it was searched from. The field shows
+   * the place's name at once; the coordinate follows the details lookup. The
+   * lookup is registered as the field's pending commit, so the blur that the
+   * keyboard closing causes waits for it instead of resolving the typed text.
+   */
+  const selectSuggestion = useCallback(
+    (prediction: PlacePrediction) => {
+      const field = focusedField ?? activeField;
+      const shown = prediction.primary;
+      setDraft(field, shown);
+      const run = (async () => {
+        try {
+          const place = await resolvePlace(prediction.placeId);
+          if (draftsRef.current[field] !== shown) return;
+          const point = { latitude: place.point.lat, longitude: place.point.lng };
+          const value = placeFieldValue(place);
+          apply(field, value, point);
+          addRecent({
+            id: prediction.placeId,
+            name: prediction.primary,
+            address: prediction.secondary || place.address,
+            coords: point,
+            value,
+          });
+        } catch {
+          if (draftsRef.current[field] === shown) {
+            setDraft(field, null);
+            haptics.error();
+          }
+        } finally {
+          delete pending.current[field];
+        }
+      })();
+      pending.current[field] = run;
+      Keyboard.dismiss();
+    },
+    [focusedField, activeField, setDraft, apply, addRecent],
   );
 
   /** Saved or recent row: fills the active field. */
@@ -306,6 +347,10 @@ export function useLocationEditing({
     pickupText: drafts.pickup ?? pickupAddress,
     dropText: drafts.drop ?? dropAddress,
     activeField,
+    /** The field being typed in, while it has text to search; null otherwise. */
+    searchingField: typed.trim().length >= 2 ? focusedField : null,
+    suggestions,
+    selectSuggestion,
     locating,
     onChangeText: setDraft as (field: LocationField, text: string) => void,
     onFocusField,
