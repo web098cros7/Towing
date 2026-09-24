@@ -14,8 +14,11 @@ import { MiMapCallout, MiMapChip } from '@/design';
 
 /** Figma 23 Arrival callout `236:393`, verbatim. */
 export const ARRIVED_CALLOUT_TEXT = 'Driver has arrived';
-/** Figma 23 Your location chip `236:399`, verbatim. */
-export const YOUR_LOCATION_TEXT = 'Your location';
+/**
+ * Figma 23's Your location chip `236:399`, renamed "Pickup Point" and drawn
+ * green (owner decision, 24 Sep 2026), as on Home.
+ */
+export const YOUR_LOCATION_TEXT = 'Pickup Point';
 
 /**
  * Arrival callout `236:393`: Map Callout Tail=Bottom, 156 wide, bubble padding
@@ -73,7 +76,7 @@ export function YourLocationChip() {
           padding: SHADOW_PAD,
         }}
       >
-        <MiMapChip label={YOUR_LOCATION_TEXT} />
+        <MiMapChip label={YOUR_LOCATION_TEXT} tone="pickup" />
       </View>
     </View>
   );

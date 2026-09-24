@@ -208,6 +208,9 @@ export function LocationFields({
       <LocationRow
         label="Pickup Location"
         value={pickupText}
+        // Not drawn in Figma (the pickup is always filled there): while the
+        // location is found, say so; with none, ask.
+        placeholder={locating ? 'Finding your location…' : 'Where should we pick you up?'}
         onChangeText={(text) => onChangeText('pickup', text)}
         onFocus={() => onFocusField('pickup')}
         onBlur={() => onBlurField('pickup')}

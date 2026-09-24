@@ -303,12 +303,12 @@ export function useLocationEditing({
   }, [commit, pickupRef, dropRef]);
 
   /**
-   * Real backend only: the booking store starts from the location store's
-   * built-in default place ("MG Road, Bengaluru"), which is not where this
-   * customer is. While Pickup still holds that untouched default, replace it
-   * with the device's location; if there is no fix, clear it rather than book a
-   * tow to a place the customer never chose. Mock mode keeps the default, which
-   * is the drawn example.
+   * Real backend only: the booking starts with an empty pickup (never the
+   * location store's built-in "MG Road, Bengaluru"). While it is still that
+   * untouched seed, fill it with the customer's location: at once from the fix
+   * Home already made, else from a fresh one (the field says "Finding your
+   * location…" meanwhile). With no fix it stays empty and asks. Mock mode keeps
+   * the drawn example.
    */
   useEffect(() => {
     if (env.useMocks) return;
@@ -323,18 +323,34 @@ export function useLocationEditing({
     };
     if (!isSeed()) return;
 
+    // Home's fix, if it has one: no second GPS wait, and the street address it
+    // already looked up.
+    const known = useLocationStore.getState();
+    const knownIsReal =
+      known.status === 'ready' &&
+      !!known.pickup.coords &&
+      known.pickup !== useLocationStore.getInitialState().pickup;
+
     let cancelled = false;
+    setLocating(true);
     void (async () => {
-      const point = await deviceFix();
-      if (cancelled || !isSeed()) return;
-      if (!point) {
-        setPickupAddress('');
-        setActiveField('pickup');
-        return;
+      try {
+        const point = knownIsReal ? known.pickup.coords! : await deviceFix();
+        if (cancelled || !isSeed()) return;
+        if (!point) {
+          setPickupAddress('');
+          setActiveField('pickup');
+          return;
+        }
+        const label =
+          knownIsReal && known.pickup.label !== 'Current Location'
+            ? known.pickup.label
+            : await labelFor(point);
+        if (cancelled || !isSeed()) return;
+        apply('pickup', label, point);
+      } finally {
+        if (!cancelled) setLocating(false);
       }
-      const label = await labelFor(point);
-      if (cancelled || !isSeed()) return;
-      apply('pickup', label, point);
     })();
     return () => {
       cancelled = true;

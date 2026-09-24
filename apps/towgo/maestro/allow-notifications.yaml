@@ -48,4 +48,4 @@ appId: in.mitow.customer
     commands:
       - tapOn: "Allow"
 
-- assertVisible: 'Fast Towing,.*'
+- assertVisible: 'Where do you need a tow\?'

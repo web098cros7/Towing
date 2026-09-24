@@ -20,14 +20,30 @@ export type MiMapChipProps = {
    * sizes and grows instead of truncating at larger ones.
    */
   labelMinWidth?: number;
+  /**
+   * 'pickup' is the green "Pickup Point" chip with white text (owner decision,
+   * 24 Sep 2026, after Rapido's): the one place the customer's pickup is named
+   * on a map. Default: the white master.
+   */
+  tone?: 'default' | 'pickup';
   style?: StyleProp<ViewStyle>;
 };
+
+/** The pickup green the booking map's pin uses (`RoutePin`). */
+const PICKUP_GREEN = '#1E9E5A';
 
 /**
  * Map Chip (234:294): white pill, padding 7 vertical / 13 horizontal, gap 6,
  * MiTow/Elevation/Floating, 32 tall. Not interactive.
  */
-export function MiMapChip({ label, showIcon = false, labelMinWidth, style }: MiMapChipProps) {
+export function MiMapChip({
+  label,
+  showIcon = false,
+  labelMinWidth,
+  tone = 'default',
+  style,
+}: MiMapChipProps) {
+  const pickup = tone === 'pickup';
   return (
     <View
       style={[
@@ -39,7 +55,7 @@ export function MiMapChip({ label, showIcon = false, labelMinWidth, style }: MiM
           paddingVertical: 7,
           paddingHorizontal: 13,
           borderRadius: mitowRadii.pill,
-          backgroundColor: mitowColors.surfacePage,
+          backgroundColor: pickup ? PICKUP_GREEN : mitowColors.surfacePage,
           ...mitowShadows.floating,
         },
         style,
@@ -48,6 +64,7 @@ export function MiMapChip({ label, showIcon = false, labelMinWidth, style }: MiM
       <MiText
         variant="chip135"
         numberOfLines={1}
+        color={pickup ? 'onDark' : undefined}
         style={labelMinWidth ? { minWidth: labelMinWidth } : undefined}
       >
         {label}

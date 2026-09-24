@@ -52,12 +52,10 @@ const SHEET_H_DRAWN = 397.9;
 
 /** Where 07 draws the customer's dot and the route's end at the truck. */
 const DESIGN_USER = { x: 108.3, y: 329.3 };
-/** Hero 228:265 top on the frame, and its drawn height (bottom at 255.5). */
+/** Hero 228:265's top on the frame: the top of the map's clear area now that the hero is gone. */
 const HERO_TOP_Y = 130.4;
-const HERO_H_DRAWN = 125.1;
 /** M8 "Your location" chip top (283.8) sits 45.5 above the dot and 28.3 below the Hero. */
 const CHIP_ABOVE_DOT = DESIGN_USER.y - 283.8;
-const CHIP_BELOW_HERO = 283.8 - (HERO_TOP_Y + HERO_H_DRAWN);
 /** The dot never sits closer to the sheet than this (the map's framing room below it). */
 const DOT_MIN_ABOVE_SHEET = 12;
 const DESIGN_PARTNER = { x: 276.0, y: 243.5 };
@@ -104,7 +102,6 @@ export function HomeScreen() {
   const [screenW, setScreenW] = useState(FRAME_W);
   const [sheetH, setSheetH] = useState(SHEET_H_DRAWN);
   const [containerH, setContainerH] = useState(SHEET_TOP_Y + SHEET_H_DRAWN);
-  const [heroH, setHeroH] = useState(HERO_H_DRAWN);
 
   const map = useRef<HomeMapHandle>(null);
 
@@ -125,16 +122,13 @@ export function HomeScreen() {
    *   but never at a flatter angle from the dot than the design's 85.8 : 167.7
    *   (on a short screen it rises instead of sliding left under the Hero).
    */
-  const heroBottom = chromeTop + HERO_TOP_Y + heroH;
+  // The customer's position sits in the middle of the map's visible area (owner
+  // decision, 24 Sep 2026: with no hero or truck, it is centred, as Rapido's), a
+  // little below the vertical centre so the "Pickup Point" chip above it is too.
+  const visibleTop = chromeTop + HERO_TOP_Y;
   const customerAt = {
-    x: DESIGN_USER.x,
-    y: Math.min(
-      sheetTop - DOT_MIN_ABOVE_SHEET,
-      Math.max(
-        sheetTop - (SHEET_TOP_Y - DESIGN_USER.y),
-        heroBottom + CHIP_BELOW_HERO + CHIP_ABOVE_DOT,
-      ),
-    ),
+    x: screenW / 2,
+    y: Math.min(sheetTop - DOT_MIN_ABOVE_SHEET, (visibleTop + sheetTop) / 2 + CHIP_ABOVE_DOT / 2),
   };
   const partnerX = screenW - (FRAME_W - DESIGN_PARTNER.x);
   const designRise =
@@ -174,7 +168,6 @@ export function HomeScreen() {
     setScreenW(e.nativeEvent.layout.width);
   };
   const onSheetLayout = (e: LayoutChangeEvent) => setSheetH(e.nativeEvent.layout.height);
-  const onHeroLayout = (e: LayoutChangeEvent) => setHeroH(e.nativeEvent.layout.height);
 
   return (
     <View
@@ -208,19 +201,8 @@ export function HomeScreen() {
         style={{ position: 'absolute', right: 14.3, top: chromeTop + 48.5 }}
       />
 
-      {/* 3. Hero 228:265 at (24.1, 130.4), gap 3.1. */}
-      <View
-        pointerEvents="none"
-        style={{ position: 'absolute', left: 24.1, top: chromeTop + HERO_TOP_Y, gap: 3.1 }}
-        onLayout={onHeroLayout}
-      >
-        <MiText variant="display34" accessibilityRole="header">
-          {'Fast Towing,\nAnytime'}
-        </MiText>
-        <MiText variant="bodyL155" color="secondary">
-          {'Reliable roadside assistance\nwhen you need it most.'}
-        </MiText>
-      </View>
+      {/* Hero 228:265 ("Fast Towing, Anytime") removed (owner decision, 24 Sep 2026): the map
+          stays clear, as Rapido's home map. */}
 
       {/* 4. Recenter 228:268: 55 circle, 12.5 above the sheet, right inset 18.2. */}
       <MiMapButton

@@ -30,7 +30,7 @@ appId: in.mitow.customer
 - runFlow: customer-login.yaml
 
 # ── Step 1: open the booking flow from Home ─────────────────────────────────
-- assertVisible: 'Fast Towing,.*'
+- assertVisible: 'Where do you need a tow\?'
 # The redesigned Home (08) still shows "Where do you need a tow?", but as the
 # sheet's HEADING rather than a control — tapping it does nothing now. The CTA
 # directly beneath it is what opens this step.
@@ -112,7 +112,7 @@ appId: in.mitow.customer
 - pressKey: back
 - assertVisible: 'Enter Location'
 - pressKey: back
-- assertVisible: 'Fast Towing,.*'
+- assertVisible: 'Where do you need a tow\?'
 
 - tapOn: 'Bookings'
 - assertVisible: 'My Bookings'
@@ -143,5 +143,5 @@ appId: in.mitow.customer
 - tapOn: 'Yes, Cancel Trip'
 # A successful cancel goes Home.
 - extendedWaitUntil:
-    visible: 'Fast Towing,.*'
+    visible: 'Where do you need a tow\?'
     timeout: 10000

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RoutePin } from '@/features/booking/components/book-a-tow/RoutePin';
 import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useTheme } from '@towing/theme';
@@ -15,7 +16,7 @@ import {
   type MapRegion,
 } from '@towing/ui';
 import { decodePolyline, type BookingTracking } from '@towing/api-contracts';
-import { MiLineIcon, MiMapButton } from '@/design';
+import { MiMapButton } from '@/design';
 import {
   ARRIVED_CALLOUT_ANCHOR,
   ArrivedCallout,
@@ -431,7 +432,14 @@ function LiveTripMap({
     ),
     [callout, stubKey, truckClass, headingStep],
   );
-  const pinView = useMemo(() => <MiLineIcon name="map-pin" size={PIN_SIZE} />, []);
+  // The trip end the truck is heading for, as the booking map marks it (owner decision,
+  // 24 Sep 2026): the green "Pickup Point" on the way to the customer, the red drop
+  // after. Figma draws a plain map-pin.
+  const pinKind = truckDesign?.destination === 'drop' ? 'drop' : 'pickup';
+  const pinView = useMemo(
+    () => <RoutePin kind={pinKind} label={pinKind === 'drop' ? 'Drop location' : 'Pickup Point'} />,
+    [pinKind],
+  );
   const arrivedCalloutView = useMemo(() => <ArrivedCallout />, []);
   const yourLocationView = useMemo(() => <YourLocationChip />, []);
   const driverHereView = useMemo(
@@ -457,8 +465,9 @@ function LiveTripMap({
           key: 'destination',
           coordinate: destination,
           view: pinView,
-          // Tip at (15.5, 29.3) of the 31 box (vector at 5.17, 1.94, 20.67 × 27.37).
-          anchor: { x: 0.5, y: 0.945 },
+          // The pin's stem foot touches the point.
+          anchor: { x: 0.5, y: 1 },
+          contentKey: pinKind,
           zIndex: 1,
           accessibilityLabel: truckDesign.pinLabel,
         });
@@ -516,6 +525,7 @@ function LiveTripMap({
     }
     return out;
   }, [
+    pinKind,
     headingStep,
     truckClass,
     arrivedCalloutView,
@@ -785,8 +795,6 @@ function LiveTripMap({
     </>
   );
 }
-
-const PIN_SIZE = 31;
 
 function LegacyMap({ tracking, presence, bottomInset }: TrackingMapProps) {
   const theme = useTheme();

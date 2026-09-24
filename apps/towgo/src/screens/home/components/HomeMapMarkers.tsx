@@ -58,8 +58,9 @@ export function UserLocationMarker() {
       </Svg>
       {/* M7 Pickup pin: icon/map-pin 32 at (93, 294.8). */}
       <MiLineIcon name="map-pin" size={32} style={at(93, 294.8)} />
-      {/* M8 "Your location" Map Chip at (126.5, 283.8), no icon. */}
-      <MiMapChip label="Your location" style={at(126.5, 283.8)} />
+      {/* M8 Map Chip at (126.5, 283.8), no icon: "Pickup Point", green (owner decision,
+          24 Sep 2026; Figma draws a white "Your location"). */}
+      <MiMapChip label="Pickup Point" tone="pickup" style={at(126.5, 283.8)} />
     </View>
   );
 }

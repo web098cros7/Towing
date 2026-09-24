@@ -77,7 +77,6 @@ appId: in.mitow.customer
     commands:
       - tapOn: "Not now"
 
-# Home (08) renders. Its hero heading is the most stable marker of the
-# authenticated tab bar having mounted; it is one text node over two lines
-# ("Fast Towing,\nAnytime"), matched by its first line plus `.*`.
-- assertVisible: 'Fast Towing,.*'
+# Home (08) renders. The sheet's heading marks it (the "Fast Towing, Anytime"
+# hero was removed on 24 Sep 2026); `?` is escaped because this is a regex.
+- assertVisible: 'Where do you need a tow\?'

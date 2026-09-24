@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useLocationStore } from '@/features/location/locationStore';
+import { env } from '@/lib/env';
 import type { TowTypeId } from '../types';
 
 export type ScheduleMode = 'now' | 'later';
@@ -67,7 +68,10 @@ type BookingState = {
 const FALLBACK_POINT: BookingPoint = { latitude: 12.9752, longitude: 77.605 };
 
 export const useBookingStore = create<BookingState>((set, get) => ({
-  pickupAddress: useLocationStore.getState().pickup.label,
+  // Live: empty until the customer's own location (or a place they pick) fills
+  // it. The location store's built-in default ("MG Road, Bengaluru") read as a
+  // real pickup (owner, 24 Sep 2026). Mock mode keeps it: it is the drawn example.
+  pickupAddress: env.useMocks ? useLocationStore.getState().pickup.label : '',
   dropAddress: '',
   pickupCoords: useLocationStore.getState().pickup.coords ?? FALLBACK_POINT,
   dropCoords: null,
