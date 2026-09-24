@@ -3,7 +3,7 @@
  *
  * The screen's own shape. The wire shape is `BookingMessage` in
  * `@towing/api-contracts` (`GET/POST bookings/:id/messages`, `chat:message`), and
- * the driver answers from TowPartner's job chat; the REST source maps one to the
+ * the driver answers from MiTow Driver's job chat; the REST source maps one to the
  * other.
  */
 export type ChatMessage = {

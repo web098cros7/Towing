@@ -56,7 +56,7 @@ export interface ChannelSendParams {
   priority: 'normal' | 'high';
   /** Data-only payload — see `pushDataPayloadSchema`. Push channel only. */
   data: Record<string, string>;
-  /** Android channel id for `priority: 'high'`. See TowPartner's `job-offer-v1`. */
+  /** Android channel id for `priority: 'high'`. See MiTow Driver's `job-offer-v1`. */
   androidChannelId?: string;
   /**
    * §12.2's invoice attachment. EMAIL ONLY — push, SMS and WhatsApp adapters

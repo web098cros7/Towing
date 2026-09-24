@@ -41,7 +41,7 @@ export function usePushRegistration(): void {
       let permission = availability.available ? await getPermission() : 'denied';
 
       /**
-       * MiTow Partner ASKS; the customer app primes first.
+       * MiTow Driver ASKS; the customer app primes first.
        *
        * The customer app shows a priming sheet before the OS prompt, because a
        * customer who declines has lost nothing they understand yet. A driver's

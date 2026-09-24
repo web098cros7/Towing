@@ -58,7 +58,7 @@ const PRIVACY_SECTIONS = [
 
 const TERMS_SECTIONS = [
   {
-    title: 'Working through MiTow Partner',
+    title: 'Working through MiTow Driver',
     body: 'You operate as an independent towing partner. Accepting a job is your choice; once accepted you are responsible for completing it safely and on time.',
   },
   {

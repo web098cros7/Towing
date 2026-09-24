@@ -9,7 +9,7 @@ import { vehicleClassSchema } from '../fleet/trucks';
 
 /**
  * Driver KYC submission (Phase 11, `modules/driver-kyc`) — §3.1 layer 1, the
- * app side of the gate. TowPartner's wizard (Phase 12) is the first UI on top
+ * app side of the gate. MiTow Driver's wizard (Phase 12) is the first UI on top
  * of this; this phase ships the API only.
  */
 

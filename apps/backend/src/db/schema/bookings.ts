@@ -152,7 +152,7 @@ export const bookings = pgTable(
      * UPDATE as the status transition (Phase 18, migration 0015).
      *
      * DENORMALISED FROM `booking_status_history` ON PURPOSE, which is otherwise
-     * against the grain of this schema. Two readers force it: TowPartner's
+     * against the grain of this schema. Two readers force it: MiTow Driver's
      * waiting ticker recomputes `now - arrivedAt` four times a second and needs
      * the instant on the job payload rather than behind a history scan, and the
      * fare finalizer bills `startedAt - arrivedAt` — a fare derived from an

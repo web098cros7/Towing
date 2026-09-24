@@ -1,5 +1,5 @@
 /**
- * MiTow Partner accent palette.
+ * MiTow Driver accent palette.
  *
  * The driver app reuses the shared @towing/theme for everything structural
  * (surfaces, text, borders, spacing, radii, typography, shadows, the amber

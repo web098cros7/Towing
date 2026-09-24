@@ -155,7 +155,7 @@ export function AssignedJobScreen() {
     /**
      * HANDED OFF TO THE DRIVER'S OWN MAP APP, not drawn in-app.
      *
-     * A turn-by-turn view inside MiTow Partner would be a worse Google Maps that
+     * A turn-by-turn view inside MiTow Driver would be a worse Google Maps that
      * also has to stay alive while the OS wants to sleep the app — and it would
      * bill a Directions request per job on top. The handset already has a
      * navigation app the driver trusts and has configured.

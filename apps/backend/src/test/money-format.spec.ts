@@ -15,7 +15,7 @@ import {
  * second runner to two React Native apps to test one pure function would be a
  * tooling change larger than the function.
  *
- * WHY IT NEEDED TESTING AT ALL. MiTow and TowPartner each hand-rolled this, and
+ * WHY IT NEEDED TESTING AT ALL. MiTow and MiTow Driver each hand-rolled this, and
  * MiTow's was wrong for negative amounts in a way nothing could catch: no
  * screen rendered negative money until Phase 19's wallet. `paiseSchema` has
  * been explicitly signed since Phase 7 — "ledger amounts carry their sign" —

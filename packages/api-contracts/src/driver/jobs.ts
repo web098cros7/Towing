@@ -18,7 +18,7 @@ import { vehicleClassSchema } from '../fleet/trucks';
 /**
  * What the driver is actually paid, spelled out (§9.2.2's AC).
  *
- * TowPartner's offer card shows ONE unqualified fare number today, which is the
+ * MiTow Driver's offer card shows ONE unqualified fare number today, which is the
  * gross — so a driver reading it is over-estimating their earnings by the
  * commission, every time. §3.3 takes 5–10 % depending on band, and a driver
  * deciding in twenty seconds has to be deciding on the net.

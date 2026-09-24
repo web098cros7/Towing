@@ -116,7 +116,7 @@ describe('notification spine', () => {
     expect(row!.data.event).toBe('driver.kyc.approved');
     expect(row!.data.action).toBe('refetch');
     expect(row!.data.invalidate).toBe('kyc');
-    expect(row!.data.route).toBe('towpartner://kyc');
+    expect(row!.data.route).toBe('mitowdriver://kyc');
     // The inbox row's OWN id, so a tap marks exactly this row read.
     expect(row!.data.notificationId).toBe(row!.id);
   });

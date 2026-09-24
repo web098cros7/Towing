@@ -27,7 +27,7 @@ import {
  * Fake GPS for a seeded database. Run with `pnpm sim:locations`.
  *
  * Exists so the fleet console's live map, jobs feed and KPI tiles can be built
- * and demoed before a single TowPartner handset streams a real ping (§11.2).
+ * and demoed before a single MiTow Driver handset streams a real ping (§11.2).
  */
 
 interface SimArgs {

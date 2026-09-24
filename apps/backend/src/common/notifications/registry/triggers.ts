@@ -349,7 +349,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'driver_kyc_approved',
     category: 'transactional',
     alwaysOn: true,
-    push: { action: 'refetch', invalidate: 'kyc', route: 'towpartner://kyc' },
+    push: { action: 'refetch', invalidate: 'kyc', route: 'mitowdriver://kyc' },
     /**
      * Keyed on the AUDIT ROW ID, not `${driverId}:${decidedAt}`.
      *
@@ -406,7 +406,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
      * push that bounced them to the phone-entry screen would deliver a
      * rejection nobody could read.
      */
-    push: { action: 'refetch', invalidate: 'kyc', route: 'towpartner://kyc' },
+    push: { action: 'refetch', invalidate: 'kyc', route: 'mitowdriver://kyc' },
     dedupeKey: (p: KycDecisionPayload) => p.auditId,
     resolve: (p: KycDecisionPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
     variables: (p: KycDecisionPayload) => ({
@@ -422,7 +422,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'driver_kyc_request_info',
     category: 'transactional',
     alwaysOn: true,
-    push: { action: 'refetch', invalidate: 'kyc', route: 'towpartner://kyc' },
+    push: { action: 'refetch', invalidate: 'kyc', route: 'mitowdriver://kyc' },
     dedupeKey: (p: KycDecisionPayload) => p.auditId,
     resolve: (p: KycDecisionPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
     variables: (p: KycDecisionPayload) => ({
@@ -470,7 +470,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     // `payouts` toggle since Phase 7. Leaving this always-on would have left
     // that switch wired to nothing.
     alwaysOn: false,
-    push: { action: 'open', route: 'towpartner://earnings' },
+    push: { action: 'open', route: 'mitowdriver://earnings' },
     resolve: (p: PayoutStatusPayload, ctx) =>
       ctx.resolver.resolveWalletOwner(p.ownerType, p.ownerId).then(one),
     variables: (p: PayoutStatusPayload) => ({
@@ -486,7 +486,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'payout_failed',
     category: 'money',
     alwaysOn: false,
-    push: { action: 'open', route: 'towpartner://earnings' },
+    push: { action: 'open', route: 'mitowdriver://earnings' },
     resolve: (p: PayoutStatusPayload, ctx) =>
       ctx.resolver.resolveWalletOwner(p.ownerType, p.ownerId).then(one),
     variables: (p: PayoutStatusPayload) => ({
@@ -553,7 +553,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     category: 'transactional',
     alwaysOn: true,
     priority: 'high',
-    push: { action: 'open', invalidate: 'offers', route: 'towpartner://offer' },
+    push: { action: 'open', invalidate: 'offers', route: 'mitowdriver://offer' },
     /**
      * Keyed on booking + driver, which is exactly one offer.
      *
@@ -979,7 +979,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'job_invoice_email',
     category: 'money',
     alwaysOn: false,
-    push: { action: 'open', route: 'moveyo://bookings', invalidate: 'bookings' },
+    push: { action: 'open', route: 'mitow://bookings', invalidate: 'bookings' },
     dedupeKey: (p: CompletedInvoicePayload) => p.bookingId,
     attachmentsFor: (p: CompletedInvoicePayload) => ({ kind: 'invoice', bookingId: p.bookingId }),
     resolve: (p: CompletedInvoicePayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
@@ -1004,7 +1004,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'payment_receipt_email',
     category: 'money',
     alwaysOn: false,
-    push: { action: 'refetch', invalidate: 'bookings', route: 'moveyo://bookings' },
+    push: { action: 'refetch', invalidate: 'bookings', route: 'mitow://bookings' },
     dedupeKey: (p: PaymentStatusPayload) => p.paymentId,
     resolve: (p: PaymentStatusPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
     variables: (p: PaymentStatusPayload) => ({
@@ -1022,7 +1022,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'payment_receipt_email',
     category: 'money',
     alwaysOn: false,
-    push: { action: 'refetch', invalidate: 'bookings', route: 'moveyo://bookings' },
+    push: { action: 'refetch', invalidate: 'bookings', route: 'mitow://bookings' },
     dedupeKey: (p: PaymentStatusPayload) => `${p.paymentId}:failed`,
     resolve: (p: PaymentStatusPayload, ctx) => ctx.resolver.resolveUser(p.userId).then(one),
     variables: (p: PaymentStatusPayload) => ({
@@ -1045,7 +1045,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'earnings_credited',
     category: 'money',
     alwaysOn: false,
-    push: { action: 'refetch', invalidate: 'driver.earnings', route: 'towpartner://earnings' },
+    push: { action: 'refetch', invalidate: 'driver.earnings', route: 'mitowdriver://earnings' },
     dedupeKey: (p: EarningsCreditedPayload) => p.bookingId,
     resolve: (p: EarningsCreditedPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
     variables: (p: EarningsCreditedPayload) => ({
@@ -1074,7 +1074,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'earnings_adjusted',
     category: 'money',
     alwaysOn: true,
-    push: { action: 'refetch', invalidate: 'driver.earnings', route: 'towpartner://earnings' },
+    push: { action: 'refetch', invalidate: 'driver.earnings', route: 'mitowdriver://earnings' },
     dedupeKey: (p: EarningsAdjustedPayload) => p.refundId,
     resolve: (p: EarningsAdjustedPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
     variables: (p: EarningsAdjustedPayload) => ({
@@ -1102,7 +1102,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'weekly_earnings',
     category: 'money',
     alwaysOn: false,
-    push: { action: 'open', route: 'towpartner://earnings', invalidate: 'driver.earnings' },
+    push: { action: 'open', route: 'mitowdriver://earnings', invalidate: 'driver.earnings' },
     // One digest per driver per week, whatever the job's redelivery does.
     dedupeKey: (p: WeeklyEarningsPayload) => `${p.driverId}:${p.weekLabel}`,
     resolve: (p: WeeklyEarningsPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
@@ -1328,7 +1328,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'job_cancelled',
     category: 'transactional',
     alwaysOn: true,
-    push: { action: 'open', invalidate: 'offers', route: 'towpartner://job' },
+    push: { action: 'open', invalidate: 'offers', route: 'mitowdriver://job' },
     dedupeKey: (p: JobCancelledPayload) => `${p.bookingId}:cancelled`,
     resolve: (p: JobCancelledPayload, ctx) => ctx.resolver.resolveDriver(p.driverId).then(one),
     variables: (p: JobCancelledPayload) => ({
@@ -1348,7 +1348,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
     template: 'chat_message_to_driver',
     category: 'transactional',
     alwaysOn: true,
-    push: { action: 'open', route: 'towpartner://job/chat' },
+    push: { action: 'open', route: 'mitowdriver://job/chat' },
     dedupeKey: (p: TripChatPayload) => p.messageId,
     resolve: (p: TripChatPayload, ctx) => ctx.resolver.resolveDriver(p.recipientId).then(one),
     variables: (p: TripChatPayload) => ({ preview: p.preview }),

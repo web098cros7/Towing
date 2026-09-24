@@ -1,4 +1,4 @@
-# Track B Phase 12 — B0 acceptance chain, MiTow Partner half: login → KYC wizard
+# Track B Phase 12 — B0 acceptance chain, MiTow Driver half: login → KYC wizard
 # → 5 documents → submit → status screen shows pending.
 #
 # Login and the KYC status API run entirely against `authMockSource`/
@@ -24,7 +24,7 @@ appId: in.mitow.partner
 - launchApp:
     clearState: true
 
-- assertVisible: "Drive with MiTow Partner"
+- assertVisible: "Drive with MiTow Driver"
 
 - tapOn: "98765 43210"
 - inputText: "9876543210"

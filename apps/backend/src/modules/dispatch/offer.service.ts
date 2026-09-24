@@ -551,7 +551,7 @@ export class OfferService {
       assignedAt: booking.updatedAt?.toISOString() ?? null,
 
       // §5.2's instants (Phase 18). ABSOLUTE, on the server's clock, for the
-      // same reason `JobOffer.expiresAt` is: `arrivedAt` is what TowPartner's
+      // same reason `JobOffer.expiresAt` is: `arrivedAt` is what MiTow Driver's
       // waiting ticker counts from, and unlike a countdown the result is
       // BILLABLE — the number on the driver's screen has to be the number
       // `complete` charges.

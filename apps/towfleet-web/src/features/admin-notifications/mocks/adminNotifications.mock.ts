@@ -27,7 +27,7 @@ const templates: AdminNotificationTemplate[] = [
     orderedVariables: ['name'],
     sampleTitle: 'You are verified',
     sampleBody:
-      'Hi, your documents are approved. You can start earning now — go online in TowPartner.',
+      'Hi, your documents are approved. You can start earning now — go online in MiTow Driver.',
     sampleSubject: null,
     category: 'transactional',
     alwaysOn: true,

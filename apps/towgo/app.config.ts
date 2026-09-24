@@ -10,8 +10,7 @@ const config: ExpoConfig = {
    * Display name on the handset's home screen — the brand on the artwork
    * (`src/assets/brand/logo.svg`).
    *
-   * THE BUNDLE IDENTIFIERS NOW MATCH IT; `slug`, `owner` and `scheme` still do
-   * not, and that split is deliberate.
+   * Everything else matches it too: bundle ids, `slug`, `owner` and `scheme`.
    *
    * The bundle ids were renamed `in.webcros.moveyo` → `in.mitow.customer` on
    * 21 Aug 2026, on the reasoning that a bundle id is the STORE RECORD and can
@@ -22,14 +21,16 @@ const config: ExpoConfig = {
    * Android app, a Play listing, an Apple identifier — would have to be
    * recreated rather than edited; at the time of the rename none existed.
    *
-   * `slug: 'moveyo'` and `owner: 'moveyo-tow'` stay because they are how EAS
-   * RESOLVES this project: renaming them produces a NEW project with a new id,
-   * and the credentials (FCM key, APNs key, Android signing key) do not follow.
-   * `scheme: 'moveyo'` stays because it is baked into deep links. Changing that
-   * set is a migration, not an edit to this file.
+   * `slug`, `owner` and `scheme` were the old working name (`moveyo`,
+   * `moveyo-tow`, `moveyo://`) until 24 Sep 2026, when the Expo account was
+   * recreated from scratch and nothing was published, so they could change
+   * freely. From here on they are how EAS RESOLVES this project: renaming them
+   * produces a NEW project with a new id, and the credentials (FCM key, APNs
+   * key, Android signing key) do not follow. `scheme` is baked into deep links
+   * (push routes, the invite page's "Open in app").
    */
   name: 'MiTow',
-  slug: 'moveyo',
+  slug: 'mitow',
   /**
    * The Expo account that owns this project — an ORGANISATION, not a personal
    * account, so collaborators can be added and ownership can be handed over
@@ -43,10 +44,10 @@ const config: ExpoConfig = {
    * is exactly how this repo ended up carrying a dead project id belonging to
    * an unrelated account until Phase 13.
    */
-  owner: 'moveyo-tow',
+  owner: 'mitow.in',
   version: '1.0.0',
   orientation: 'portrait',
-  scheme: 'moveyo',
+  scheme: 'mitow',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
   assetBundlePatterns: ['**/*'],
@@ -248,16 +249,16 @@ const config: ExpoConfig = {
     useMocks: process.env.EXPO_PUBLIC_USE_MOCKS ?? 'true',
     eas: {
       /**
-       * `@moveyo-tow/moveyo`. Expo's push service routes by this id, so
+       * `@mitow.in/mitow`. Expo's push service routes by this id, so
        * `getExpoPushTokenAsync()` cannot mint a token without it.
        *
        * Worth knowing if you ever see `Entity not authorized` for this id: it
-       * means the logged-in account is not a member of `moveyo-tow`, NOT that
+       * means the logged-in account is not a member of `mitow.in`, NOT that
        * the id is wrong. The `owner` field above is what makes that failure
        * legible instead of EAS silently creating a duplicate project under
        * whoever happens to be signed in.
        */
-      projectId: '55703152-71a7-46c0-8cf6-f70971c0bf53',
+      projectId: '86b25734-03fe-4f4d-988f-a02e78fc11e5',
     },
   },
 };

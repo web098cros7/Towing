@@ -138,7 +138,7 @@ export class JobExecutionService {
    * §5.2's `arrived`, and the moment the §7.4 waiting grace starts running.
    *
    * `arrivedAt` is written in the transition's own UPDATE. It is not decoration:
-   * it is the instant TowPartner's ticker counts from and the instant `complete`
+   * it is the instant MiTow Driver's ticker counts from and the instant `complete`
    * bills from, so it has to be the same value in both places and it has to be
    * the server's.
    *

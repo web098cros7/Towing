@@ -6,14 +6,14 @@ import { useLastFixStore } from '@/lib/location/lastFixStore';
 /**
  * The FIRST MAP IN THIS APP (§9.2.3).
  *
- * TowPartner has never drawn one. `react-native-maps` went into both apps in
- * Phase 16 — its note said so at the time, "TowPartner draws no map until Phase
+ * MiTow Driver has never drawn one. `react-native-maps` went into both apps in
+ * Phase 16 — its note said so at the time, "MiTow Driver draws no map until Phase
  * 18" — and `App.tsx` has called `configureMaps()` since then against a seam
  * nothing rendered. This is what it was for.
  *
  * IT IS A SMALL CARD, NOT A FULL-SCREEN MAP, and that is the whole design. §9.2.3
  * hands navigation off to the driver's own map app — a turn-by-turn view inside
- * MiTow Partner would be a worse Google Maps that also has to stay alive while
+ * MiTow Driver would be a worse Google Maps that also has to stay alive while
  * the OS wants to sleep the app, and would bill a Directions request per job on
  * top. What the driver needs HERE is orientation: where the pickup is relative
  * to them, and which way the job runs. Two hundred points of context, then out

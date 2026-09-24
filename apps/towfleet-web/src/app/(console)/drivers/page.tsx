@@ -84,7 +84,7 @@ export default function DriversPage() {
     <div>
       <PageHeader
         title="Drivers"
-        description="Drivers complete KYC in the TowPartner app; approval is always done centrally by platform admin."
+        description="Drivers complete KYC in the MiTow Driver app; approval is always done centrally by platform admin."
         actions={
           <Button disabled title="Driver invitations go live with the backend (Phase 4)">
             Invite driver
@@ -114,7 +114,7 @@ export default function DriversPage() {
         emptyDescription={
           q
             ? 'Clear the search to see the whole roster.'
-            : 'Invite drivers — they onboard through the TowPartner app and appear here with live KYC status.'
+            : 'Invite drivers — they onboard through the MiTow Driver app and appear here with live KYC status.'
         }
       />
 

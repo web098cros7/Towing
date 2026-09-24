@@ -97,7 +97,7 @@ export function applyNotificationData(
       queryClient.setQueryData<DriverJob | null>(offersKeys.job(), null);
     }
     void queryClient.invalidateQueries({ queryKey: offersKeys.all });
-    return { kind: 'navigate', route: 'towpartner://job' };
+    return { kind: 'navigate', route: 'mitowdriver://job' };
   }
 
   /**
@@ -134,7 +134,7 @@ export function applyNotificationData(
     if (data.invalidate) {
       void queryClient.invalidateQueries({ queryKey: data.invalidate.split('.') });
     }
-    return { kind: 'navigate', route: 'towpartner://support' };
+    return { kind: 'navigate', route: 'mitowdriver://support' };
   }
 
   // `invalidate` is a query-key NAMESPACE the server names — dot-separated so a

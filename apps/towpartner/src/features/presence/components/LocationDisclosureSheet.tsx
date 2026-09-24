@@ -63,7 +63,7 @@ export function LocationDisclosureSheet({
               <MapPin size={26} color={driverColors.amber} />
             </View>
             <Text weight="bold" align="center" style={{ fontSize: 20, lineHeight: 26 }}>
-              MiTow Partner needs your location
+              MiTow Driver needs your location
             </Text>
           </View>
 
@@ -82,7 +82,7 @@ export function LocationDisclosureSheet({
             <Row
               icon={MapPin}
               title="Even when the app is closed"
-              body="MiTow Partner collects location in the background while you are online or on a job, so requests still reach you with the app in your pocket."
+              body="MiTow Driver collects location in the background while you are online or on a job, so requests still reach you with the app in your pocket."
             />
             <Row
               icon={ShieldCheck}

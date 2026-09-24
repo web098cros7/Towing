@@ -47,7 +47,7 @@ export const TEMPLATES = {
     render: (v) => ({
       title: 'You are verified',
       // Spec §12.2's own words for this row.
-      body: `${v.name ?? 'Hi'}, your documents are approved. You can start earning now — go online in TowPartner.`,
+      body: `${v.name ?? 'Hi'}, your documents are approved. You can start earning now — go online in MiTow Driver.`,
       subject: null,
     }),
   },
@@ -58,7 +58,7 @@ export const TEMPLATES = {
     orderedVariables: ['name', 'reason'],
     render: (v) => ({
       title: 'Verification unsuccessful',
-      body: `${v.name ?? 'Hi'}, we could not verify your documents. Reason: ${v.reason ?? 'not given'}. Open TowPartner to resubmit.`,
+      body: `${v.name ?? 'Hi'}, we could not verify your documents. Reason: ${v.reason ?? 'not given'}. Open MiTow Driver to resubmit.`,
       subject: null,
     }),
   },
@@ -69,7 +69,7 @@ export const TEMPLATES = {
     orderedVariables: ['name', 'reason'],
     render: (v) => ({
       title: 'We need more information',
-      body: `${v.name ?? 'Hi'}, we need more from you before we can verify your account: ${v.reason ?? 'see the app'}. Open TowPartner to continue.`,
+      body: `${v.name ?? 'Hi'}, we need more from you before we can verify your account: ${v.reason ?? 'see the app'}. Open MiTow Driver to continue.`,
       subject: null,
     }),
   },
@@ -263,7 +263,7 @@ export const TEMPLATES = {
     orderedVariables: ['businessName'],
     render: (v) => ({
       title: 'You have been invited to drive',
-      body: `${v.businessName ?? 'A fleet'} has invited you to drive with them. Download TowPartner and sign in with this number to get started.`,
+      body: `${v.businessName ?? 'A fleet'} has invited you to drive with them. Download MiTow Driver and sign in with this number to get started.`,
       subject: null,
     }),
   },

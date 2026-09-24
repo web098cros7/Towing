@@ -234,7 +234,7 @@ export function BannerEditorDrawer({
               }
             >
               <option value="customer">Customers (MiTow app)</option>
-              <option value="driver">Drivers (TowPartner)</option>
+              <option value="driver">Drivers (MiTow Driver)</option>
             </Select>
           </div>
 

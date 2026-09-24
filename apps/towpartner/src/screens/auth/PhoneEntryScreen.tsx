@@ -49,7 +49,7 @@ export function PhoneEntryScreen() {
       >
         <View style={{ gap: 8 }}>
           <Text weight="bold" style={{ fontSize: 28, lineHeight: 34, letterSpacing: -0.5 }}>
-            Drive with MiTow Partner
+            Drive with MiTow Driver
           </Text>
           <Text color="secondary" style={{ fontSize: 15, lineHeight: 21 }}>
             Enter your mobile number — we&apos;ll text you a one-time code to sign in.

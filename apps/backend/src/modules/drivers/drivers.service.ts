@@ -87,7 +87,7 @@ export class DriversService {
       throw err;
     }
 
-    // The driver finishes KYC in TowPartner; approval stays with platform admin.
+    // The driver finishes KYC in MiTow Driver; approval stays with platform admin.
     //
     // Emits a domain id, not a phone number: the resolver reads the driver's
     // current mobile at delivery time, so an invite queued behind a slow

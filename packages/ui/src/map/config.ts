@@ -8,7 +8,7 @@ import { Platform } from 'react-native';
  * its own; reaching for `process.env` here would make a shared component depend
  * on a variable only one app defines, and would leak app configuration into a
  * package whose whole job is to be configuration-free. It is the same shape as
- * the dependency-free animation slots TowGo fills and TowPartner leaves empty.
+ * the dependency-free animation slots TowGo fills and MiTow Driver leaves empty.
  *
  * THE PLATFORMS ARE NOT IN THE SAME POSITION, which is why this exists at all.
  * iOS renders through Apple Maps with no key, no billing account and no

@@ -4,7 +4,7 @@ export const formatEta = (minutes: number): string => `${minutes} min${minutes =
 /**
  * Money formatting lives in `@towing/api-contracts` since Phase 19.
  *
- * It was hand-rolled HERE and, separately, in TowPartner — and this copy was
+ * It was hand-rolled HERE and, separately, in MiTow Driver — and this copy was
  * wrong for negative amounts (`formatINR(-500)` produced `"₹-,500"`, because
  * the grouping branch tested a `rest` of `"-"`, which is truthy). Nothing
  * caught it because no screen rendered negative money until the wallet.

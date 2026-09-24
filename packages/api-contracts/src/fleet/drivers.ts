@@ -27,7 +27,7 @@ export type DriversListResponse = z.infer<typeof driversListResponseSchema>;
 
 /**
  * Invite creates a KYC-`incomplete` driver row; the driver completes KYC in
- * TowPartner and approval stays central with platform admin (spec §9.3.5).
+ * MiTow Driver and approval stays central with platform admin (spec §9.3.5).
  * NOTE: `drivers.mobile` is globally unique — inviting a number that already
  * exists (even as an independent driver) returns 409 `duplicate_mobile`.
  */

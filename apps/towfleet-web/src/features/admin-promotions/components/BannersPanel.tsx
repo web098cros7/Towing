@@ -94,7 +94,7 @@ export function BannersPanel() {
               <h3 className="text-sm font-semibold">
                 {audience === 'customer'
                   ? 'Customer carousel (MiTow app)'
-                  : 'Driver carousel (TowPartner)'}
+                  : 'Driver carousel (MiTow Driver)'}
               </h3>
               {rows.length === 0 ? (
                 <p className="text-xs text-text-secondary">Nothing for this audience.</p>

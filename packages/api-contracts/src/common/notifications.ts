@@ -152,7 +152,7 @@ export const pushDataPayloadSchema = z.object({
   action: z.enum(['refetch', 'open']),
   /** A query-key namespace the client should invalidate, e.g. `driver.kyc`. */
   invalidate: z.string().optional(),
-  /** An app route to open on tap, e.g. `towpartner://kyc`. */
+  /** An app route to open on tap, e.g. `mitowdriver://kyc`. */
   route: z.string().optional(),
 });
 export type PushDataPayload = z.infer<typeof pushDataPayloadSchema>;

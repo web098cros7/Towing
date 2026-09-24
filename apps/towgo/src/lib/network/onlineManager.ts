@@ -17,7 +17,7 @@ export function initOnlineManager(): void {
   /**
    * App-foreground → TanStack Query's focusManager (Phase 13).
    *
-   * TowPartner has had this since Phase 12; MiTow's bridge was NetInfo-only, so
+   * MiTow Driver has had this since Phase 12; MiTow's bridge was NetInfo-only, so
    * nothing refetched when the app came back to the foreground — only when the
    * network changed. That is fine for a screen you navigate to, and wrong for
    * the notification bell, whose whole job is to be current the moment you look

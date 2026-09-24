@@ -176,7 +176,7 @@ export async function requestOsPermission(): Promise<PushPermission> {
  *
  * Needs the EAS project id: Expo's push service routes by it, and
  * `getExpoPushTokenAsync` throws without one. MiTow has an id in
- * `app.config.ts`; TowPartner does not yet (`ToBeDoneEhsan.md`).
+ * `app.config.ts`; MiTow Driver does not yet (`ToBeDoneEhsan.md`).
  */
 export async function getPushToken(): Promise<string | null> {
   const notifications = notificationsModule();

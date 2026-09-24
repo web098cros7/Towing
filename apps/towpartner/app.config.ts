@@ -1,19 +1,19 @@
 import type { ExpoConfig } from 'expo/config';
 
 /**
- * MiTow Partner (driver app) Expo config. Sibling of the customer app (MiTow,
+ * MiTow Driver (driver app) Expo config. Sibling of the customer app (MiTow,
  * `apps/towgo`) in the same monorepo, sharing the @towing/* packages. Dynamic
  * (TS) so future secrets — Google Maps, the Socket.io URL, payout keys — can be
  * injected from env into `extra` without touching a static JSON file.
  */
 const config: ExpoConfig = {
-  name: 'MiTow Partner',
-  slug: 'towpartner',
+  name: 'MiTow Driver',
+  slug: 'mitow-driver',
   /** Same organisation as the customer app — see `towgo/app.config.ts` for why. */
-  owner: 'moveyo-tow',
+  owner: 'mitow.in',
   version: '1.0.0',
   orientation: 'portrait',
-  scheme: 'towpartner',
+  scheme: 'mitowdriver',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
   assetBundlePatterns: ['**/*'],
@@ -131,7 +131,7 @@ const config: ExpoConfig = {
       {
         // Phase 12 KYC wizard — picking the 5 required documents from the
         // photo library.
-        photosPermission: 'MiTow Partner needs photo library access so you can upload your KYC documents.',
+        photosPermission: 'MiTow Driver needs photo library access so you can upload your KYC documents.',
       },
     ],
     [
@@ -169,9 +169,9 @@ const config: ExpoConfig = {
       'expo-location',
       {
         locationWhenInUsePermission:
-          'MiTow Partner uses your location to find tow requests near you and to show customers where their driver is.',
+          'MiTow Driver uses your location to find tow requests near you and to show customers where their driver is.',
         locationAlwaysAndWhenInUsePermission:
-          'MiTow Partner shares your location while you are online or on a job, including when the app is in the background, so nearby requests still reach you.',
+          'MiTow Driver shares your location while you are online or on a job, including when the app is in the background, so nearby requests still reach you.',
         isAndroidBackgroundLocationEnabled: true,
         isAndroidForegroundServiceEnabled: true,
       },
@@ -199,12 +199,11 @@ const config: ExpoConfig = {
     useMocks: process.env.EXPO_PUBLIC_USE_MOCKS ?? 'true',
     eas: {
       /**
-       * `@moveyo-tow/towpartner`, created in Phase 13. This app had no project
-       * id at all until then, which meant it could not be built, could not be
-       * targeted by EAS, and — because Expo's push service routes by project
-       * id — could never mint a push token.
+       * `@mitow.in/mitow-driver` (recreated 24 Sep 2026 with the Expo account).
+       * EAS builds and Expo's push service route by this id, so without it the
+       * app can neither be built nor mint a push token.
        */
-      projectId: '2c18b8e4-1ada-4e8a-961e-a48bd469d99b',
+      projectId: '02349718-f452-4bcd-a0c6-5273049287d4',
     },
   },
 };

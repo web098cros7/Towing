@@ -48,7 +48,7 @@ export function ConsentCaptureOverlay({ onDone }: { onDone: () => void }) {
         <View style={{ flex: 1, justifyContent: 'flex-end', padding: 24, gap: 16 }}>
           <Text variant="h2">Before you continue</Text>
           <Text color="secondary" style={{ fontSize: 14, lineHeight: 20 }}>
-            By continuing, you agree to MiTow Partner&apos;s Privacy Policy and Terms of Service, and
+            By continuing, you agree to MiTow Driver&apos;s Privacy Policy and Terms of Service, and
             consent to how we handle your data under the Digital Personal Data Protection Act.
           </Text>
           <Button label="I Agree" fullWidth loading={submitting} onPress={agree} />

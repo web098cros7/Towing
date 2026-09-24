@@ -28,7 +28,7 @@ export const REQUIRED_KYC_DOC_TYPES: readonly DriverDocType[] = [
 export const DRIVER_DOCUMENTS_KEY_PREFIX = 'driver-documents';
 
 /**
- * Driver-facing KYC submission (Phase 11, §3.1 layer 1). Its TowPartner
+ * Driver-facing KYC submission (Phase 11, §3.1 layer 1). Its MiTow Driver
  * consumer (the KYC wizard) is Phase 12 — this module itself predates it and
  * was proven standalone by `driver-kyc.e2e.spec.ts`.
  */

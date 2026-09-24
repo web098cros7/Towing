@@ -3,7 +3,7 @@
  *
  * WHY IT LIVES IN THE CONTRACTS PACKAGE AND NOT IN A UI ONE. Three surfaces
  * animate a moving vehicle — the fleet console (MapLibre, since Phase 5), TowGo's
- * tracking screen and TowPartner's job map (both `react-native-maps`, Phase 18) —
+ * tracking screen and MiTow Driver's job map (both `react-native-maps`, Phase 18) —
  * and they cannot share a component: one is DOM, two are native. What they CAN
  * share is the maths, and this is the same argument `presence.ts` won for the
  * §11.6 thresholds. `packages/ui` would drag react-native into the Next bundle;

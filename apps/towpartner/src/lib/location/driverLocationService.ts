@@ -197,7 +197,7 @@ export async function start(intervalMs: number = PING_CADENCE.idleMs): Promise<v
             // Play policy requires a persistent, honest notification whenever a
             // backgrounded app collects location. It also gives the driver a
             // one-glance answer to "is this thing tracking me right now".
-            notificationTitle: "You're online — MiTow Partner",
+            notificationTitle: "You're online — MiTow Driver",
             notificationBody: 'Sharing your location so we can send you nearby jobs.',
             notificationColor: '#0F62FE',
             killServiceOnDestroy: false,

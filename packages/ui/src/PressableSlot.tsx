@@ -35,7 +35,7 @@ const PressablePrimitiveContext = React.createContext<PressablePrimitive>(Defaul
  * Babel, so both apps bundle these files. Importing an animation library here
  * would break any app that has not installed it. The seam keeps the dependency
  * in the app that wants it: TowGo mounts a Reanimated-backed primitive,
- * TowPartner mounts nothing and gets `DefaultPressable`.
+ * MiTow Driver mounts nothing and gets `DefaultPressable`.
  */
 export const PressablePrimitiveProvider = PressablePrimitiveContext.Provider;
 

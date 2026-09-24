@@ -6,7 +6,7 @@ import type { GeoPoint } from '../common/geo';
  * IT LIVES IN THE CONTRACTS PACKAGE for the reason `interpolation.ts` gives:
  * four surfaces need it — the backend (encode, for the Haversine fallback, and
  * decode for §11.5's deviation trigger), the fleet console, TowGo and
- * TowPartner — and three of them cannot import each other. It is a wire FORMAT,
+ * MiTow Driver — and three of them cannot import each other. It is a wire FORMAT,
  * which is exactly what this package is for.
  *
  * HAND-WRITTEN RATHER THAN `@mapbox/polyline`, which is the obvious dependency.

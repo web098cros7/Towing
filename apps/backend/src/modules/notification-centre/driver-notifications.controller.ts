@@ -94,10 +94,10 @@ export class DriverNotificationsController {
   }
 
   /**
-   * Shipped even though TowPartner has no preferences screen this phase — the
+   * Shipped even though MiTow Driver has no preferences screen this phase — the
    * B2 slice contains exactly two bullets and a prefs screen is not one of
    * them. The capability exists so the driver-facing surface is a screen, not a
-   * screen plus an API, whenever the next TowPartner slice lands.
+   * screen plus an API, whenever the next MiTow Driver slice lands.
    */
   @Put('notification-prefs')
   updatePrefs(

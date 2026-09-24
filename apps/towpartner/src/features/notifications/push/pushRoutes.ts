@@ -10,7 +10,7 @@ import type { NotificationAction } from './handleNotificationData';
  * driver's notification to go. Phase 19 is the last of the three.
  *
  * A TABLE RATHER THAN A PARSER. The server sends `route` as a deep link
- * (`towpartner://offer`), and turning an arbitrary string into a navigation
+ * (`mitowdriver://offer`), and turning an arbitrary string into a navigation
  * call is how a notification payload becomes an open redirect into any screen
  * in the app. This maps a closed set of known shapes and IGNORES everything
  * else — an unrecognised route opens the app and does nothing, which is the
@@ -26,7 +26,7 @@ export type PushDestination =
   | { screen: 'HelpSupport' }
   | { screen: 'Notifications' };
 
-const SCHEME = 'towpartner://';
+const SCHEME = 'mitowdriver://';
 
 /**
  * The held booking id is passed in rather than read here: `job/chat` is the
@@ -68,7 +68,7 @@ export function destinationFor(
       return { screen: 'Notifications' };
 
     default:
-      // Includes every `moveyo://…` route — the customer app's triggers share
+      // Includes every `mitow://…` route — the customer app's triggers share
       // this registry, and a driver device must never try to follow one.
       return null;
   }

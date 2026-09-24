@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react';
  * the app, and both are one tap away. Anything else — nav, footer, links back
  * into the console — would be noise on a page a stranger sees once.
  *
- * THE DEEP LINK IS `moveyo://r/{code}`. The app stores the code on cold start
+ * THE DEEP LINK IS `mitow://r/{code}`. The app stores the code on cold start
  * (`useCaptureReferralLinks`) and applies it after sign-up, so a visitor who
  * taps through does not have to remember or paste anything. The code is also
  * shown in full so it can be typed by hand if the app is not installed yet.
@@ -95,7 +95,7 @@ export function InviteView({ code, rewardPaise }: { code: string; rewardPaise: n
         </div>
 
         <a
-          href={`moveyo://r/${code}`}
+          href={`mitow://r/${code}`}
           className="mt-6 block w-full py-3 text-center text-sm font-semibold text-white"
           style={{ backgroundColor: INK, borderRadius: 16 }}
         >
