@@ -3,7 +3,14 @@ set -e
 log() { echo -e "\n[$(date +'%H:%M:%S')] ==> $1"; }
 
 APP_DIR="/home/ec2-user/Towing"
+# Secrets live only here on the server, never in the repo (it is public).
+ENV_FILE="/home/ec2-user/.env.production"
 cd $APP_DIR
+
+if ! grep -q "^POSTGRES_PASSWORD=." "$ENV_FILE" 2>/dev/null; then
+  log "ERROR: POSTGRES_PASSWORD is missing from $ENV_FILE. Run 'sudo bash deploy.sh rotate-secrets' once first."
+  exit 1
+fi
 
 log "Stopping old docker containers"
 docker-compose down || true
@@ -34,12 +41,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: towfleet
-      POSTGRES_PASSWORD: towfleet_prod_pw
+      # From the env file (--env-file below); only used when the volume is first created.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in /home/ec2-user/.env.production}
       POSTGRES_DB: towfleet
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    # Loopback only: the backend runs on this host. Never on a public interface.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U towfleet -d towfleet"]
       interval: 5s
@@ -53,8 +62,9 @@ services:
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - redis-data:/data
+    # Loopback only: Redis has no password.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -66,7 +76,7 @@ volumes:
 COMPOSE
 
 cd /home/ec2-user
-docker-compose up -d postgres redis
+docker-compose --env-file "$ENV_FILE" up -d postgres redis
 sleep 15
 
 log "Running DB migrations"

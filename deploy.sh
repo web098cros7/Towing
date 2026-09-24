@@ -3,16 +3,80 @@
 # Towing Platform - EC2 Deploy Script
 # Run this once on a fresh Amazon Linux 2023 t3.micro (or larger) instance.
 # Subsequent updates: just run `cd /home/ec2-user/Towing && ./deploy.sh update`
+# New secrets (DB password, JWT, file signing): `sudo bash deploy.sh rotate-secrets`
+#
+# SECRETS LIVE ONLY IN $ENV_FILE ON THE SERVER. Never write one into this
+# script, the compose file or anything else in the repo: the repo is public.
+# The compose file reads the database password from $ENV_FILE at run time.
 # =============================================================================
 
 set -e
 
-MODE="${1:-fresh}"      # fresh | update
+MODE="${1:-fresh}"      # fresh | update | rotate-secrets
 REPO="https://github.com/web098cros7/Towing.git"
 APP_DIR="/home/ec2-user/Towing"
 ENV_FILE="/home/ec2-user/.env.production"
+COMPOSE_FILE="/home/ec2-user/docker-compose.yml"
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
+
+# A random secret, URL-safe (it goes inside DATABASE_URL). $1 = bytes.
+new_secret() { node -e "console.log(require('crypto').randomBytes(${1:-48}).toString('base64url'))"; }
+
+# The value of KEY in the env file, or nothing.
+env_value() { grep -m1 "^$1=" "$ENV_FILE" 2>/dev/null | cut -d= -f2-; }
+
+# Set KEY=VALUE in the env file: replace the line, or append it.
+set_env() {
+  if grep -q "^$1=" "$ENV_FILE"; then
+    sed -i "s|^$1=.*|$1=$2|" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"
+  fi
+}
+
+# docker-compose with the env file, so ${POSTGRES_PASSWORD} resolves.
+dc() { docker-compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
+
+# ─── rotate-secrets: new DB password, JWT secret and file-signing secret ─────
+# Run on the server as root. Changes the password inside the running database
+# (a new POSTGRES_PASSWORD alone does nothing to an existing database), writes
+# all three to $ENV_FILE and restarts the backend. Logged-in users stay logged
+# in: refresh tokens are random values in the database, not signed with the
+# JWT secret; an access token older than the change is refused and refreshed.
+# Uploaded-file links signed before it stop working (they are short-lived).
+if [ "$MODE" = "rotate-secrets" ]; then
+  [ -f "$ENV_FILE" ] || { log "ERROR: no $ENV_FILE on this server; nothing to rotate"; exit 1; }
+  PG_CONTAINER=$(docker ps --format '{{.Names}}' | grep -m1 postgres || true)
+  [ -n "$PG_CONTAINER" ] || { log "ERROR: the postgres container is not running"; exit 1; }
+
+  BACKUP="$ENV_FILE.bak-$(date +%Y%m%d%H%M%S)"
+  cp -p "$ENV_FILE" "$BACKUP"
+  chmod 600 "$BACKUP"
+
+  log "==> New database password"
+  DB_PASSWORD=$(new_secret 32)
+  # Over stdin, so the password is never on a command line (`ps`).
+  printf "ALTER USER towfleet WITH PASSWORD '%s';\n" "$DB_PASSWORD" \
+    | docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -q -U towfleet -d towfleet
+  set_env POSTGRES_PASSWORD "$DB_PASSWORD"
+  sed -i -E "s|^(DATABASE_URL=postgres://towfleet:)[^@]*@|\1${DB_PASSWORD}@|" "$ENV_FILE"
+
+  log "==> New JWT and file-signing secrets"
+  set_env JWT_ACCESS_SECRET "$(new_secret)"
+  set_env FILE_SIGNING_SECRET "$(new_secret)"
+  chmod 600 "$ENV_FILE"
+
+  log "==> Restarting the backend"
+  if systemctl list-unit-files towing-backend.service 2>/dev/null | grep -q towing-backend; then
+    systemctl restart towing-backend
+  else
+    dc up -d --force-recreate backend
+  fi
+
+  log "Done. $BACKUP still holds the OLD values: delete it once the backend is up."
+  exit 0
+fi
 
 # ─── 1. System setup (fresh installs only) ───────────────────────────────────
 if [ "$MODE" = "fresh" ]; then
@@ -49,12 +113,17 @@ if [ "$MODE" = "fresh" ]; then
   git clone "$REPO" "$APP_DIR" || true
   chown -R ec2-user:ec2-user /home/ec2-user
 
+  if [ -f "$ENV_FILE" ]; then
+    # Never overwritten on a redeploy: it holds this server's secrets and any
+    # keys added by hand. New secrets are `deploy.sh rotate-secrets`.
+    log "==> Keeping the existing $ENV_FILE"
+  else
   log "==> Creating production .env"
   # Generate strong secrets
-  JWT_ACCESS=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")
-  JWT_REFRESH=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")
-  FILE_SIGN=$(node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")
-  WEBHOOK_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))")
+  JWT_ACCESS=$(new_secret)
+  FILE_SIGN=$(new_secret)
+  WEBHOOK_SECRET=$(new_secret 32)
+  DB_PASSWORD=$(new_secret 32)
 
   # EDIT THESE: replace placeholders before running
   DOMAIN="mitow.in"          # your domain
@@ -67,7 +136,8 @@ PORT=4000
 LOG_LEVEL=info
 
 # ── Database ──────────────────────────────────────────────────────────────────
-DATABASE_URL=postgres://towfleet:towfleet_prod_pw@postgres:5432/towfleet
+POSTGRES_PASSWORD=${DB_PASSWORD}
+DATABASE_URL=postgres://towfleet:${DB_PASSWORD}@postgres:5432/towfleet
 DATABASE_POOL_MAX=10
 REDIS_URL=redis://redis:6379
 
@@ -194,6 +264,16 @@ ENV
 
   chmod 600 "$ENV_FILE"
   log "==> .env written to $ENV_FILE - review secrets before going live"
+  fi
+fi
+
+# The compose file reads the database password from the env file. A server set
+# up before that has none there: `rotate-secrets` adds it (and replaces the
+# password that was once committed to this repo).
+if [ -z "$(env_value POSTGRES_PASSWORD)" ]; then
+  log "ERROR: POSTGRES_PASSWORD is missing from $ENV_FILE."
+  log "       Run 'sudo bash deploy.sh rotate-secrets' once, then deploy again."
+  exit 1
 fi
 
 # ─── 2. Pull latest code ──────────────────────────────────────────────────────
@@ -217,7 +297,7 @@ log "==> Frontend built at apps/towfleet-web/.next"
 
 # ─── 4. Write docker-compose.yml ─────────────────────────────────────────────
 log "==> Writing docker-compose.yml"
-cat > /home/ec2-user/docker-compose.yml << 'COMPOSE'
+cat > "$COMPOSE_FILE" << 'COMPOSE'
 version: "3.8"
 
 services:
@@ -226,7 +306,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: towfleet
-      POSTGRES_PASSWORD: towfleet_prod_pw
+      # From the env file (`dc` passes --env-file); only used when the volume is first created.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in /home/ec2-user/.env.production}
       POSTGRES_DB: towfleet
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -280,17 +361,17 @@ COMPOSE
 # ─── 5. Run DB migrate then start services ────────────────────────────────────
 log "==> Starting postgres + redis"
 cd /home/ec2-user
-docker-compose up -d postgres redis --build backend
+dc up -d postgres redis --build backend
 
 log "==> Waiting for postgres to be healthy..."
 sleep 15
 
 log "==> Running DB migrations"
-docker-compose run --rm backend sh -c "node apps/backend/dist/db/migrate.js" 2>/dev/null || \
+dc run --rm backend sh -c "node apps/backend/dist/db/migrate.js" 2>/dev/null || \
   log "WARNING: migrate command failed - run manually if this is first deploy"
 
 log "==> Starting backend"
-docker-compose up -d backend
+dc up -d backend
 
 # ─── 6. nginx config ─────────────────────────────────────────────────────────
 log "==> Configuring nginx"
