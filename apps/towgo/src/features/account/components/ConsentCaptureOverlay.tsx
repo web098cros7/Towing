@@ -13,11 +13,21 @@ import { ExactText } from './consent/ExactText';
 import { UsageCard, type UsageRow } from './consent/UsageCard';
 import { useLegalDetour } from './consent/useLegalDetour';
 
-const CONSENT_FLAG_KEY = 'consent.captured.v1';
+/**
+ * This phone's memory that ONE account agreed to ONE policy version, so a
+ * returning customer skips the server check at launch. Per account and version:
+ * consent belongs to the person (Ehsan, 24 Sep 2026), so another customer on
+ * the same phone is still asked, and a new policy version asks again. The
+ * server (`GET /me/consent`) is the answer whenever this is not set.
+ */
+const consentFlagKey = (userId: string) => `consent.captured.${userId}.${POLICY_VERSION}`;
 
-/** Gates `ConsentCaptureOverlay` to once per device, read at boot by `RootNavigator`. */
-export function hasCapturedConsent(): boolean {
-  return storage.getString(CONSENT_FLAG_KEY) === 'true';
+export function hasCapturedConsent(userId: string): boolean {
+  return storage.getString(consentFlagKey(userId)) === 'true';
+}
+
+export function markConsentCaptured(userId: string): void {
+  storage.set(consentFlagKey(userId), 'true');
 }
 
 /**
@@ -53,8 +63,8 @@ const USAGE_ROWS: readonly UsageRow[] = [
 
 /**
  * Figma 06 · Consent (287:1780). One-time DPDP consent: "I Agree" records both
- * `privacy_policy` and `terms_of_service` via `POST /me/consent`, sets the
- * per-device flag and hands back to RootNavigator (which then shows 07 over Home).
+ * `privacy_policy` and `terms_of_service` via `POST /me/consent`, remembers it
+ * for this account on this phone and hands back to RootNavigator (which then shows 07 over Home).
  *
  * Rendered by RootNavigator as a sibling of the NavigationContainer, so the two
  * policy links reach Privacy & Legal (route `Legal`) through `useLegalDetour`.
@@ -72,7 +82,7 @@ const USAGE_ROWS: readonly UsageRow[] = [
  *   column (never the CTA or note) become scrollable, so nothing is cut off.
  * - The Modal has no animation, in or out: Figma draws no transition.
  */
-export function ConsentCaptureOverlay({ onDone }: { onDone: () => void }) {
+export function ConsentCaptureOverlay({ userId, onDone }: { userId: string; onDone: () => void }) {
   const insets = useSafeAreaInsets();
   const recordConsent = useRecordConsent();
   const { away, openLegal } = useLegalDetour();
@@ -105,11 +115,13 @@ export function ConsentCaptureOverlay({ onDone }: { onDone: () => void }) {
           policyVersion: POLICY_VERSION,
         }),
       ]);
+      // Remembered only once the server has it: a failed save is asked again
+      // next launch instead of being lost for good.
+      markConsentCaptured(userId);
     } catch {
-      // Best-effort: DPDP requires offering consent capture, not permanently
-      // locking the app out of use if a single write happens to fail.
+      // Best-effort for THIS launch: DPDP requires offering consent capture, not
+      // locking the app out of use because one write failed.
     } finally {
-      storage.set(CONSENT_FLAG_KEY, 'true');
       onDone();
     }
   };

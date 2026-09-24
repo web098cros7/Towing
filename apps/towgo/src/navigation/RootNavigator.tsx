@@ -56,7 +56,10 @@ import { LegalScreen } from '@/screens/account/LegalScreen';
 import {
   ConsentCaptureOverlay,
   hasCapturedConsent,
+  markConsentCaptured,
 } from '@/features/account/components/ConsentCaptureOverlay';
+import { hasAgreedTo, useConsentStatus } from '@/features/account/api/privacy.queries';
+import { POLICY_VERSION } from '@/lib/legal/policyVersion';
 import { navLightTheme, navDarkTheme } from './navTheme';
 import { track } from '@/lib/analytics/analytics';
 import {
@@ -78,8 +81,10 @@ export function RootNavigator() {
   const theme = useTheme();
   const status = useAuthStore((s) => s.status);
   const isNew = useAuthStore((s) => s.identity?.isNew ?? false);
+  const userId = useAuthStore((s) => s.identity?.id ?? null);
   const hydrate = useAuthStore((s) => s.hydrate);
-  const [consentCaptured, setConsentCaptured] = useState(hasCapturedConsent);
+  /** The account that agreed during this launch (the phone's flag may not have saved). */
+  const [agreedNow, setAgreedNow] = useState<string | null>(null);
   const [pushPrimed, setPushPrimed] = useState(false);
   const [routeName, setRouteName] = useState<string | undefined>(undefined);
   const [primingDelayDone, setPrimingDelayDone] = useState(false);
@@ -106,12 +111,25 @@ export function RootNavigator() {
   // keeps it up for a minimum time (see useSplashHold for why 1 s).
   const splashHeld = useSplashHold(status === 'hydrating');
 
-  // One-time DPDP consent for any customer past ProfileSetup. `isNew` flips
-  // false locally when ProfileSetup saves, so a new customer sees it the same
-  // launch. Never over the held Splash: a returning customer is already
-  // 'authenticated' while it is still on screen.
+  // One-time DPDP consent, once per ACCOUNT (Ehsan, 24 Sep 2026): this phone's
+  // flag for this customer first, else the server's answer, so a customer who
+  // agreed on another phone is not asked again and a second customer on this
+  // phone is. The overlay shows only on a definite "not agreed": while the
+  // server has not answered (or cannot be reached) nothing covers the app.
+  const signedInPastSetup = status === 'authenticated' && !isNew;
+  const agreedHere = userId !== null && (agreedNow === userId || hasCapturedConsent(userId));
+  const { data: consentStatus } = useConsentStatus(userId, signedInPastSetup && !agreedHere);
+  const agreedOnServer = consentStatus ? hasAgreedTo(consentStatus, POLICY_VERSION) : undefined;
+  useEffect(() => {
+    if (agreedOnServer && userId) markConsentCaptured(userId);
+  }, [agreedOnServer, userId]);
+  const consentCaptured = agreedHere || agreedOnServer === true;
+
+  // `isNew` flips false locally when ProfileSetup saves, so a new customer sees
+  // it the same launch. Never over the held Splash: a returning customer is
+  // already 'authenticated' while it is still on screen.
   const showConsentCapture =
-    !splashHeld && status === 'authenticated' && !isNew && !consentCaptured;
+    !splashHeld && signedInPastSetup && !consentCaptured && agreedOnServer === false;
 
   // Figma 07: the push-priming sheet over HOME, once, the first time the
   // customer is actually on Home after consent. Never over ProfileSetup
@@ -367,7 +385,7 @@ export function RootNavigator() {
       </NavigationContainer>
 
       {showConsentCapture ? (
-        <ConsentCaptureOverlay onDone={() => setConsentCaptured(true)} />
+        <ConsentCaptureOverlay userId={userId!} onDone={() => setAgreedNow(userId)} />
       ) : null}
 
       {/*

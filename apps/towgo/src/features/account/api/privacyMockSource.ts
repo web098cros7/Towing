@@ -1,5 +1,10 @@
 import { randomUUID } from 'expo-crypto';
-import type { AccountDeletionResponse, AccountExportResponse, ConsentRecord } from '@towing/api-contracts';
+import type {
+  AccountDeletionResponse,
+  AccountExportResponse,
+  ConsentRecord,
+  ConsentStatus,
+} from '@towing/api-contracts';
 import type { PrivacyDataSource } from './privacyDataSource';
 import { profileMockSource } from './profileMockSource';
 import { vehiclesMockSource } from './vehiclesMockSource';
@@ -25,6 +30,16 @@ export const privacyMockSource: PrivacyDataSource = {
       emergencyContactsMockSource.list(),
     ]);
     return { profile, vehicles, addresses, emergencyContacts, consents };
+  },
+
+  /** The newest agreement per policy, as the server answers; withdrawals do not remove one. */
+  async consentStatus(): Promise<ConsentStatus> {
+    await delay(200);
+    const latest = new Map<string, ConsentRecord>();
+    for (const record of consents) {
+      if (record.action === 'granted') latest.set(record.policyType, record);
+    }
+    return { granted: [...latest.values()] };
   },
 
   async recordConsent(policyType, policyVersion) {

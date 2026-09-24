@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ConsentPolicyType } from '@towing/api-contracts';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ConsentPolicyType, ConsentStatus } from '@towing/api-contracts';
 import { notificationPrefKeys } from '@/features/notifications/api/notificationPrefs.keys';
 import { privacyDataSource } from './privacyDataSource';
 import { privacyKeys } from './privacy.keys';
@@ -16,6 +16,31 @@ export function useExportData() {
   return useMutation({
     mutationKey: privacyKeys.export(),
     mutationFn: () => privacyDataSource.exportData(),
+  });
+}
+
+/** Both policies the one-time consent covers. */
+const CONSENT_POLICIES: readonly ConsentPolicyType[] = ['privacy_policy', 'terms_of_service'];
+
+/** Whether `status` holds an agreement to both policies at `policyVersion`. */
+export function hasAgreedTo(status: ConsentStatus, policyVersion: string): boolean {
+  return CONSENT_POLICIES.every((policy) =>
+    status.granted.some((g) => g.policyType === policy && g.policyVersion === policyVersion),
+  );
+}
+
+/**
+ * Whether this ACCOUNT has already given the one-time consent, asked of the
+ * server so it follows the person to a new phone (Ehsan, 24 Sep 2026: consent
+ * belongs to the person, not the device). `userId` keys the cache, so a second
+ * customer on the same phone gets their own answer.
+ */
+export function useConsentStatus(userId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: privacyKeys.consent(userId ?? ''),
+    queryFn: () => privacyDataSource.consentStatus(),
+    enabled: enabled && userId !== null,
+    staleTime: Infinity,
   });
 }
 

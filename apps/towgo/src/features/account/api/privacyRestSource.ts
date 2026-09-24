@@ -1,4 +1,8 @@
-import type { AccountDeletionResponse, AccountExportResponse } from '@towing/api-contracts';
+import type {
+  AccountDeletionResponse,
+  AccountExportResponse,
+  ConsentStatus,
+} from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import type { PrivacyDataSource } from './privacyDataSource';
 
@@ -13,6 +17,10 @@ export const privacyRestSource: PrivacyDataSource = {
 
   exportData() {
     return apiFetch<AccountExportResponse>('me/export');
+  },
+
+  consentStatus() {
+    return apiFetch<ConsentStatus>('me/consent');
   },
 
   async recordConsent(policyType, policyVersion) {

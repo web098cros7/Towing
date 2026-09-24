@@ -2,6 +2,7 @@ import type {
   AccountDeletionResponse,
   AccountExportResponse,
   ConsentPolicyType,
+  ConsentStatus,
 } from '@towing/api-contracts';
 import { env } from '@/lib/env';
 import { privacyMockSource } from './privacyMockSource';
@@ -11,6 +12,8 @@ import { privacyRestSource } from './privacyRestSource';
 export interface PrivacyDataSource {
   deleteAccount(reason?: string): Promise<AccountDeletionResponse>;
   exportData(): Promise<AccountExportResponse>;
+  /** The signed-in person's agreements, whatever phone they gave them on (`GET /me/consent`). */
+  consentStatus(): Promise<ConsentStatus>;
   recordConsent(policyType: ConsentPolicyType, policyVersion: string): Promise<void>;
   /**
    * Stops marketing messages; the account carries on working. Deleting the

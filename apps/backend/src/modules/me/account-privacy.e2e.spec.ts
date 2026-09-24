@@ -1,8 +1,10 @@
 import type { INestApplication } from '@nestjs/common';
+import { consentStatusSchema } from '@towing/api-contracts';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { consentRecords, deletionRequests } from '../../db/schema';
 import { createTestApp, customerAuthHeaderFor, driverAuthHeaderFor } from '../../test/app';
+import { expectMatchesContract } from '../../test/contracts';
 import { seedCustomer, seedDriver, setupTestDatabase, truncateAll, type TestDatabase } from '../../test/db';
 
 describe('account privacy (/v1/me — DPDP §20.4, dual-realm)', () => {
@@ -131,6 +133,69 @@ describe('account privacy (/v1/me — DPDP §20.4, dual-realm)', () => {
         policyType: 'privacy_policy',
       });
       for (const row of rows) expect(row.action).toBe('granted');
+    });
+  });
+
+  describe('GET /me/consent', () => {
+    it('answers per account: agreed on one phone means agreed on the next', async () => {
+      const userId = await seedCustomer(db);
+      const otherId = await seedCustomer(db, 'Another Customer');
+      const auth = await customerAuthHeaderFor(app, { userId });
+
+      const before = await request(app.getHttpServer())
+        .get('/v1/me/consent')
+        .set('Authorization', auth)
+        .expect(200);
+      expect(expectMatchesContract(consentStatusSchema, before.body)).toEqual({ granted: [] });
+
+      for (const policyType of ['privacy_policy', 'terms_of_service']) {
+        await request(app.getHttpServer())
+          .post('/v1/me/consent')
+          .set('Authorization', auth)
+          .send({ policyType, policyVersion: '2026-08-10' })
+          .expect(204);
+      }
+
+      // A fresh sign-in (a new token, as on a new phone) sees both agreements.
+      const after = await request(app.getHttpServer())
+        .get('/v1/me/consent')
+        .set('Authorization', await customerAuthHeaderFor(app, { userId }))
+        .expect(200);
+      const status = expectMatchesContract(consentStatusSchema, after.body);
+      expect(status.granted.map((g) => [g.policyType, g.policyVersion]).sort()).toEqual([
+        ['privacy_policy', '2026-08-10'],
+        ['terms_of_service', '2026-08-10'],
+      ]);
+
+      // Another person on the same phone has agreed to nothing.
+      const other = await request(app.getHttpServer())
+        .get('/v1/me/consent')
+        .set('Authorization', await customerAuthHeaderFor(app, { userId: otherId }))
+        .expect(200);
+      expect(other.body).toEqual({ granted: [] });
+    });
+
+    it('keeps the agreement after a withdrawal, which only stops marketing', async () => {
+      const userId = await seedCustomer(db);
+      const auth = await customerAuthHeaderFor(app, { userId });
+      await request(app.getHttpServer())
+        .post('/v1/me/consent')
+        .set('Authorization', auth)
+        .send({ policyType: 'privacy_policy', policyVersion: '2026-08-10' })
+        .expect(204);
+      await request(app.getHttpServer())
+        .post('/v1/me/consent/withdraw')
+        .set('Authorization', auth)
+        .send({ policyType: 'privacy_policy' })
+        .expect(204);
+
+      const res = await request(app.getHttpServer())
+        .get('/v1/me/consent')
+        .set('Authorization', auth)
+        .expect(200);
+      expect(res.body.granted).toMatchObject([
+        { policyType: 'privacy_policy', policyVersion: '2026-08-10', action: 'granted' },
+      ]);
     });
   });
 

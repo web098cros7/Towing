@@ -2,6 +2,7 @@ import { Controller, Delete, Get, HttpCode, HttpStatus, Post, Req, UseGuards } f
 import {
   accountDeletionRequestSchema,
   consentRecordRequestSchema,
+  type ConsentStatus,
   consentWithdrawRequestSchema,
   type AccountDeletionRequest,
   type ConsentRecordRequest,
@@ -39,6 +40,13 @@ export class AccountPrivacyController {
   exportData(@Req() request: AuthedRequest) {
     const { subjectType, subjectId } = subjectFor(request);
     return this.privacy.exportData(subjectType, subjectId);
+  }
+
+  /** Whether this person already agreed, whatever phone they signed in on. */
+  @Get('consent')
+  consentStatus(@Req() request: AuthedRequest): Promise<ConsentStatus> {
+    const { subjectType, subjectId } = subjectFor(request);
+    return this.privacy.consentStatus(subjectType, subjectId);
   }
 
   @Post('consent')

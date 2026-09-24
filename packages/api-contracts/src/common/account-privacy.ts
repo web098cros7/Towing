@@ -46,6 +46,18 @@ export const consentRecordSchema = z.object({
 export type ConsentRecord = z.infer<typeof consentRecordSchema>;
 
 /**
+ * `GET /v1/me/consent`: the newest AGREEMENT per policy for the signed-in
+ * person, so the app asks for consent once per account rather than once per
+ * phone (Ehsan, 24 Sep). A later withdrawal does not remove an agreement from
+ * here: withdrawing stops marketing, it does not mean the one-time consent was
+ * never given. A policy never agreed to is absent.
+ */
+export const consentStatusSchema = z.object({
+  granted: z.array(consentRecordSchema),
+});
+export type ConsentStatus = z.infer<typeof consentStatusSchema>;
+
+/**
  * `POST /v1/me/consent/withdraw`.
  *
  * WHAT WITHDRAWAL MEANS HERE (Ehsan, 23 Sep): marketing stops; the account

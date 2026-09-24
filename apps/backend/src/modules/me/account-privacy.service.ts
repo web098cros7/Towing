@@ -2,7 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import type {
   AccountDeletionResponse,
   AccountExportResponse,
+  ConsentPolicyType,
   ConsentRecordRequest,
+  ConsentStatus,
   ConsentWithdrawRequest,
 } from '@towing/api-contracts';
 import { and, desc, eq } from 'drizzle-orm';
@@ -108,6 +110,38 @@ export class AccountPrivacyService {
       requestId: row!.id,
       status: 'requested',
       requestedAt: row!.requestedAt.toISOString(),
+    };
+  }
+
+  /**
+   * The newest agreement per policy (see `consentStatusSchema`). Withdrawals are
+   * skipped on purpose: they stop marketing, they do not undo the one-time
+   * consent, so a customer who withdrew is not asked again on their next phone.
+   */
+  async consentStatus(subjectType: PrivacySubjectType, subjectId: string): Promise<ConsentStatus> {
+    const rows = await this.db
+      .selectDistinctOn([consentRecords.policyType], {
+        policyType: consentRecords.policyType,
+        policyVersion: consentRecords.policyVersion,
+        consentedAt: consentRecords.consentedAt,
+      })
+      .from(consentRecords)
+      .where(
+        and(
+          eq(consentRecords.subjectType, subjectType),
+          eq(consentRecords.subjectId, subjectId),
+          eq(consentRecords.action, 'granted'),
+        ),
+      )
+      .orderBy(consentRecords.policyType, desc(consentRecords.consentedAt));
+
+    return {
+      granted: rows.map((row) => ({
+        policyType: row.policyType as ConsentPolicyType,
+        policyVersion: row.policyVersion,
+        action: 'granted' as const,
+        consentedAt: row.consentedAt.toISOString(),
+      })),
     };
   }
 
