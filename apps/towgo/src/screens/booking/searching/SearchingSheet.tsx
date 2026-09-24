@@ -22,9 +22,6 @@ import { TurningHourglass } from './TurningHourglass';
  */
 export type SearchingSheetProgress = { radiusKm: number; driversContacted: number } | null;
 
-/** Holds a text line's height without drawing a character. */
-const NO_BREAK_SPACE = String.fromCharCode(0xa0);
-
 /**
  * The radius as a person reads it: whole kilometres stay whole ("5"), anything
  * else is rounded to one decimal ("2.5"), never a raw float ("3.3333333").
@@ -35,13 +32,14 @@ function formatRadiusKm(radiusKm: number): string {
 
 /**
  * 16's banner subtitle. The static parts are the Figma text verbatim ("drivers"
- * is the only form the design draws). Before the first wave there is no radius
- * and no count to put in it, and the design draws no copy for that moment, so
- * the line keeps its height (a no-break space) instead of showing invented
- * numbers; the real values fill it the moment the engine reports.
+ * is the only form the design draws). Before the first wave reports there is no
+ * radius or count yet, so it says "Contacting drivers near you…" (not drawn in
+ * Figma; a blank line read as broken) until the real values fill it.
  */
 function searchSubtitle(progress: SearchingSheetProgress): string {
-  if (!progress) return NO_BREAK_SPACE;
+  // Before the first wave reports (a few seconds): say what is happening rather
+  // than leave the line blank (owner, 24 Sep 2026).
+  if (!progress) return 'Contacting drivers near you…';
   const drivers = progress.driversContacted === 1 ? 'driver' : 'drivers';
   // Two lines, split where the design's "·" is, so neither half wraps mid-phrase.
   return `Searching within ${formatRadiusKm(progress.radiusKm)} km\n${progress.driversContacted} ${drivers} contacted`;

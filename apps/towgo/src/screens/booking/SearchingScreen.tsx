@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
-import { MapPreview, type MapOverlay, type MapRegion } from '@towing/ui';
+import { MapPreview, type MapPreviewController, type MapRegion } from '@towing/ui';
 import { mitowColors, mitowLayout, MiHelpChip } from '@/design';
 import { ApiClientError } from '@/lib/api/errors';
 import { useBookingStore } from '@/features/booking/store/bookingStore';
@@ -157,30 +157,27 @@ export function SearchingScreen() {
     });
   }, [retryPending, retrySearch, bookingId, queryClient]);
 
-  // The camera is uncontrolled after mount, so the region is read once.
+  // The booking's own pickup (what was booked), the draft's while it loads.
+  const bookedLat = booking?.pickupPoint?.lat;
+  const bookedLng = booking?.pickupPoint?.lng;
   const [initialRegion] = useState<MapRegion>(() => ({
-    latitude: pickupCoords.latitude,
-    longitude: pickupCoords.longitude,
+    latitude: bookedLat ?? pickupCoords.latitude,
+    longitude: bookedLng ?? pickupCoords.longitude,
     latitudeDelta: MAP_ZOOM_DELTA,
     longitudeDelta: MAP_ZOOM_DELTA,
   }));
+  // The map is still, centred on the pickup; if the booking arrives with a
+  // different point than the draft, move there.
+  const map = useRef<MapPreviewController>(null);
+  useEffect(() => {
+    if (bookedLat === undefined || bookedLng === undefined) return;
+    map.current?.animateToCoordinate({ latitude: bookedLat, longitude: bookedLng }, 300);
+  }, [bookedLat, bookedLng]);
 
-  // The pickup, pulsing while the search runs (owner decision, 24 Sep 2026).
-  // `tracksViewChanges` while it animates: the rings move, so the marker must keep redrawing.
+  // The pickup, pulsing while the search runs (owner decision, 24 Sep 2026). Drawn
+  // as a plain view over the map's centre, NOT as a map marker: an always-animating
+  // marker is never redrawn on Android (react-native-maps), so it showed blank.
   const searching = frame !== 'noDrivers';
-  const pulseOverlays = useMemo<MapOverlay[]>(
-    () => [
-      {
-        key: 'pickup-pulse',
-        coordinate: { latitude: initialRegion.latitude, longitude: initialRegion.longitude },
-        view: <PickupPulse label="Pickup point" animate={searching} />,
-        anchor: { x: 0.5, y: 0.5 },
-        tracksViewChanges: searching,
-        zIndex: 2,
-      },
-    ],
-    [initialRegion.latitude, initialRegion.longitude, searching],
-  );
 
   // 49 from the top of the screen as drawn; only a taller Android status bar pushes it down.
   const helpTop =
@@ -205,16 +202,34 @@ export function SearchingScreen() {
         `label=""` keeps the placeholder's "MAP" watermark off a build that has
         no Android Maps key; with the key this is always the real map.
       */}
-      <MapPreview
-        style={{ flex: 1, marginBottom: -MAP_UNDER_SHEET }}
-        initialRegion={initialRegion}
-        showRecenter={false}
-        showUserLocation={false}
-        userLocationLabel=""
-        label=""
-        mapPadding={{ bottom: MAP_UNDER_SHEET }}
-        overlays={pulseOverlays}
-      />
+      <View style={{ flex: 1, marginBottom: -MAP_UNDER_SHEET }}>
+        <MapPreview
+          style={StyleSheet.absoluteFill}
+          initialRegion={initialRegion}
+          controllerRef={map}
+          interactive={false}
+          showRecenter={false}
+          showUserLocation={false}
+          userLocationLabel=""
+          label=""
+          mapPadding={{ bottom: MAP_UNDER_SHEET }}
+        />
+        {/* The padded viewport's centre is the pickup: the pulse's pin foot sits on it. */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: MAP_UNDER_SHEET,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <PickupPulse label="Pickup Point" animate={searching} />
+        </View>
+      </View>
 
       {frame === 'noDrivers' ? <NoTrucksCallout /> : null}
 
