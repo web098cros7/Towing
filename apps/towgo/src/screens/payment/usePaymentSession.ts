@@ -8,6 +8,7 @@ import {
 } from '@towing/api-contracts';
 import { bookingsKeys } from '@/features/bookings/api/bookings.keys';
 import { bookingsDataSource } from '@/features/bookings/api/bookingsDataSource';
+import type { BookingDetail } from '@/features/bookings/types';
 import {
   useApplyPaymentCoupon,
   useCapturePayment,
@@ -166,6 +167,51 @@ export function usePaymentSession(bookingId: string) {
     [applyCoupon, bookingId, removeCoupon],
   );
 
+  /** The booking as the server has it now: one fresh read, not the cached copy. */
+  const readBooking = useCallback(
+    () =>
+      queryClient.fetchQuery({
+        queryKey: bookingsKeys.detail(bookingId),
+        queryFn: () => bookingsDataSource.getBooking(bookingId),
+        staleTime: 0,
+      }),
+    [bookingId, queryClient],
+  );
+
+  /**
+   * A captured payment, as 30 shows it: the server's `paidAt` and `paymentMethod` (P28/P29:
+   * the customer may pick UPI on 27 and pay by card in the gateway's sheet, and the phone's
+   * clock can be wrong). `booking` is passed when it was just read; otherwise it is read once.
+   * A failed read, or a booking not yet marked paid, falls back to 27's pick and the device
+   * clock, so a captured payment still reaches 30.
+   */
+  const paidOutcome = useCallback(
+    async (
+      method: PaymentMethodKind,
+      transactionId: string | null,
+      amountPaise: number,
+      booking?: BookingDetail | null,
+    ): Promise<PaymentOutcome> => {
+      let paid = booking;
+      if (paid === undefined) {
+        try {
+          paid = await readBooking();
+        } catch {
+          paid = null;
+        }
+      }
+      const settled = paid?.status === 'paid' ? paid : null;
+      return {
+        kind: 'paid',
+        method: settled?.paymentMethod ?? method,
+        transactionId,
+        paidAt: settled?.paidAt ?? new Date().toISOString(),
+        amountPaise,
+      };
+    },
+    [readBooking],
+  );
+
   /** The last unclear capture, for `recheck`. Cleared once it resolves either way. */
   const unclear = useRef<{
     method: PaymentMethodKind;
@@ -181,14 +227,10 @@ export function usePaymentSession(bookingId: string) {
       amountPaise: number,
     ): Promise<PaymentOutcome> => {
       try {
-        const booking = await queryClient.fetchQuery({
-          queryKey: bookingsKeys.detail(bookingId),
-          queryFn: () => bookingsDataSource.getBooking(bookingId),
-          staleTime: 0,
-        });
+        const booking = await readBooking();
         if (booking?.status === 'paid') {
           unclear.current = null;
-          return paidOutcome(method, transactionId, amountPaise);
+          return paidOutcome(method, transactionId, amountPaise, booking);
         }
       } catch {
         // Could not read it either; still unclear.
@@ -196,7 +238,7 @@ export function usePaymentSession(bookingId: string) {
       unclear.current = { method, transactionId, amountPaise };
       return { kind: 'stay', notice: 'confirming' };
     },
-    [bookingId, queryClient],
+    [paidOutcome, readBooking],
   );
 
   /**
@@ -258,7 +300,7 @@ export function usePaymentSession(bookingId: string) {
           try {
             const result = await payWithWallet({ bookingId });
             if (result.status === 'captured') {
-              outcome = paidOutcome('wallet', null, intent.walletAppliedPaise);
+              outcome = await paidOutcome('wallet', null, intent.walletAppliedPaise);
             }
           } catch {
             // The server may have closed the intent; ask for a fresh one and stay. A wallet
@@ -287,7 +329,7 @@ export function usePaymentSession(bookingId: string) {
         try {
           const result = await capture({ bookingId, body: checkout, idempotencyKey: key });
           if (result.status === 'captured') {
-            outcome = paidOutcome(method, transactionId, result.amountPaise);
+            outcome = await paidOutcome(method, transactionId, result.amountPaise);
           } else if (result.status === 'failed') {
             outcome = failedOutcome(method, result.amountPaise, result.failureReason);
           } else {
@@ -313,6 +355,7 @@ export function usePaymentSession(bookingId: string) {
       chooseCash,
       intent,
       intentFailed,
+      paidOutcome,
       payWithWallet,
       requestIntent,
       settleFromBooking,
@@ -329,16 +372,6 @@ export function usePaymentSession(bookingId: string) {
     recheck,
     changeCoupon,
   };
-}
-
-function paidOutcome(
-  method: PaymentMethodKind,
-  transactionId: string | null,
-  amountPaise: number,
-): PaymentOutcome {
-  // The booking now carries `paidAt`, but 30 reads it from the route: the device clock at the
-  // instant of hand-off stands in, so the success screen shows the moment the customer saw it.
-  return { kind: 'paid', method, transactionId, paidAt: new Date().toISOString(), amountPaise };
 }
 
 

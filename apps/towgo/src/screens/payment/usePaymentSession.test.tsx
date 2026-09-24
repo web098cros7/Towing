@@ -93,3 +93,44 @@ describe('usePaymentSession: the states with no Figma screen (P19)', () => {
     expect(paymentNoticeCopy('not_started').message).toMatch(/nothing was charged/i);
   });
 });
+
+describe('usePaymentSession: 30 shows what the server recorded (P28/P29)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("takes the paid time and method from the booking, not the phone's clock or 27's pick", async () => {
+    const result = await session();
+    jest.spyOn(razorpay, 'openCheckout').mockResolvedValue(CHECKOUT);
+    jest.spyOn(paymentsDataSource, 'capture').mockResolvedValue({
+      status: 'captured',
+      amountPaise: 99_900,
+    } as never);
+    jest.spyOn(bookingsDataSource, 'getBooking').mockResolvedValue({
+      id: 'b1',
+      status: 'paid',
+      paidAt: '2026-09-24T10:15:00.000Z',
+      paymentMethod: 'card',
+    } as never);
+
+    expect(await run(() => result.current.pay('upi'))).toEqual({
+      kind: 'paid',
+      method: 'card',
+      transactionId: 'pay_1',
+      paidAt: '2026-09-24T10:15:00.000Z',
+      amountPaise: 99_900,
+    });
+  });
+
+  it('still reaches 30 when the booking cannot be read after a capture', async () => {
+    const result = await session();
+    jest.spyOn(razorpay, 'openCheckout').mockResolvedValue(CHECKOUT);
+    jest.spyOn(paymentsDataSource, 'capture').mockResolvedValue({
+      status: 'captured',
+      amountPaise: 99_900,
+    } as never);
+    jest.spyOn(bookingsDataSource, 'getBooking').mockRejectedValue(new Error('offline'));
+
+    const outcome = await run(() => result.current.pay('upi'));
+    expect(outcome).toMatchObject({ kind: 'paid', method: 'upi', amountPaise: 99_900 });
+    expect(outcome.kind === 'paid' && Number.isNaN(Date.parse(outcome.paidAt))).toBe(false);
+  });
+});
