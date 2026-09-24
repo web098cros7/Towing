@@ -1,4 +1,9 @@
-import type { PlaceAutocompleteResponse, PlaceDetail } from '@towing/api-contracts';
+import {
+  encodePolyline,
+  type PlaceAutocompleteResponse,
+  type PlaceDetail,
+  type PlaceRouteResponse,
+} from '@towing/api-contracts';
 import { env } from '@/lib/env';
 import type { LatLng } from '@/types/geo';
 import { recentLocations } from '@/features/booking/data/recentLocations.data';
@@ -62,6 +67,21 @@ export const placesMockSource: PlacesDataSource = {
       zoneId: location.id === 'r3' ? null : '00000000-0000-4000-8000-000000000001',
       zoneName: location.id === 'r3' ? null : 'Bengaluru Metro',
       source: 'local',
+    };
+  },
+
+  /** No Directions in mock mode: the straight line, labelled as one. */
+  async route(from: LatLng, to: LatLng): Promise<PlaceRouteResponse> {
+    await delay(150);
+    const meters = roughMeters(from, to);
+    return {
+      polyline: encodePolyline([
+        { lat: from.latitude, lng: from.longitude },
+        { lat: to.latitude, lng: to.longitude },
+      ]),
+      distanceMeters: meters,
+      durationSeconds: Math.round(meters / 8),
+      source: 'haversine',
     };
   },
 

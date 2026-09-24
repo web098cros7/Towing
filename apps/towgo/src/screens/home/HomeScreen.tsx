@@ -20,7 +20,6 @@ import {
   type MiColorIconName,
 } from '@/design';
 import { useLocationStore } from '@/features/location/locationStore';
-import { useNearestPartner } from '@/features/home/api/home.queries';
 import { useBookingStore } from '@/features/booking/store/bookingStore';
 import { track } from '@/lib/analytics/analytics';
 import { env } from '@/lib/env';
@@ -98,8 +97,9 @@ export function HomeScreen() {
   }, [resolveCurrentLocation]);
   const setServiceSlug = useBookingStore((s) => s.setServiceSlug);
 
-  // A partner only when a truck is actually nearby; otherwise just the customer's location.
-  const { partner } = useNearestPartner(pickup.coords);
+  // Home shows the customer's location only (owner decision, 24 Sep 2026): no
+  // truck, route line or "Towing partner" callout, as Rapido's home map.
+  const partner = undefined;
 
   const [screenW, setScreenW] = useState(FRAME_W);
   const [sheetH, setSheetH] = useState(SHEET_H_DRAWN);

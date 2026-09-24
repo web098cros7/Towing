@@ -17,6 +17,13 @@ export const placesKeys = {
       query.trim().toLowerCase(),
       near ? `${near.latitude.toFixed(2)},${near.longitude.toFixed(2)}` : 'none',
     ] as const,
+  route: (from: LatLng, to: LatLng) =>
+    [
+      'places',
+      'route',
+      `${from.latitude.toFixed(5)},${from.longitude.toFixed(5)}`,
+      `${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}`,
+    ] as const,
   reverse: (lat: number, lng: number) =>
     ['places', 'reverse', lat.toFixed(5), lng.toFixed(5)] as const,
 };

@@ -1,5 +1,6 @@
 import React from 'react';
 import { configureMaps } from '@towing/ui';
+import { MITOW_MAP_STYLE } from '@/design/tokens/mapStyle';
 import { AppProviders } from '@/providers/AppProviders';
 import { ThemedStatusBar } from '@/providers/ThemedStatusBar';
 import { RootNavigator } from '@/navigation/RootNavigator';
@@ -22,7 +23,10 @@ initOnlineManager();
  * blank grey grid with a Google watermark — which looks broken rather than
  * pending. SETUP-CHECKLIST item 7.
  */
-configureMaps({ androidKeyPresent: env.mapsAndroidKey.length > 0 });
+configureMaps({
+  androidKeyPresent: env.mapsAndroidKey.length > 0,
+  defaultMapStyle: MITOW_MAP_STYLE,
+});
 
 export default function App() {
   return (

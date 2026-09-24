@@ -10,10 +10,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { PricingEstimateRequest } from '@towing/api-contracts';
+import { decodePolyline, type PricingEstimateRequest } from '@towing/api-contracts';
 import {
   MapPreview,
   type MapCoordinate,
+  type MapOverlay,
+  type MapPolyline,
   type MapPreviewController,
   type MapRegion,
 } from '@towing/ui';
@@ -37,6 +39,9 @@ import { FareBreakdownSheet } from '@/features/booking/components/FareBreakdownS
 import { TowTypeCarousel } from '@/features/booking/components/TowTypeCarousel';
 import { RouteSummaryPill } from '@/features/booking/components/book-a-tow/RouteSummaryPill';
 import { NotesSection } from '@/features/booking/components/book-a-tow/NotesField';
+import { NearbyTruck, RoutePin } from '@/features/booking/components/book-a-tow/RoutePin';
+import { useNearbyDrivers } from '@/features/home/api/home.queries';
+import { usePlaceRoute } from '@/features/places/api/places.queries';
 import { EstimatedFareRow } from '@/features/booking/components/book-a-tow/EstimatedFareRow';
 import {
   routeCalloutText,
@@ -64,8 +69,12 @@ const RECENTER_ABOVE_SHEET = 16;
  * Back to front: a live Google map, the Back button + route summary pill at y 49,
  * the dark route callout, the Recenter button 16 above the sheet, and the
  * bottom sheet (Select Vehicle, Additional Notes, Estimated Fare, Confirm
- * Booking), which hugs its content and is anchored to the bottom edge. The design
- * draws no pins, route line, map chips, title or tab bar, so none are rendered.
+ * Booking), which hugs its content and is anchored to the bottom edge.
+ *
+ * ON THE MAP (owner decision, 24 Sep 2026; Figma draws nothing there): a green
+ * pickup pin and a red drop pin, each with its address, the road route between
+ * them (dashed when Directions could not answer and it is a straight line), and
+ * the tow trucks near the pickup.
  *
  * The design draws one state, fully populated. So nothing drawn waits on the
  * network: the callout reads the booking's own route until a quote lands, the
@@ -313,10 +322,62 @@ export function BookTowScreen() {
   );
   const initialRegion = useMemo(() => regionAround(routePoints), [routePoints]);
 
-  /** Recenter: frame pickup and drop again, undoing any pan or zoom. Never moves either point. */
+  const tripRoute = usePlaceRoute(pickupCoords, dropCoords);
+  const routeLine = useMemo<MapCoordinate[]>(() => {
+    const encoded = tripRoute.data?.polyline;
+    if (!encoded) return [];
+    return decodePolyline(encoded).map((p) => ({ latitude: p.lat, longitude: p.lng }));
+  }, [tripRoute.data?.polyline]);
+  const polylines = useMemo<MapPolyline[]>(
+    () =>
+      routeLine.length > 1
+        ? [
+            {
+              key: 'trip',
+              coordinates: routeLine,
+              tone: tripRoute.data?.source === 'google_directions' ? 'route' : 'direct',
+              color: mitowColors.textPrimary,
+              width: 4,
+            },
+          ]
+        : [],
+    [routeLine, tripRoute.data?.source],
+  );
+
+  const nearby = useNearbyDrivers(pickupCoords);
+  const overlays = useMemo<MapOverlay[]>(() => {
+    const list: MapOverlay[] = (nearby.data?.points ?? []).slice(0, 12).map((point, i) => ({
+      key: `truck-${i}`,
+      coordinate: point,
+      view: <NearbyTruck />,
+      zIndex: 1,
+    }));
+    list.push({
+      key: 'pickup',
+      coordinate: pickupCoords,
+      view: <RoutePin kind="pickup" label={pickupAddress} />,
+      anchor: { x: 0.5, y: 1 },
+      zIndex: 3,
+      contentKey: pickupAddress,
+    });
+    if (dropCoords) {
+      list.push({
+        key: 'drop',
+        coordinate: dropCoords,
+        view: <RoutePin kind="drop" label={dropAddress} />,
+        anchor: { x: 0.5, y: 1 },
+        zIndex: 3,
+        contentKey: dropAddress,
+      });
+    }
+    return list;
+  }, [nearby.data?.points, pickupCoords, dropCoords, pickupAddress, dropAddress]);
+
+  /** Recenter: frame pickup, drop and the route again, undoing any pan or zoom. Never moves either point. */
   const recenter = useCallback(() => {
-    if (routePoints.length > 1) {
-      map.current?.fitToCoordinates(routePoints, {
+    const frame = routeLine.length > 1 ? [...routePoints, ...routeLine] : routePoints;
+    if (frame.length > 1) {
+      map.current?.fitToCoordinates(frame, {
         // `mapPadding` already keeps the camera clear of the top controls and
         // the sheet; this is only breathing room inside that viewport.
         padding: { top: 48, bottom: 48, left: 48, right: 48 },
@@ -325,7 +386,14 @@ export function BookTowScreen() {
     } else {
       map.current?.animateToCoordinate(routePoints[0]!);
     }
-  }, [routePoints]);
+  }, [routePoints, routeLine]);
+
+  // Frame the road route once it arrives (it can bend well outside the two ends).
+  useEffect(() => {
+    if (routeLine.length > 1) recenter();
+    // Only when the route itself changes, not on every recenter identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeLine]);
 
   const vehicleName = towTypes.find((type) => type.id === towTypeId)?.name ?? towTypes[0]!.name;
 
@@ -340,6 +408,8 @@ export function BookTowScreen() {
         label=""
         controllerRef={map}
         initialRegion={initialRegion}
+        polylines={polylines}
+        overlays={overlays}
         mapPadding={{
           top: controlsTop + BACK_SIZE,
           // The sheet covers the map's lower edge; the map itself runs on under the

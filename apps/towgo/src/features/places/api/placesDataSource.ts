@@ -1,4 +1,8 @@
-import type { PlaceAutocompleteResponse, PlaceDetail } from '@towing/api-contracts';
+import type {
+  PlaceAutocompleteResponse,
+  PlaceDetail,
+  PlaceRouteResponse,
+} from '@towing/api-contracts';
 import { env } from '@/lib/env';
 import type { LatLng } from '@/types/geo';
 import { placesMockSource } from './placesMockSource';
@@ -12,6 +16,8 @@ import { placesRestSource } from './placesRestSource';
  */
 export interface PlacesDataSource {
   autocomplete(query: string, near?: LatLng): Promise<PlaceAutocompleteResponse>;
+  /** The road route between two points, for the booking map's line. */
+  route(from: LatLng, to: LatLng): Promise<PlaceRouteResponse>;
   /** Resolves a picked suggestion to a coordinate. */
   details(placeId: string): Promise<PlaceDetail>;
   /** The draggable pin's label. */

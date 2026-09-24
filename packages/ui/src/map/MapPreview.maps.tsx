@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { getDefaultMapStyle } from './config';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import MapView, {
   Circle,
@@ -269,7 +270,7 @@ export function MapPreviewMaps({
               }
             : undefined
         }
-        customMapStyle={customMapStyle}
+        customMapStyle={customMapStyle ?? getDefaultMapStyle()}
       >
         {/*
           Lines BEFORE markers: `react-native-maps` draws children in order, so

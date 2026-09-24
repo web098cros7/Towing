@@ -84,3 +84,19 @@ export function useReverseGeocode(point: LatLng | undefined) {
 export async function resolvePlace(placeId: string) {
   return placesDataSource.details(placeId);
 }
+
+/**
+ * The road route from pickup to drop, drawn on the booking map (owner decision,
+ * 24 Sep 2026). Cached for the pair of points: Directions is billed per call.
+ */
+export function usePlaceRoute(from: LatLng | null | undefined, to: LatLng | null | undefined) {
+  return useQuery({
+    queryKey: placesKeys.route(
+      from ?? { latitude: 0, longitude: 0 },
+      to ?? { latitude: 0, longitude: 0 },
+    ),
+    queryFn: () => placesDataSource.route(from!, to!),
+    enabled: !!from && !!to,
+    staleTime: 10 * 60_000,
+  });
+}

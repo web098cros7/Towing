@@ -1,4 +1,8 @@
-import type { PlaceAutocompleteResponse, PlaceDetail } from '@towing/api-contracts';
+import type {
+  PlaceAutocompleteResponse,
+  PlaceDetail,
+  PlaceRouteResponse,
+} from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import type { PlacesDataSource } from './placesDataSource';
 
@@ -15,6 +19,16 @@ export const placesRestSource: PlacesDataSource = {
 
   details(placeId) {
     return apiFetch<PlaceDetail>(`places/details?placeId=${encodeURIComponent(placeId)}`);
+  },
+
+  route(from, to) {
+    const params = new URLSearchParams({
+      fromLat: String(from.latitude),
+      fromLng: String(from.longitude),
+      toLat: String(to.latitude),
+      toLng: String(to.longitude),
+    });
+    return apiFetch<PlaceRouteResponse>(`places/route?${params.toString()}`);
   },
 
   reverse(point) {

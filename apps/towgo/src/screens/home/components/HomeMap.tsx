@@ -14,9 +14,9 @@ import MapView, {
   Polyline,
   PROVIDER_DEFAULT,
   PROVIDER_GOOGLE,
-  type MapStyleElement,
   type Region,
 } from 'react-native-maps';
+import { MITOW_MAP_STYLE } from '@/design/tokens/mapStyle';
 import type { NearestPartner } from '@/features/home/types';
 import type { LatLng } from '@/types/geo';
 import {
@@ -59,30 +59,6 @@ const MAP_LAND = '#F1F4F7';
 /** M3 `map/route` #858E9E (no app token), width 4.2, round caps. */
 const ROUTE_COLOR = '#858E9E';
 const ROUTE_WIDTH = 4.2;
-
-/**
- * Figma 07 "Streets (stylised)" palette `287:2018` as Google style JSON: land
- * #F1F4F7, green blocks #DAF2E2, water #D5EBFC, streets and main roads #FFFFFF
- * with no casing, minor streets #FAFBFC. The drawn map has no labels, points of
- * interest, transit or borders, so those are hidden. Google provider only.
- */
-const HOME_MAP_STYLE: MapStyleElement[] = [
-  { elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { elementType: 'geometry', stylers: [{ color: MAP_LAND }] },
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: MAP_LAND }] },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ visibility: 'on' }, { color: '#DAF2E2' }],
-  },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D5EBFC' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#FFFFFF' }] },
-  { featureType: 'road.local', elementType: 'geometry.fill', stylers: [{ color: '#FAFBFC' }] },
-];
 
 /** How long a marker keeps re-snapshotting after mount or a content change (images, SVG, fonts). */
 const MARKER_SETTLE_MS = 1500;
@@ -244,7 +220,7 @@ export const HomeMap = forwardRef<HomeMapHandle, HomeMapProps>(function HomeMap(
         initialRegion={initialRegion}
         onMapReady={() => setReady(true)}
         onRegionChangeComplete={onRegionChangeComplete}
-        customMapStyle={HOME_MAP_STYLE}
+        customMapStyle={MITOW_MAP_STYLE}
         // Not before `onMapReady`: Android applies it through GoogleMap.setPadding on a map
         // that is still null until then, which crashed (NullPointerException in setMapPadding).
         mapPadding={ready ? { top: 0, right: 0, bottom: coveredBottom, left: 0 } : undefined}

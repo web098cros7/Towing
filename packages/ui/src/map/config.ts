@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import type { MapStyleElement } from 'react-native-maps';
 
 /**
  * Whether `<MapPreview />` renders a real map or the themed placeholder.
@@ -23,15 +24,24 @@ import { Platform } from 'react-native';
  * the Expo web target is used here for quick component checks.
  */
 let androidKeyPresent = false;
+/** The style every map uses when its caller passes none (see `MapConfig.defaultMapStyle`). */
+let defaultMapStyle: MapStyleElement[] | undefined;
 
 export interface MapConfig {
   /** True when `EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY` is set in the app's build. */
   androidKeyPresent: boolean;
+  /**
+   * The Google style for every map that sets none of its own. Without one,
+   * Google follows the phone's dark mode, so an app locked to light draws a
+   * night map on some screens and a light one on others.
+   */
+  defaultMapStyle?: MapStyleElement[];
 }
 
 /** Call once at app boot, before the first map renders. */
 export function configureMaps(config: MapConfig): void {
   androidKeyPresent = config.androidKeyPresent;
+  defaultMapStyle = config.defaultMapStyle;
 }
 
 /**
@@ -47,4 +57,9 @@ export function isNativeMapAvailable(): boolean {
   if (Platform.OS === 'ios') return true;
   if (Platform.OS === 'android') return androidKeyPresent;
   return false;
+}
+
+/** The app-wide default style, or undefined for Google's own. */
+export function getDefaultMapStyle(): MapStyleElement[] | undefined {
+  return defaultMapStyle;
 }
