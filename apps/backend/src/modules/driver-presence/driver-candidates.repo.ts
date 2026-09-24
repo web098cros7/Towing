@@ -115,10 +115,23 @@ export class DriverCandidatesRepo {
     centre: { lat: number; lng: number };
     radiusKm: number;
     limit: number;
-  }): Promise<{ points: Array<{ lat: number; lng: number }>; degraded: boolean }> {
+  }): Promise<{
+    points: Array<{
+      lat: number;
+      lng: number;
+      headingDeg: number | null;
+      vehicleClass: string | null;
+    }>;
+    degraded: boolean;
+  }> {
     const { candidates, degraded } = await this.searchWithFallback(params);
     return {
-      points: candidates.slice(0, params.limit).map((c) => ({ lat: c.lat, lng: c.lng })),
+      points: candidates.slice(0, params.limit).map((c) => ({
+        lat: c.lat,
+        lng: c.lng,
+        headingDeg: c.headingDeg,
+        vehicleClass: c.vehicleClass,
+      })),
       degraded,
     };
   }

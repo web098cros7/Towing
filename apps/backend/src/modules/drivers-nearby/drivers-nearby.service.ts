@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import type { NearbyDriversQuery, NearbyDriversResponse } from '@towing/api-contracts';
+import type {
+  NearbyDriversQuery,
+  NearbyDriversResponse,
+  NearbyVehicle,
+} from '@towing/api-contracts';
 import { DriverCandidatesRepo } from '../driver-presence/driver-candidates.repo';
 import { ZoneResolverService } from '../pricing/zone-resolver.service';
-import { COARSEN_METERS, coarsenAll } from './coarsen';
+import { COARSEN_METERS, coarsen, coarsenAll } from './coarsen';
 
 /**
  * §11.9's "drivers near me" — the supply signal the customer's home map draws.
@@ -58,9 +62,41 @@ export class DriversNearbyService {
       // number answers and the one that decides whether they book.
       count: points.length,
       points: coarsenAll(points),
+      vehicles: nearbyVehicles(points),
       coarsenedToMeters: COARSEN_METERS,
       at: new Date().toISOString(),
       degraded,
     };
   }
+}
+
+/**
+ * The trucks the map draws: one per coarsened cell (as `points`), with the
+ * heading rounded to 5 degrees (enough to face along a road, no finer) and the
+ * truck type when it is one the contract knows.
+ */
+function nearbyVehicles(
+  points: Array<{
+    lat: number;
+    lng: number;
+    headingDeg: number | null;
+    vehicleClass: string | null;
+  }>,
+): NearbyVehicle[] {
+  const byCell = new Map<string, NearbyVehicle>();
+  for (const point of points) {
+    const cell = coarsen(point);
+    const key = `${cell.lat},${cell.lng}`;
+    if (byCell.has(key)) continue;
+    byCell.set(key, {
+      lat: cell.lat,
+      lng: cell.lng,
+      headingDeg: point.headingDeg === null ? null : (Math.round(point.headingDeg / 5) * 5) % 360,
+      vehicleClass:
+        point.vehicleClass === 'flatbed' || point.vehicleClass === 'wheel_lift'
+          ? point.vehicleClass
+          : null,
+    });
+  }
+  return [...byCell.values()];
 }

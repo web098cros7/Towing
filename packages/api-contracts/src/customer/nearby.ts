@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { geoPointSchema } from '../common/geo';
+import { vehicleClassSchema } from '../fleet/trucks';
 
 /**
  * `GET /v1/drivers/nearby` (§11.9) — the "there is supply here" signal the
@@ -28,10 +29,27 @@ export const nearbyDriversQuerySchema = z.object({
 });
 export type NearbyDriversQuery = z.infer<typeof nearbyDriversQuerySchema>;
 
+/**
+ * One nearby truck as the map draws it: the same coarsened position as
+ * `points`, plus which way it faces and what kind of truck it is, so the map
+ * shows a flatbed or a wheel-lift pointing along the road. Still no identity:
+ * no driver, plate or name. Null where the degraded (PostGIS) rung cannot say.
+ */
+export const nearbyVehicleSchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
+  /** Degrees clockwise from north, rounded to 5. */
+  headingDeg: z.number().nullable(),
+  vehicleClass: vehicleClassSchema.nullable(),
+});
+export type NearbyVehicle = z.infer<typeof nearbyVehicleSchema>;
+
 export const nearbyDriversResponseSchema = z.object({
   /** The honest supply number, computed BEFORE coarsening collapses co-located drivers. */
   count: z.number().int().nonnegative(),
   points: z.array(geoPointSchema),
+  /** `points` with heading and truck type, one per coarsened cell. */
+  vehicles: z.array(nearbyVehicleSchema),
   /** Published so the client can size its marker to the uncertainty rather than pretend to precision. */
   coarsenedToMeters: z.number().int().positive(),
   at: z.iso.datetime(),

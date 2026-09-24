@@ -123,6 +123,18 @@ describe('GET /v1/drivers/nearby', () => {
       expect(serialized).not.toContain('Suresh');
       expect(serialized).not.toContain(driverId);
       expect(Object.keys(body.points[0]!).sort()).toEqual(['lat', 'lng']);
+
+      // The map's trucks: the same coarse point, which way it faces and what
+      // kind of truck, and still nothing more.
+      expect(body.vehicles).toEqual([
+        { ...body.points[0]!, headingDeg: 90, vehicleClass: 'flatbed' },
+      ]);
+      expect(Object.keys(body.vehicles[0]!).sort()).toEqual([
+        'headingDeg',
+        'lat',
+        'lng',
+        'vehicleClass',
+      ]);
     });
 
     it('snaps positions onto a grid rather than returning the true point', async () => {
