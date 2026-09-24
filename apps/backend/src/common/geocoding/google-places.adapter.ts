@@ -66,7 +66,7 @@ interface ReverseResponse {
   results?: Array<{
     place_id?: string;
     formatted_address?: string;
-    address_components?: Array<{ short_name?: string; long_name?: string }>;
+    types?: string[];
   }>;
 }
 
@@ -150,10 +150,11 @@ export class GooglePlacesAdapter implements GeocodingPort, OnModuleInit {
     const lng = result?.geometry?.location?.lng;
     if (!result || typeof lat !== 'number' || typeof lng !== 'number') return null;
 
+    const address = cleanFormattedAddress(result.formatted_address ?? '');
     return {
       placeId: result.place_id ?? placeId,
-      label: result.name ?? result.formatted_address ?? '',
-      address: result.formatted_address ?? '',
+      label: result.name ?? firstPart(address),
+      address,
       point: { lat, lng },
     };
   }
@@ -164,12 +165,13 @@ export class GooglePlacesAdapter implements GeocodingPort, OnModuleInit {
     url.searchParams.set('key', this.apiKey());
 
     const body = await this.get<ReverseResponse>(url, 'reverse');
-    const first = body?.results?.[0];
+    const first = pickReverseResult(body?.results ?? []);
+    const address = first?.formatted_address ? cleanFormattedAddress(first.formatted_address) : '';
 
     // A pin always lands somewhere. With no match the coordinate IS the answer —
     // inventing "Unknown location" would be a label the customer cannot act on,
     // and throwing would break a drag gesture over open country.
-    if (!first?.formatted_address) {
+    if (!first || !address) {
       return {
         placeId: `latlng:${point.lat},${point.lng}`,
         label: formatCoordinate(point),
@@ -180,8 +182,8 @@ export class GooglePlacesAdapter implements GeocodingPort, OnModuleInit {
 
     return {
       placeId: first.place_id ?? `latlng:${point.lat},${point.lng}`,
-      label: first.address_components?.[0]?.long_name ?? first.formatted_address,
-      address: first.formatted_address,
+      label: firstPart(address),
+      address,
       point,
     };
   }
@@ -238,4 +240,58 @@ export class GooglePlacesAdapter implements GeocodingPort, OnModuleInit {
 /** Five decimals ≈ 1.1 m — precise enough to act on, short enough to read. */
 function formatCoordinate(point: GeoPoint): string {
   return `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`;
+}
+
+/**
+ * The reverse result to show, as ride apps pick it (owner, 24 Sep 2026: "see how
+ * Rapido shows the address"): Google often lists a bare plus-code result, or a
+ * house-number-less one, first. A street address or a named place wins; then
+ * anything that is not only a plus code; then whatever came first.
+ */
+const PREFERRED_TYPES = new Set([
+  'street_address',
+  'premise',
+  'subpremise',
+  'establishment',
+  'point_of_interest',
+  'route',
+]);
+
+export function pickReverseResult<T extends { formatted_address?: string; types?: string[] }>(
+  results: T[],
+): T | undefined {
+  const usable = results.filter(
+    (r) => r.formatted_address && cleanFormattedAddress(r.formatted_address),
+  );
+  return (
+    usable.find((r) => (r.types ?? []).some((t) => PREFERRED_TYPES.has(t))) ??
+    usable.find((r) => !(r.types ?? []).includes('plus_code')) ??
+    results[0]
+  );
+}
+
+/** A Google plus code ("49C7+FR4", "49C7+9V Muzaffarpur" starts with one). */
+const PLUS_CODE = /^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{0,3}(\s|$)/i;
+/** A house number Google fills with zeros ("0", "00"): not an address anyone has. */
+const ZERO_NUMBER = /^0+$/;
+
+/**
+ * Google's formatted address as a person would write it: plus-code parts and
+ * all-zero house numbers dropped, and the trailing ", India" (every address
+ * here is in India) removed. "49C7+FR4, Circuit House Rd, Satsang Nagar,
+ * Muzaffarpur, Bihar 842001, India" → "Circuit House Rd, Satsang Nagar,
+ * Muzaffarpur, Bihar 842001".
+ */
+export function cleanFormattedAddress(text: string): string {
+  const parts = text
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part && !PLUS_CODE.test(part) && !ZERO_NUMBER.test(part));
+  if (parts.length > 1 && parts[parts.length - 1]!.toLowerCase() === 'india') parts.pop();
+  return parts.join(', ');
+}
+
+/** The first part of an address: the bold line the app shows. */
+function firstPart(address: string): string {
+  return address.split(',')[0]?.trim() || address;
 }
