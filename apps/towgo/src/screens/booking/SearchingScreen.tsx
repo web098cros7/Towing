@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
-import { MapPreview, type MapRegion } from '@towing/ui';
+import { MapPreview, type MapOverlay, type MapRegion } from '@towing/ui';
 import { mitowColors, mitowLayout, MiHelpChip } from '@/design';
 import { ApiClientError } from '@/lib/api/errors';
 import { useBookingStore } from '@/features/booking/store/bookingStore';
@@ -18,6 +18,7 @@ import { bookingsKeys } from '@/features/bookings/api/bookings.keys';
 import type { BookingStatus } from '@/features/bookings/types';
 import type { RootStackParamList } from '@/navigation/types';
 import { NoTrucksCallout } from './searching/NoTrucksCallout';
+import { PickupPulse } from './searching/PickupPulse';
 import { SearchingSheet, type SearchingSheetProps } from './searching/SearchingSheet';
 
 /**
@@ -164,6 +165,23 @@ export function SearchingScreen() {
     longitudeDelta: MAP_ZOOM_DELTA,
   }));
 
+  // The pickup, pulsing while the search runs (owner decision, 24 Sep 2026).
+  // `tracksViewChanges` while it animates: the rings move, so the marker must keep redrawing.
+  const searching = frame !== 'noDrivers';
+  const pulseOverlays = useMemo<MapOverlay[]>(
+    () => [
+      {
+        key: 'pickup-pulse',
+        coordinate: { latitude: initialRegion.latitude, longitude: initialRegion.longitude },
+        view: <PickupPulse label="Pickup point" animate={searching} />,
+        anchor: { x: 0.5, y: 0.5 },
+        tracksViewChanges: searching,
+        zIndex: 2,
+      },
+    ],
+    [initialRegion.latitude, initialRegion.longitude, searching],
+  );
+
   // 49 from the top of the screen as drawn; only a taller Android status bar pushes it down.
   const helpTop =
     Platform.OS === 'android'
@@ -195,6 +213,7 @@ export function SearchingScreen() {
         userLocationLabel=""
         label=""
         mapPadding={{ bottom: MAP_UNDER_SHEET }}
+        overlays={pulseOverlays}
       />
 
       {frame === 'noDrivers' ? <NoTrucksCallout /> : null}

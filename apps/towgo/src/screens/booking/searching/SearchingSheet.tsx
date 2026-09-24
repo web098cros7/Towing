@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { MiButton, MiCard, MiInfoBanner, MiSheetPanel, MiSummaryRow, MiText } from '@/design';
+import { TurningHourglass } from './TurningHourglass';
 
 /**
  * The bottom sheet of Figma 16 Searching for Tow (`372:18809`) and 17 No
@@ -42,7 +43,8 @@ function formatRadiusKm(radiusKm: number): string {
 function searchSubtitle(progress: SearchingSheetProgress): string {
   if (!progress) return NO_BREAK_SPACE;
   const drivers = progress.driversContacted === 1 ? 'driver' : 'drivers';
-  return `Searching within ${formatRadiusKm(progress.radiusKm)} km · ${progress.driversContacted} ${drivers} contacted`;
+  // Two lines, split where the design's "·" is, so neither half wraps mid-phrase.
+  return `Searching within ${formatRadiusKm(progress.radiusKm)} km\n${progress.driversContacted} ${drivers} contacted`;
 }
 
 export type SearchingSheetProps = {
@@ -94,7 +96,9 @@ export function SearchingSheet({
       ) : (
         <MiInfoBanner
           icon="hourglass"
+          iconNode={<TurningHourglass />}
           tone="brand"
+          height="auto"
           title="Hang tight!"
           subtitle={searchSubtitle(progress)}
         />

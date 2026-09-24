@@ -30,6 +30,8 @@ const TONE_FILL: Record<MiInfoBannerTone, string> = {
 export type MiInfoBannerProps = {
   /** Colour icon by Figma name (preferred) or a require()d source. Drawn 49×49 by default. */
   icon: MiColorIconName | ImageSourcePropType;
+  /** Drawn in place of `icon` (an animated icon); `icon` still names it for the record. */
+  iconNode?: React.ReactNode;
   iconSize?: number;
   /**
    * MiTow/Strong 15.5 (or `titleVariant`), text/primary. Copy verbatim from the spec. Omit it and
@@ -50,7 +52,8 @@ export type MiInfoBannerProps = {
   /** Makes the whole banner pressable. */
   onPress?: () => void;
   /** Fixed height. Default 67 (master). Screen 18 uses 71.1. */
-  height?: number;
+  /** Fixed height, or 'auto' to grow with the text (at least 67). */
+  height?: number | 'auto';
   /** Default 8. Screen 18 uses 11. */
   paddingLeft?: number;
   /** Default 8. */
@@ -73,6 +76,7 @@ export type MiInfoBannerProps = {
  */
 export function MiInfoBanner({
   icon,
+  iconNode,
   iconSize = 49,
   title,
   titleVariant = 'strong155',
@@ -94,7 +98,7 @@ export function MiInfoBanner({
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      height,
+      ...(height === 'auto' ? { minHeight: 67, paddingVertical: 10 } : { height }),
       paddingLeft,
       paddingRight,
       borderRadius: mitowRadii.cardSm,
@@ -105,10 +109,12 @@ export function MiInfoBanner({
 
   const content = (
     <>
-      <MiColorIcon
-        {...(typeof icon === 'string' ? { name: icon } : { source: icon })}
-        size={iconSize}
-      />
+      {iconNode ?? (
+        <MiColorIcon
+          {...(typeof icon === 'string' ? { name: icon } : { source: icon })}
+          size={iconSize}
+        />
+      )}
       <View style={{ flex: 1, overflow: 'hidden' }}>
         {title ? <MiText variant={titleVariant}>{title}</MiText> : null}
         <MiText variant="bodyXS135" color="secondary">
