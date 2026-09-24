@@ -59,6 +59,9 @@ export interface DriverFixRow {
   lat: number;
   lng: number;
   lastPingAt: Date | null;
+  /** Only the Redis hot fix knows these; the Postgres row leaves them out. */
+  headingDeg?: number | null;
+  speedKph?: number | null;
 }
 
 @Injectable()

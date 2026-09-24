@@ -175,14 +175,32 @@ export class PresenceStore {
    * who went quiet legitimately has no fix, and the caller falls back to the
    * Postgres column or to no route at all.
    */
-  async lastFix(
-    driverId: string,
-  ): Promise<{ lat: number; lng: number; at: string | null } | null> {
-    const raw = await this.redis.hmget(driverHashKey(driverId), 'lat', 'lng', 'at');
+  async lastFix(driverId: string): Promise<{
+    lat: number;
+    lng: number;
+    at: string | null;
+    headingDeg: number | null;
+    speedKph: number | null;
+  } | null> {
+    const raw = await this.redis.hmget(
+      driverHashKey(driverId),
+      'lat',
+      'lng',
+      'at',
+      'headingDeg',
+      'speedKph',
+    );
     const lat = Number(raw[0]);
     const lng = Number(raw[1]);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng, at: raw[2] ?? null };
+    return {
+      lat,
+      lng,
+      at: raw[2] ?? null,
+      // Stored as '' when the ping had none; `Number('')` would read that as 0°.
+      headingDeg: optionalNumber(raw[3]),
+      speedKph: optionalNumber(raw[4]),
+    };
   }
 
   /** The stored sequence, so a reconnecting handset can resume above it. */
@@ -348,4 +366,11 @@ export class PresenceStore {
       this.logger.debug(`read-repair failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+}
+
+/** A hash field as a number, or null when it is missing or empty. */
+function optionalNumber(raw: string | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }

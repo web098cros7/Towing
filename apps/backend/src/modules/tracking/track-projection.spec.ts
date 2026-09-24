@@ -178,6 +178,13 @@ describe("the customer's own tracking payload", () => {
     expect(tracking.position!.lng).toBe(fix.lng);
   });
 
+  it("carries the hot fix's heading, so a polled truck faces the way it drives", () => {
+    const hot = { ...fix, headingDeg: 92.5, speedKph: 31 };
+    expect(toBookingTracking(row, hot, now).position).toMatchObject({ headingDeg: 92.5, speedKph: 31 });
+    // The Postgres fallback stores no heading: null, never an invented 0°.
+    expect(toBookingTracking(row, fix, now).position!.headingDeg).toBeNull();
+  });
+
   it('still carries no phone number — that is a separate, guarded route', () => {
     // §9.1.7's call button goes through `GET /bookings/:id/contact` and
     // `TelephonyPort`, so the number is never a field on a polled payload that

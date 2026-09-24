@@ -69,6 +69,10 @@ export class TrackingService {
         // The PING's own timestamp, so §11.6's staleness thresholds measure the
         // age of the fix rather than the age of this request.
         lastPingAt: hot.at ? new Date(hot.at) : null,
+        // The direction the truck faces on the customer's map (owner, 24 Sep
+        // 2026: "if it is going left to right, it faces right").
+        headingDeg: hot.headingDeg,
+        speedKph: hot.speedKph,
       };
     }
 

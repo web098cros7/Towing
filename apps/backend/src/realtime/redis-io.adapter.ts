@@ -35,6 +35,7 @@ export class RedisIoAdapter extends IoAdapter {
 
   createIOServer(port: number, options?: ServerOptions): unknown {
     const origins = this.env.CORS_ORIGINS;
+    const ownOrigin = socketOrigin(this.env.PUBLIC_WS_URL);
 
     const server = super.createIOServer(port, {
       ...options,
@@ -48,9 +49,7 @@ export class RedisIoAdapter extends IoAdapter {
         callback: (err: string | null | undefined, allowed: boolean) => void,
       ) => {
         const origin = req.headers.origin;
-        // Non-browser clients (the load smoke, supertest, future server-to-server)
-        // send no Origin header and are not subject to the same-origin threat.
-        if (origin === undefined || origins.includes(origin)) return callback(null, true);
+        if (isAllowedOrigin(origin, origins, ownOrigin)) return callback(null, true);
         this.logger.warn(`rejected socket handshake from origin ${origin}`);
         callback('origin_not_allowed', false);
       },
@@ -100,4 +99,36 @@ export class RedisIoAdapter extends IoAdapter {
     // shutdown must not mask the real reason the process is stopping.
     await Promise.allSettled([this.pubClient?.quit(), this.subClient?.quit()]);
   }
+}
+
+/**
+ * The origin a client connecting to `url` presents: React Native's WebSocket
+ * (both MiTow apps) sends the socket URL's own origin, ws→http and wss→https.
+ */
+export function socketOrigin(url: string): string | null {
+  try {
+    const parsed = new URL(url.replace(/^ws(s?):/, 'http$1:'));
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a handshake's Origin may open a socket.
+ *
+ * - No Origin: a non-browser client (the load smoke, supertest).
+ * - A `CORS_ORIGINS` entry: the fleet console and admin in a browser.
+ * - The gateway's own origin: the phone apps. React Native's WebSocket on
+ *   Android sets Origin to the URL it connects to, so without this every phone
+ *   was refused and fell back to polling (found on a device, 24 Sep 2026). No
+ *   browser page carries that origin, since the gateway serves no pages.
+ */
+export function isAllowedOrigin(
+  origin: string | undefined,
+  allowed: readonly string[],
+  ownOrigin: string | null,
+): boolean {
+  if (origin === undefined) return true;
+  return allowed.includes(origin) || (ownOrigin !== null && origin === ownOrigin);
 }

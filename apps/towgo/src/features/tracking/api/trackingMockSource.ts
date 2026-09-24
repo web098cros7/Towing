@@ -12,6 +12,7 @@ import type {
 } from '@/screens/booking/tracking/trackingDisplay';
 import { mockTripPhase, type MockTripPhase } from './mockTripClock';
 import type { TrackingDataSource } from './trackingDataSource';
+import { bearingBetween } from '@/utils/bearing';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -136,16 +137,6 @@ function mockRoute(
 
 let shared: BookingShareResponse | null = null;
 
-/** Bearing from one point to the next, so the marker turns the way it is going. */
-function bearing(from: { lat: number; lng: number }, to: { lat: number; lng: number }): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const y = Math.sin(toRad(to.lng - from.lng)) * Math.cos(toRad(to.lat));
-  const x =
-    Math.cos(toRad(from.lat)) * Math.sin(toRad(to.lat)) -
-    Math.sin(toRad(from.lat)) * Math.cos(toRad(to.lat)) * Math.cos(toRad(to.lng - from.lng));
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
 /**
  * Where the truck is `progress` (0 → 1) of the way along `path` (the approach,
  * or the drop leg): the point itself, the path index it is heading for, and its
@@ -168,7 +159,7 @@ function alongPath(
   return {
     here: { lat: from.lat + (to.lat - from.lat) * t, lng: from.lng + (to.lng - from.lng) * t },
     nextIndex: leg + 1,
-    headingDeg: bearing(from, to),
+    headingDeg: bearingBetween(from, to),
   };
 }
 

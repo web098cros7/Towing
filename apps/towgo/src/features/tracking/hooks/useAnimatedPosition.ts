@@ -6,6 +6,7 @@ import {
   type AnimatedFrame,
   type MotionTrack,
 } from '@towing/api-contracts';
+import { bearingBetween, metresBetween } from '@/utils/bearing';
 
 /**
  * §11.4's "the marker animates from previous → new point over ~1s with easing;
@@ -32,6 +33,15 @@ import {
 
 const FRAME_MS = 60;
 
+/**
+ * Below this a move is GPS jitter, not driving: its bearing would spin the
+ * truck on the spot, so the previous heading is kept.
+ */
+const MIN_TURN_MOVE_M = 3;
+
+/** An animated frame, and whether its heading is real (seen, or worked out from movement). */
+export type AnimatedTruckFrame = AnimatedFrame & { headingKnown: boolean };
+
 export interface AnimatedPositionInput {
   lat: number;
   lng: number;
@@ -40,29 +50,42 @@ export interface AnimatedPositionInput {
 
 export function useAnimatedPosition(
   position: AnimatedPositionInput | null | undefined,
-): AnimatedFrame | null {
+): AnimatedTruckFrame | null {
   const track = useRef<MotionTrack | undefined>(undefined);
+  const headingKnown = useRef(false);
   const [frame, setFrame] = useState<AnimatedFrame | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!position) {
       track.current = undefined;
+      headingKnown.current = false;
       setFrame(null);
       return;
     }
 
     const now = Date.now();
-    const next = {
-      lat: position.lat,
-      lng: position.lng,
-      // A null heading keeps the PREVIOUS one rather than snapping to north.
-      // Losing a bearing for one ping is common on a slow-moving vehicle, and
-      // spinning the glyph to 0° for it is worse than leaving it where it was.
-      heading: position.headingDeg ?? track.current?.toHeading ?? 0,
-    };
-
     const existing = track.current;
+    const target = { lat: position.lat, lng: position.lng };
+    const from = existing ? { lat: existing.toLat, lng: existing.toLng } : null;
+
+    // The truck faces the way it is driving, as Uber and Rapido draw it (owner,
+    // 24 Sep 2026: "if it is going from left to right, it faces right"). The
+    // ping's own heading when it has one; otherwise the bearing of the move
+    // itself; for a move too small to tell, the PREVIOUS heading (never a snap
+    // to north).
+    let heading: number;
+    if (position.headingDeg !== null && position.headingDeg !== undefined) {
+      heading = position.headingDeg;
+      headingKnown.current = true;
+    } else if (from && metresBetween(from, target) >= MIN_TURN_MOVE_M) {
+      heading = bearingBetween(from, target);
+      headingKnown.current = true;
+    } else {
+      heading = existing?.toHeading ?? 0;
+    }
+    const next = { ...target, heading };
+
     // An identical position is not a new tween. Without this a stationary
     // driver's 3-second ping restarts the easing and the marker twitches.
     if (existing && existing.toLat === next.lat && existing.toLng === next.lng) {
@@ -95,5 +118,5 @@ export function useAnimatedPosition(
     };
   }, [position?.lat, position?.lng, position?.headingDeg, position]);
 
-  return frame;
+  return frame ? { ...frame, headingKnown: headingKnown.current } : null;
 }

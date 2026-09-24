@@ -367,9 +367,9 @@ function LiveTripMap({
   // The truck is drawn once, facing north; the native marker turns it to the
   // heading (`bearingDeg` → rotation + flat), so it turns smoothly with no redraw.
   const truckClass = tracking?.driver?.vehicleClass ?? null;
-  const headingKnown =
-    tracking?.position?.headingDeg !== null && tracking?.position?.headingDeg !== undefined;
-  const truckBearing = headingKnown && animated ? animated.heading : undefined;
+  // Known once any ping carried a heading or the truck has visibly moved, so a
+  // ping without one never turns it back to north.
+  const truckBearing = animated?.headingKnown ? animated.heading : undefined;
   const truckView = useMemo(
     () => <TowTruckIcon vehicleClass={truckClass} headingDeg={null} size={TRUCK_SIZE} />,
     [truckClass],
@@ -750,7 +750,7 @@ function LegacyMap({ tracking, presence, bottomInset }: TrackingMapProps) {
         key: 'driver',
         coordinate: { latitude: animated.lat, longitude: animated.lng },
         tone: 'driver',
-        bearingDeg: tracking?.position?.headingDeg === null ? undefined : animated.heading,
+        bearingDeg: animated.headingKnown ? animated.heading : undefined,
         ghost: presence !== 'live',
         accuracyMeters: tracking?.position?.lowAccuracy ? 60 : undefined,
       });

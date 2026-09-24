@@ -57,11 +57,11 @@ export function toTrackedPosition(fix: DriverFixRow | undefined): TrackedPositio
   return {
     lat: fix.lat,
     lng: fix.lng,
-    // Neither is stored on the row; a socket frame carries both and this does
-    // not. A polled marker does not rotate, which is correct — inventing a
-    // heading from a single point is not possible.
-    headingDeg: null,
-    speedKph: null,
+    // From the Redis hot fix, which stores the ping's own heading and speed, so
+    // a polled truck still faces the way it is driving. The Postgres fallback
+    // stores neither, and a heading cannot be invented from one point: null.
+    headingDeg: fix.headingDeg ?? null,
+    speedKph: fix.speedKph ?? null,
     lowAccuracy: false,
     at: (fix.lastPingAt ?? new Date()).toISOString(),
   };
