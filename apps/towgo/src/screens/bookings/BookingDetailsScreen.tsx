@@ -173,7 +173,9 @@ export function BookingDetailsScreen() {
       // closed sheet (Android always reports `sharedAction`, as it cannot tell).
       if (result.action === Share.sharedAction) track('trip_shared');
     } catch {
-      // A failed mint lives on the mutation; a failed share sheet draws nothing.
+      // A failed mint or a share sheet that fails to open. Figma draws no failed
+      // state, so it is the system alert (a silent tap reads as "shared").
+      Alert.alert("Couldn't share your live location", 'Check your connection and try again.');
     }
   }, [shareTrip]);
 

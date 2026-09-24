@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -51,7 +52,7 @@ export function ChatWithDriverScreen() {
   const driver = displayDriver(tracking);
 
   const { data: messages } = useChatMessages(bookingId);
-  const { mutate: sendMessage } = useSendChatMessage(bookingId);
+  const { mutateAsync: sendMessage } = useSendChatMessage(bookingId);
   const [draft, setDraft] = useState('');
 
   const rows = useMemo(() => chatRows(messages ?? [], new Date()), [messages]);
@@ -68,10 +69,33 @@ export function ChatWithDriverScreen() {
    */
   const onCall = useCallback(() => void callDriver(bookingId), [bookingId]);
 
+  /**
+   * A failed send takes its bubble back out (`useSendChatMessage`), so the text
+   * returns to the composer, unless the customer has started typing something
+   * else, and a system alert says so, as Support Chat does. Figma draws no
+   * failed state.
+   */
   const onComposerSend = useCallback(
-    (text: string) => {
-      sendMessage(text);
+    async (text: string) => {
       setDraft('');
+      try {
+        await sendMessage(text);
+      } catch {
+        setDraft((current) => (current === '' ? text : current));
+        Alert.alert('Message not sent', 'Please try again.');
+      }
+    },
+    [sendMessage],
+  );
+
+  /** A quick reply is one tap to resend, so only the alert. */
+  const onQuickReply = useCallback(
+    async (text: string) => {
+      try {
+        await sendMessage(text);
+      } catch {
+        Alert.alert('Message not sent', 'Please try again.');
+      }
     },
     [sendMessage],
   );
@@ -132,12 +156,16 @@ export function ChatWithDriverScreen() {
           }}
         />
 
-        <QuickReplies onSend={sendMessage} />
+        <QuickReplies onSend={(text) => void onQuickReply(text)} />
 
         {/* Quick replies bottom (749.4) to the Composer's top border (759). */}
         <View style={{ height: 9.6 }} />
 
-        <ChatComposer value={draft} onChangeText={setDraft} onSend={onComposerSend} />
+        <ChatComposer
+          value={draft}
+          onChangeText={setDraft}
+          onSend={(text) => void onComposerSend(text)}
+        />
       </MiScreen>
     </KeyboardAvoidingView>
   );

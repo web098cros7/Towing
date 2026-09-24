@@ -1,4 +1,4 @@
-import { Linking, Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import type { LatLng } from '@/types/geo';
 
 /**
@@ -27,11 +27,18 @@ export { SUPPORT_PHONE_DIAL } from '@/screens/support/supportContact';
 
 /**
  * Hands the number to the phone's dialer (Android fills it in, the user presses Call;
- * iOS shows its own "Call …?" prompt). No failure state is drawn, so a device without
- * telephony does nothing (same pattern as ContactUsScreen).
+ * iOS shows its own "Call …?" prompt). A device that cannot dial (a tablet, no SIM
+ * app) gets a system alert naming the number: on the Emergency screen a silent tap
+ * would leave the customer thinking the call went through. Figma draws no failure
+ * state, so the alert is the system one.
  */
 export function dial(number: string): void {
-  Linking.openURL(`tel:${number}`).catch(() => {});
+  Linking.openURL(`tel:${number}`).catch(() => {
+    Alert.alert(
+      "Can't place the call",
+      `This phone can't make calls. Dial ${number} from another phone.`,
+    );
+  });
 }
 
 /**

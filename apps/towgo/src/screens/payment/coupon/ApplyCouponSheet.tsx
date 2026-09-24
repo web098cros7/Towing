@@ -1,6 +1,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Alert, View } from 'react-native';
 import type { CouponValidationDto } from '@towing/api-contracts';
 import { MiButton, MiColorIcon, MiSheet, MiText, MiTextField } from '@/design';
 import { useCouponOffers, useValidateCoupon } from '@/features/payments/api/payments.queries';
@@ -103,7 +103,10 @@ export function ApplyCouponSheet({
           setRefused({ code: trimmed, result });
         }
       } catch {
-        // A failed check (network) is not drawn and is not a refusal: nothing changes.
+        // A failed check (network) is not a refusal, so the field is left as typed. Figma
+        // draws no failed state: a system alert, unless the answer is stale anyway.
+        if (seq !== checkSeq.current || !visibleRef.current) return;
+        Alert.alert("Couldn't check the code", 'Check your connection and try again.');
       }
     },
     [onApplied, subtotalPaise, validate],

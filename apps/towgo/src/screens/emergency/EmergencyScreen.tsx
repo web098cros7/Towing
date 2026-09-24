@@ -84,6 +84,33 @@ function withTimeout<T>(promise: Promise<T>, ms = NETWORK_TIMEOUT_MS): Promise<T
 type LiveLink = { message: string; url: string; trip: boolean };
 
 /**
+ * The failure alerts. Figma draws no failure state for 26, but on this screen a
+ * tap that does nothing reads as "help was sent", so every failure says so in a
+ * system alert and points at a way that still works.
+ */
+const NO_LOCATION = ['Location unavailable', 'Turn on location and try again.'] as const;
+const SHARE_FAILED = [
+  "Couldn't share your location",
+  'Check your connection and try again, or call 112.',
+] as const;
+const CONTACTS_FAILED = [
+  "Couldn't load your emergency contacts",
+  'Check your connection and try again, or call 112.',
+] as const;
+
+/**
+ * The SOS call AND the messages-app fallback both failed, so nobody has been
+ * told. Offers the two calls that need no network: 112 and the contact.
+ */
+function alertNotifyFailed(contact: { name: string; phone: string }) {
+  Alert.alert(`Couldn't alert ${contact.name}`, `Call them on ${contact.phone}, or call 112.`, [
+    { text: 'Call 112', onPress: () => dial(EMERGENCY_NUMBERS.unified) },
+    { text: `Call ${contact.name}`, onPress: () => dial(contact.phone) },
+    { text: 'OK', style: 'cancel' },
+  ]);
+}
+
+/**
  * Figma 26 · Emergency (`253:1212`). ROOT route `Emergency { bookingId? } | undefined`,
  * signed-in only; a pushed screen with a back chevron, no tab bar, no Help chip.
  * Opened from 25 Trip in Progress's Help chip with the trip's `bookingId`; without
@@ -91,10 +118,10 @@ type LiveLink = { message: string; url: string; trip: boolean };
  * (Content 254:1330: padding L/R 21, gap 16). Top to bottom: nav bar, the "Need
  * Immediate Help?" alert, three Quick Action Tiles, the Share My Live Location card,
  * "Other Quick Contacts" with three cards, the Tip. The screen draws ONE state; no
- * loading, failure or confirmation state is drawn, so every action is silent on
- * failure (no Alert, no toast) and ignores repeat taps while one is running. There
- * is no SOS backend (Phase 20): nothing alerts the emergency contacts automatically
- * (DATA-GAPS-26).
+ * loading, failure or confirmation state is drawn, so every failure is a system
+ * alert (a silent tap here would read as "help was sent"), and every action
+ * ignores repeat taps while one is running. Notify posts the SOS; the server
+ * alerts the safety desk and messages the contact.
  */
 export function EmergencyScreen() {
   const navigation = useNavigation<Nav>();
@@ -143,13 +170,17 @@ export function EmergencyScreen() {
     busy.current = true;
     try {
       const link = await liveLink();
-      if (!link) return;
+      if (!link) {
+        Alert.alert(...NO_LOCATION);
+        return;
+      }
       const result = await Share.share({ message: link.message, url: link.url });
       // Counted only when the sheet reports a share: iOS resolves a dismissed sheet
       // with `dismissedAction` (Android always reports `sharedAction`).
       if (link.trip && result.action === Share.sharedAction) track('trip_shared');
     } catch {
-      // A failed mint, a timeout or a share sheet that fails to open draws nothing.
+      // A failed mint, a timeout or a share sheet that fails to open.
+      Alert.alert(...SHARE_FAILED);
     } finally {
       busy.current = false;
     }
@@ -169,9 +200,13 @@ export function EmergencyScreen() {
     if (busy.current) return;
     busy.current = true;
     try {
-      // Not loaded yet: load it now. Still unknown (a failed load): nothing, as drawn.
+      // Not loaded yet: load it now. `refetch` resolves (never throws) on a failed
+      // load, with no data.
       const list = contacts ?? (await withTimeout(refetchContacts())).data;
-      if (!list) return;
+      if (!list) {
+        Alert.alert(...CONTACTS_FAILED);
+        return;
+      }
       const contact = list[0];
       if (!contact) {
         navigation.navigate('AddEmergencyContact');
@@ -231,15 +266,22 @@ export function EmergencyScreen() {
           ],
         );
       } catch {
-        // SOS call failed: fall back to the existing SMS draft.
-        const link = await liveLink();
-        if (!link) return;
-        // No `trip_shared` here: this only opens the messages app with a draft, and
-        // the app cannot tell whether the customer pressed Send.
-        await Linking.openURL(smsUrl(contact.phone, link.message));
+        // SOS call failed: fall back to the messages app with the Share link. If
+        // that fails too (no link, a failed mint, no messages app), nobody has
+        // been told, and the alert says so.
+        try {
+          const link = await liveLink();
+          if (!link) throw new Error('no link');
+          // No `trip_shared` here: this only opens the messages app with a draft, and
+          // the app cannot tell whether the customer pressed Send.
+          await Linking.openURL(smsUrl(contact.phone, link.message));
+        } catch {
+          alertNotifyFailed(contact);
+        }
       }
     } catch {
-      // No failure state is drawn (no messages app, a failed mint, a timeout).
+      // The contacts load timed out.
+      Alert.alert(...CONTACTS_FAILED);
     } finally {
       busy.current = false;
     }

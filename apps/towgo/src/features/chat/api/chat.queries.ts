@@ -61,9 +61,11 @@ let localCount = 0;
  * identical to a sent one, because 22 draws no sending state (no spinner, clock
  * or tick). When the source answers, the local copy is swapped for the stored one.
  *
- * A FAILED SEND KEEPS ITS BUBBLE and shows nothing: no failed or retry state is
- * designed (22 spec, States and Data gap 9). `retry: false`, like `useShareTrip`:
- * a message is a user intent, not a background read to replay.
+ * A FAILED SEND REMOVES ITS BUBBLE: no failed or retry state is designed (22
+ * spec, States and Data gap 9), and a bubble identical to a sent one would tell
+ * the customer the driver has it. The screen puts the text back in the composer
+ * and says "Message not sent", as Support Chat does. `retry: false`, like
+ * `useShareTrip`: a message is a user intent, not a background read to replay.
  *
  * While the first read is still loading there is no list to append to, and
  * cancelling that read would leave the drawn conversation empty until the
@@ -105,6 +107,12 @@ export function useSendChatMessage(bookingId: string) {
         }
         return previous.some((m) => m.id === sent.id) ? previous : [...previous, sent];
       });
+    },
+    onError: (_error, _text, context) => {
+      if (!context) return;
+      queryClient.setQueryData<ChatMessage[]>(key, (previous) =>
+        previous?.filter((m) => m.id !== context.localId),
+      );
     },
   });
 }
