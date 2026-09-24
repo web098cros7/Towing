@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RoutePin } from '@/features/booking/components/book-a-tow/RoutePin';
-import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useTheme } from '@towing/theme';
 import {
@@ -16,7 +16,7 @@ import {
   type MapRegion,
 } from '@towing/ui';
 import { decodePolyline, type BookingTracking } from '@towing/api-contracts';
-import { MiMapButton } from '@/design';
+import { MiMapButton, mitowColors } from '@/design';
 import {
   ARRIVED_CALLOUT_ANCHOR,
   ArrivedCallout,
@@ -25,23 +25,8 @@ import {
   YOUR_LOCATION_ANCHOR,
   YourLocationChip,
 } from '@/screens/booking/tracking/ArrivedOverlays';
-import {
-  ARRIVING_TRUCK_CALLOUT,
-  EN_ROUTE_TRUCK_CALLOUT,
-  IN_TRANSIT_TRUCK_CALLOUT,
-  ROUTE_START_PT,
-  ROUTE_STROKE,
-  ROUTE_STUB_END_PT,
-  TruckMarker,
-  calloutReach,
-  truckMarkerGeometry,
-  type TruckCalloutSpec,
-} from '@/screens/booking/tracking/TruckMarker';
-import {
-  metersPerPoint,
-  routeFromTruck,
-  splitRouteAtTruck,
-} from '@/screens/booking/tracking/routeGeometry';
+import { TowTruckIcon } from '@/components/TowTruckIcon';
+import { routeFromTruck } from '@/screens/booking/tracking/routeGeometry';
 import { useAnimatedPosition } from '../hooks/useAnimatedPosition';
 
 /**
@@ -51,15 +36,14 @@ import { useAnimatedPosition } from '../hooks/useAnimatedPosition';
  * next never reloads it (23 → 24 → 23 keeps the map mounted, as the owner asked):
  *
  * - `variant="enRoute"` is Figma 18 · Driver En Route's map (`229:235`), drawn
- *   on the real maps SDK: a black icon/map-pin on the pickup, the solid #0B0C0E
- *   4.4 route from the truck to the pin, the glowing top-down truck with its
- *   "Your tow truck / is on the way" callout, and the Locate me / Recenter Map
- *   Controls pinned above the sheet. The map stops 29.2 below the sheet's top.
+ *   on the real maps SDK: the green "Pickup Point" pin, the solid #0B0C0E 4.4
+ *   route from the truck to the pin, the driver's small top-down truck turned
+ *   to their heading (owner decision, 24 Sep 2026: no glow or callout, as Uber
+ *   and Rapido draw it), and the Locate me / Recenter Map Controls pinned above
+ *   the sheet. The map stops 29.2 below the sheet's top.
  * - `variant="arriving"` is Figma 19 · Driver Arriving. 19 draws a Placeholder;
- *   the owner chose 18's live content on it (truck, route, pin), with 19's
- *   "On the way to / your location" callout (111 wide) riding on the truck where
- *   18's rides. Locate me and Recenter as 19 places them; the map stops 30 below
- *   the sheet's top.
+ *   the owner chose 18's live content on it (truck, route, pin). Locate me and
+ *   Recenter as 19 places them; the map stops 30 below the sheet's top.
  * - `variant="arrived"` is Figma 23 · Driver Arrived: only what 23 draws, the
  *   "Driver has arrived" callout on the driver and the "Your location" chip by
  *   the pickup. No truck, route or pin. Recenter only; 19.3 under the sheet.
@@ -67,9 +51,8 @@ import { useAnimatedPosition } from '../hooks/useAnimatedPosition';
  *   here" chip on the driver. No controls; 24 under the sheet.
  * - `variant="inTransit"` is Figma 25 · Trip in Progress. 25 draws a Placeholder
  *   too, and the owner's 19 ruling carries over: 18's truck and route, but to
- *   the DROP, with the pin on the drop and 25's "On the way to / drop location"
- *   callout (126 wide) riding on the truck. Locate me and Recenter as 25 places
- *   them; the map stops 21.6 below the sheet's top.
+ *   the DROP, with the red drop pin. Locate me and Recenter as 25 places them;
+ *   the map stops 21.6 below the sheet's top.
  * - `variant="legacy"` keeps the pre-redesign map for the statuses no rebuilt
  *   screen draws (a re-dispatch after a driver drops out, disputed): theme
  *   markers, pickup and drop, and a re-center chip while following is paused.
@@ -117,9 +100,8 @@ type TruckDesign = {
   /** Where the fit puts the truck centre and the pin tip (Figma screen points). */
   truck: { x: number; y: number };
   pinTip: { x: number; y: number };
-  /** Left edge of the right-hand control column; the callout must stay clear of it. */
+  /** Left edge of the right-hand control column; the truck must stay clear of it. */
   columnX: number;
-  callout: TruckCalloutSpec;
   /** Map Controls: distance from the screen's right edge, and from the button top to the sheet top. */
   locate: { right: number; above: number };
   recenter: { right: number; above: number };
@@ -138,7 +120,6 @@ const EN_ROUTE_DESIGN: TruckDesign = {
   truck: { x: 92, y: 214 },
   pinTip: { x: 260.5, y: 358.5 },
   columnX: 325.1,
-  callout: EN_ROUTE_TRUCK_CALLOUT,
   locate: { right: 16, above: 159.8 },
   recenter: { right: 17.9, above: 99.1 },
 };
@@ -159,7 +140,6 @@ const ARRIVING_DESIGN: TruckDesign = {
   truck: { x: 135 - 19.7, y: 109 + 82.8 },
   pinTip: { x: 260.5, y: 377.9 - (410.8 - 358.5) },
   columnX: 327,
-  callout: ARRIVING_TRUCK_CALLOUT,
   locate: { right: 16, above: 135.9 },
   recenter: { right: 16, above: 73.9 },
 };
@@ -179,7 +159,6 @@ const IN_TRANSIT_DESIGN: TruckDesign = {
   truck: { x: 98.6 - 19.7, y: 126.1 + 82.8 },
   pinTip: { x: 260.5, y: 388.4 - (410.8 - 358.5) },
   columnX: 327.9,
-  callout: IN_TRANSIT_TRUCK_CALLOUT,
   locate: { right: 15.1, above: 140.4 },
   recenter: { right: 15.1, above: 78.9 },
 };
@@ -191,12 +170,9 @@ const IN_TRANSIT_DESIGN: TruckDesign = {
  * (the longer side fills, the other centres).
  *
  * The drawn arrangement has the truck up and to the left of the pin. When the
- * truck is to the pin's RIGHT, the same insets would push its callout (141.5 to
- * the right of the truck centre on 18, 130.7 on 19, 145.7 on 25) under the
- * control column and off the screen, and the design requires the callout fully
- * visible left of it. So the truck is held at x ≤ column − reach (18: right
- * inset 209.4; 19: 196.7; 25: 210.8) and the pin tip keeps its 15.5 half-width
- * clear of the 16 side margin (left inset 32).
+ * truck is to the pin's RIGHT, the same insets would put it under the control
+ * column, so it is held a truck's width left of the column, and the pin tip
+ * keeps its half-width clear of the 16 side margin (left inset 32).
  *
  * The bottom inset is measured from the map frame's bottom. Google Maps on
  * Android ADDS the fit padding to the map padding (`appendMapPadding`), Apple
@@ -206,7 +182,7 @@ function fitPaddingFor(design: TruckDesign, truckRightOfPin: boolean): MapFitPad
   const pinBottom = design.frameHeight - design.pinTip.y;
   const bottom = Platform.OS === 'android' ? pinBottom - design.underSheet : pinBottom;
   const sides = truckRightOfPin
-    ? { left: 32, right: 393 - (design.columnX - calloutReach(design.callout)) }
+    ? { left: 32, right: 393 - (design.columnX - TRUCK_SIZE) }
     : { left: design.truck.x, right: 393 - design.pinTip.x };
   // Whole dp: the Android bridge reads these with `getInt`.
   return {
@@ -216,6 +192,16 @@ function fitPaddingFor(design: TruckDesign, truckRightOfPin: boolean): MapFitPad
     left: Math.round(sides.left),
   };
 }
+
+/**
+ * The driver's truck on the map (owner decision, 24 Sep 2026): a small top-down
+ * truck of its own kind, the same size at every zoom, turned by the native marker
+ * to the driver's heading as Uber and Rapido draw theirs. Figma's glow, route
+ * stub and callout bubble are gone.
+ */
+const TRUCK_SIZE = 34;
+/** The route line, Figma 18 `229:257`: text/primary, 4.4. */
+const ROUTE_STROKE = { color: mitowColors.textPrimary, width: 4.4 };
 
 /** Stable objects: a new one per render would re-frame the camera every render. */
 const FIT_PADDING = {
@@ -284,18 +270,6 @@ function useActiveRoute(
   }, [encoded]);
 }
 
-function stubKeyOf(stub: { x: number; y: number }[]): string {
-  return stub.map((p) => `${p.x},${p.y}`).join(' ');
-}
-
-function stubFromKey(key: string): { x: number; y: number }[] {
-  if (!key) return [];
-  return key.split(' ').map((pair) => {
-    const [x, y] = pair.split(',');
-    return { x: Number(x), y: Number(y) };
-  });
-}
-
 function LiveTripMap({
   tracking,
   sheetTop,
@@ -303,7 +277,6 @@ function LiveTripMap({
   driverChipLabel = null,
 }: TrackingMapProps & { variant: LiveVariant }) {
   const map = useRef<MapPreviewController>(null);
-  const { width: mapWidth } = useWindowDimensions();
   const [ready, setReady] = useState(false);
   /**
    * The step the customer paused camera following in (by panning 18, 19, 23 or
@@ -382,55 +355,24 @@ function LiveTripMap({
       : undefined,
   );
 
-  /** The camera's scale, so the route can start on the design's 36 pt circle round the truck. */
-  const [metresPerPt, setMetresPerPt] = useState<number | null>(() =>
-    initialRegion ? metersPerPoint(initialRegion, mapWidth) : null,
-  );
-  const onRegionChangeComplete = useCallback(
-    (region: MapRegion) => {
-      const next = metersPerPoint(region, mapWidth);
-      if (next === null) return;
-      // Ignore sub-percent drift, so a settled camera does not keep redrawing the route.
-      setMetresPerPt((previous) =>
-        previous !== null && Math.abs(next - previous) / previous < 0.01 ? previous : next,
-      );
-    },
-    [mapWidth],
-  );
-
   const truckLat = animated?.lat;
   const truckLng = animated?.lng;
 
-  /** Native polyline from the route's drawn start to the pin, plus the stretch under the glow. */
-  const split = useMemo(() => {
+  /** The route from the truck's current point on it to the pin. */
+  const routePath = useMemo(() => {
     if (truckLat === undefined || truckLng === undefined || !route) return null;
-    const path = routeFromTruck(route, { latitude: truckLat, longitude: truckLng });
-    if (metresPerPt === null) return { polyline: path, stub: [] };
-    return splitRouteAtTruck(path, metresPerPt, ROUTE_START_PT, ROUTE_STUB_END_PT);
-  }, [metresPerPt, route, truckLat, truckLng]);
+    return routeFromTruck(route, { latitude: truckLat, longitude: truckLng });
+  }, [route, truckLat, truckLng]);
 
-  const stubKey = split ? stubKeyOf(split.stub) : '';
-  const callout = truckDesign?.callout ?? EN_ROUTE_TRUCK_CALLOUT;
-
-  // The driver's truck faces its heading, in 15 degree steps: the overlay is a
-  // snapshot, so it is redrawn when the step changes, never per frame.
+  // The truck is drawn once, facing north; the native marker turns it to the
+  // heading (`bearingDeg` → rotation + flat), so it turns smoothly with no redraw.
   const truckClass = tracking?.driver?.vehicleClass ?? null;
   const headingKnown =
     tracking?.position?.headingDeg !== null && tracking?.position?.headingDeg !== undefined;
-  const headingStep =
-    headingKnown && animated ? (Math.round(animated.heading / 15) * 15) % 360 : null;
-
-  // Built per stub shape, callout, truck and heading step only: the overlay is a snapshot.
+  const truckBearing = headingKnown && animated ? animated.heading : undefined;
   const truckView = useMemo(
-    () => (
-      <TruckMarker
-        routeStub={stubFromKey(stubKey)}
-        callout={callout}
-        vehicleClass={truckClass}
-        headingDeg={headingStep}
-      />
-    ),
-    [callout, stubKey, truckClass, headingStep],
+    () => <TowTruckIcon vehicleClass={truckClass} headingDeg={null} size={TRUCK_SIZE} />,
+    [truckClass],
   );
   // The trip end the truck is heading for, as the booking map marks it (owner decision,
   // 24 Sep 2026): the green "Pickup Point" on the way to the customer, the red drop
@@ -477,11 +419,11 @@ function LiveTripMap({
           key: 'truck',
           coordinate: { latitude: truckLat, longitude: truckLng },
           view: truckView,
-          anchor: truckMarkerGeometry(truckDesign.callout).anchor,
+          anchor: { x: 0.5, y: 0.5 },
+          bearingDeg: truckBearing,
           zIndex: 2,
-          // Re-snapshot whenever the route's stretch under the glow, or the callout, changes.
-          contentKey: `${variant}|${stubKey}|${truckClass}|${headingStep}`,
-          accessibilityLabel: truckDesign.callout.text.replace('\n', ' '),
+          contentKey: truckClass ?? 'truck',
+          accessibilityLabel: 'Tow truck',
         });
       }
       return out;
@@ -526,7 +468,7 @@ function LiveTripMap({
     return out;
   }, [
     pinKind,
-    headingStep,
+    truckBearing,
     truckClass,
     arrivedCalloutView,
     destination,
@@ -535,7 +477,6 @@ function LiveTripMap({
     driverPoint,
     pickup,
     pinView,
-    stubKey,
     truckDesign,
     truckLat,
     truckLng,
@@ -545,17 +486,17 @@ function LiveTripMap({
   ]);
 
   const polylines = useMemo<MapPolyline[]>(() => {
-    if (!truckDesign || !split || split.polyline.length < 2) return [];
+    if (!truckDesign || !routePath || routePath.length < 2) return [];
     return [
       {
         key: 'route',
-        coordinates: split.polyline,
+        coordinates: routePath,
         tone: 'route',
         color: ROUTE_STROKE.color,
         width: ROUTE_STROKE.width,
       },
     ];
-  }, [split, truckDesign]);
+  }, [routePath, truckDesign]);
 
   const underSheet = MAP_UNDER_SHEET[variant];
 
@@ -738,7 +679,6 @@ function LiveTripMap({
         polylines={polylines}
         onMapReady={onMapReady}
         onUserPan={onUserPan}
-        onRegionChangeComplete={onRegionChangeComplete}
         mapPadding={mapPadding}
         showRecenter={false}
         showUserLocation={false}
