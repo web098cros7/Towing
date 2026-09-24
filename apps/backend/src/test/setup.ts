@@ -19,6 +19,18 @@ process.env.JWT_ACCESS_TTL_SECONDS ??= '900';
 process.env.JWT_REFRESH_TTL_SECONDS ??= '2592000';
 process.env.FILE_SIGNING_SECRET ??= 'test-only-file-signing-secret-at-least-32-chars';
 
+/**
+ * Maps providers pinned to the offline ones, by plain assignment like the URLs
+ * above. `createTestApp()` loads `apps/backend/.env`, and `loadEnvFile` only
+ * fills UNSET vars: without this, a developer whose .env turns on Google (with a
+ * real `GOOGLE_MAPS_API_KEY`) would have every booking spec call Google, spend
+ * money, and fail wherever a spec expects the haversine distance. The fallback
+ * specs that test the Google adapters build them directly.
+ */
+process.env.ROUTING_PROVIDER = 'haversine';
+process.env.DIRECTIONS_PROVIDER = 'haversine';
+process.env.GEOCODING_PROVIDER = 'local';
+
 // Nest's bootstrap banner and pino's request lines drown the assertion output.
 process.env.LOG_LEVEL ??= 'fatal';
 
