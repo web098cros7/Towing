@@ -22,8 +22,6 @@ const MOCK_ETA_MINUTES = 4;
 /**
  * Where the mock partner sits: along Figma 07's dot-to-truck vector (167.7 pt
  * east, 85.8 pt north), 1.2 km out, so Home frames it exactly as 07 draws it.
- * Kept equal to `FRAMING_DISTANCE_KM` / `FRAMING_VECTOR` in `home.queries.ts`,
- * whose stand-in partner shows for the 500 ms before this answers.
  */
 const PARTNER_DISTANCE_KM = 1.2;
 const PARTNER_VECTOR = { east: 167.7, north: 85.8 };

@@ -89,7 +89,7 @@ export function HomeScreen() {
   const resolveCurrentLocation = useLocationStore((s) => s.resolveCurrentLocation);
   const setServiceSlug = useBookingStore((s) => s.setServiceSlug);
 
-  // Always a partner once the pickup is known: the design never drops the group.
+  // A partner only when a truck is actually nearby; otherwise just the customer's location.
   const { partner } = useNearestPartner(pickup.coords);
 
   const [screenW, setScreenW] = useState(FRAME_W);

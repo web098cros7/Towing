@@ -53,11 +53,8 @@ export type NearestPartner = {
    * stand-in for supply:
    * - `source`: the data source named it (the mock's `nearestPartner`).
    * - `nearestSupply`: the closest §11.9 point, ETA estimated from distance.
-   * - `designFraming`: no supply answer yet, an error or no drivers. Placed where
-   *   Figma 07 frames the partner, because the design never drops the partner
-   *   group (product owner rule). Not a real driver.
    */
-  basis?: 'source' | 'nearestSupply' | 'designFraming';
+  basis?: 'source' | 'nearestSupply';
 };
 
 export type QuickActionId = 'book' | 'schedule' | 'roadside' | 'support';

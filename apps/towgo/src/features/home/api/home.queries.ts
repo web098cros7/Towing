@@ -112,48 +112,17 @@ export function designShapedRoute(partner: LatLng, customer: LatLng): LatLng[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Where Figma 07 frames the partner when no supply answer names one: along the
- * design's dot-to-truck vector (167.7 pt east, 85.8 pt north), 1.2 km out.
- * That distance estimates to the same whole minutes as the mock's example ETA,
- * so the callout does not change when the mock answers.
- * `homeMockSource` places its partner with the same two values.
- */
-const FRAMING_DISTANCE_KM = 1.2;
-const FRAMING_VECTOR = { east: 167.7, north: 85.8 };
-
-function offsetByKm(from: LatLng, eastKm: number, northKm: number): LatLng {
-  const latitude = from.latitude + northKm / 111.32;
-  const longitude = from.longitude + eastKm / (111.32 * Math.cos((from.latitude * Math.PI) / 180));
-  return { latitude, longitude };
-}
-
-/** The stand-in partner for "no answer yet", an error and "no drivers" (not a real driver). */
-export function designFramingPartner(customer: LatLng): NearestPartner {
-  const length = Math.hypot(FRAMING_VECTOR.east, FRAMING_VECTOR.north);
-  const coordinate = offsetByKm(
-    customer,
-    (FRAMING_DISTANCE_KM * FRAMING_VECTOR.east) / length,
-    (FRAMING_DISTANCE_KM * FRAMING_VECTOR.north) / length,
-  );
-  return {
-    coordinate,
-    etaMinutes: estimateEtaMinutes(distanceKm(customer, coordinate)),
-    route: designShapedRoute(coordinate, customer),
-    basis: 'designFraming',
-  };
-}
-
-/**
  * The ONE partner Figma 07/08 draws on Home's map (glow, truck, route line,
  * "Towing partner" / "N mins away" callout).
  *
- * Always returns a partner once the customer's position is known, because the
- * design never draws Home without that group (product owner rule: no designed
- * element is dropped for missing data):
+ * Only a partner that exists:
  * 1. the source's `nearestPartner` (the mock supplies the Figma example);
  * 2. otherwise the nearest §11.9 point, ETA estimated from straight-line
  *    distance (§11.9 has no partner or ETA field: data gap);
- * 3. otherwise (no answer yet, error, no drivers) `designFramingPartner`.
+ * 3. otherwise (no answer yet, an error, no drivers) none, and Home shows only
+ *    the customer's location. It used to draw a stand-in truck with "4 mins
+ *    away" here; the owner dropped it (24 Sep 2026): it promised a truck that
+ *    was not there.
  * A missing route is filled with the design's route shape.
  */
 export function nearestPartnerFrom(
@@ -192,7 +161,7 @@ export function nearestPartnerFrom(
     };
   }
 
-  return designFramingPartner(near);
+  return undefined;
 }
 
 /** Nearby supply reduced to the single partner Home's map draws. */
