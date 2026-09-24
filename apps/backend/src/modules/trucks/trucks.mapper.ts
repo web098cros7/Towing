@@ -53,6 +53,8 @@ export function toTruckDto(
     id: truck.id,
     plate: truck.plate,
     type: truck.type,
+    make: truck.make,
+    model: truck.model,
     capacityTons: parseCapacityTons(truck.capacity),
     status: truck.status,
     assignedDriverName,

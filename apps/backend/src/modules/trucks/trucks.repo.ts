@@ -75,11 +75,11 @@ export class TrucksRepo {
 
   async create(
     fleetId: FleetId,
-    data: { plate: string; type: TruckRow['type']; capacity: string },
+    data: Pick<TruckRow, 'plate' | 'type' | 'capacity' | 'make' | 'model'>,
   ): Promise<TruckRow> {
     const [row] = await this.db
       .insert(fleetTrucks)
-      .values({ fleetId, plate: data.plate, type: data.type, capacity: data.capacity })
+      .values({ fleetId, ...data })
       .returning();
     return row!;
   }
@@ -87,7 +87,7 @@ export class TrucksRepo {
   async update(
     fleetId: FleetId,
     truckId: string,
-    patch: Partial<Pick<TruckRow, 'plate' | 'type' | 'capacity' | 'status'>>,
+    patch: Partial<Pick<TruckRow, 'plate' | 'type' | 'capacity' | 'make' | 'model' | 'status'>>,
   ): Promise<TruckRow | undefined> {
     const [row] = await this.db
       .update(fleetTrucks)

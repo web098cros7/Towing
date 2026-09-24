@@ -272,6 +272,8 @@ const mockSource: AdminDirectoryDataSource = {
           id: '00000000-0000-4000-8000-000000000201',
           plate: 'KA01XY9999',
           type: 'flatbed' as const,
+          make: 'Tata',
+          model: '407',
           capacityTons: 3,
           status: 'active' as const,
           assignedDriverName: 'Kiran Shetty',

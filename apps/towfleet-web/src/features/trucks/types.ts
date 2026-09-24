@@ -17,6 +17,9 @@ export type Truck = {
   id: string;
   plate: string;
   type: TruckType;
+  /** What the customer's vehicle card shows ("Tata 407"). Null until the fleet enters it. */
+  make: string | null;
+  model: string | null;
   capacityTons: number;
   status: TruckStatus;
   assignedDriverName: string | null;
@@ -29,6 +32,11 @@ export type Truck = {
   lastPingAt: string | null;
   compliance: ComplianceDoc[];
 };
+
+/** "Tata 407", "Tata", or null when neither is known. */
+export function truckMakeModel(truck: Pick<Truck, 'make' | 'model'>): string | null {
+  return [truck.make, truck.model].filter(Boolean).join(' ') || null;
+}
 
 export const TRUCK_TYPE_LABEL: Record<TruckType, string> = {
   wheel_lift: 'Wheel-lift',

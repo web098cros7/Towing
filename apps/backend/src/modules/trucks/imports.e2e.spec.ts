@@ -71,6 +71,23 @@ describe('bulk truck import (/v1/fleet/trucks/bulk)', () => {
     expect(await trucksInFleet()).toEqual(['KA-01-AB-1234', 'KA-05-MJ-7788']);
   });
 
+  it('stores the optional make and model columns', async () => {
+    const res = await upload(
+      `${HEADER},make,model\nKA-01-AB-1234,flatbed,5,Tata,407\nKA-05-MJ-7788,wheel_lift,3.5,,`,
+    );
+    expect(res.body).toMatchObject({ status: 'completed', importedRows: 2 });
+
+    const rows = await db
+      .select({ plate: fleetTrucks.plate, make: fleetTrucks.make, model: fleetTrucks.model })
+      .from(fleetTrucks)
+      .where(eq(fleetTrucks.fleetId, fleetId))
+      .orderBy(fleetTrucks.plate);
+    expect(rows).toEqual([
+      { plate: 'KA-01-AB-1234', make: 'Tata', model: '407' },
+      { plate: 'KA-05-MJ-7788', make: null, model: null },
+    ]);
+  });
+
   it('commits the good rows and reports the bad ones', async () => {
     const res = await upload(
       `${HEADER}\nKA-01-AB-1234,flatbed,5\nBAD,flatbed,5\nKA-02-CD-5678,tricycle,4\nKA-03-EF-9012,wheel_lift,2`,
@@ -178,7 +195,8 @@ describe('bulk truck import (/v1/fleet/trucks/bulk)', () => {
       .set('Authorization', auth)
       .expect(200);
 
-    expect(res.text.split('\r\n')[0]).toBe(HEADER);
+    // The required columns first, then the optional make and model.
+    expect(res.text.split('\r\n')[0]).toBe(`${HEADER},make,model`);
   });
 
   it('hides another tenant’s import', async () => {

@@ -64,6 +64,8 @@ export function previewCsv(text: string): ImportPreview {
       plate: raw.plate ?? '',
       type: raw.type?.trim(),
       capacityTons: raw.capacityTons?.trim(),
+      make: raw.make,
+      model: raw.model,
     });
 
     if (candidate.success) validRows += 1;

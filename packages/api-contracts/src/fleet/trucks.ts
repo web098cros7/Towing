@@ -23,10 +23,18 @@ export type ComplianceDocDto = z.infer<typeof complianceDocSchema>;
 
 export const latLngSchema = z.object({ lat: z.number(), lng: z.number() });
 
+/**
+ * A truck's make or model ("Tata", "407"), shown on the customer's vehicle card
+ * (Figma 18/20). Optional: an empty string clears it, and the server stores null.
+ */
+export const truckMakeModelSchema = z.string().trim().max(40, 'At most 40 characters');
+
 export const truckSchema = z.object({
   id: z.uuid(),
   plate: z.string(),
   type: vehicleClassSchema,
+  make: z.string().nullable(),
+  model: z.string().nullable(),
   /** DB stores text like "5t"; the API speaks numbers. 0 when unparseable. */
   capacityTons: z.number(),
   status: truckStatusSchema,
@@ -50,6 +58,8 @@ export const truckCreateSchema = z.object({
   plate: z.string().min(4).max(20),
   type: vehicleClassSchema,
   capacityTons: z.number().positive().max(50),
+  make: truckMakeModelSchema.nullable().optional(),
+  model: truckMakeModelSchema.nullable().optional(),
 });
 export type TruckCreateRequest = z.infer<typeof truckCreateSchema>;
 
@@ -59,6 +69,8 @@ export const truckUpdateSchema = z
     plate: z.string().min(4).max(20),
     type: vehicleClassSchema,
     capacityTons: z.number().positive().max(50),
+    make: truckMakeModelSchema.nullable(),
+    model: truckMakeModelSchema.nullable(),
     status: z.enum(['active', 'inactive']),
   })
   .partial();

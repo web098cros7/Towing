@@ -160,6 +160,8 @@ export class TruckImportsService implements OnModuleInit {
           plate: data.plate,
           type: data.type,
           capacity: `${data.capacityTons}t`,
+          make: data.make || null,
+          model: data.model || null,
         });
         imported += 1;
       } catch (err) {

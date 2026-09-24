@@ -49,6 +49,8 @@ export class TrucksService {
         plate: body.plate.toUpperCase(),
         type: body.type,
         capacity: `${body.capacityTons}t`,
+        make: body.make || null,
+        model: body.model || null,
       });
       await this.events.emit(fleetId, { kind: 'truck_changed', truckId: row.id });
       return toTruckDto(row, [], null);
@@ -69,6 +71,9 @@ export class TrucksService {
     if (body.plate !== undefined) patch.plate = body.plate.toUpperCase();
     if (body.type !== undefined) patch.type = body.type;
     if (body.capacityTons !== undefined) patch.capacity = `${body.capacityTons}t`;
+    // An empty string or null clears it (the customer's card then shows no make or model).
+    if (body.make !== undefined) patch.make = body.make || null;
+    if (body.model !== undefined) patch.model = body.model || null;
     if (body.status !== undefined) patch.status = body.status;
 
     let row;

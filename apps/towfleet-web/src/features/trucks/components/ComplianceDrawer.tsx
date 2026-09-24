@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Badge, Button, Card, CardContent, Field, Input, cn } from '@towing/web-ui';
 import { env } from '@/lib/env';
-import { useUploadComplianceDoc } from '../api/trucks.mutations';
+import { useUpdateTruck, useUploadComplianceDoc } from '../api/trucks.mutations';
 import {
   DOC_TYPE_LABEL,
   TRUCK_TYPE_LABEL,
+  truckMakeModel,
   type ComplianceDoc,
   type ComplianceDocType,
   type Truck,
@@ -51,6 +52,7 @@ export function ComplianceDrawer({ truck, onClose }: { truck: Truck; onClose: ()
         <div>
           <h2 className="font-display text-xl font-bold">{truck.plate}</h2>
           <p className="text-sm text-text-secondary">
+            {truckMakeModel(truck) ? `${truckMakeModel(truck)} · ` : ''}
             {TRUCK_TYPE_LABEL[truck.type]} · {truck.capacityTons}t ·{' '}
             {truck.assignedDriverName ?? 'Unassigned'}
           </p>
@@ -67,6 +69,9 @@ export function ComplianceDrawer({ truck, onClose }: { truck: Truck; onClose: ()
           </CardContent>
         </Card>
       ) : null}
+
+      {/* Keyed on the truck, so a different truck's drawer starts from its own values. */}
+      <DetailsForm key={truck.id} truck={truck} />
 
       <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
         Compliance checklist
@@ -85,6 +90,61 @@ export function ComplianceDrawer({ truck, onClose }: { truck: Truck; onClose: ()
         <UploadForm truckId={truck.id} />
       )}
     </aside>
+  );
+}
+
+/**
+ * Make and model: what the customer's vehicle card shows ("Tata 407"). Blank
+ * clears it. Saved on its own, so fixing a typo never touches plate or type.
+ */
+function DetailsForm({ truck }: { truck: Truck }) {
+  const update = useUpdateTruck(truck.id);
+  const [make, setMake] = useState(truck.make ?? '');
+  const [model, setModel] = useState(truck.model ?? '');
+  const changed = make.trim() !== (truck.make ?? '') || model.trim() !== (truck.model ?? '');
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changed) return;
+    update.mutate({ make: make.trim() || null, model: model.trim() || null });
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mb-4 flex flex-col gap-2 border-b border-border pb-4"
+      data-testid="truck-details"
+    >
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+        Vehicle details
+      </h3>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Make" htmlFor="truck-detail-make">
+          <Input
+            id="truck-detail-make"
+            value={make}
+            onChange={(e) => setMake(e.target.value)}
+            placeholder="Tata"
+            maxLength={40}
+          />
+        </Field>
+        <Field label="Model" htmlFor="truck-detail-model">
+          <Input
+            id="truck-detail-model"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="407"
+            maxLength={40}
+          />
+        </Field>
+      </div>
+      {update.isError ? (
+        <p className="text-xs text-error">{(update.error as Error).message}</p>
+      ) : null}
+      <Button type="submit" variant="outline" size="sm" disabled={update.isPending || !changed}>
+        {update.isPending ? 'Saving…' : 'Save details'}
+      </Button>
+    </form>
   );
 }
 

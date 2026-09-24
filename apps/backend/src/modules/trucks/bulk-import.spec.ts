@@ -122,5 +122,25 @@ describe('templateCsv', () => {
     expect(parsed.fatal).toBeUndefined();
     expect(parsed.errors).toEqual([]);
     expect(parsed.valid).toHaveLength(2);
+    expect(parsed.valid[0]!.data).toMatchObject({ make: 'Tata', model: '407' });
+  });
+});
+
+describe('make and model columns', () => {
+  it('are optional: a file without them still imports', () => {
+    const parsed = parseTruckCsv('plate,type,capacityTons\nKA-01-AB-1234,flatbed,5\n', MAX);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.valid[0]!.data.make).toBeUndefined();
+  });
+
+  it('are trimmed, and a too-long one fails its row only', () => {
+    const long = 'X'.repeat(41);
+    const parsed = parseTruckCsv(
+      `plate,type,capacityTons,make,model\nKA-01-AB-1234,flatbed,5, Tata ,407\nKA-01-AB-9999,flatbed,5,${long},\n`,
+      MAX,
+    );
+    expect(parsed.valid).toHaveLength(1);
+    expect(parsed.valid[0]!.data).toMatchObject({ make: 'Tata', model: '407' });
+    expect(parsed.errors).toEqual([expect.objectContaining({ row: 2, field: 'make' })]);
   });
 });

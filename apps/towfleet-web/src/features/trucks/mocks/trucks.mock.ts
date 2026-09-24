@@ -23,7 +23,19 @@ function doc(
 /** Bengaluru (§2 persona city) — the mock fleet's home. */
 const MOCK_ORIGIN = { lat: 12.9716, lng: 77.5946 };
 
-const baseTrucks: Array<Omit<Truck, 'currentLocation' | 'lastPingAt'>> = [
+/** Make and model per mock truck, in order; the last two are not filled in yet. */
+const MOCK_MAKE_MODEL: Array<[string | null, string | null]> = [
+  ['Tata', '407'],
+  ['Ashok Leyland', 'Dost'],
+  ['Mahindra', 'Bolero Pik-Up'],
+  ['Tata', 'Ultra 1014'],
+  ['Eicher', 'Pro 2049'],
+  ['Tata', '407'],
+  [null, null],
+  [null, null],
+];
+
+const baseTrucks: Array<Omit<Truck, 'currentLocation' | 'lastPingAt' | 'make' | 'model'>> = [
   {
     id: 'tr-1',
     plate: 'KA-01-AB-1234',
@@ -147,8 +159,11 @@ const baseTrucks: Array<Omit<Truck, 'currentLocation' | 'lastPingAt'>> = [
 export const trucksMock: Truck[] = baseTrucks.map((truck, index) => {
   const angle = (index / baseTrucks.length) * Math.PI * 2;
   const radius = 0.02 + (index % 3) * 0.012;
+  const [make, model] = MOCK_MAKE_MODEL[index] ?? [null, null];
   return {
     ...truck,
+    make,
+    model,
     currentLocation: {
       lat: MOCK_ORIGIN.lat + radius * Math.sin(angle),
       lng: MOCK_ORIGIN.lng + radius * Math.cos(angle),

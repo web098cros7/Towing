@@ -1,6 +1,28 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { TruckCreateRequest, TruckUpdateRequest } from '@towing/api-contracts';
 import type { ComplianceDocType } from '../types';
 import { trucksKeys } from './trucks.keys';
+import { trucksDataSource } from './trucksDataSource';
+
+/** "Add truck": POST /fleet/trucks. The list refetches so the new row appears. */
+export function useCreateTruck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TruckCreateRequest) => trucksDataSource.create(input),
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: trucksKeys.all }),
+  });
+}
+
+/** The truck drawer's details (make and model): PUT /fleet/trucks/:id (partial). */
+export function useUpdateTruck(truckId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: TruckUpdateRequest) => trucksDataSource.update(truckId, patch),
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: trucksKeys.all }),
+  });
+}
 
 export interface UploadComplianceInput {
   truckId: string;

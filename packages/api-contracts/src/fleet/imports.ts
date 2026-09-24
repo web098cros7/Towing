@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { vehicleClassSchema } from './trucks';
+import { truckMakeModelSchema, vehicleClassSchema } from './trucks';
 
 /**
  * Bulk truck CSV import (§9.3.4).
@@ -13,6 +13,12 @@ import { vehicleClassSchema } from './trucks';
 
 /** Exact header the CSV must carry, in this order. Also the template download. */
 export const TRUCK_IMPORT_COLUMNS = ['plate', 'type', 'capacityTons'] as const;
+
+/**
+ * Columns a file MAY carry after the required ones. A file without them still
+ * imports (older templates), and a blank cell means "not known".
+ */
+export const TRUCK_IMPORT_OPTIONAL_COLUMNS = ['make', 'model'] as const;
 
 export const truckImportRowSchema = z.object({
   plate: z
@@ -28,6 +34,8 @@ export const truckImportRowSchema = z.object({
     .number({ error: 'Capacity must be a number' })
     .positive('Capacity must be greater than 0')
     .max(50, 'Capacity must be at most 50'),
+  make: truckMakeModelSchema.optional(),
+  model: truckMakeModelSchema.optional(),
 });
 export type TruckImportRow = z.infer<typeof truckImportRowSchema>;
 

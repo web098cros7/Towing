@@ -1,6 +1,7 @@
 import {
   IMPORT_ERROR_REPORT_CAP,
   TRUCK_IMPORT_COLUMNS,
+  TRUCK_IMPORT_OPTIONAL_COLUMNS,
   importErrorCodes,
   truckImportRowSchema,
   type ImportRowErrorDto,
@@ -74,6 +75,8 @@ export function parseTruckCsv(csv: string, maxRows: number): ParsedImport {
       plate: raw.plate ?? '',
       type: raw.type?.trim(),
       capacityTons: raw.capacityTons?.trim(),
+      make: raw.make,
+      model: raw.model,
     });
 
     if (!candidate.success) {
@@ -134,7 +137,8 @@ export function toErrorCsv(errors: ImportRowErrorDto[]): string {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-/** The downloadable template — the exact header the parser demands. */
+/** The downloadable template: the header the parser demands, then the optional make and model. */
 export function templateCsv(): string {
-  return `${TRUCK_IMPORT_COLUMNS.join(',')}\r\nKA-01-AB-1234,flatbed,5\r\nKA-05-MJ-7788,wheel_lift,3.5\r\n`;
+  const header = [...TRUCK_IMPORT_COLUMNS, ...TRUCK_IMPORT_OPTIONAL_COLUMNS].join(',');
+  return `${header}\r\nKA-01-AB-1234,flatbed,5,Tata,407\r\nKA-05-MJ-7788,wheel_lift,3.5,,\r\n`;
 }

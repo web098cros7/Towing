@@ -2,13 +2,14 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Upload } from 'lucide-react';
+import { Plus, Upload } from 'lucide-react';
 import { Badge, Button, DataTable, FilterBar, SearchInput, type ColumnDef } from '@towing/web-ui';
 import { PageHeader } from '@/components/PageHeader';
 import { useTrucks } from '@/features/trucks/api/trucks.queries';
+import { AddTruckDrawer } from '@/features/trucks/components/AddTruckDrawer';
 import { BulkImportDrawer } from '@/features/trucks/components/BulkImportDrawer';
 import { ComplianceDrawer } from '@/features/trucks/components/ComplianceDrawer';
-import { TRUCK_TYPE_LABEL, type Truck } from '@/features/trucks/types';
+import { TRUCK_TYPE_LABEL, truckMakeModel, type Truck } from '@/features/trucks/types';
 
 function complianceSummary(truck: Truck) {
   const expired = truck.compliance.filter((d) => d.status === 'expired').length;
@@ -21,6 +22,12 @@ function complianceSummary(truck: Truck) {
 const columns: ColumnDef<Truck, unknown>[] = [
   { accessorKey: 'plate', header: 'Plate', cell: ({ row }) => <span className="font-semibold">{row.original.plate}</span> },
   { accessorKey: 'type', header: 'Type', cell: ({ row }) => TRUCK_TYPE_LABEL[row.original.type] },
+  {
+    id: 'makeModel',
+    header: 'Make & model',
+    cell: ({ row }) =>
+      truckMakeModel(row.original) ?? <span className="text-text-tertiary">Not set</span>,
+  },
   { accessorKey: 'capacityTons', header: 'Capacity', cell: ({ row }) => `${row.original.capacityTons}t` },
   {
     accessorKey: 'assignedDriverName',
@@ -54,6 +61,7 @@ function TrucksList() {
   const { data, isLoading, isError, refetch } = useTrucks();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   // Palette deep-link (`/trucks?q=KA01…`) seeds the filter; typing afterwards
   // stays local so the back button keeps working.
   const searchParams = useSearchParams();
@@ -75,7 +83,10 @@ function TrucksList() {
     const needle = q.trim().toLowerCase();
     if (!needle) return data ?? [];
     return (data ?? []).filter((t) =>
-      [t.plate, t.assignedDriverName ?? ''].join(' ').toLowerCase().includes(needle),
+      [t.plate, t.assignedDriverName ?? '', truckMakeModel(t) ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(needle),
     );
   }, [data, q]);
 
@@ -89,8 +100,8 @@ function TrucksList() {
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="size-4" /> Import CSV
             </Button>
-            <Button disabled title="Truck creation goes live with the backend (Phase 4)">
-              Add truck
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="size-4" /> Add truck
             </Button>
           </>
         }
@@ -100,7 +111,7 @@ function TrucksList() {
         <SearchInput
           value={q}
           onValueChange={setQ}
-          placeholder="Plate or driver"
+          placeholder="Plate, driver or make"
           className="w-72"
           data-testid="trucks-search"
         />
@@ -121,6 +132,7 @@ function TrucksList() {
 
       {selected ? <ComplianceDrawer truck={selected} onClose={() => setSelectedId(null)} /> : null}
       {importOpen ? <BulkImportDrawer onClose={() => setImportOpen(false)} /> : null}
+      {addOpen ? <AddTruckDrawer onClose={() => setAddOpen(false)} /> : null}
     </div>
   );
 }

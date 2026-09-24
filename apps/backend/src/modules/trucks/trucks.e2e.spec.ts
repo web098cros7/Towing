@@ -82,6 +82,42 @@ describe('trucks e2e (/v1/fleet/trucks)', () => {
       .expect(201);
   });
 
+  it('stores the make and model the customer card shows, and clears them with blanks', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/fleet/trucks')
+      .set('Authorization', authA)
+      .send({ plate: 'KA-99-MM-4070', type: 'flatbed', capacityTons: 5, make: ' Tata ', model: '407' })
+      .expect(201);
+    expect(created.body).toMatchObject({ make: 'Tata', model: '407' });
+
+    // Only the model changes; the make is left alone.
+    const renamed = await request(app.getHttpServer())
+      .put(`/v1/fleet/trucks/${created.body.id}`)
+      .set('Authorization', authA)
+      .send({ model: '407 Gold' })
+      .expect(200);
+    expect(renamed.body).toMatchObject({ make: 'Tata', model: '407 Gold', plate: 'KA-99-MM-4070' });
+
+    await request(app.getHttpServer())
+      .put(`/v1/fleet/trucks/${created.body.id}`)
+      .set('Authorization', authA)
+      .send({ make: '', model: null })
+      .expect(200);
+    const [row] = await db
+      .select({ make: fleetTrucks.make, model: fleetTrucks.model })
+      .from(fleetTrucks)
+      .where(eq(fleetTrucks.id, created.body.id));
+    expect(row).toEqual({ make: null, model: null });
+
+    // A truck created without them has none.
+    const bare = await request(app.getHttpServer())
+      .post('/v1/fleet/trucks')
+      .set('Authorization', authA)
+      .send({ plate: 'KA-99-MM-0001', type: 'wheel_lift', capacityTons: 2 })
+      .expect(201);
+    expect(bare.body).toMatchObject({ make: null, model: null });
+  });
+
   it('compliance upsert recomputes truck status — and manual inactive is sticky', async () => {
     const truckId = await seedTruck(db, fleetA);
     const server = app.getHttpServer();

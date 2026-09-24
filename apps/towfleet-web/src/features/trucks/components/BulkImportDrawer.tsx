@@ -110,7 +110,9 @@ export function BulkImportDrawer({ onClose }: { onClose: () => void }) {
             if (!env.useMocks) return;
             e.preventDefault();
             const blob = new Blob(
-              ['plate,type,capacityTons\r\nKA-01-AB-1234,flatbed,5\r\nKA-05-MJ-7788,wheel_lift,3.5\r\n'],
+              [
+                'plate,type,capacityTons,make,model\r\nKA-01-AB-1234,flatbed,5,Tata,407\r\nKA-05-MJ-7788,wheel_lift,3.5,,\r\n',
+              ],
               { type: 'text/csv;charset=utf-8' },
             );
             const url = URL.createObjectURL(blob);
