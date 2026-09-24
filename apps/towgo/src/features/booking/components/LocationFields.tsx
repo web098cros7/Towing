@@ -112,12 +112,14 @@ function LocationRow({
         pressScale={1}
         haptic="selection"
         accessible={false}
-        style={{ flex: 1, gap: 3 }}
+        // `minWidth: 0` + clipping: a long address never pushes into the button
+        // or spills over the row below (owner, 24 Sep 2026).
+        style={{ flex: 1, minWidth: 0, gap: 3, overflow: 'hidden' }}
       >
         <MiText variant="bodyS14" color="secondary" numberOfLines={1}>
           {label}
         </MiText>
-        <View>
+        <View style={{ height: valueStyle.height, overflow: 'hidden' }}>
           <TextInput
             ref={inputRef}
             value={value}
@@ -137,6 +139,9 @@ function LocationRow({
             cursorColor={mitowColors.textPrimary}
             maxFontSizeMultiplier={1.2}
             autoCorrect={false}
+            // One line that scrolls sideways while typing, never a wrap.
+            multiline={false}
+            numberOfLines={1}
             returnKeyType={returnKeyType}
             onSubmitEditing={onSubmitEditing}
             accessibilityLabel={label}
@@ -148,7 +153,12 @@ function LocationRow({
               importantForAccessibility="no-hide-descendants"
               style={StyleSheet.absoluteFill}
             >
-              <MiText variant="bodyM15" color={value ? 'primary' : 'placeholder'} numberOfLines={1}>
+              <MiText
+                variant="bodyM15"
+                color={value ? 'primary' : 'placeholder'}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {value || placeholder || ''}
               </MiText>
             </View>
