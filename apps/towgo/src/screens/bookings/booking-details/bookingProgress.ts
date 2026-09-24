@@ -3,6 +3,7 @@ import type { MiTimelineRowState } from '@/design';
 import { formatClock } from '@/features/booking/components/enter-location/format';
 import { ACTIVE_BOOKING_STATUSES } from '@/features/bookings/types';
 import type { BookingTrackingDisplay } from '@/screens/booking/tracking/trackingDisplay';
+import { formatEta } from '@/utils/format';
 
 /**
  * Figma 20 · Booking Details (`238:554`): the status card and the six-row booking
@@ -128,7 +129,7 @@ export function timelineRows(
 
 /** Figma subtitle "Arriving in 5 mins": static "Arriving in " + count + " mins". */
 export function arrivingIn(minutes: number): string {
-  return `Arriving in ${minutes} mins`;
+  return `Arriving in ${formatEta(minutes)}`;
 }
 
 export type StatusCardCopy = {

@@ -5,6 +5,7 @@ import { MiText } from '@/design';
 import { useEtaMinutes } from '@/features/tracking/hooks/useEtaMinutes';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { trackingDesignFor } from '@/screens/booking/tracking/trackingDisplay';
+import { formatEta } from '@/utils/format';
 
 /**
  * Figma 18 · Driver En Route heading (`226:319`): "Arriving in 5 mins" (Title 23)
@@ -39,7 +40,7 @@ export function LiveEtaCard({ tracking }: { tracking: BookingTracking | undefine
   const minutes = useEtaMinutes(tracking);
 
   if (trackingDesignFor(tracking?.status) === 'enRoute18') {
-    const title = minutes === null ? null : `Arriving in ${minutes} mins`;
+    const title = minutes === null ? null : `Arriving in ${formatEta(minutes)}`;
     return (
       <View
         style={{ paddingLeft: 3.7, gap: 2.9, overflow: 'hidden' }}

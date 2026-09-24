@@ -1,4 +1,5 @@
 import type { FareEstimate } from '../../types';
+import { formatEta } from '@/utils/format';
 
 /** The route numbers 14's callout and 15's subtitle draw. */
 export type RouteFacts = { distanceKm: number; etaMinutes: number };
@@ -70,7 +71,7 @@ export function fareSubtitleText(
   vehicleName: string,
   towMethod: string,
 ): string {
-  return `Tow a ${vehicleName} · ${towMethod} · ${formatKm(route.distanceKm)} km · about ${
-    route.etaMinutes
-  } mins`;
+  return `Tow a ${vehicleName} · ${towMethod} · ${formatKm(route.distanceKm)} km · about ${formatEta(
+    route.etaMinutes,
+  )}`;
 }

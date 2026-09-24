@@ -13,7 +13,7 @@ import {
 } from '@/design';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { firstNameOf } from '@/screens/booking/tracking/trackingDisplay';
-import { formatPaise } from '@/utils/format';
+import { formatEta, formatPaise } from '@/utils/format';
 import { useCancellationQuote } from '../api/tracking.queries';
 
 /**
@@ -74,7 +74,7 @@ function drawnBody(
   if (status !== 'assigned' && status !== 'en_route') return null;
   const firstName = firstNameOf(driverName);
   if (!firstName || etaMinutes === null || etaMinutes === undefined) return null;
-  return `${firstName} is already on the way and will reach you in about ${etaMinutes} mins.`;
+  return `${firstName} is already on the way and will reach you in about ${formatEta(etaMinutes)}.`;
 }
 
 export function CancelTripSheet({

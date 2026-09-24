@@ -8,6 +8,7 @@ import {
   type BookingTrackingDisplay,
 } from '@/screens/booking/tracking/trackingDisplay';
 import { paidAtLabel } from '@/screens/payment/paymentDisplay';
+import { formatEta } from '@/utils/format';
 
 /**
  * Figma 35 · Completed Trip Details (`243:929`): the values it draws, derived from the booking
@@ -82,7 +83,7 @@ export function tripDurationLabel(stamps: TripStamps): string | null {
   const from = Date.parse(stamps.startedAt);
   const to = Date.parse(stamps.completedAt);
   if (Number.isNaN(from) || Number.isNaN(to) || to < from) return null;
-  return `${Math.floor((to - from) / 60_000)} mins`;
+  return formatEta(Math.floor((to - from) / 60_000));
 }
 
 /**

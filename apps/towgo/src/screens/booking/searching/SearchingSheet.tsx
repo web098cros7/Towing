@@ -41,7 +41,8 @@ function formatRadiusKm(radiusKm: number): string {
  */
 function searchSubtitle(progress: SearchingSheetProgress): string {
   if (!progress) return NO_BREAK_SPACE;
-  return `Searching within ${formatRadiusKm(progress.radiusKm)} km · ${progress.driversContacted} drivers contacted`;
+  const drivers = progress.driversContacted === 1 ? 'driver' : 'drivers';
+  return `Searching within ${formatRadiusKm(progress.radiusKm)} km · ${progress.driversContacted} ${drivers} contacted`;
 }
 
 export type SearchingSheetProps = {

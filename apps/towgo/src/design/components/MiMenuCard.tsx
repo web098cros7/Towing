@@ -29,6 +29,8 @@ export type MiMenuRowProps = {
    * missing title is not drawn.
    */
   title: string | null;
+  /** Title in status/danger-text: a destructive row (56's "Delete my account", `297:3719`). */
+  danger?: boolean;
   /** Figma width of the Title text box, used only while `title` is missing. `'fill'` = `w-full`. */
   titleSlotWidth?: number | 'fill';
   /** "Show subtitle": MiTow/Body S 14, text/secondary. Omit to hide. */
@@ -65,6 +67,7 @@ export function MiMenuRow({
   icon,
   iconSize = 34,
   title,
+  danger = false,
   titleSlotWidth,
   subtitle,
   subtitleSlotWidth,
@@ -107,7 +110,9 @@ export function MiMenuRow({
       {leading}
       <View style={{ flex: 1, gap: 1, overflow: 'hidden' }}>
         {title ? (
-          <MiText variant="bodyM15">{title}</MiText>
+          <MiText variant="bodyM15" color={danger ? 'danger' : undefined}>
+            {title}
+          </MiText>
         ) : titleSlotWidth !== undefined ? (
           <SlotBar variant="bodyM15" width={titleSlotWidth} />
         ) : null}

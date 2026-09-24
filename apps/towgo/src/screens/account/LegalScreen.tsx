@@ -330,6 +330,7 @@ export function LegalScreen() {
             <MiMenuRow
               icon={{ color: 'trash' }}
               title="Delete my account"
+              danger
               subtitle="Permanently remove your account"
               showChevron
               onPress={onDeleteAccount}

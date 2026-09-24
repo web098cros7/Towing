@@ -4,11 +4,12 @@ import type { BookingTracking } from '@towing/api-contracts';
 import { MiText, mitowColors, mitowRadii, towTruckArtSource } from '@/design';
 import { useEtaMinutes } from '@/screens/bookings/booking-details/useBookingLive';
 import { SlotPlaceholder } from './SlotPlaceholder';
+import { formatEta } from '@/utils/format';
 
 /** Figma 25 copy, verbatim (straight apostrophe U+0027, full stop). */
 const ETA_SUBTITLE = "We'll keep you updated.";
 /** The title's static parts are "Estimated arrival in " and " mins"; only the count is data. */
-const etaTitle = (minutes: number) => `Estimated arrival in ${minutes} mins`;
+const etaTitle = (minutes: number) => `Estimated arrival in ${formatEta(minutes)}`;
 /** The title's Figma text box (the ink is about 194 of it). */
 const TITLE_BOX_WIDTH = 235;
 

@@ -1,7 +1,7 @@
 import type { ExpoConfig } from 'expo/config';
 
 /**
- * TowGo (customer app) Expo config. Dynamic (TS) so future secrets — Google
+ * MiTow (customer app) Expo config. Dynamic (TS) so future secrets — Google
  * Maps, Razorpay, the Socket.io URL — can be injected from env into `extra`
  * without touching a static JSON file.
  */
@@ -153,22 +153,19 @@ const config: ExpoConfig = {
     [
       'expo-splash-screen',
       {
-        image: './assets/splash-icon.png',
-        imageWidth: 220,
+        /*
+         * Figma 01 Splash's crane lockup (`421:19938`), the same artwork the JS
+         * splash draws, so the handoff to it is seamless and only the Loader
+         * appears (see `src/screens/auth/SplashScreen.tsx`). 1392 × 728 at 8x:
+         * at 174 dp wide it draws the lockup at exactly Figma's 173.7.
+         *
+         * No dark variant: Figma draws the splash light only and 01 is always
+         * #FFFFFF, so a dark native splash would flash dark-to-white on handoff.
+         */
+        image: './src/screens/auth/splash/launch-lockup.png',
+        imageWidth: 174,
         resizeMode: 'contain',
         backgroundColor: '#FFFFFF',
-        dark: {
-          /*
-           * A separate image, not just a darker backdrop. The wordmark's ink
-           * is #1A1A1A — on #15181F that is black on black. This variant
-           * inverts exactly what `src/components/Logo.tsx` inverts at
-           * runtime: the ink becomes neutral.100, and the enclosed white
-           * shapes (cab window, wheel hubs, the bowl of the 'o') take the
-           * splash background so they read as holes, not white blobs.
-           */
-          image: './assets/splash-icon-dark.png',
-          backgroundColor: '#15181F',
-        },
       },
     ],
     [
