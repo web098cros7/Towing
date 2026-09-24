@@ -48,6 +48,7 @@ const row: TrackingBookingRow = {
   shareExpiresAt: null,
   arrivedAt: null,
   startedAt: null,
+  inTransitAt: null,
   completedAt: null,
   updatedAt: new Date('2026-09-03T10:00:00.000Z'),
   driverName: 'Ramesh Kumar Iyer',

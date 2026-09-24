@@ -93,6 +93,7 @@ export function toBookingTracking(
     enRouteAt: row.enRouteAt ? new Date(row.enRouteAt).toISOString() : null,
     arrivedAt: row.arrivedAt?.toISOString() ?? null,
     startedAt: row.startedAt?.toISOString() ?? null,
+    inTransitAt: row.inTransitAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
     shared: isShareLive(row, now),
     at: now.toISOString(),

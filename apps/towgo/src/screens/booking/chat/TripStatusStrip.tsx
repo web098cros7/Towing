@@ -4,6 +4,7 @@ import type { BookingTracking, JobStatus } from '@towing/api-contracts';
 import { MiColorIcon, MiText, mitowColors } from '@/design';
 import { useEtaMinutes } from '@/features/tracking/hooks/useEtaMinutes';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
+import { formatEta } from '@/utils/format';
 
 /** Figma 22's status label, verbatim, for `assigned` / `en_route`. */
 const EN_ROUTE_LABEL = 'Driver on the way';
@@ -61,10 +62,13 @@ export function TripStatusStrip({ tracking }: { tracking: BookingTracking | unde
 
   let text: string | null;
   if (isOnTheWay(status)) {
-    text = minutes === null ? null : `${EN_ROUTE_LABEL} · Arriving in ${minutes} mins`;
+    text = minutes === null ? null : `${EN_ROUTE_LABEL} · Arriving in ${formatEta(minutes)}`;
+  } else if (status === 'in_progress' && tracking?.drop === null) {
+    // A roadside job: the work is at the customer's location, nothing is towed.
+    text = 'Working on your vehicle';
   } else if (status === 'in_progress' && minutes !== null) {
     // Not drawn: the drop leg's ETA, in the drawn "<label> · <count>" form.
-    text = `${OTHER_LABELS.in_progress} · Reaching drop in ${minutes} mins`;
+    text = `${OTHER_LABELS.in_progress} · Reaching drop in ${formatEta(minutes)}`;
   } else {
     text = status && status !== 'assigned' && status !== 'en_route' ? OTHER_LABELS[status] : null;
   }
@@ -91,9 +95,7 @@ export function TripStatusStrip({ tracking }: { tracking: BookingTracking | unde
           {text}
         </MiText>
       ) : (
-        <View
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SEPARATOR_SPACE }}
-        >
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SEPARATOR_SPACE }}>
           <MiText variant="strong14" numberOfLines={1}>
             {`${EN_ROUTE_LABEL} ·`}
           </MiText>

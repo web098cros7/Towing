@@ -11,6 +11,7 @@ import { DriverJobsController } from './driver-jobs.controller';
 import { DriverJobsService } from './driver-jobs.service';
 import { DriverStatsService } from './driver-stats.service';
 import { EnRouteWatcher } from './en-route.watcher';
+import { InTransitWatcher } from './in-transit.watcher';
 import { JobExecutionController } from './job-execution.controller';
 import { JobExecutionRepo } from './job-execution.repo';
 import { JobExecutionService } from './job-execution.service';
@@ -59,6 +60,7 @@ import { JobExecutionService } from './job-execution.service';
     JobExecutionRepo,
     DriverStatsService,
     EnRouteWatcher,
+    InTransitWatcher,
     DriverJobsService,
   ],
   exports: [JobExecutionService],

@@ -18,10 +18,9 @@ export type TrackedDriverDisplay = TrackedDriver;
  *   now carries this instant on the tracking payload, so it comes straight from
  *   the wire.
  * - `inTransitAt` (Figma 25 · Trip in Progress): 25's timeline draws "In transit"
- *   with the time the loaded truck left the pickup. The server has no separate
- *   instant for it, so the live API sets it to `startedAt` (the driver starts
- *   the trip at the pickup and leaves), while the mock keeps its own clock value
- *   (which distinguishes loading from the tow).
+ *   with the time the loaded truck left the pickup. The server now records it
+ *   (`InTransitWatcher`) and sends it on the payload; the mock keeps its own
+ *   clock value. Optional here only because the mock's type predates it.
  */
 export type BookingTrackingDisplay = BookingTracking & {
   /** ISO instant the loaded truck left the pickup; null while the vehicle is loaded. */
@@ -53,6 +52,17 @@ export function trackingDesignFor(status: JobStatus | undefined): TrackingDesign
   if (status === 'arrived') return 'arrived23';
   if (status === 'in_progress' || status === 'completed' || status === 'paid') return 'inTransit25';
   return 'legacy';
+}
+
+/**
+ * A roadside job (battery, flat tyre, fuel, lockout, minor repair): the server's
+ * trip has no drop, because the work happens where the customer is. Figma draws
+ * 25 for a tow only, so a roadside job's 25 swaps the tow copy for its own and
+ * shows 23's map (the driver at the customer's location). `false` until the first
+ * read, which keeps the drawn tow version for that instant.
+ */
+export function isRoadsideTrip(tracking: { drop: unknown } | undefined): boolean {
+  return tracking !== undefined && tracking.drop === null;
 }
 
 /**

@@ -28,6 +28,7 @@ export interface TrackingBookingRow {
   shareExpiresAt: Date | null;
   arrivedAt: Date | null;
   startedAt: Date | null;
+  inTransitAt: Date | null;
   completedAt: Date | null;
   updatedAt: Date | null;
   driverName: string | null;
@@ -93,6 +94,7 @@ export class TrackingRepo {
         shareExpiresAt: bookings.shareExpiresAt,
         arrivedAt: bookings.arrivedAt,
         startedAt: bookings.startedAt,
+        inTransitAt: bookings.inTransitAt,
         completedAt: bookings.completedAt,
         updatedAt: bookings.updatedAt,
         driverName: drivers.name,

@@ -161,6 +161,9 @@ export const bookings = pgTable(
      */
     arrivedAt: timestamp('arrived_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
+    // A tow's loaded truck left the pickup (screen 25's "In transit"): set once by
+    // `InTransitWatcher`. Null before that, and always null for a roadside job.
+    inTransitAt: timestamp('in_transit_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
 
     /**

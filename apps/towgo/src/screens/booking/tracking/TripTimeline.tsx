@@ -10,6 +10,9 @@ const IN_TRANSIT = 'In transit';
 /** Static prefix of row 2's subtitle, with its one trailing space. */
 const ON_THE_WAY_TO = 'On the way to ';
 const DROP_AT = 'Drop at';
+/** A roadside job's rows (Figma draws 25 for a tow only). */
+const DRIVER_ARRIVED = 'Driver arrived';
+const SERVICE_STARTED = 'Service started';
 
 /** An ISO instant as the design's clock ("10:20 AM"); `null` when absent or unreadable. */
 function clockOf(iso: string | null | undefined): string | null {
@@ -27,8 +30,8 @@ function clockOf(iso: string | null | undefined): string | null {
  *   and the time the tow started, the server's `startedAt` (61).
  * - Row 2 `236:421`, State=Current, 67 tall: "In transit", "On the way to " +
  *   the drop's area (the whole line 167), and the time the loaded truck left the
- *   pickup (61). The contract has no such instant; the mock supplies the
- *   app-local `inTransitAt`, and the live API leaves the placeholder (data gap).
+ *   pickup (61): the server's `inTransitAt`, a placeholder while the vehicle is
+ *   still being loaded.
  * - Row 3 `236:433`, State=Upcoming, 48 tall, no connector: "Drop at", the drop
  *   address (144) and "Est. " + the arrival clock (89), 19's rule
  *   (`useEstimatedArrival`). Only while the server's ETA is the DROP leg's: the
@@ -36,23 +39,67 @@ function clockOf(iso: string | null | undefined): string | null {
  *
  * The addresses come from the booking (`GET /bookings/:id`); the tracking
  * payload carries none.
+ *
+ * A roadside job (`roadsideService` given) has nothing to carry: two rows,
+ * "Driver arrived" at the pickup address with `arrivedAt`, then "Service
+ * started" with the service's name and `startedAt`. No drop row.
  */
 export function TripTimeline({
   tracking,
   pickupAddress,
   dropAddress,
+  roadsideService,
 }: {
   tracking: BookingTrackingDisplay | undefined;
   /** The booking's `originLabel`. */
   pickupAddress: string | null | undefined;
   /** The booking's `destinationLabel`. */
   dropAddress: string | null | undefined;
+  /**
+   * Set for a roadside job: the service's name ("Battery Jump Start"), or null
+   * when the app has no name for it. Undefined for a tow.
+   */
+  roadsideService?: string | null;
 }) {
   const pickup = addressOrNull(pickupAddress);
   const drop = addressOrNull(dropAddress);
   const area = areaOf(drop);
   const estimate = useEstimatedArrival(tracking);
   const dropLeg = tracking?.status === 'in_progress' && tracking.drop !== null;
+
+  if (roadsideService !== undefined) {
+    return (
+      <View
+        style={{
+          paddingTop: 3.6,
+          paddingRight: 4.8,
+          paddingBottom: 8,
+          paddingLeft: 10.6,
+          overflow: 'hidden',
+        }}
+      >
+        <MiTimelineRow
+          state="done"
+          title={DRIVER_ARRIVED}
+          subtitle={pickup}
+          subtitleSlotWidth={132}
+          time={clockOf(tracking?.arrivedAt)}
+          timeSlotWidth={61}
+          height={67}
+        />
+        <MiTimelineRow
+          state="current"
+          title={SERVICE_STARTED}
+          subtitle={roadsideService}
+          subtitleSlotWidth={132}
+          time={clockOf(tracking?.startedAt)}
+          timeSlotWidth={61}
+          last
+          height={48}
+        />
+      </View>
+    );
+  }
 
   return (
     <View

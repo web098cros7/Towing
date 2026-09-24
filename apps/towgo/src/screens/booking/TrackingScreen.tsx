@@ -66,6 +66,7 @@ import { VehicleCard } from './tracking/VehicleCard';
 import {
   displayDriver,
   firstNameOf,
+  isRoadsideTrip,
   ratingLabel,
   trackingDesignFor,
   vehicleModelLabel,
@@ -73,6 +74,7 @@ import {
   type TrackedDriverDisplay,
   type TrackingDesign,
 } from './tracking/trackingDisplay';
+import { serviceTitle } from '@/features/services/data/serviceTitles';
 
 /**
  * The live trip, one route (`Tracking`) drawing the rebuilt screen for each
@@ -118,6 +120,14 @@ const ARRIVING_SUBTITLE = 'Your tow truck is on the way to your location';
 
 /** 25 heading subtitle `236:408`, verbatim (no full stop). */
 const IN_TRANSIT_SUBTITLE = 'Your vehicle is being towed to the drop location';
+
+/**
+ * 25 for a roadside job, which Figma does not draw: the service happens at the
+ * customer's location, so nothing is towed and there is no drop. The copy
+ * follows 25's form (title case title, no full stop on the subtitle).
+ */
+const SERVICE_TITLE = 'Service in Progress';
+const SERVICE_SUBTITLE = 'Your driver is working on your vehicle';
 
 /** 23 heading `236:334`, banner `236:360` and button `236:369`, verbatim (U+0026 ampersand). */
 const ARRIVED_TITLE = 'Driver has arrived';
@@ -241,6 +251,7 @@ export function TrackingScreen() {
     design === 'inTransit25' && status !== 'in_progress'
       ? (lastInProgress.current ?? tracking)
       : tracking;
+  const roadside = isRoadsideTrip(tripTracking);
 
   // --- 23 → 24 ------------------------------------------------------------
 
@@ -550,7 +561,10 @@ export function TrackingScreen() {
         : design === 'arrived23'
           ? 'arrived'
           : design === 'inTransit25'
-            ? 'inTransit'
+            ? // A roadside job has no drop to route to: 23's map, the driver at the customer.
+              roadside
+              ? 'arrived'
+              : 'inTransit'
             : 'legacy';
 
   /**
@@ -688,14 +702,20 @@ export function TrackingScreen() {
           gap={18}
         >
           <Grabber key="grabber" />
-          <StaticTripHeading key="heading" title={ARRIVING_TITLE} subtitle={IN_TRANSIT_SUBTITLE} />
+          <StaticTripHeading
+            key="heading"
+            title={roadside ? SERVICE_TITLE : ARRIVING_TITLE}
+            subtitle={roadside ? SERVICE_SUBTITLE : IN_TRANSIT_SUBTITLE}
+          />
           <TripTimeline
             key="trip-timeline"
             tracking={tripTracking}
             pickupAddress={booking?.originLabel}
             dropAddress={booking?.destinationLabel}
+            roadsideService={roadside ? serviceTitle(booking?.serviceSlug) : undefined}
           />
-          <EtaBanner key="eta" tracking={tripTracking} />
+          {/* A roadside job has no arrival to estimate: the work is at the pickup. */}
+          {roadside ? null : <EtaBanner key="eta" tracking={tripTracking} />}
         </FixedSheet>
       ) : showCode ? (
         /*

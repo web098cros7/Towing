@@ -335,6 +335,8 @@ export const bookingTrackingSchema = z.object({
   enRouteAt: z.iso.datetime().nullable(),
   arrivedAt: z.iso.datetime().nullable(),
   startedAt: z.iso.datetime().nullable(),
+  /** When a tow's loaded truck left the pickup (25's "In transit"); null before, and for roadside. */
+  inTransitAt: z.iso.datetime().nullable(),
   completedAt: z.iso.datetime().nullable(),
   /** Whether a share link is live right now (§11.7) — drives the share button's state. */
   shared: z.boolean(),

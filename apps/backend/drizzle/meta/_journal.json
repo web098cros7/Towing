@@ -309,6 +309,13 @@
       "when": 1789986500012,
       "tag": "0043_driver_name_verified",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789986500013,
+      "tag": "0044_booking_in_transit_at",
+      "breakpoints": true
     }
   ]
 }

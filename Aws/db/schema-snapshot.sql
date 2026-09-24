@@ -935,6 +935,7 @@ CREATE TABLE public.bookings (
     driver_compensation numeric(12,2) DEFAULT 0.00 NOT NULL,
     driver_pay_model text,
     driver_share_pct numeric(5,2),
+    in_transit_at timestamp with time zone,
     CONSTRAINT ck_bookings_cancellation_fee_needs_cancel CHECK (((cancellation_fee = (0)::numeric) OR (cancelled_by IS NOT NULL))),
     CONSTRAINT ck_bookings_commission_pct_guardrail CHECK (((commission_pct IS NULL) OR ((commission_pct > (0)::numeric) AND (commission_pct <= (30)::numeric)))),
     CONSTRAINT ck_bookings_driver_pay_model CHECK (((driver_pay_model IS NULL) OR (driver_pay_model = ANY (ARRAY['independent'::text, 'share'::text, 'salary'::text])))),

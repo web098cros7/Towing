@@ -1,0 +1,15 @@
+-- When a tow's loaded truck left the pickup: screen 25's "In transit" time.
+--
+-- A tow starts at the pickup (`started_at`, the moment the collection code is
+-- accepted) and then the vehicle is loaded, which takes minutes. The customer
+-- app's trip timeline draws "Picked up" and "In transit" as two separate
+-- moments, and until now the live app showed `started_at` for both.
+--
+-- Set once, by `InTransitWatcher`, from the driver's own location pings: the
+-- first ping of an `in_progress` tow that is 150 m or more from the pickup (the
+-- same threshold `EnRouteWatcher` uses for setting off). Roadside jobs have no
+-- drop and never set it.
+--
+-- Not backfilled: nothing recorded when earlier trips left their pickups.
+--
+ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "in_transit_at" timestamp with time zone;

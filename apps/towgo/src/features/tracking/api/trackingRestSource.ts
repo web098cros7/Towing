@@ -10,8 +10,9 @@ import type { TrackingDataSource } from './trackingDataSource';
 
 export const trackingRestSource: TrackingDataSource = {
   async getTracking(bookingId: string): Promise<BookingTrackingDisplay> {
-    const tracking = await apiFetch<BookingTracking>(`bookings/${bookingId}/tracking`);
-    return { ...tracking, inTransitAt: tracking.startedAt };
+    // `inTransitAt` is on the wire: the server records the loaded truck leaving
+    // the pickup. Null while loading, so 25's "In transit" time waits for it.
+    return apiFetch<BookingTracking>(`bookings/${bookingId}/tracking`);
   },
 
   /**
