@@ -233,7 +233,7 @@ export function BannerEditorDrawer({
                 setDraft({ ...draft, audience: event.target.value as BannerAudience })
               }
             >
-              <option value="customer">Customers (TowGo)</option>
+              <option value="customer">Customers (MiTow app)</option>
               <option value="driver">Drivers (TowPartner)</option>
             </Select>
           </div>

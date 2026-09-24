@@ -5,7 +5,7 @@
 # convincing, and the B2 slice does not call for one. The OS prompt is
 # therefore reached directly from the notification centre's first mount.
 #
-# ⚠ OS-VERSION-SPECIFIC, and never executed — see the TowGo twin.
+# ⚠ OS-VERSION-SPECIFIC, and never executed — see the MiTow twin.
 appId: in.mitow.partner
 ---
 - launchApp:

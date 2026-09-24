@@ -16,7 +16,7 @@ import type { FleetPosition } from '../types';
  *
  * THE MATHS MOVED OUT IN PHASE 18. Easing, the shortest-arc heading, the teleport
  * threshold and the retarget-from-where-the-marker-actually-is rule now live in
- * `@towing/api-contracts` (`realtime/interpolation.ts`), because TowGo's tracking
+ * `@towing/api-contracts` (`realtime/interpolation.ts`), because MiTow's tracking
  * screen needs exactly the same behaviour and cannot import a DOM component or a
  * react-native one. This class is what remains: the fleet-shaped collection
  * wrapper — many trucks, keyed by id, pruned when they leave the snapshot.

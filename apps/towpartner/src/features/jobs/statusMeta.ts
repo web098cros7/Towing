@@ -4,7 +4,7 @@ import type { ChipTone } from '@/theme/driverColors';
 import type { JobStatus } from './types';
 
 /**
- * Chip glyph + tone + label per job status — the driver-app mirror of TowGo's
+ * Chip glyph + tone + label per job status — the driver-app mirror of MiTow's
  * `features/bookings/statusMeta.ts`. Every one of the contract's statuses
  * has an entry: a `Record<JobStatus, …>` makes a missing one a compile error
  * rather than an `undefined` chip at runtime, which is the whole reason the

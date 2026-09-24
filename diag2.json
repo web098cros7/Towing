@@ -1,1 +1,0 @@
-{"commands":["echo hello > /tmp/hello.txt","cat /tmp/hello.txt"]}

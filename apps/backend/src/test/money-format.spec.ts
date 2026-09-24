@@ -15,8 +15,8 @@ import {
  * second runner to two React Native apps to test one pure function would be a
  * tooling change larger than the function.
  *
- * WHY IT NEEDED TESTING AT ALL. TowGo and TowPartner each hand-rolled this, and
- * TowGo's was wrong for negative amounts in a way nothing could catch: no
+ * WHY IT NEEDED TESTING AT ALL. MiTow and TowPartner each hand-rolled this, and
+ * MiTow's was wrong for negative amounts in a way nothing could catch: no
  * screen rendered negative money until Phase 19's wallet. `paiseSchema` has
  * been explicitly signed since Phase 7 — "ledger amounts carry their sign" —
  * and payout debits, §3.5 compensation and §14.5 reversals are all negative
@@ -34,7 +34,7 @@ describe('formatPaise / formatRupees', () => {
   });
 
   it('renders NEGATIVE amounts correctly — the bug this replaced', () => {
-    // ⚠ THE REGRESSION. The old TowGo implementation grouped the signed string
+    // ⚠ THE REGRESSION. The old MiTow implementation grouped the signed string
     // directly: for −500 the digits were "-500", `last3` was "500" and `rest`
     // was "-" — truthy — so the grouping branch ran and produced "₹-,500".
     expect(formatPaise(-50_000)).toBe('-₹500');

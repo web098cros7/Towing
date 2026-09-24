@@ -118,7 +118,7 @@ test('reorders the carousel and flips a banner switch', async ({ page }) => {
   await page.goto('/admin/promotions');
   await page.getByTestId('tab-banners').click();
 
-  await expect(page.getByText('Customer carousel (TowGo)')).toBeVisible();
+  await expect(page.getByText('Customer carousel (MiTow app)')).toBeVisible();
   const rows = page.getByTestId('banner-row');
   await expect(rows.nth(0)).toContainText('Launch offer');
   await expect(rows.nth(1)).toContainText('Monsoon drive');

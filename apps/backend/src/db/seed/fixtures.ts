@@ -126,7 +126,7 @@ export const FLEETS: readonly FleetFixture[] = [
       name: 'Chennai Metro',
       wkt: 'SRID=4326;POLYGON((80.05 12.85,80.32 12.85,80.32 13.15,80.05 13.15,80.05 12.85))',
       // The one surging zone in the seed. Without it `surgePaise` is zero on
-      // every seeded estimate and TowGo's surge badge has nothing to render.
+      // every seeded estimate and MiTow's surge badge has nothing to render.
       surgeBand: 'high',
       dispatchConfig: { radiusLadderKm: [3, 6, 10, 15], offersPerWave: 3 },
     },

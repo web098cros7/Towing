@@ -63,7 +63,7 @@ export class TrackingRelayService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     if (!this.env.REALTIME_ENABLED) {
-      // §19.2: TowGo polls `GET /bookings/:id/tracking` every ten seconds and
+      // §19.2: MiTow polls `GET /bookings/:id/tracking` every ten seconds and
       // that route carries the same facts, so refusing to relay costs the
       // customer freshness rather than information.
       this.logger.warn('REALTIME_ENABLED=false — customer tracking relay not installed');

@@ -35,7 +35,7 @@ export interface SearchProgress {
  * Takes the POLLED search block rather than the whole booking.
  *
  * The hook reads exactly one field, and depending on the full `BookingDetail`
- * would tie it to TowGo's local booking type — which is a different (nullable)
+ * would tie it to MiTow's local booking type — which is a different (nullable)
  * shape from the contract's. One narrow parameter keeps it usable from either.
  */
 export function useSearchProgress(

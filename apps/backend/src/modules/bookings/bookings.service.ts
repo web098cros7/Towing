@@ -428,7 +428,7 @@ export class BookingsService {
     if (!detail) throw ApiException.notFound('Booking not found');
 
     if (!this.env.REALTIME_ENABLED || (await this.killSwitch.isPollingForced())) {
-      // §19.2 and §19.8: a specific code rather than a 500, so TowGo falls
+      // §19.2 and §19.8: a specific code rather than a 500, so MiTow falls
       // straight to its 10-second poll — which carries the same search state —
       // instead of burning a reconnect budget on a socket that will be refused.
       throw new ApiException(

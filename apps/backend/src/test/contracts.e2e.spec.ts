@@ -769,7 +769,7 @@ describe('response contracts', () => {
     // Phase 14 widened this beyond `/v1/fleet/`. The guard was fleet-only
     // because the fleet console was the only client; `GET /v1/services` is the
     // first customer read with a published contract, and leaving the walk
-    // fleet-scoped would have meant every future TowGo route was uncovered by
+    // fleet-scoped would have meant every future MiTow route was uncovered by
     // default — a ratchet that stops ratcheting.
     // A1 widens it again to `/v1/admin` for the same reason.
     const registered = registeredGetPaths(app).filter(

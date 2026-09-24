@@ -34,7 +34,7 @@ export class PricingController {
     private readonly services: ServicesService,
   ) {}
 
-  /** §16.2 `GET /v1/services` — replaces TowGo's static catalogue. */
+  /** §16.2 `GET /v1/services` — replaces MiTow's static catalogue. */
   @Get('services')
   listServices(): Promise<ServiceCatalogItem[]> {
     return this.services.list();

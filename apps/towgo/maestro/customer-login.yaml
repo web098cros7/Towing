@@ -1,4 +1,4 @@
-# Track B Phase 12 — B0 acceptance chain, TowGo half.
+# Track B Phase 12 — B0 acceptance chain, MiTow half.
 #
 # Runs entirely against `authMockSource`/the account mock sources (no backend,
 # no network) — the "mocks-on Maestro flows retained as hermetic CI path"

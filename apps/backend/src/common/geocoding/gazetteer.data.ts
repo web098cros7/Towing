@@ -18,7 +18,7 @@ import type { GeoPoint } from '@towing/api-contracts';
  *
  * The first seven entries are the same places `apps/towgo/.../recentLocations.data.ts`
  * hardcoded as its preset list, at the same coordinates. That is deliberate: the
- * TowGo screen that used to read from that array now types against this, and a
+ * MiTow screen that used to read from that array now types against this, and a
  * coordinate that moved between the two would have made the switch look like a
  * pricing bug.
  */

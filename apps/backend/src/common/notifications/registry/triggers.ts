@@ -782,7 +782,7 @@ export const REGISTERED_TRIGGERS: RegisteredTrigger<never>[] = [
      *
      * ⚠ Same widening needed as `booking.driver_assigned` above, and for the
      * same reason. Left as the booking id today because the retry route is the
-     * only producer of a second search and it does not exist until TowGo's
+     * only producer of a second search and it does not exist until MiTow's
      * button is wired.
      */
     dedupeKey: (p: NoDriversFoundPayload) => p.bookingId,

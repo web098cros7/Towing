@@ -11,7 +11,7 @@ import { isRoadsideService } from './pricing.math';
 /**
  * `GET /v1/services` (§16.2) — Appendix B's nine-entry catalogue.
  *
- * Replaces TowGo's static `services.data.ts` and the tow-type prices in
+ * Replaces MiTow's static `services.data.ts` and the tow-type prices in
  * `towTypes.data.ts`, whose own comment said they "become the estimate API
  * later".
  *

@@ -10,7 +10,7 @@ import { COARSEN_METERS, coarsenAll } from './coarsen';
  * WHAT IT DOES NOT RETURN IS THE FEATURE. No id, no name, no plate, no rating,
  * no per-driver ETA: §11.9 forbids identity pre-assignment, because showing
  * "Suresh, 4.8★" before dispatch has run promises a specific driver the matcher
- * has not chosen and may never offer the job to. TowGo's `NearbyDriver` type
+ * has not chosen and may never offer the job to. MiTow's `NearbyDriver` type
  * carried exactly those three fields from Phase 12's mock; they are deleted
  * rather than served.
  *

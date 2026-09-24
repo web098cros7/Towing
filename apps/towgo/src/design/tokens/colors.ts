@@ -8,7 +8,7 @@
  *
  * A plain constants object rather than an extension of `@towing/theme`: the
  * shared theme is compiled by BOTH apps, and `brandYellow` here is not
- * `theme.colors.brand` (#FFB800). TowGo is hard-locked to light mode.
+ * `theme.colors.brand` (#FFB800). MiTow is hard-locked to light mode.
  */
 export const mitowColors = {
   /** brand/yellow */

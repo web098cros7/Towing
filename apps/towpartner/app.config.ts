@@ -21,7 +21,7 @@ const config: ExpoConfig = {
     supportsTablet: true,
     /**
      * Renamed from `in.webcros.towpartner` on 21 Aug 2026, together with the
-     * Android `package` below and the customer app's pair — see TowGo's config
+     * Android `package` below and the customer app's pair — see MiTow's config
      * for the full reasoning. Short version: a bundle id is the store record and
      * is permanent after a first publish, and nothing here has ever been
      * published, so that was the last free moment to align it with the brand.
@@ -183,7 +183,7 @@ const config: ExpoConfig = {
     'expo-task-manager',
   ],
   /**
-   * NATIVE SURFACE VERSION — see TowGo's config for the full reasoning. `1` was
+   * NATIVE SURFACE VERSION — see MiTow's config for the full reasoning. `1` was
    * Phase 12; `2` was Phase 13 adding `expo-notifications`; `3` is Phase 16
    * adding `expo-location`, `expo-task-manager` and `react-native-maps`. Inert
    * until Phase 21 installs `expo-updates`, recorded now so the ladder has real

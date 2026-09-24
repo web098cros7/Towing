@@ -45,8 +45,6 @@ dist
 **/*.log
 coverage
 **/coverage
-temp_deploy
-test_standalone
 deploy-output
 tmp
 __pycache__

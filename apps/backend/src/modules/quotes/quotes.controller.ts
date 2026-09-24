@@ -13,7 +13,7 @@ import { QuotesService } from './quotes.service';
  * The customer's manual-quote routes (§7.3, W20).
  *
  * `@Realms('customer')` is mandatory, not decoration: a controller without it
- * is fleet-only (invariant 45), and this one is reached from TowGo.
+ * is fleet-only (invariant 45), and this one is reached from MiTow.
  *
  * `POST /v1/quotes` rides the default `reads` bucket — filing a request moves
  * no money and a customer editing their notes is legitimate — while ACCEPT

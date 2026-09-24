@@ -69,7 +69,7 @@ export class CustomerGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   private async authenticate(socket: CustomerSocket): Promise<void> {
     if (!this.env.REALTIME_ENABLED) {
-      // §19.2 kill switch. TowGo already polls `GET /bookings/:id` every ten
+      // §19.2 kill switch. MiTow already polls `GET /bookings/:id` every ten
       // seconds and the poll carries the same search state, so refusing cleanly
       // costs the customer freshness rather than information.
       throw new Error('realtime_unavailable');
