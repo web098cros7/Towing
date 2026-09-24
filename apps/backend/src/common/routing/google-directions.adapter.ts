@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import type { GeoPoint } from '@towing/api-contracts';
+import { decodePolyline, encodePolyline, type GeoPoint } from '@towing/api-contracts';
 import { ENV, type Env } from '../../config/env';
 import { ExternalCallPolicy } from '../http/external-call.policy';
 import type { DirectionsPort, Route, RouteLeg } from './directions.port';
@@ -46,8 +46,8 @@ interface DirectionsResponse {
       distance?: { value?: number };
       duration?: { value?: number };
       duration_in_traffic?: { value?: number };
-      steps?: unknown[];
-      polyline?: { points?: string };
+      /** A leg's shape is its steps' polylines, end to end: Google gives a leg none of its own. */
+      steps?: Array<{ polyline?: { points?: string } }>;
     }>;
     overview_polyline?: { points?: string };
   }>;
@@ -137,7 +137,7 @@ export class GoogleDirectionsAdapter implements DirectionsPort, OnModuleInit {
         }
 
         const legs: RouteLeg[] = vendorLegs.map((leg, index) => {
-          const polyline = leg.polyline?.points;
+          const polyline = legPolyline(leg.steps);
           // A leg with no geometry is not a route we can draw. Falling back is
           // better than shipping a leg the client will render as nothing.
           if (!polyline) {
@@ -166,4 +166,29 @@ export class GoogleDirectionsAdapter implements DirectionsPort, OnModuleInit {
       },
     );
   }
+}
+
+/**
+ * One leg's shape, from its steps. Google's Directions legs carry no polyline;
+ * each step does (the route's `overview_polyline` covers every leg at once, so
+ * it cannot be split per leg). The steps are joined end to end, dropping the
+ * point where one step ends and the next begins. Null when no step has one.
+ *
+ * This was read from a `leg.polyline` that Google never sends, so every real
+ * answer was rejected and each trip fell back to a straight line.
+ */
+export function legPolyline(
+  steps: Array<{ polyline?: { points?: string } }> | undefined,
+): string | null {
+  const points: GeoPoint[] = [];
+  for (const step of steps ?? []) {
+    const encoded = step.polyline?.points;
+    if (!encoded) continue;
+    const decoded = decodePolyline(encoded);
+    const last = points[points.length - 1];
+    const first = decoded[0];
+    const start = last && first && last.lat === first.lat && last.lng === first.lng ? 1 : 0;
+    points.push(...decoded.slice(start));
+  }
+  return points.length >= 2 ? encodePolyline(points) : null;
 }

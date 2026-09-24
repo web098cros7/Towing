@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { GeocodingModule } from '../../common/geocoding/geocoding.module';
+import { RoutingModule } from '../../common/routing/routing.module';
 import { AuthModule } from '../auth/auth.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PlacesController } from './places.controller';
@@ -12,7 +13,7 @@ import { PlacesService } from './places.service';
  * fare engine then refuses.
  */
 @Module({
-  imports: [AuthModule, GeocodingModule, PricingModule],
+  imports: [AuthModule, GeocodingModule, PricingModule, RoutingModule],
   controllers: [PlacesController],
   providers: [PlacesService],
 })

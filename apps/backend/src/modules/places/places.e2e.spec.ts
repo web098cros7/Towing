@@ -1,9 +1,15 @@
 import type { INestApplication } from '@nestjs/common';
-import type { PlaceAutocompleteResponse, PlaceDetail } from '@towing/api-contracts';
+import {
+  decodePolyline,
+  placeRouteResponseSchema,
+  type PlaceAutocompleteResponse,
+  type PlaceDetail,
+} from '@towing/api-contracts';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { serviceZones } from '../../db/schema';
 import { createTestApp, customerAuthHeaderFor, driverAuthHeaderFor } from '../../test/app';
+import { expectMatchesContract } from '../../test/contracts';
 import {
   seedCustomer,
   seedDriver,
@@ -218,6 +224,33 @@ describe('places', () => {
     it('422s an out-of-range coordinate', async () => {
       await request(app.getHttpServer())
         .get('/v1/places/reverse?lat=200&lng=0')
+        .set('Authorization', auth)
+        .expect(422);
+    });
+  });
+
+  describe('route', () => {
+    const url = '/v1/places/route?fromLat=12.9352&fromLng=77.6245&toLat=12.9784&toLng=77.6408';
+
+    it('returns the line between two points, and says when it is a straight one', async () => {
+      const res = await request(app.getHttpServer()).get(url).set('Authorization', auth).expect(200);
+      const body = expectMatchesContract(placeRouteResponseSchema, res.body);
+      // Tests run on the offline adapters (test/setup.ts): a straight, labelled line.
+      expect(body.source).toBe('haversine');
+      const points = decodePolyline(body.polyline);
+      expect(points.length).toBeGreaterThanOrEqual(2);
+      expect(points[0]!.lat).toBeCloseTo(12.9352, 4);
+      expect(points.at(-1)!.lng).toBeCloseTo(77.6408, 4);
+      expect(body.distanceMeters).toBeGreaterThan(4000);
+    });
+
+    it('401s without a token — Directions spends vendor quota', async () => {
+      await request(app.getHttpServer()).get(url).expect(401);
+    });
+
+    it('422s a missing end point', async () => {
+      await request(app.getHttpServer())
+        .get('/v1/places/route?fromLat=12.9&fromLng=77.6')
         .set('Authorization', auth)
         .expect(422);
     });

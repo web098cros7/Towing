@@ -82,6 +82,25 @@ export const placeReverseQuerySchema = z.object({
 });
 export type PlaceReverseQuery = z.infer<typeof placeReverseQuerySchema>;
 
+/** `GET /v1/places/route`: the road route between two points, for the booking map's line. */
+export const placeRouteQuerySchema = z.object({
+  fromLat: z.coerce.number().min(-90).max(90),
+  fromLng: z.coerce.number().min(-180).max(180),
+  toLat: z.coerce.number().min(-90).max(90),
+  toLng: z.coerce.number().min(-180).max(180),
+});
+export type PlaceRouteQuery = z.infer<typeof placeRouteQuerySchema>;
+
+export const placeRouteResponseSchema = z.object({
+  /** Encoded Google polyline, pickup first. */
+  polyline: z.string(),
+  distanceMeters: z.number().nonnegative(),
+  durationSeconds: z.number().nonnegative(),
+  /** `haversine` is a straight line (Directions unavailable): draw it dashed, never as roads. */
+  source: z.enum(['google_directions', 'haversine']),
+});
+export type PlaceRouteResponse = z.infer<typeof placeRouteResponseSchema>;
+
 /** Same shape as details — the map pin and a picked suggestion must fill the field identically. */
 export const placeReverseResponseSchema = placeDetailSchema;
 export type PlaceReverseResponse = z.infer<typeof placeReverseResponseSchema>;
