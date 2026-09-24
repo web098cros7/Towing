@@ -346,11 +346,20 @@ export function BookTowScreen() {
 
   const nearby = useNearbyDrivers(pickupCoords);
   const overlays = useMemo<MapOverlay[]>(() => {
-    const list: MapOverlay[] = (nearby.data?.points ?? []).slice(0, 12).map((point, i) => ({
+    const vehicles =
+      nearby.data?.vehicles ??
+      (nearby.data?.points ?? []).map((coordinate) => ({
+        coordinate,
+        headingDeg: null,
+        vehicleClass: null,
+      }));
+    const list: MapOverlay[] = vehicles.slice(0, 12).map((v, i) => ({
       key: `truck-${i}`,
-      coordinate: point,
-      view: <NearbyTruck />,
+      coordinate: v.coordinate,
+      view: <NearbyTruck vehicleClass={v.vehicleClass} headingDeg={v.headingDeg} />,
+      anchor: { x: 0.5, y: 0.5 },
       zIndex: 1,
+      contentKey: `${v.vehicleClass}|${v.headingDeg}`,
     }));
     list.push({
       key: 'pickup',
@@ -371,7 +380,7 @@ export function BookTowScreen() {
       });
     }
     return list;
-  }, [nearby.data?.points, pickupCoords, dropCoords, pickupAddress, dropAddress]);
+  }, [nearby.data?.vehicles, nearby.data?.points, pickupCoords, dropCoords, pickupAddress, dropAddress]);
 
   /** Recenter: frame pickup, drop and the route again, undoing any pan or zoom. Never moves either point. */
   const recenter = useCallback(() => {

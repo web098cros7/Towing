@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, Text, View } from 'react-native';
+import { TowTruckIcon, type TowVehicleClass } from '@/components/TowTruckIcon';
+import { Text, View } from 'react-native';
 import Svg, { Circle, Defs, Path, Polyline, RadialGradient, Stop } from 'react-native-svg';
 import { useTheme } from '@towing/theme';
 import { mitowColors, mitowRadii, mitowType } from '@/design';
@@ -9,7 +10,6 @@ import { mitowColors, mitowRadii, mitowType } from '@/design';
  * feathered by the design's Soft mask (opaque to 0.74 of the radius, then fading),
  * baked at the Truck group's 66 × 68 (@1x/@2x/@3x).
  */
-const truckTopDown = require('./assets/truck-topdown.png');
 
 /**
  * The Map Callout (Tail=Bottom Left `223:35`) riding on the truck: its copy,
@@ -84,12 +84,21 @@ export const ROUTE_START_PT = 36;
 /** The in-marker copy of the route runs just past the glow's edge (radius 43 about (90, 213)). */
 export const ROUTE_STUB_END_PT = 46;
 
+/** The truck's drawn square, centred on `TRUCK_CENTRE` (the design's truck image spans 66 × 68 there). */
+const TRUCK_SIZE = 64;
+
 export function TruckMarker({
   routeStub,
   callout,
+  vehicleClass,
+  headingDeg,
 }: {
   routeStub: { x: number; y: number }[];
   callout: TruckCalloutSpec;
+  /** The driver's truck (owner's icons, 24 Sep 2026); unknown draws a wheel-lift. */
+  vehicleClass: TowVehicleClass | null;
+  /** Which way it faces, degrees clockwise from north; unknown faces north. */
+  headingDeg: number | null;
 }) {
   const { box } = truckMarkerGeometry(callout);
   const stubPoints = routeStub
@@ -128,10 +137,15 @@ export function TruckMarker({
         </Svg>
       ) : null}
 
-      <Image
-        source={truckTopDown}
-        style={{ position: 'absolute', left: 12, top: 48.8, width: 66, height: 68 }}
-      />
+      <View
+        style={{
+          position: 'absolute',
+          left: TRUCK_CENTRE.x - TRUCK_SIZE / 2,
+          top: TRUCK_CENTRE.y - TRUCK_SIZE / 2,
+        }}
+      >
+        <TowTruckIcon vehicleClass={vehicleClass} headingDeg={headingDeg} size={TRUCK_SIZE} />
+      </View>
 
       <TruckCallout callout={callout} />
     </View>

@@ -411,10 +411,25 @@ function LiveTripMap({
   const stubKey = split ? stubKeyOf(split.stub) : '';
   const callout = truckDesign?.callout ?? EN_ROUTE_TRUCK_CALLOUT;
 
-  // Built per stub shape and callout only: the overlay is a snapshot, so the view must not change per frame.
+  // The driver's truck faces its heading, in 15 degree steps: the overlay is a
+  // snapshot, so it is redrawn when the step changes, never per frame.
+  const truckClass = tracking?.driver?.vehicleClass ?? null;
+  const headingKnown =
+    tracking?.position?.headingDeg !== null && tracking?.position?.headingDeg !== undefined;
+  const headingStep =
+    headingKnown && animated ? (Math.round(animated.heading / 15) * 15) % 360 : null;
+
+  // Built per stub shape, callout, truck and heading step only: the overlay is a snapshot.
   const truckView = useMemo(
-    () => <TruckMarker routeStub={stubFromKey(stubKey)} callout={callout} />,
-    [callout, stubKey],
+    () => (
+      <TruckMarker
+        routeStub={stubFromKey(stubKey)}
+        callout={callout}
+        vehicleClass={truckClass}
+        headingDeg={headingStep}
+      />
+    ),
+    [callout, stubKey, truckClass, headingStep],
   );
   const pinView = useMemo(() => <MiLineIcon name="map-pin" size={PIN_SIZE} />, []);
   const arrivedCalloutView = useMemo(() => <ArrivedCallout />, []);
@@ -456,7 +471,7 @@ function LiveTripMap({
           anchor: truckMarkerGeometry(truckDesign.callout).anchor,
           zIndex: 2,
           // Re-snapshot whenever the route's stretch under the glow, or the callout, changes.
-          contentKey: `${variant}|${stubKey}`,
+          contentKey: `${variant}|${stubKey}|${truckClass}|${headingStep}`,
           accessibilityLabel: truckDesign.callout.text.replace('\n', ' '),
         });
       }
@@ -501,6 +516,8 @@ function LiveTripMap({
     }
     return out;
   }, [
+    headingStep,
+    truckClass,
     arrivedCalloutView,
     destination,
     driverChipLabel,

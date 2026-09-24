@@ -20,6 +20,11 @@ export const homeRestSource: HomeDataSource = {
       // `react-native-maps` takes. Converting here rather than at each marker
       // keeps the mismatch in one place.
       points: response.points.map((point) => ({ latitude: point.lat, longitude: point.lng })),
+      vehicles: response.vehicles.map((v) => ({
+        coordinate: { latitude: v.lat, longitude: v.lng },
+        headingDeg: v.headingDeg,
+        vehicleClass: v.vehicleClass,
+      })),
       coarsenedToMeters: response.coarsenedToMeters,
       degraded: response.degraded,
     };

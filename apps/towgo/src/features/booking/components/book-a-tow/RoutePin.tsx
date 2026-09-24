@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
+import { TowTruckIcon, type TowVehicleClass } from '@/components/TowTruckIcon';
 import { mitowColors, MiText } from '@/design';
 
 /** Pickup green and drop red, as ride apps mark the two ends of a trip. */
@@ -58,19 +59,13 @@ export function RoutePin({ kind, label }: { kind: 'pickup' | 'drop'; label: stri
   );
 }
 
-/**
- * A nearby tow truck on the booking map. Home's truck art for now; the owner is
- * sending a dedicated top-down icon, which replaces this image.
- */
-const truckArt = require('@/screens/home/components/assets/home-map-truck.png');
-
-export function NearbyTruck() {
-  return (
-    <Image
-      source={truckArt}
-      style={{ width: 42, height: 28 }}
-      resizeMode="contain"
-      accessibilityIgnoresInvertColors
-    />
-  );
+/** A nearby tow truck on the booking map: its own kind, facing the way it is heading. */
+export function NearbyTruck({
+  vehicleClass,
+  headingDeg,
+}: {
+  vehicleClass: TowVehicleClass | null;
+  headingDeg: number | null;
+}) {
+  return <TowTruckIcon vehicleClass={vehicleClass} headingDeg={headingDeg} size={44} />;
 }

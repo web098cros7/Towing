@@ -21,6 +21,15 @@ export type NearbySupply = {
   /** Honest total, counted before coarsening collapsed co-located drivers. */
   count: number;
   points: LatLng[];
+  /**
+   * `points` with which way each truck faces and what kind it is, for the map's
+   * truck icons. Absent from the mock, which draws the old dots' positions.
+   */
+  vehicles?: {
+    coordinate: LatLng;
+    headingDeg: number | null;
+    vehicleClass: 'flatbed' | 'wheel_lift' | null;
+  }[];
   coarsenedToMeters: number;
   /** Redis was unavailable and this came from the last ~30s flush (§19.2). */
   degraded: boolean;
