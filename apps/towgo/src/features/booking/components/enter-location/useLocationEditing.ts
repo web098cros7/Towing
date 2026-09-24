@@ -13,6 +13,7 @@ import { placesDataSource } from '@/features/places/api/placesDataSource';
 import { recentLocations } from '../../data/recentLocations.data';
 import type { LocationField } from '../LocationFields';
 import { useRecentPlacesStore } from './recentPlacesStore';
+import { fullPlaceText } from '@/utils/address';
 
 type Drafts = Record<LocationField, string | null>;
 
@@ -20,13 +21,13 @@ const samePoint = (a: LatLng | null | undefined, b: LatLng | null | undefined) =
   !!a && !!b && a.latitude === b.latitude && a.longitude === b.longitude;
 
 /**
- * The value a resolved place writes into Pickup / Drop. Figma 10 draws it as
- * "<place>, <city>" ("MG Road, Bengaluru"). The contract's `label` is the bare
- * short name, so mock mode maps it through the mock rows' `value` (the same
- * display titles screen 13 shows); live mode writes `label`.
+ * The value a resolved place writes into Pickup / Drop: live, its FULL address
+ * (owner, 24 Sep 2026, as Rapido shows it), with the place's name in front for
+ * a named place; screens split it into a bold first part and the rest. Mock
+ * mode maps the label through the mock rows' `value` ("MG Road, Bengaluru").
  */
 function placeFieldValue(place: PlaceDetail): string {
-  if (!env.useMocks) return place.label;
+  if (!env.useMocks) return fullPlaceText(place.label, place.address);
   return recentLocations.find((l) => l.name === place.label)?.value ?? place.label;
 }
 

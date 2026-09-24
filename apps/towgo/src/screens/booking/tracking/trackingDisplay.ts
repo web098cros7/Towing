@@ -1,5 +1,6 @@
 import type { BookingTracking, JobStatus, TrackedDriver } from '@towing/api-contracts';
 import { towMethodLabelFor } from '@/features/booking/data/towTypes.data';
+import { shortPlace } from '@/utils/address';
 
 /**
  * The tracked driver, as the contract now carries it (Figma 18 · Driver En
@@ -82,8 +83,9 @@ export function addressOrNull(label: string | null | undefined): string | null {
  * kind of rule as `firstNameOf` (owner decision, data gap).
  */
 export function areaOf(address: string | null): string | null {
-  const first = address?.split(',')[0]?.trim();
-  return first ? first : null;
+  // A full address starts with a house number or a plus code more often than
+  // not ("50, Mehdi Hassan Rd, …"); the place's name is the first other part.
+  return shortPlace(address);
 }
 
 /**

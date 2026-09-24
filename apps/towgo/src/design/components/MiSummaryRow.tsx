@@ -22,6 +22,11 @@ export type MiSummaryRowProps = {
    */
   valueSlotWidth?: number;
   /**
+   * Lines the value may take. Default 1, clipped (the master). An address uses 2 with an
+   * ellipsis (owner, 24 Sep 2026: full addresses, as Rapido shows them).
+   */
+  valueLines?: number;
+  /**
    * Icon#224:12, 28 × 28. A line-icon name (default 'map-pin'; 16, 17, 20, 21) or a colour icon
    * `{ color: 'calendar' }` (30's Date & Time / Payment Method / Transaction ID rows swap the
    * slot to icon/color/*).
@@ -50,6 +55,7 @@ export function MiSummaryRow({
   label,
   value,
   valueSlotWidth = 159,
+  valueLines = 1,
   icon = 'map-pin',
   showChevron = false,
   trailing,
@@ -71,7 +77,11 @@ export function MiSummaryRow({
           {label}
         </MiText>
         {value !== null ? (
-          <MiText variant="bodyM15" numberOfLines={1} ellipsizeMode="clip">
+          <MiText
+            variant="bodyM15"
+            numberOfLines={valueLines}
+            ellipsizeMode={valueLines > 1 ? 'tail' : 'clip'}
+          >
             {value}
           </MiText>
         ) : (

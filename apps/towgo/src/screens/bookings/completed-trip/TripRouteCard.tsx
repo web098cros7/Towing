@@ -20,6 +20,7 @@ import {
   tripWindowLabel,
   type TripStamps,
 } from './completedTripDisplay';
+import { splitAddress } from '@/utils/address';
 
 /**
  * 35's Trip route card `245:907`: a 351-wide white card, 1.2 border/subtle, radius 16,
@@ -68,6 +69,8 @@ export function TripRouteCard({
   booking: BookingDetail;
   tracking: BookingTrackingDisplay | undefined;
 }) {
+  const pickup = splitAddress(stopTitle(booking.originLabel));
+  const drop = splitAddress(stopTitle(booking.destinationLabel));
   const stamps = tripStamps(tracking);
 
   return (
@@ -87,18 +90,22 @@ export function TripRouteCard({
       <View>
         <MiTimelineRow
           state="pickup"
-          title={stopTitle(booking.originLabel)}
+          title={pickup?.primary ?? null}
           titleSlotWidth={STOP_TITLE_SLOT}
-          subtitleSlotWidth={STOP_SUBTITLE_SLOT}
+          // The rest of the address under the bold first part, as Rapido shows it; a
+          // stop saved before full addresses has none, and then no line (not a bar).
+          subtitle={pickup?.secondary || undefined}
+          subtitleSlotWidth={pickup ? undefined : STOP_SUBTITLE_SLOT}
           time={startedClock(stamps)}
           timeSlotWidth={STOP_TIME_SLOT}
           height={PICKUP_HEIGHT}
         />
         <MiTimelineRow
           state="drop"
-          title={stopTitle(booking.destinationLabel)}
+          title={drop?.primary ?? null}
           titleSlotWidth={STOP_TITLE_SLOT}
-          subtitleSlotWidth={STOP_SUBTITLE_SLOT}
+          subtitle={drop?.secondary || undefined}
+          subtitleSlotWidth={drop ? undefined : STOP_SUBTITLE_SLOT}
           time={completedClock(stamps)}
           timeSlotWidth={STOP_TIME_SLOT}
           height={DROP_HEIGHT}

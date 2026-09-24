@@ -28,6 +28,7 @@ import type { RootStackParamList } from '@/navigation/types';
 import type { LatLng } from '@/types/geo';
 import { readDeviceFix } from './pick-on-map/deviceFix';
 import { usePickOnMapPlace } from './pick-on-map/usePickOnMapPlace';
+import { fullPlaceText } from '@/utils/address';
 
 /** Figma 13 geometry (393 x 852 frame). */
 const CARD_PAD_TOP = 20;
@@ -136,7 +137,10 @@ export function MapPickerScreen() {
   const onConfirm = useCallback(() => {
     // The coordinate always exists; with no title yet (lookup in flight or
     // failed) a formatted coordinate keeps the field honest.
-    const label = title || `${centre.latitude.toFixed(5)}, ${centre.longitude.toFixed(5)}`;
+    // The full address, as every picked place is stored (owner, 24 Sep 2026).
+    const label = title
+      ? fullPlaceText(title, address)
+      : `${centre.latitude.toFixed(5)}, ${centre.longitude.toFixed(5)}`;
 
     if (field === 'pickup') {
       setPickupAddress(label);
@@ -148,6 +152,7 @@ export function MapPickerScreen() {
     navigation.goBack();
   }, [
     title,
+    address,
     centre,
     field,
     setPickupAddress,

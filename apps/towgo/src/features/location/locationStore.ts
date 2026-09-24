@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as Location from 'expo-location';
 import { placesDataSource } from '@/features/places/api/placesDataSource';
 import type { LocationStatus, PickupLocation } from './types';
+import { fullPlaceText } from '@/utils/address';
 
 const DEFAULT_PICKUP: PickupLocation = {
   label: 'MG Road, Bengaluru',
@@ -52,7 +53,7 @@ export const useLocationStore = create<LocationState>((set, get) => ({
       const current = get().pickup.coords;
       // Only if the pickup is still this fix (nothing picked meanwhile).
       if (current?.latitude === coords.latitude && current.longitude === coords.longitude) {
-        set({ pickup: { label: place.label, coords } });
+        set({ pickup: { label: fullPlaceText(place.label, place.address), coords } });
       }
     } catch {
       // Offline or no match: "Current Location" stays.

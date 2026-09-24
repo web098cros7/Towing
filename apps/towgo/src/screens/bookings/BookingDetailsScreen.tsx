@@ -307,8 +307,18 @@ export function BookingDetailsScreen() {
             padding={14 - LOCATIONS_BORDER}
             gap={15}
           >
-            <MiSummaryRow label="Pickup Location" value={booking.originLabel} icon="map-pin" />
-            <MiSummaryRow label="Drop Location" value={booking.destinationLabel} icon="map-pin" />
+            <MiSummaryRow
+              label="Pickup Location"
+              value={booking.originLabel}
+              valueLines={2}
+              icon="map-pin"
+            />
+            <MiSummaryRow
+              label="Drop Location"
+              value={booking.destinationLabel}
+              valueLines={2}
+              icon="map-pin"
+            />
           </MiCard>
         </View>
       </>

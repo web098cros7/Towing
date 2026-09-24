@@ -104,8 +104,8 @@ export function SearchingSheet({
 
       {/* Trip card 291:2424 / 291:2490: padding 12 / 14 / 14 inside a 1.2 border, gap 10. */}
       <MiCard paddingTop={12} paddingBottom={14} paddingHorizontal={14} gap={10}>
-        <MiSummaryRow label="Pickup" value={pickup} />
-        <MiSummaryRow label="Drop" value={drop} />
+        <MiSummaryRow label="Pickup" value={pickup} valueLines={2} />
+        <MiSummaryRow label="Drop" value={drop} valueLines={2} />
       </MiCard>
 
       {noDrivers ? (
