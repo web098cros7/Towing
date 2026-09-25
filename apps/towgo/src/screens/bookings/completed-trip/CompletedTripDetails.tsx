@@ -247,10 +247,14 @@ export function CompletedTripDetails({
             dividers={false}
           >
             <MiMenuRow
-              icon={method ? { color: methodIconName(method) } : null}
-              title={paidViaLabel(method)}
+              // Unpaid: the row says so in words (owner, 25 Sep 2026: empty placeholder
+              // bars did not tell the customer the amount is still due).
+              icon={
+                unpaid ? { color: 'hourglass' } : method ? { color: methodIconName(method) } : null
+              }
+              title={unpaid ? 'Payment pending' : paidViaLabel(method)}
               titleSlotWidth="fill"
-              subtitle={paidAt}
+              subtitle={unpaid ? 'Tap to pay now' : paidAt}
               subtitleSlotWidth="fill"
               value={formatPaise(booking.farePaise)}
               valueSlotWidth={AMOUNT_SLOT}
