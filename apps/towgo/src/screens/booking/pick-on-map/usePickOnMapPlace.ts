@@ -10,6 +10,14 @@ export type PickOnMapCard = {
   title: string | undefined;
   /** Bottom card address line (Figma 13 `289:2336`). */
   address: string | undefined;
+  /**
+   * Whether `title` / `address` describe THIS point. `loading` while the lookup
+   * for the current point is in flight: the query keeps the previous answer as
+   * placeholder data, and confirming then saved the previous place's name at the
+   * new point ("stuck on the previous address", owner, 25 Sep 2026), so nothing
+   * is exposed until this point's own answer lands. `failed` when it errored.
+   */
+  status: 'loading' | 'ready' | 'failed';
 };
 
 /**
@@ -18,15 +26,18 @@ export type PickOnMapCard = {
  * the designed title and address lines.
  */
 export function usePickOnMapPlace(point: LatLng): PickOnMapCard {
-  const { data } = useReverseGeocode(point);
+  const { data, isPlaceholderData, isError } = useReverseGeocode(point);
+  const current = data && !isPlaceholderData ? data : undefined;
+  const status: PickOnMapCard['status'] = current ? 'ready' : isError ? 'failed' : 'loading';
 
   return useMemo(() => {
-    if (!data) return { place: undefined, title: undefined, address: undefined };
-    const place = pickOnMapPlaceSource.withDisplay(data);
+    if (!current) return { place: undefined, title: undefined, address: undefined, status };
+    const place = pickOnMapPlaceSource.withDisplay(current);
     return {
       place,
       title: place.displayTitle ?? place.label,
       address: place.displayAddress ?? place.address,
+      status,
     };
-  }, [data]);
+  }, [current, status]);
 }

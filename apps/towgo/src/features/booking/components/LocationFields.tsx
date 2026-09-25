@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
 import { StyleSheet, TextInput, View, type TextStyle } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
+import Svg, { Line } from 'react-native-svg';
 import { useTheme } from '@towing/theme';
 import { usePressablePrimitive } from '@towing/ui';
-import {
-  mitowColors,
-  mitowRadii,
-  mitowShadows,
-  mitowType,
-  MiLineIcon,
-  MiMapButton,
-  MiText,
-} from '@/design';
+import { mitowColors, mitowRadii, mitowShadows, mitowType, MiMapButton, MiText } from '@/design';
+import { PinHead } from './book-a-tow/RoutePin';
 
 export type LocationField = 'pickup' | 'drop';
 
@@ -49,13 +42,16 @@ function useValueStyle(): TextStyle {
   };
 }
 
-/** Pickup marker 289:2211: 26 box, 20px #CCD2DA disc with a 10px #0B0C0E centre. */
-function PickupMarker() {
+/**
+ * Row marker in the 26 box: the green pickup / red drop pin head the maps use
+ * (Book a Tow, Pick on Map), so a field and its pin on the map read as one thing
+ * (owner, 25 Sep 2026; Figma 289:2211 draws a grey disc and a black pin).
+ */
+function FieldMarker({ kind }: { kind: LocationField }) {
   return (
-    <Svg width={MARKER} height={MARKER} viewBox="0 0 26 26">
-      <Circle cx={13} cy={13} r={10} fill={mitowColors.borderHandle} />
-      <Circle cx={13} cy={13} r={5} fill={mitowColors.textPrimary} />
-    </Svg>
+    <View style={{ width: MARKER, height: MARKER, alignItems: 'center', justifyContent: 'center' }}>
+      <PinHead kind={kind} size={20} />
+    </View>
   );
 }
 
@@ -230,7 +226,7 @@ export function LocationFields({
         inputRef={pickupInputRef}
         returnKeyType="next"
         onSubmitEditing={() => dropInputRef.current?.focus()}
-        marker={<PickupMarker />}
+        marker={<FieldMarker kind="pickup" />}
         trailing={
           <MiMapButton
             icon="locate"
@@ -261,7 +257,7 @@ export function LocationFields({
         onBlur={() => onBlurField('drop')}
         inputRef={dropInputRef}
         returnKeyType="done"
-        marker={<MiLineIcon name="map-pin" size={MARKER} />}
+        marker={<FieldMarker kind="drop" />}
         trailing={
           <MiMapButton
             colorIcon="swap"

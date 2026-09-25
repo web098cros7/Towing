@@ -42,8 +42,10 @@ const coordinateValue = (p: LatLng) => `${p.latitude.toFixed(5)}, ${p.longitude.
  * matches, and `selectSuggestion` fills the field with the one tapped. Typed
  * text is a local draft; when editing ends without a pick (keyboard Done /
  * Next, focus leaving the field, or Continue) the draft still resolves to the
- * best-matching place and its coordinate. If nothing matches, the field
- * returns to the place it held, with an error haptic.
+ * best-matching place and its coordinate. If nothing matches, the typed text
+ * STAYS, the field is marked unresolved (the screen says so) and Continue waits
+ * for a real place. It used to snap back to the previous place, which read as
+ * the field being stuck on the old address (owner, 25 Sep 2026).
  *
  * THE COORDINATE MOVES WITH THE LABEL, ALWAYS: the booking store only ever
  * receives a label together with its coordinate, so the fare engine never
@@ -77,10 +79,14 @@ export function useLocationEditing({
   /** The field a saved / recent row fills. Starts on drop when a pickup is already known. */
   const [activeField, setActiveField] = useState<LocationField>(pickupAddress ? 'drop' : 'pickup');
   const [locating, setLocating] = useState(false);
+  /** The field whose typed text matched no place (shown as a hint), if any. */
+  const [unresolved, setUnresolved] = useState<LocationField | null>(null);
 
   const setDraft = useCallback((field: LocationField, value: string | null) => {
     draftsRef.current = { ...draftsRef.current, [field]: value };
     setDrafts(draftsRef.current);
+    // Any new text (or a place written in) clears that field's "no match" hint.
+    setUnresolved((u) => (u === field ? null : u));
   }, []);
 
   // The (debounced, cached) search for text the customer has actually typed.
@@ -150,8 +156,10 @@ export function useLocationEditing({
             value,
           });
         } catch {
+          // Keep what was typed and say so, rather than silently putting the
+          // previous place back.
           if (draftsRef.current[field] === draft) {
-            setDraft(field, null);
+            setUnresolved(field);
             haptics.error();
           }
         } finally {
@@ -210,8 +218,9 @@ export function useLocationEditing({
             value,
           });
         } catch {
+          // The place could not be looked up (offline): keep the name and flag it.
           if (draftsRef.current[field] === shown) {
-            setDraft(field, null);
+            setUnresolved(field);
             haptics.error();
           }
         } finally {
@@ -290,6 +299,13 @@ export function useLocationEditing({
    */
   const finish = useCallback(async (): Promise<boolean> => {
     await Promise.all([commit('pickup'), commit('drop')]);
+    // Typed text that matched no place is not a place: send the customer back to it.
+    for (const field of ['pickup', 'drop'] as const) {
+      if (draftsRef.current[field] !== null) {
+        (field === 'pickup' ? pickupRef : dropRef).current?.focus();
+        return false;
+      }
+    }
     const state = useBookingStore.getState();
     if (!state.pickupAddress.trim()) {
       pickupRef.current?.focus();
@@ -360,8 +376,17 @@ export function useLocationEditing({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A place set from outside this screen (Pick on Map) moves the next step on:
+  // with a pickup and no drop, the drop is what "Select on map" and a saved or
+  // recent row fill next.
+  useEffect(() => {
+    if (focusedField === null && pickupAddress && !dropAddress) setActiveField('drop');
+  }, [pickupAddress, dropAddress, focusedField]);
+
   return {
     pickupText: drafts.pickup ?? pickupAddress,
+    /** The field whose typed text matched no place, for the screen's hint. */
+    unresolved,
     dropText: drafts.drop ?? dropAddress,
     activeField,
     /** The field being typed in, while it has text to search; null otherwise. */

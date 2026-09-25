@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useTheme } from '@towing/theme';
 import { usePressablePrimitive } from '@towing/ui';
 import { mitowColors, mitowLayout, mitowRadii, mitowShadows, MiText } from '@/design';
+import { PIN_COLOR } from './RoutePin';
 
 /**
  * Figma 14 Route summary `370:18920`: a 46-tall floating card (radius 16,
@@ -71,7 +72,8 @@ export function RouteSummaryPill({
 /**
  * Route glyph `370:18921`, 8 × 28: Pickup ring (8, 2 text/primary stroke, white
  * fill), Line (2 × 8 at 3, 10, border/subtle) and Drop (8 × 8 at 0, 20, radius 2,
- * text/primary).
+ * text/primary), recoloured green / red like every pickup and drop pin (owner,
+ * 25 Sep 2026).
  */
 function RouteGlyph() {
   return (
@@ -85,7 +87,7 @@ function RouteGlyph() {
           height: 8,
           borderRadius: 4,
           borderWidth: 2,
-          borderColor: mitowColors.textPrimary,
+          borderColor: PIN_COLOR.pickup,
           backgroundColor: mitowColors.surfacePage,
         }}
       />
@@ -107,7 +109,7 @@ function RouteGlyph() {
           width: 8,
           height: 8,
           borderRadius: 2,
-          backgroundColor: mitowColors.textPrimary,
+          backgroundColor: PIN_COLOR.drop,
         }}
       />
     </View>

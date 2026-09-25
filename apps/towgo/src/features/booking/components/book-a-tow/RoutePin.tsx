@@ -4,7 +4,7 @@ import { TowTruckIcon, type TowVehicleClass } from '@/components/TowTruckIcon';
 import { mitowColors, MiText } from '@/design';
 
 /** Pickup green and drop red, as ride apps mark the two ends of a trip. */
-const PIN_COLOR = { pickup: '#1E9E5A', drop: '#E0463B' } as const;
+export const PIN_COLOR = { pickup: '#1E9E5A', drop: '#E0463B' } as const;
 const PIN = 22;
 const STEM = 12;
 
@@ -14,7 +14,6 @@ const STEM = 12;
  * anchor is the stem's foot, `{ x: 0.5, y: 1 }`, so the stem touches the point.
  */
 export function RoutePin({ kind, label }: { kind: 'pickup' | 'drop'; label: string }) {
-  const color = PIN_COLOR[kind];
   return (
     <View style={{ alignItems: 'center' }}>
       {label ? (
@@ -35,29 +34,40 @@ export function RoutePin({ kind, label }: { kind: 'pickup' | 'drop'; label: stri
           </MiText>
         </View>
       ) : null}
-      <View
-        style={{
-          width: PIN,
-          height: PIN,
-          borderRadius: PIN / 2,
-          backgroundColor: color,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <View
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: mitowColors.surfacePage,
-          }}
-        />
-      </View>
+      <PinHead kind={kind} />
       <View style={{ width: 2, height: STEM, backgroundColor: mitowColors.textPrimary }} />
     </View>
   );
 }
+
+/** The pin's head alone: a green (pickup) or red (drop) disc with a white centre. */
+export function PinHead({ kind, size = PIN }: { kind: 'pickup' | 'drop'; size?: number }) {
+  const dot = Math.round(size * 0.36);
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: PIN_COLOR[kind],
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <View
+        style={{
+          width: dot,
+          height: dot,
+          borderRadius: dot / 2,
+          backgroundColor: mitowColors.surfacePage,
+        }}
+      />
+    </View>
+  );
+}
+
+/** How tall a label-less `RoutePin` is (head + stem): its tip sits this far below its top. */
+export const ROUTE_PIN_HEIGHT = PIN + STEM;
 
 /** A nearby tow truck on the booking map: its own kind, facing the way it is heading. */
 export function NearbyTruck({

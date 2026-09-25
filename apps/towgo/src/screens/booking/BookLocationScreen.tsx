@@ -3,7 +3,7 @@ import { Keyboard, ScrollView, View, type TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { mitowLayout, MiButton, MiNavBar, MiScreen } from '@/design';
+import { mitowLayout, MiButton, MiNavBar, MiScreen, MiText } from '@/design';
 import { LocationFields } from '@/features/booking/components/LocationFields';
 import { BookingPills } from '@/features/booking/components/BookingPills';
 import { LocationActions } from '@/features/booking/components/enter-location/LocationActions';
@@ -129,6 +129,13 @@ export function BookLocationScreen() {
           onSwap={editing.swap}
           locating={editing.locating}
         />
+
+        {/* Typed text that matched no place stays in the field; this says why Continue waits. */}
+        {editing.unresolved ? (
+          <MiText variant="bodyS14" color="danger">
+            {`We couldn't find that ${editing.unresolved} address. Pick one from the list, or use Select on map.`}
+          </MiText>
+        ) : null}
 
         {editing.searchingField ? (
           <PlaceSuggestions suggestions={editing.suggestions} onSelect={editing.selectSuggestion} />

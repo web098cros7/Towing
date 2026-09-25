@@ -16,7 +16,6 @@ import {
   mitowLayout,
   mitowType,
   MiButton,
-  MiLineIcon,
   MiMapButton,
   MiMapCallout,
   MiSheetPanel,
@@ -29,14 +28,16 @@ import type { LatLng } from '@/types/geo';
 import { readDeviceFix } from './pick-on-map/deviceFix';
 import { usePickOnMapPlace } from './pick-on-map/usePickOnMapPlace';
 import { fullPlaceText } from '@/utils/address';
+import {
+  PinHead,
+  ROUTE_PIN_HEIGHT,
+  RoutePin,
+} from '@/features/booking/components/book-a-tow/RoutePin';
 
 /** Figma 13 geometry (393 x 852 frame). */
 const CARD_PAD_TOP = 20;
 /** The map runs 31 under the card's top edge (map 660, card top 629). */
 const MAP_UNDER_CARD = 31;
-/** Map centre (330) to the centre pin frame's top (291). */
-const PIN_ABOVE_CENTRE = 39;
-const PIN_SIZE = 44;
 /** Callout instance width 110 = text box 94 + padding 8 each side. */
 const CALLOUT_TEXT_BOX = 94;
 const CALLOUT_PADDING = 8;
@@ -120,10 +121,25 @@ export function MapPickerScreen() {
   const [centre, setCentre] = useState<LatLng>(opening.point);
 
   const card = usePickOnMapPlace(centre);
-  // Until the first lookup answers, the opening point keeps the label it was
-  // stored with. The title line is always drawn, so it never collapses.
-  const title = card.title ?? (samePoint(centre, opening.point) ? opening.label : '');
-  const address = card.address ?? '';
+  // What the card shows for THIS point, never the previous one's name:
+  // - its own lookup answer once it lands;
+  // - the stored label while still on the opening point (nothing moved yet);
+  // - "Finding address…" while the lookup for a new point is in flight;
+  // - the coordinates when the lookup failed (the point is still exact).
+  const atOpening = samePoint(centre, opening.point) && !!opening.label;
+  const coordinateText = `${centre.latitude.toFixed(5)}, ${centre.longitude.toFixed(5)}`;
+  const title =
+    card.status === 'ready'
+      ? (card.title ?? '')
+      : atOpening
+        ? opening.label
+        : card.status === 'failed'
+          ? 'Dropped pin'
+          : 'Finding address…';
+  const address =
+    card.status === 'ready' ? (card.address ?? '') : card.status === 'failed' ? coordinateText : '';
+  /** Confirm waits for this point's address, so it can never save a stale name. */
+  const confirmWaiting = card.status === 'loading' && !atOpening;
 
   const onRegionChangeComplete = useCallback((region: MapRegion) => {
     setCentre({ latitude: region.latitude, longitude: region.longitude });
@@ -135,12 +151,15 @@ export function MapPickerScreen() {
   }, []);
 
   const onConfirm = useCallback(() => {
-    // The coordinate always exists; with no title yet (lookup in flight or
-    // failed) a formatted coordinate keeps the field honest.
-    // The full address, as every picked place is stored (owner, 24 Sep 2026).
-    const label = title
-      ? fullPlaceText(title, address)
-      : `${centre.latitude.toFixed(5)}, ${centre.longitude.toFixed(5)}`;
+    if (confirmWaiting) return;
+    // The full address, as every picked place is stored (owner, 24 Sep 2026);
+    // the stored label while unmoved; the coordinates when the lookup failed.
+    const label =
+      card.status === 'ready' && card.title
+        ? fullPlaceText(card.title, card.address ?? '')
+        : atOpening
+          ? opening.label
+          : coordinateText;
 
     if (field === 'pickup') {
       setPickupAddress(label);
@@ -151,8 +170,13 @@ export function MapPickerScreen() {
     }
     navigation.goBack();
   }, [
-    title,
-    address,
+    confirmWaiting,
+    card.status,
+    card.title,
+    card.address,
+    atOpening,
+    opening.label,
+    coordinateText,
     centre,
     field,
     setPickupAddress,
@@ -175,7 +199,8 @@ export function MapPickerScreen() {
   const measured = screenHeight !== null && cardHeight !== null;
 
   const mapHeight = measured ? screenHeight - cardHeight + MAP_UNDER_CARD : 0;
-  const pinTop = mapHeight / 2 - PIN_ABOVE_CENTRE;
+  // The pin's tip (the stem's foot) sits on the map centre, the picked point.
+  const pinTop = mapHeight / 2 - ROUTE_PIN_HEIGHT;
   // Anchored by its bottom edge so the 4 gap to the pin holds at any text height.
   const calloutBottom = (screenHeight ?? 0) - (pinTop - CALLOUT_TO_PIN);
 
@@ -237,9 +262,25 @@ export function MapPickerScreen() {
           </MiText>
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: ADDRESS_ICON_GAP }}>
-            <MiLineIcon name="map-pin" size={ADDRESS_ICON} />
+            {/* Green for a pickup, red for a drop: the same pins as Book a Tow. */}
+            <View
+              style={{
+                width: ADDRESS_ICON,
+                height: ADDRESS_ICON,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <PinHead kind={field} size={22} />
+            </View>
             <View style={{ flex: 1, gap: ADDRESS_TEXT_GAP }}>
-              <MiText variant="title20">{title || ' '}</MiText>
+              <MiText
+                variant="title20"
+                color={confirmWaiting ? 'secondary' : undefined}
+                numberOfLines={2}
+              >
+                {title || ' '}
+              </MiText>
               <MiText
                 variant="bodyS14"
                 color="secondary"
@@ -253,6 +294,8 @@ export function MapPickerScreen() {
           <MiButton
             label={field === 'drop' ? 'Confirm drop' : 'Confirm pickup'}
             onPress={onConfirm}
+            loading={confirmWaiting}
+            disabled={confirmWaiting}
           />
         </MiSheetPanel>
       </View>
@@ -272,11 +315,9 @@ export function MapPickerScreen() {
             pointerEvents="none"
             style={{ position: 'absolute', top: pinTop, left: 0, right: 0, alignItems: 'center' }}
           >
-            <MiLineIcon
-              name="map-pin"
-              size={PIN_SIZE}
-              style={{ transform: [{ translateX: PIN_OFFSET_FROM_MID }] }}
-            />
+            <View style={{ transform: [{ translateX: PIN_OFFSET_FROM_MID }] }}>
+              <RoutePin kind={field} label="" />
+            </View>
           </View>
 
           <View
