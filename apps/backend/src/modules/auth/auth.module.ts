@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { DevOtpAdapter } from './dev-otp.adapter';
 import { Msg91OtpAdapter } from './msg91-otp.adapter';
+import { Msg91WidgetOtpAdapter } from './msg91-widget-otp.adapter';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { KycApprovedGuard } from './kyc-approved.guard';
 import { OTP_PORT } from './otp.port';
@@ -68,11 +69,21 @@ import { TokenService } from './token.service';
     // knows which implementation it is talking to.
     DevOtpAdapter,
     Msg91OtpAdapter,
+    Msg91WidgetOtpAdapter,
     {
       provide: OTP_PORT,
-      inject: [ENV, DevOtpAdapter, Msg91OtpAdapter],
-      useFactory: (env: Env, dev: DevOtpAdapter, msg91: Msg91OtpAdapter) =>
-        env.OTP_PROVIDER === 'msg91' ? msg91 : dev,
+      inject: [ENV, DevOtpAdapter, Msg91OtpAdapter, Msg91WidgetOtpAdapter],
+      useFactory: (
+        env: Env,
+        dev: DevOtpAdapter,
+        msg91: Msg91OtpAdapter,
+        widget: Msg91WidgetOtpAdapter,
+      ) =>
+        env.OTP_PROVIDER === 'msg91_widget'
+          ? widget
+          : env.OTP_PROVIDER === 'msg91'
+            ? msg91
+            : dev,
     },
   ],
   exports: [

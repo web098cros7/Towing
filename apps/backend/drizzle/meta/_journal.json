@@ -316,6 +316,13 @@
       "when": 1789986500013,
       "tag": "0044_booking_in_transit_at",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789986501013,
+      "tag": "0045_otp_vendor_ref",
+      "breakpoints": true
     }
   ]
 }

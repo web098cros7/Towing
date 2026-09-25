@@ -772,13 +772,21 @@ const EnvSchema = z.object({
   MSG91_AUTH_KEY: z.string().optional(),
   MSG91_SENDER_ID: z.string().optional(),
   /**
-   * Who delivers login codes (`OtpPort`). `dev` writes them to the log (and to
-   * Redis for the on-screen echo); `msg91` sends a real SMS through MSG91's Flow
-   * API using the DLT-registered OTP template below. Separate from
-   * `NOTIFY_SMS_PROVIDER` on purpose: codes never pass through the notification
-   * spine (see `msg91-otp.adapter.ts`).
+   * Who delivers login codes (`OtpPort`).
+   * - `dev`: the log, plus Redis for the on-screen echo.
+   * - `msg91`: our code as a real SMS through MSG91's Flow API and our own
+   *   DLT-registered template (`msg91-otp.adapter.ts`).
+   * - `msg91_widget`: MSG91's OTP Widget, which sends through MSG91's own
+   *   approved templates (no DLT of ours) but makes and checks the code itself
+   *   (`msg91-widget-otp.adapter.ts`). The owner's choice, 25 Sep 2026.
+   * Separate from `NOTIFY_SMS_PROVIDER` on purpose: codes never pass through
+   * the notification spine.
    */
-  OTP_PROVIDER: z.enum(['dev', 'msg91']).default('dev'),
+  OTP_PROVIDER: z.enum(['dev', 'msg91', 'msg91_widget']).default('dev'),
+  /** MSG91 OTP Widget id (dashboard → OTP → Widgets). */
+  MSG91_WIDGET_ID: z.string().optional(),
+  /** The widget's token (`tokenAuth`, dashboard → OTP → Tokens). A secret. */
+  MSG91_WIDGET_TOKEN: z.string().optional(),
   /** MSG91 template (Flow) id of the DLT-approved login-code SMS. */
   MSG91_OTP_TEMPLATE_ID: z.string().optional(),
   /** The template's variable that carries the code, e.g. `otp` for "…is ##otp##…". */
@@ -890,6 +898,10 @@ export function assertProductionSafety(env: Env): void {
   // misconfiguration, not a deferral, and it fails at the first send otherwise.
   if (env.NOTIFY_EMAIL_PROVIDER === 'ses' && env.SES_FROM_EMAIL.endsWith('.local')) {
     throw new Error('SES_FROM_EMAIL is still the development placeholder');
+  }
+
+  if (env.OTP_PROVIDER === 'msg91_widget' && (!env.MSG91_WIDGET_ID || !env.MSG91_WIDGET_TOKEN)) {
+    throw new Error('MSG91_WIDGET_ID and MSG91_WIDGET_TOKEN are required when OTP_PROVIDER=msg91_widget');
   }
 
   if (env.OTP_PROVIDER === 'msg91' && (!env.MSG91_AUTH_KEY || !env.MSG91_OTP_TEMPLATE_ID)) {

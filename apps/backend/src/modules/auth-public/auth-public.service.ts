@@ -18,7 +18,8 @@ import { OTP_PORT, type OtpPort, type OtpPurpose } from '../auth/otp.port';
 import { TokenService, type SessionContext } from '../auth/token.service';
 import { SocialIdentityRegistry } from './social/social-identity.registry';
 import { REALM_FOR_ROLE, SubjectRepo, type PublicSubject } from './subject.repo';
-import { digest, digestsMatch, generateOtp } from '../auth/otp.util';
+import { deliverOtp, otpMatches } from '../auth/otp-delivery';
+import { digest, generateOtp } from '../auth/otp.util';
 
 /** Every way step 2 can fail says the same thing — the challenge id is opaque. */
 const CHALLENGE_REJECTED = 'This login challenge is no longer valid';
@@ -90,7 +91,12 @@ export class AuthPublicService {
       })
       .returning({ id: loginChallenges.id });
 
-    await this.otp.send(input.mobile, code, OTP_PURPOSE[input.role]);
+    await deliverOtp(this.db, this.otp, {
+      id: otp!.id,
+      phone: input.mobile,
+      code,
+      purpose: OTP_PURPOSE[input.role],
+    });
 
     return {
       challengeId: challenge!.id,
@@ -135,7 +141,7 @@ export class AuthPublicService {
       throw ApiException.rateLimited('Too many incorrect codes — request a new code');
     }
 
-    if (!digestsMatch(attempted.codeHash, digest(input.otp))) {
+    if (!(await otpMatches(this.otp, attempted, input.otp))) {
       throw ApiException.unauthorized('That code is not correct');
     }
 

@@ -69,6 +69,11 @@ export const otpVerifications = pgTable(
     attempts: integer('attempts').notNull().default(0),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     used: boolean('used').notNull().default(false),
+    /**
+     * The vendor's reference when the VENDOR made and checks the code (MSG91's
+     * OTP Widget `reqId`). Null when we made it: then `code_hash` is checked.
+     */
+    vendorRef: text('vendor_ref'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('idx_otp_verifications_lookup').on(t.phone, t.purpose, t.expiresAt)],

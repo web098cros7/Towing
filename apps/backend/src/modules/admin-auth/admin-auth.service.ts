@@ -28,6 +28,7 @@ import {
   refreshTokens,
 } from '../../db/schema';
 import { ADMIN_REVOKE_CHANNEL, REDIS } from '../../redis/redis.constants';
+import { deliverOtp, otpMatches } from '../auth/otp-delivery';
 import { OTP_PORT, type OtpPort } from '../auth/otp.port';
 import { hashPassword, verifyDecoyPassword, verifyPassword } from '../auth/password';
 import { ADMIN_SESSION_LIMITS } from '../auth/policies/admin.policy';
@@ -156,7 +157,12 @@ export class AdminAuthService {
       .returning({ id: loginChallenges.id });
 
     if (method === 'sms') {
-      await this.otp.send(admin.mobile, code!, 'admin_login');
+      await deliverOtp(this.db, this.otp, {
+        id: otp!.id,
+        phone: admin.mobile,
+        code: code!,
+        purpose: 'admin_login',
+      });
     }
 
     return { challengeId: challenge!.id, expiresAt: expiresAt.toISOString(), method };
@@ -271,7 +277,7 @@ export class AdminAuthService {
       throw ApiException.rateLimited('Too many incorrect codes — start the login again');
     }
 
-    if (!digestsMatch(attempted.codeHash, digest(code))) {
+    if (!(await otpMatches(this.otp, attempted, code))) {
       throw ApiException.unauthorized('That code is not correct');
     }
   }
@@ -870,9 +876,3 @@ function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function digestsMatch(a: string, b: string): boolean {
-  const left = Buffer.from(a, 'utf8');
-  const right = Buffer.from(b, 'utf8');
-
-  return left.length === right.length && timingSafeEqual(left, right);
-}

@@ -19,7 +19,8 @@ import { FLEET_REALM } from './auth.types';
 import { OTP_PORT, type OtpPort } from './otp.port';
 import { verifyDecoyPassword, verifyPassword } from './password';
 import { TokenService, type SessionContext } from './token.service';
-import { digest, digestsMatch, generateOtp } from './otp.util';
+import { deliverOtp, otpMatches } from './otp-delivery';
+import { digest, generateOtp } from './otp.util';
 
 /**
  * One message for every way step 1 can fail. "No such account", "wrong password"
@@ -126,7 +127,12 @@ export class AuthService {
       })
       .returning({ id: loginChallenges.id });
 
-    await this.otp.send(user.mobile, code, 'fleet_login');
+    await deliverOtp(this.db, this.otp, {
+      id: otp!.id,
+      phone: user.mobile,
+      code,
+      purpose: 'fleet_login',
+    });
 
     return { challengeId: challenge!.id, expiresAt: expiresAt.toISOString() };
   }
@@ -208,7 +214,7 @@ export class AuthService {
       throw ApiException.rateLimited('Too many incorrect codes — request a new login');
     }
 
-    if (!digestsMatch(attempted.codeHash, digest(input.otp))) {
+    if (!(await otpMatches(this.otp, attempted, input.otp))) {
       throw ApiException.unauthorized('That code is not correct');
     }
 

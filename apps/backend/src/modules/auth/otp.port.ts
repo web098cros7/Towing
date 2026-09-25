@@ -7,8 +7,22 @@ export type OtpPurpose = (typeof otpPurposeEnum.enumValues)[number];
  * login flow can be exercised end to end in tests and local dev without an SMS
  * account; the production adapter (MSG91/Twilio) drops in behind the same token.
  */
+/** What a send returns when the VENDOR made the code (MSG91's OTP Widget). */
+export interface OtpSendReceipt {
+  /** The vendor's id for this code; `verify` is asked about it later. */
+  vendorRef: string;
+}
+
 export interface OtpPort {
-  send(phone: string, code: string, purpose: OtpPurpose): Promise<void>;
+  /**
+   * Deliver a login code. Adapters that deliver OUR code return nothing. An adapter whose vendor makes its own code (the OTP Widget)
+   * ignores `code` and returns the vendor's reference: the typed code is then
+   * checked by `verify`, never against our hash.
+   */
+  send(phone: string, code: string, purpose: OtpPurpose): Promise<OtpSendReceipt | void>;
+
+  /** Whether `code` is right for the vendor-made code `vendorRef`. Only vendor-code adapters have it. */
+  verify?(vendorRef: string, code: string): Promise<boolean>;
 
   /**
    * The code most recently issued to this number, if the adapter can say.
