@@ -90,7 +90,9 @@ export function SupportChatScreen() {
         return;
       }
       const body = text.length < 4 ? `Chat started: ${text}` : text;
-      const subject = booking ? `Chat with MiTow Support \u00b7 ${booking.reference}` : 'Chat with MiTow Support';
+      const subject = booking
+        ? `Chat with MiTow Support \u00b7 ${booking.reference}`
+        : 'Chat with MiTow Support';
       const created = await createTicket.mutateAsync({
         category: 'other',
         subject,
@@ -206,10 +208,19 @@ export function SupportChatScreen() {
         </ScrollView>
 
         {!keyboardOpen ? (
+          // Quick replies 297:3630: one row of chips at their own height. Without
+          // flexGrow 0 a horizontal ScrollView in this column takes the free space
+          // and stretches every chip to it (Android, on device 25 Sep 2026).
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 21, gap: 8, paddingBottom: 10 }}
+            style={{ flexGrow: 0, flexShrink: 0 }}
+            contentContainerStyle={{
+              alignItems: 'center',
+              paddingHorizontal: mitowLayout.sideMargin,
+              gap: 8,
+              paddingBottom: 10,
+            }}
           >
             <MiChip label="Talk to an agent" onPress={() => dial(phoneDial)} />
             <MiChip label="Share trip details" onPress={() => void onShareTrip()} />
@@ -217,7 +228,11 @@ export function SupportChatScreen() {
           </ScrollView>
         ) : null}
 
-        <ChatComposer value={draft} onChangeText={setDraft} onSend={(t) => void onComposerSend(t)} />
+        <ChatComposer
+          value={draft}
+          onChangeText={setDraft}
+          onSend={(t) => void onComposerSend(t)}
+        />
       </MiScreen>
     </KeyboardAvoidingView>
   );
@@ -289,17 +304,20 @@ function SupportHeader({ onBack, phoneDial }: { onBack: () => void; phoneDial: s
       </View>
 
       <View style={{ flex: 1, gap: 1 }}>
-        <MiText variant="strong16">MiTow Support</MiText>
+        <MiText variant="strong16" numberOfLines={1}>
+          MiTow Support
+        </MiText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View
             style={{
               width: 8,
               height: 8,
               borderRadius: 4,
-              backgroundColor: mitowColors.successText,
+              backgroundColor: mitowColors.success,
             }}
           />
-          <MiText variant="bodyS14" color="secondary">
+          {/* One line, as drawn: a larger system font truncates it rather than wrapping. */}
+          <MiText variant="bodyS14" color="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
             Online · replies in about 2 mins
           </MiText>
         </View>
