@@ -23,6 +23,7 @@ import {
   MiText,
 } from '@/design';
 import { useSendOtp, useVerifyOtp } from '@/features/auth/api/auth.queries';
+import { MOCK_OTP } from '@/features/auth/api/authMockSource';
 import { env } from '@/lib/env';
 import { haptics } from '@/motion';
 import type { RootStackParamList } from '@/navigation/types';
@@ -92,7 +93,14 @@ export function VerifyOtpScreen() {
    * and a no-op in mock mode, where the fixed 123456 works. Silent on failure.
    */
   const echoDevOtp = useCallback((forChallenge: string) => {
-    if (!(__DEV__ || env.devOtpEcho) || env.useMocks) return;
+    // Demo build (no server): the fixed demo code fills itself in, so someone
+    // exploring the app is never stopped at a code they cannot receive
+    // (owner, 25 Sep 2026: stakeholders must get straight in).
+    if (env.useMocks) {
+      setTimeout(() => onChangeCodeRef.current(MOCK_OTP), 600);
+      return;
+    }
+    if (!(__DEV__ || env.devOtpEcho)) return;
     setTimeout(() => {
       fetch(`${env.apiBaseUrl}/v1/auth/dev/otp?challengeId=${forChallenge}`)
         .then((r) => (r.ok ? r.json() : null))

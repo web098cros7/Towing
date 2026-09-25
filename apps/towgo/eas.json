@@ -23,7 +23,10 @@
       "env": {
         "EXPO_PUBLIC_USE_MOCKS": "true"
       },
-      "channel": "demo"
+      "channel": "demo",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "stakeholder": {
       "extends": "preview",
