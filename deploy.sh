@@ -14,7 +14,10 @@
 set -e
 
 MODE="${1:-fresh}"      # fresh | update | rotate-secrets | demo | production
-REPO="https://github.com/web098cros7/Towing.git"
+# The repo is PRIVATE: the server reads it over SSH with a read-only GitHub
+# deploy key (root's ~/.ssh/id_ed25519, its .pub added under the repo's
+# Settings -> Deploy keys, "Allow write access" OFF).
+REPO="git@github.com:web098cros7/Towing.git"
 APP_DIR="/home/ec2-user/Towing"
 ENV_FILE="/home/ec2-user/.env.production"
 COMPOSE_FILE="/home/ec2-user/docker-compose.yml"
@@ -306,7 +309,15 @@ fi
 # ─── 2. Pull latest code ──────────────────────────────────────────────────────
 log "==> Pulling latest code"
 cd "$APP_DIR"
-git fetch origin main
+# A clone made while the repo was public still points at the https URL, which
+# a private repo refuses without a password: switch it to the deploy key.
+git remote set-url origin "$REPO"
+git fetch origin main || {
+  log "ERROR: cannot read the private repo. Add this server's deploy key on GitHub:"
+  log "       ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519   (once), then paste"
+  log "       ~/.ssh/id_ed25519.pub under Settings -> Deploy keys (read-only)."
+  exit 1
+}
 git reset --hard origin/main
 
 # ─── 3. Build frontend (on host - avoids Lambda/Docker memory limits) ─────────
