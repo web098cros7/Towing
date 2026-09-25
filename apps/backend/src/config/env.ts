@@ -787,6 +787,22 @@ const EnvSchema = z.object({
   MSG91_WIDGET_ID: z.string().optional(),
   /** The widget's token (`tokenAuth`, dashboard → OTP → Tokens). A secret. */
   MSG91_WIDGET_TOKEN: z.string().optional(),
+  /**
+   * Test numbers (E.164, comma-separated) whose login codes are NEVER sent by
+   * SMS: they stay on the dev adapter (log + on-screen echo) whatever
+   * `OTP_PROVIDER` says. For the seeded demo drivers the truck simulator logs
+   * in as: without this, every simulator login would text a real stranger who
+   * happens to own `+919845100003`, on MiTow's SMS credit. Refused in production.
+   */
+  OTP_TEST_NUMBERS: z
+    .string()
+    .default('')
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean),
+    ),
   /** MSG91 template (Flow) id of the DLT-approved login-code SMS. */
   MSG91_OTP_TEMPLATE_ID: z.string().optional(),
   /** The template's variable that carries the code, e.g. `otp` for "…is ##otp##…". */
@@ -898,6 +914,10 @@ export function assertProductionSafety(env: Env): void {
   // misconfiguration, not a deferral, and it fails at the first send otherwise.
   if (env.NOTIFY_EMAIL_PROVIDER === 'ses' && env.SES_FROM_EMAIL.endsWith('.local')) {
     throw new Error('SES_FROM_EMAIL is still the development placeholder');
+  }
+
+  if (env.OTP_TEST_NUMBERS.length > 0) {
+    throw new Error('OTP_TEST_NUMBERS must never be set in production');
   }
 
   if (env.OTP_PROVIDER === 'msg91_widget' && (!env.MSG91_WIDGET_ID || !env.MSG91_WIDGET_TOKEN)) {

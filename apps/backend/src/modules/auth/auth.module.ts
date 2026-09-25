@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { DevOtpAdapter } from './dev-otp.adapter';
 import { Msg91OtpAdapter } from './msg91-otp.adapter';
 import { Msg91WidgetOtpAdapter } from './msg91-widget-otp.adapter';
+import { TestNumberOtpRouter } from './otp-test-numbers';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { KycApprovedGuard } from './kyc-approved.guard';
 import { OTP_PORT } from './otp.port';
@@ -78,12 +79,18 @@ import { TokenService } from './token.service';
         dev: DevOtpAdapter,
         msg91: Msg91OtpAdapter,
         widget: Msg91WidgetOtpAdapter,
-      ) =>
-        env.OTP_PROVIDER === 'msg91_widget'
-          ? widget
-          : env.OTP_PROVIDER === 'msg91'
-            ? msg91
-            : dev,
+      ) => {
+        const real =
+          env.OTP_PROVIDER === 'msg91_widget'
+            ? widget
+            : env.OTP_PROVIDER === 'msg91'
+              ? msg91
+              : dev;
+        // Test numbers (the simulator's demo drivers) never get a real SMS.
+        return real !== dev && env.OTP_TEST_NUMBERS.length > 0
+          ? new TestNumberOtpRouter(dev, real, env.OTP_TEST_NUMBERS)
+          : real;
+      },
     },
   ],
   exports: [
