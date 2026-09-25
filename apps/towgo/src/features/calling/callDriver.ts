@@ -1,5 +1,5 @@
-import { Alert, Linking } from 'react-native';
 import { trackingDataSource } from '@/features/tracking/api/trackingDataSource';
+import { dialNumber, useCallPromptStore } from './CallDriverSheet';
 
 export type CallOutcome = 'ok' | 'no-number' | 'failed';
 
@@ -29,25 +29,15 @@ export async function callDriver(bookingId: string): Promise<CallOutcome> {
 
   if (!contact.dialNumber) return 'no-number';
 
-  // `.catch` rather than a throw: a tablet with no dialler is a bad experience,
-  // not a crash.
-  const dial = () => {
-    void Linking.openURL(`tel:${contact.dialNumber}`).catch(() => {});
-  };
-
   if (contact.masked) {
-    dial();
+    dialNumber(contact.dialNumber);
     return 'ok';
   }
 
-  Alert.alert(
-    'Call your driver',
-    `You are about to call ${contact.displayName ?? 'your driver'} on their personal number, and they will see yours. Private numbers are coming soon.`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Call', onPress: dial },
-    ],
-  );
+  // The real number: warn first, in the app's own sheet (CallDriverSheetHost).
+  useCallPromptStore
+    .getState()
+    .ask({ name: contact.displayName ?? null, dialNumber: contact.dialNumber });
 
   return 'ok';
 }

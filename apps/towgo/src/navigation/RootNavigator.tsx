@@ -44,6 +44,7 @@ import { usePushRegistration } from '@/features/notifications/push/usePushRegist
 import { SupportScreen } from '@/screens/support/SupportScreen';
 import { SupportChatScreen } from '@/screens/support/SupportChatScreen';
 import { ReportIssueScreen } from '@/screens/support/ReportIssueScreen';
+import { CallDriverSheetHost } from '@/features/calling/CallDriverSheet';
 import { ShareFeedbackScreen } from '@/screens/support/ShareFeedbackScreen';
 import { HelpCenterScreen } from '@/screens/account/HelpCenterScreen';
 import { ContactUsScreen } from '@/screens/account/ContactUsScreen';
@@ -399,6 +400,9 @@ export function RootNavigator() {
         writing its primed key.
       */}
       {showPushPriming ? <PushPrimingSheet onDone={() => setPushPrimed(true)} /> : null}
+
+      {/* The warning before dialling a driver's real number (callDriver). */}
+      <CallDriverSheetHost />
     </>
   );
 }
