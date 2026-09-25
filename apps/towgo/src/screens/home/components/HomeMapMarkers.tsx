@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, View } from 'react-native';
-import Svg, { Ellipse } from 'react-native-svg';
-import { mitowColors, MiLineIcon, MiMapCallout, MiMapChip } from '@/design';
+import Svg, { Circle } from 'react-native-svg';
+import { mitowColors, mitowShadows, MiMapCallout, MiText } from '@/design';
 
 /*
  * The things Figma 07 (`287:2017`) draws ON Home's map. The customer group and
@@ -28,39 +28,71 @@ function centerOffsetIn(box: MarkerBox, point: { x: number; y: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Customer: halo M5 + dot M6 + pickup pin M7 + "Your location" chip M8
+// Customer: Figma 08's Pickup marker `528:19663` — the green "Pickup Point" pill
+// over a 2 × 12 stem and a 20 ring pin, the pin centred on the pickup.
 // ---------------------------------------------------------------------------
 
-/** Screen origin of the composite box in the 393 x 852 frame. */
-const USER_BOX: MarkerBox = { left: 89, top: 267.8, width: 171.5, height: 70 };
-/** Location dot centre (108.3, 329.3), where the route starts. */
-const USER_POINT = { x: 108.3, y: 329.3 };
+/** Pill 37 + stem 12 + pin 20: the drawn marker is 129 × 69. */
+const PILL_H = 37;
+const STEM_H = 12;
+const PIN = 20;
+/** Room around the drawn marker for the pill's Floating shadow and font scaling. */
+const PAD_X = 30;
+const PAD_TOP = 12;
+const PAD_BOTTOM = 6;
+const USER_BOX: MarkerBox = {
+  left: 0,
+  top: 0,
+  width: 129 + PAD_X * 2,
+  height: PAD_TOP + PILL_H + STEM_H + PIN + PAD_BOTTOM,
+};
+/** The pin's centre is the pickup. */
+const USER_POINT = { x: USER_BOX.width / 2, y: PAD_TOP + PILL_H + STEM_H + PIN / 2 };
+
+/** How far the pill's top sits above the pickup point. */
+export const PICKUP_MARKER_ABOVE_POINT = PILL_H + STEM_H + PIN / 2;
 
 export const userMarkerAnchor = anchorIn(USER_BOX, USER_POINT);
 export const userMarkerCenterOffset = centerOffsetIn(USER_BOX, USER_POINT);
 
 export function UserLocationMarker() {
-  const at = (x: number, y: number) => ({
-    position: 'absolute' as const,
-    left: x - USER_BOX.left,
-    top: y - USER_BOX.top,
-  });
-
   return (
-    <View style={{ width: USER_BOX.width, height: USER_BOX.height }}>
-      {/* M5 Location halo: ellipse 12 x 7 at (102.3, 326), border/handle. */}
-      <Svg width={12} height={7} style={at(102.3, 326)}>
-        <Ellipse cx={6} cy={3.5} rx={6} ry={3.5} fill={mitowColors.borderHandle} />
+    <View
+      style={{
+        width: USER_BOX.width,
+        height: USER_BOX.height,
+        paddingTop: PAD_TOP,
+        alignItems: 'center',
+      }}
+    >
+      {/* Pickup Point 528:19664: status/success, padding 18 / 8, radius 20, Floating. */}
+      <View
+        style={{
+          height: PILL_H,
+          justifyContent: 'center',
+          paddingHorizontal: 18,
+          borderRadius: 20,
+          backgroundColor: mitowColors.success,
+          ...mitowShadows.floating,
+        }}
+      >
+        <MiText variant="strong16" color="onDark" numberOfLines={1}>
+          Pickup Point
+        </MiText>
+      </View>
+      {/* Stem 528:19666: 2 × 12, status/success. */}
+      <View style={{ width: 2, height: STEM_H, backgroundColor: mitowColors.success }} />
+      {/* Pin 528:19667: white disc, 5 status/success ring (r 7.5 stroke 5 in a 20 box). */}
+      <Svg width={PIN} height={PIN} viewBox="0 0 20 20">
+        <Circle
+          cx={10}
+          cy={10}
+          r={7.5}
+          fill={mitowColors.surfacePage}
+          stroke={mitowColors.success}
+          strokeWidth={5}
+        />
       </Svg>
-      {/* M6 Location dot: ellipse 7 x 5 at (104.8, 326.8), text/primary. */}
-      <Svg width={7} height={5} style={at(104.8, 326.8)}>
-        <Ellipse cx={3.5} cy={2.5} rx={3.5} ry={2.5} fill={mitowColors.textPrimary} />
-      </Svg>
-      {/* M7 Pickup pin: icon/map-pin 32 at (93, 294.8). */}
-      <MiLineIcon name="map-pin" size={32} style={at(93, 294.8)} />
-      {/* M8 Map Chip at (126.5, 283.8), no icon: "Pickup Point", green (owner decision,
-          24 Sep 2026; Figma draws a white "Your location"). */}
-      <MiMapChip label="Pickup Point" tone="pickup" style={at(126.5, 283.8)} />
     </View>
   );
 }

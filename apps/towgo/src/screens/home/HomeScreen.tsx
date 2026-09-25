@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,7 +9,7 @@ import { useTheme } from '@towing/theme';
 import { usePressablePrimitive } from '@towing/ui';
 import {
   mitowColors,
-  mitowRadii,
+  mitowShadows,
   MiButton,
   MiHelpChip,
   MiInfoBanner,
@@ -24,7 +25,9 @@ import { useBookingStore } from '@/features/booking/store/bookingStore';
 import { track } from '@/lib/analytics/analytics';
 import { env } from '@/lib/env';
 import type { RootStackParamList } from '@/navigation/types';
+import { splitAddress } from '@/utils/address';
 import { HomeMap, type HomeMapHandle } from './components/HomeMap';
+import { PICKUP_MARKER_ABOVE_POINT } from './components/HomeMapMarkers';
 
 /**
  * Figma 08 · Home (`225:69`), with screen 07's map (`287:2017`) on a real
@@ -54,8 +57,8 @@ const SHEET_H_DRAWN = 397.9;
 const DESIGN_USER = { x: 108.3, y: 329.3 };
 /** Hero 228:265's top on the frame: the top of the map's clear area now that the hero is gone. */
 const HERO_TOP_Y = 130.4;
-/** M8 "Your location" chip top (283.8) sits 45.5 above the dot and 28.3 below the Hero. */
-const CHIP_ABOVE_DOT = DESIGN_USER.y - 283.8;
+/** The "Pickup Point" pill's top above the pickup (Figma 08's marker `528:19663`). */
+const CHIP_ABOVE_DOT = PICKUP_MARKER_ABOVE_POINT;
 /** The dot never sits closer to the sheet than this (the map's framing room below it). */
 const DOT_MIN_ABOVE_SHEET = 12;
 const DESIGN_PARTNER = { x: 276.0, y: 243.5 };
@@ -240,8 +243,8 @@ export function HomeScreen() {
           {/* 5.2 Heading 226:180. */}
           <MiText variant="title20">Where do you need a tow?</MiText>
 
-          {/* 5.3 Location input 226:181. */}
-          <LocationInput onPress={useMyLocation} />
+          {/* 5.3 Pickup address 528:20363. */}
+          <PickupAddress onPress={useMyLocation} />
 
           {/* 5.4 Book a Tow 226:187: 50 tall, padding 21 / 16. */}
           <MiButton
@@ -321,36 +324,81 @@ function MenuButton({ style }: { style: React.ComponentProps<typeof View>['style
 }
 
 /**
- * 5.3 Location input 226:181: surface/muted, radius 14, 54.6 tall, gap 19.3,
- * padding left 12.3 / right 10, clips. Filled map-pin 29, static copy, chevron 24.
+ * 5.3 Pickup address `528:20363`: a white pill with a 20% brand-yellow → grey
+ * wash, radius 26, padding 16 / 18 / 14, gap 12, MiTow/Elevation/Floating. A
+ * 16 green ring dot, then the pickup's address on one line with its first part
+ * bold ("**12**, MG Road, …"). Tapping it opens Enter Location on the device fix.
  */
-function LocationInput({ onPress }: { onPress: () => void }) {
+function PickupAddress({ onPress }: { onPress: () => void }) {
   const theme = useTheme();
   const Pressable = usePressablePrimitive();
+  const status = useLocationStore((s) => s.status);
+  const label = useLocationStore((s) => s.pickup.label);
+
+  // Live mode starts on the store's example pickup until the fix lands, so
+  // the address shows only once the device has answered.
+  const resolved = env.useMocks || status === 'ready';
+  const address = resolved ? splitAddress(label) : null;
+  const placeholder = status === 'locating' ? 'Finding your location…' : 'Use my current location';
+
   return (
     <Pressable
       onPress={onPress}
       pressScale={theme.motion.pressScale.row}
       haptic="light"
       accessibilityRole="button"
-      accessibilityLabel="Use my current location"
+      accessibilityLabel={address ? `Pickup: ${label}` : placeholder}
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 19.3,
-        height: 54.6,
-        paddingLeft: 12.3,
-        paddingRight: 10,
-        borderRadius: mitowRadii.input,
-        backgroundColor: mitowColors.surfaceMuted,
-        overflow: 'hidden',
+        borderRadius: 26,
+        backgroundColor: mitowColors.surfacePage,
+        ...mitowShadows.floating,
       }}
     >
-      <MiLineIcon name="map-pin" size={29} />
-      <MiText variant="bodyL155" numberOfLines={1} style={{ flex: 1 }}>
-        Use my current location
-      </MiText>
-      <MiLineIcon name="chevron-right" size={24} />
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          paddingLeft: 16,
+          paddingRight: 18,
+          paddingVertical: 14,
+          borderRadius: 26,
+          overflow: 'hidden',
+        }}
+      >
+        <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient id="pickupWash" x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor="#FEE176" stopOpacity={0.2} />
+              <Stop offset="1" stopColor="#F3F6F8" stopOpacity={0.2} />
+            </LinearGradient>
+          </Defs>
+          <Rect width="100%" height="100%" fill="url(#pickupWash)" />
+        </Svg>
+        {/* Pickup dot 528:20364: white disc in a 4 status/success ring. */}
+        <View
+          style={{
+            width: 16,
+            height: 16,
+            borderRadius: 8,
+            borderWidth: 4,
+            borderColor: mitowColors.success,
+            backgroundColor: mitowColors.surfacePage,
+          }}
+        />
+        <MiText variant="bodyL155" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
+          {address ? (
+            <>
+              <MiText variant="bodyL155" style={{ fontWeight: '700' }}>
+                {address.primary}
+              </MiText>
+              {address.secondary ? `, ${address.secondary}` : ''}
+            </>
+          ) : (
+            placeholder
+          )}
+        </MiText>
+      </View>
     </Pressable>
   );
 }
