@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Image, View , ScrollView } from 'react-native';
+import { Image, View, ScrollView } from 'react-native';
 
 import { SvgXml } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
@@ -23,6 +23,8 @@ import {
 } from '@/design';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import { useProfile } from '@/features/account/api/profile.queries';
+import { useAppConfig } from '@/features/app-config/appConfig';
+import { formatPaise } from '@/utils/format';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useLogout } from '@/features/auth/api/auth.queries';
 import { useTabBarSpace } from '@/navigation/TabBar';
@@ -56,6 +58,7 @@ export function ProfileScreen() {
   const Pressable = usePressablePrimitive();
 
   const { data: profile, isPending: profilePending } = useProfile();
+  const referrerRewardPaise = useAppConfig().data?.referrerRewardPaise;
   const refreshToken = useAuthStore((s) => s.refreshToken);
   const logout = useLogout();
 
@@ -207,7 +210,8 @@ export function ProfileScreen() {
           tone="brand"
           icon="plus-badge"
           title="MiTow Plus"
-          subtitle="Get priority service, exclusive offers and more."
+          // Says it is coming: it has no screen yet, and Ehsan kept it on Profile (23 Sep).
+          subtitle="Coming soon: priority service, exclusive offers and more."
           height={84}
         />
 
@@ -251,7 +255,11 @@ export function ProfileScreen() {
           <MiMenuRow
             icon={{ color: 'refer' }}
             title="Refer & Earn"
-            subtitle="Get ₹100 for every friend"
+            subtitle={
+              referrerRewardPaise
+                ? `Get ${formatPaise(referrerRewardPaise)} for every friend`
+                : 'Invite friends, earn rewards'
+            }
             showChevron
             onPress={openReferEarn}
           />

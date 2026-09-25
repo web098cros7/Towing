@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@towing/theme';
@@ -132,6 +132,16 @@ export function LegalScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // Settings' Privacy / Terms / Your Data rows each land on their own section.
+  const section = useRoute<RouteProp<RootStackParamList, 'Legal'>>().params?.section;
+  const scrollRef = useRef<ScrollView>(null);
+  // The documents load after the first layout and push the sections down, so the
+  // jump follows each re-layout until the customer scrolls for themselves.
+  const userScrolled = useRef(false);
+  const scrollToSection = (name: 'terms' | 'data', y: number) => {
+    if (section !== name || userScrolled.current) return;
+    scrollRef.current?.scrollTo({ y, animated: false });
+  };
   const clearSession = useAuthStore((s) => s.clearSession);
   const queryClient = useQueryClient();
   const exportData = useExportData();
@@ -206,7 +216,10 @@ export function LegalScreen() {
           onPress: () =>
             withdrawConsent.mutate('privacy_policy', {
               onSuccess: () =>
-                Alert.alert('Consent withdrawn', 'You will not receive offers or promotions from MiTow.'),
+                Alert.alert(
+                  'Consent withdrawn',
+                  'You will not receive offers or promotions from MiTow.',
+                ),
               onError: () =>
                 Alert.alert('Something went wrong', 'Could not withdraw consent right now.'),
             }),
@@ -257,6 +270,10 @@ export function LegalScreen() {
   return (
     <MiScreen edges={['top']}>
       <ScrollView
+        ref={scrollRef}
+        onScrollBeginDrag={() => {
+          userScrolled.current = true;
+        }}
         contentContainerStyle={{
           paddingHorizontal: mitowLayout.sideMargin,
           gap: mitowLayout.blockGap,
@@ -291,7 +308,10 @@ export function LegalScreen() {
         </View>
 
         {/* Terms of Service `297:3671` */}
-        <View style={{ gap: 12 }}>
+        <View
+          style={{ gap: 12 }}
+          onLayout={(e) => scrollToSection('terms', e.nativeEvent.layout.y)}
+        >
           <MiText variant="heading18">Terms of Service</MiText>
           <MiFaqCard>
             {termsSections.map((s, i) => {
@@ -310,7 +330,7 @@ export function LegalScreen() {
         </View>
 
         {/* Your Data `297:3697` */}
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: 12 }} onLayout={(e) => scrollToSection('data', e.nativeEvent.layout.y)}>
           <MiText variant="heading18">Your Data</MiText>
           <MiMenuCard radius={16} paddingVertical={4}>
             <MiMenuRow

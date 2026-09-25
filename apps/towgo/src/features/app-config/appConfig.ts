@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import type { AppConfig } from '@towing/api-contracts';
 import { apiFetch } from '@/lib/api/client';
 import { env } from '@/lib/env';
-import { SUPPORT_PHONE_DIAL, SUPPORT_PHONE_DISPLAY } from '@/screens/support/supportContact';
 
 /**
  * The server's app-config: support contact, referral rewards, version gates and
@@ -13,7 +12,7 @@ export interface AppConfigDataSource {
 }
 
 const MOCK_APP_CONFIG: AppConfig = {
-  supportPhone: '+919876543210',
+  supportPhone: '+911800123456',
   supportEmail: 'support@mitow.in',
   referrerRewardPaise: 10000,
   refereeRewardPaise: 10000,
@@ -63,20 +62,25 @@ function formatIndianPhone(raw: string): string {
 }
 
 /**
- * The support contact the app shows and dials. Live value comes from app-config;
- * before it loads (or if it fails) the offline fallbacks in `supportContact.ts`
- * are used.
+ * Numbers that are placeholders, not a line anyone answers: the server's
+ * default until the real support number is set, and Figma's sample. The app
+ * never shows or dials them (owner, 25 Sep 2026).
+ */
+const PLACEHOLDER_SUPPORT_PHONES = new Set(['+911800123456', '+919876543210']);
+
+/**
+ * The support contact the app shows and dials, from app-config. `phoneDial` and
+ * `phoneDisplay` are null until the config has loaded a REAL number: every call
+ * button is then hidden or routed to Contact Us instead of dialling a made-up line.
  */
 export function useSupportContact(): {
-  phoneDial: string;
-  phoneDisplay: string;
+  phoneDial: string | null;
+  phoneDisplay: string | null;
   email: string;
 } {
   const { data } = useAppConfig();
-  const phoneDial = data?.supportPhone ?? SUPPORT_PHONE_DIAL;
-  const phoneDisplay = data?.supportPhone
-    ? formatIndianPhone(data.supportPhone)
-    : SUPPORT_PHONE_DISPLAY;
+  const phone = data?.supportPhone?.trim();
+  const real = phone && !PLACEHOLDER_SUPPORT_PHONES.has(phone) ? phone : null;
   const email = data?.supportEmail ?? 'support@mitow.in';
-  return { phoneDial, phoneDisplay, email };
+  return { phoneDial: real, phoneDisplay: real ? formatIndianPhone(real) : null, email };
 }

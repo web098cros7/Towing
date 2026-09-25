@@ -16,6 +16,8 @@ export type MiOptionRowProps = {
   /** Leading colour icon, 36×36. Screen 12 has one; screen 11 does not. */
   icon?: MiColorIconName | ImageSourcePropType;
   accessibilityLabel?: string;
+  /** Not available yet: dimmed, not pressable (a language without translations). */
+  disabled?: boolean;
 };
 
 /** Figma Radio inside the option row: 24 box. */
@@ -73,6 +75,7 @@ export function MiOptionRow({
   onPress,
   icon,
   accessibilityLabel,
+  disabled = false,
 }: MiOptionRowProps) {
   const theme = useTheme();
   const Pressable = usePressablePrimitive();
@@ -80,10 +83,11 @@ export function MiOptionRow({
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       pressScale={theme.motion.pressScale.card}
       haptic="selection"
       accessibilityRole="radio"
-      accessibilityState={{ selected, checked: selected }}
+      accessibilityState={{ selected, checked: selected, disabled }}
       accessibilityLabel={accessibilityLabel ?? (subtitle ? `${title}. ${subtitle}` : title)}
       style={{
         flexDirection: 'row',
@@ -95,6 +99,7 @@ export function MiOptionRow({
         paddingVertical: 10,
         borderRadius: mitowRadii.cardSm,
         backgroundColor: selected ? mitowColors.brandYellowSoft : mitowColors.surfacePage,
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       <View

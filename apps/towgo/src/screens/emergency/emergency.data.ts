@@ -19,13 +19,6 @@ export const EMERGENCY_NUMBERS = {
 } as const;
 
 /**
- * The MiTow Support card (5.2, `409:18846`) dials the same line it shows. The live
- * value comes from app-config (`useSupportContact`); this re-export keeps the
- * offline fallback available to other importers.
- */
-export { SUPPORT_PHONE_DIAL } from '@/screens/support/supportContact';
-
-/**
  * Hands the number to the phone's dialer (Android fills it in, the user presses Call;
  * iOS shows its own "Call …?" prompt). A device that cannot dial (a tablet, no SIM
  * app) gets a system alert naming the number: on the Emergency screen a silent tap

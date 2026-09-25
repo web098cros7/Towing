@@ -223,20 +223,20 @@ export function SettingsScreen() {
               icon={{ color: 'lock' }}
               title="Privacy Policy"
               showChevron
-              onPress={() => navigation.navigate('Legal')}
+              onPress={() => navigation.navigate('Legal', { section: 'privacy' })}
             />
             <MiMenuRow
               icon={{ color: 'document' }}
               title="Terms of Service"
               showChevron
-              onPress={() => navigation.navigate('Legal')}
+              onPress={() => navigation.navigate('Legal', { section: 'terms' })}
             />
             <MiMenuRow
               icon={{ color: 'user-shield' }}
               title="Your Data & Account"
               subtitle="Download or delete your data"
               showChevron
-              onPress={() => navigation.navigate('Legal')}
+              onPress={() => navigation.navigate('Legal', { section: 'data' })}
             />
           </MiMenuCard>
         </View>
@@ -268,8 +268,11 @@ export function SettingsScreen() {
             <MiOptionRow
               key={l.code}
               title={l.native}
-              subtitle={l.english}
+              // Only English has translations: the others say so and cannot be picked,
+              // rather than saving a choice that changes nothing (owner, 25 Sep 2026).
+              subtitle={l.code === 'en' ? l.english : `${l.english} · Coming soon`}
               selected={draft === l.code}
+              disabled={l.code !== 'en'}
               onPress={() => setDraft(l.code)}
             />
           ))}

@@ -64,6 +64,11 @@ export function WalletScreen() {
           </MiText>
           {wallet.isPending ? (
             <SlotPlaceholder variant="amount44" width={109} />
+          ) : wallet.isError ? (
+            // Never a silent ₹0 when the balance could not be read.
+            <MiText variant="amount44" color="onDark" accessibilityLabel="Balance unavailable">
+              —
+            </MiText>
           ) : (
             <MiText variant="amount44" color="onDark">
               {formatPaise(wallet.data?.balancePaise ?? 0)}
@@ -76,8 +81,14 @@ export function WalletScreen() {
         </View>
 
         {/* 295:3349 — Transactions */}
-        {transactions.isError && !hasRows ? (
-          <ErrorState title="Couldn't load your wallet" onRetry={() => transactions.refetch()} />
+        {(transactions.isError || wallet.isError) && !hasRows ? (
+          <ErrorState
+            title="Couldn't load your wallet"
+            onRetry={() => {
+              void wallet.refetch();
+              void transactions.refetch();
+            }}
+          />
         ) : hasRows ? (
           <View style={{ gap: mitowLayout.headingGap }}>
             <MiText variant="heading18">Transactions</MiText>
@@ -87,7 +98,12 @@ export function WalletScreen() {
               ))}
             </MiMenuCard>
           </View>
-        ) : null}
+        ) : transactions.isPending ? null : (
+          // Empty state: a new customer has no credits yet.
+          <MiText variant="bodyM15" color="secondary" align="center">
+            No transactions yet
+          </MiText>
+        )}
 
         {/* 295:3407 — Footer note */}
         <MiText variant="bodyS14" color="secondary">

@@ -45,13 +45,13 @@ export function ContactUsScreen() {
   const canSend = subject.trim().length >= 4 && message.trim().length >= 4;
 
   const callUs = useCallback(() => {
-    Linking.openURL(`tel:${phoneDial}`).catch(() => {});
+    if (phoneDial) Linking.openURL(`tel:${phoneDial}`).catch(() => {});
   }, [phoneDial]);
   const emailUs = useCallback(() => {
     Linking.openURL(`mailto:${email}`).catch(() => {});
   }, [email]);
   const whatsAppUs = useCallback(() => {
-    Linking.openURL(`https://wa.me/${phoneDial.replace('+', '')}`).catch(() => {});
+    if (phoneDial) Linking.openURL(`https://wa.me/${phoneDial.replace('+', '')}`).catch(() => {});
   }, [phoneDial]);
 
   const send = useCallback(() => {
@@ -90,14 +90,17 @@ export function ContactUsScreen() {
   return (
     <SubScreen title="Contact Us" gap={18}>
       <SettingsList>
-        <SettingsRow
-          icon={Phone}
-          iconColor={theme.colors.success}
-          title="Call us"
-          subtitle={phoneDisplay}
-          trailing="chevron"
-          onPress={callUs}
-        />
+        {/* Call and WhatsApp only once a real support number is configured. */}
+        {phoneDisplay ? (
+          <SettingsRow
+            icon={Phone}
+            iconColor={theme.colors.success}
+            title="Call us"
+            subtitle={phoneDisplay}
+            trailing="chevron"
+            onPress={callUs}
+          />
+        ) : null}
         <SettingsRow
           icon={Mail}
           iconColor={theme.colors.info}
@@ -106,14 +109,16 @@ export function ContactUsScreen() {
           trailing="chevron"
           onPress={emailUs}
         />
-        <SettingsRow
-          icon={MessageCircle}
-          iconColor={theme.colors.brand}
-          title="WhatsApp"
-          subtitle="Chat with our support team"
-          trailing="chevron"
-          onPress={whatsAppUs}
-        />
+        {phoneDial ? (
+          <SettingsRow
+            icon={MessageCircle}
+            iconColor={theme.colors.brand}
+            title="WhatsApp"
+            subtitle="Chat with our support team"
+            trailing="chevron"
+            onPress={whatsAppUs}
+          />
+        ) : null}
         <SettingsRow
           icon={ClipboardList}
           title="My tickets"

@@ -18,6 +18,7 @@ import {
 } from '@/design';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import type { RootStackParamList } from '@/navigation/types';
+import { useAppConfig } from '@/features/app-config/appConfig';
 import { useReferral } from '@/features/referrals/api/referrals';
 import { copyText } from '@/lib/clipboard';
 import { formatPaise } from '@/utils/format';
@@ -28,7 +29,8 @@ import { formatPaise } from '@/utils/format';
 export function ReferEarnScreen(): React.ReactElement {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
-  const { data, isLoading } = useReferral();
+  const { data, isLoading, isError, refetch } = useReferral();
+  const { data: appConfig } = useAppConfig();
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -40,8 +42,10 @@ export function ReferEarnScreen(): React.ReactElement {
 
   const code = data?.code;
   const shareUrl = data?.shareUrl;
-  const refereeRewardPaise = data?.refereeRewardPaise;
-  const referrerRewardPaise = data?.referrerRewardPaise;
+  // The rewards come from the referral summary, or from app-config (the same
+  // server values) while it loads or if it fails — never a hard-coded amount.
+  const refereeRewardPaise = data?.refereeRewardPaise ?? appConfig?.refereeRewardPaise;
+  const referrerRewardPaise = data?.referrerRewardPaise ?? appConfig?.referrerRewardPaise;
 
   const handleCopy = useCallback(() => {
     if (!code) return;
@@ -65,12 +69,12 @@ export function ReferEarnScreen(): React.ReactElement {
   const step2Subtitle =
     refereeRewardPaise !== undefined
       ? `They get ${formatPaise(refereeRewardPaise)} off their first trip`
-      : 'They get ₹100 off their first trip';
+      : 'They get money off their first trip';
 
   const step3Title =
     referrerRewardPaise !== undefined
       ? `You earn ${formatPaise(referrerRewardPaise)}`
-      : 'You earn ₹100';
+      : 'You earn a reward';
 
   return (
     <MiScreen edges={['top']}>
@@ -117,13 +121,22 @@ export function ReferEarnScreen(): React.ReactElement {
           </Pressable>
         </View>
 
-        {/* Share Invite Link (298:3816) */}
-        <MiButton
-          tone="dark"
-          label="Share Invite Link"
-          disabled={isLoading || !code}
-          onPress={handleShare}
-        />
+        {/* Share Invite Link (298:3816). If the code could not be loaded, the button
+            retries instead of sitting disabled with a grey code above it. */}
+        {isError && !code ? (
+          <MiButton
+            tone="quiet"
+            label="Couldn't load your code. Try again"
+            onPress={() => void refetch()}
+          />
+        ) : (
+          <MiButton
+            tone="dark"
+            label="Share Invite Link"
+            disabled={isLoading || !code}
+            onPress={handleShare}
+          />
+        )}
 
         {/* How it works (298:3822) */}
         <View style={styles.howItWorks}>
@@ -135,11 +148,7 @@ export function ReferEarnScreen(): React.ReactElement {
               subtitle="Send it on WhatsApp, SMS or anywhere"
             />
             <View style={styles.divider} />
-            <StepRow
-              index="2"
-              title="Your friend books a tow"
-              subtitle={step2Subtitle}
-            />
+            <StepRow index="2" title="Your friend books a tow" subtitle={step2Subtitle} />
             <View style={styles.divider} />
             <StepRow index="3" title={step3Title} subtitle="Credited to your MiTow Wallet" />
           </View>

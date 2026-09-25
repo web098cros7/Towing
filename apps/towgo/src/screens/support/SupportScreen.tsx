@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MiButton, MiInfoBanner, MiNavBar, MiScreen, MiSupportCard, mitowLayout } from '@/design';
 import { useSupportContact } from '@/features/app-config/appConfig';
 import type { RootStackParamList } from '@/navigation/types';
+import { dial } from '@/screens/emergency/emergency.data';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -29,7 +30,7 @@ const CTA_BOTTOM_GAP = 34;
 export function SupportScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { phoneDisplay } = useSupportContact();
+  const { phoneDial, phoneDisplay } = useSupportContact();
 
   // PO decision: FAQ / Help Center → HelpCenter; chat → SupportChat (60), report an issue →
   // ReportIssue (61), contact → ContactUs, Share Feedback → ShareFeedback (62).
@@ -95,12 +96,16 @@ export function SupportScreen() {
             subtitle="Instant help from our team"
             onPress={openSupportChat}
           />
+          {/* Call Support dials the support line; until a real one is configured the
+              card offers the other ways to reach us (Contact Us: email, a ticket). */}
           <MiSupportCard
             icon="call"
             title="Call Support"
-            subtitle={phoneDisplay}
-            accessibilityLabel={`Call Support, ${phoneDisplay}`}
-            onPress={openContactUs}
+            subtitle={phoneDisplay ?? 'Email us or raise a ticket'}
+            accessibilityLabel={
+              phoneDisplay ? `Call Support, ${phoneDisplay}` : 'Contact support by email or ticket'
+            }
+            onPress={phoneDial ? () => dial(phoneDial) : openContactUs}
           />
           <MiSupportCard
             icon="faq"

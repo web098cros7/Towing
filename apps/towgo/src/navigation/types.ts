@@ -154,5 +154,6 @@ export type RootStackParamList = {
   Settings: undefined;
   EmergencyContacts: undefined;
   AddEmergencyContact: undefined;
-  Legal: undefined;
+  /** `section` scrolls to Privacy, Terms or Your Data (Settings' three rows). */
+  Legal: { section?: 'privacy' | 'terms' | 'data' } | undefined;
 };

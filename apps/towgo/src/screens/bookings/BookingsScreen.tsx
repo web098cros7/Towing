@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -44,10 +44,8 @@ import { formatPaise } from '@/utils/format';
  * A filter that matches nothing while bookings exist shows nothing under the filter — the same
  * blank as loading, which is what the design draws when it has no cards to show.
  *
- * FINITE SCOPE: only the pages `useBookings` has already fetched are rendered, and nothing
- * asks for the next one, so a customer with more bookings than one page sees the first page.
- * 33's frame gives no pager and draws its six cards as a plain stack, so a "Load more" button
- * would be a control the design never drew. Reported.
+ * PAGING: the next page of `useBookings` loads as the list nears its end, with no button (33
+ * draws its cards as a plain stack and no pager).
  *
  * DATA: every value is a real booking field or a `SlotBar`. Nothing is invented and nothing the
  * design draws is dropped — an unknown service slug (`serviceTitle` returns null) keeps the
@@ -214,7 +212,15 @@ export function BookingsScreen() {
   const tabBarSpace = useTabBarSpace();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { items, isPending, isError, refetch } = useBookings();
+  const { items, isPending, isError, refetch, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useBookings();
+  // The next page loads as the customer nears the end of the list (owner, 25 Sep 2026:
+  // history stopped at the first page).
+  const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const nearEnd = layoutMeasurement.height + contentOffset.y >= contentSize.height - 300;
+    if (nearEnd && hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  };
 
   const [filter, setFilter] = useState<FilterKey>('all');
 
@@ -283,6 +289,8 @@ export function BookingsScreen() {
           paddingBottom: tabBarSpace,
         }}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={200}
       >
         <View style={{ paddingHorizontal: mitowLayout.sideMargin }}>
           <View style={{ height: HEADING_HEIGHT, justifyContent: 'center' }}>

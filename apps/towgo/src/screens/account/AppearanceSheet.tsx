@@ -20,12 +20,16 @@ type AppearanceOption = {
   icon: MiColorIconName;
   title: string;
   subtitle: string;
+  /** No theme for it yet: shown, dimmed, not pickable. */
+  comingSoon?: boolean;
 };
 
 const OPTIONS: AppearanceOption[] = [
   { value: 'light', icon: 'sun', title: 'Light', subtitle: 'Bright and clear' },
-  { value: 'dark', icon: 'moon', title: 'Dark', subtitle: 'Easy on the eyes' },
-  { value: 'system', icon: 'device', title: 'System', subtitle: 'Match your phone' },
+  // The app is light-only today: Dark and System say so instead of saving a
+  // choice that changes nothing (owner, 25 Sep 2026).
+  { value: 'dark', icon: 'moon', title: 'Dark', subtitle: 'Coming soon', comingSoon: true },
+  { value: 'system', icon: 'device', title: 'System', subtitle: 'Coming soon', comingSoon: true },
 ];
 
 function AppearanceTile({
@@ -48,8 +52,10 @@ function AppearanceTile({
       accessibilityState={{ selected }}
       accessibilityLabel={`${option.title}, ${option.subtitle}`}
       onPress={onSelect}
+      disabled={option.comingSoon}
       style={{
         flex: 1,
+        opacity: option.comingSoon ? 0.5 : 1,
         minHeight: 135,
         borderRadius: 14,
         paddingVertical: 10,

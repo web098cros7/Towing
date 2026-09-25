@@ -187,7 +187,9 @@ export function EmergencyScreen() {
   }, [liveLink]);
 
   /** MiTow Support (409:18846): dials the number the card shows (owner decision). */
-  const onCallSupport = useCallback(() => dial(phoneDial), [phoneDial]);
+  const onCallSupport = useCallback(() => {
+    if (phoneDial) dial(phoneDial);
+  }, [phoneDial]);
 
   /**
    * Notify Emergency Contact (254:1426). No contact saved: 52 Add Emergency Contact.
@@ -383,14 +385,17 @@ export function EmergencyScreen() {
             />
             {/* MiTow Support 409:18846 (a detached copy of the same card). Figma's "+91 98765
                 43210" is a sample: the card shows and dials the app's support line. */}
-            <MiSupportCard
-              icon="tow-truck"
-              shadow="cardSm"
-              title="MiTow Support"
-              subtitle={phoneDisplay}
-              accessibilityLabel={`MiTow Support, ${phoneDisplay}`}
-              onPress={onCallSupport}
-            />
+            {/* Only with a real support number: never a made-up line in an emergency. */}
+            {phoneDisplay ? (
+              <MiSupportCard
+                icon="tow-truck"
+                shadow="cardSm"
+                title="MiTow Support"
+                subtitle={phoneDisplay}
+                accessibilityLabel={`MiTow Support, ${phoneDisplay}`}
+                onPress={onCallSupport}
+              />
+            ) : null}
             <MiSupportCard
               icon="contact-alert"
               title="Notify Emergency Contact"

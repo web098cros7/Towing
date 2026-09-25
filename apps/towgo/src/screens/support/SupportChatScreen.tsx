@@ -306,7 +306,7 @@ export function SupportChatScreen() {
               paddingBottom: 10,
             }}
           >
-            <MiChip label="Talk to an agent" onPress={() => dial(phoneDial)} />
+            {phoneDial ? <MiChip label="Talk to an agent" onPress={() => dial(phoneDial)} /> : null}
             {/* Only a chat about a trip has trip details to share. */}
             {booking ? <MiChip label="Share trip details" onPress={onShareTrip} /> : null}
             <MiChip label="End chat" onPress={onEndChat} />
@@ -341,7 +341,14 @@ function formatTime(date: Date): string {
  * brandYellowSoft, headset 24), Agent `297:3586` (name + status row) and Call
  * support `297:3591` (MiMapButton outline, phone 26, 44).
  */
-function SupportHeader({ onBack, phoneDial }: { onBack: () => void; phoneDial: string }) {
+function SupportHeader({
+  onBack,
+  phoneDial,
+}: {
+  onBack: () => void;
+  /** Null until a real support number is configured: no call button then. */
+  phoneDial: string | null;
+}) {
   const Pressable = usePressablePrimitive();
   const theme = useTheme();
 
@@ -397,21 +404,23 @@ function SupportHeader({ onBack, phoneDial }: { onBack: () => void; phoneDial: s
               backgroundColor: mitowColors.success,
             }}
           />
-          {/* One line, as drawn: a larger system font truncates it rather than wrapping. */}
+          {/* One line, as drawn. Not a live presence claim: nothing tracks who is online. */}
           <MiText variant="bodyS14" color="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
-            Online · replies in about 2 mins
+            We usually reply within minutes
           </MiText>
         </View>
       </View>
 
-      <MiMapButton
-        variant="outline"
-        icon="phone"
-        size={44}
-        iconSize={26}
-        accessibilityLabel="Call support"
-        onPress={() => dial(phoneDial)}
-      />
+      {phoneDial ? (
+        <MiMapButton
+          variant="outline"
+          icon="phone"
+          size={44}
+          iconSize={26}
+          accessibilityLabel="Call support"
+          onPress={() => dial(phoneDial)}
+        />
+      ) : null}
     </View>
   );
 }
