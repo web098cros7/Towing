@@ -44,7 +44,8 @@ export class DevOtpAdapter implements OtpPort {
   }
 }
 
-function devOtpKey(phone: string): string {
+/** Where the on-screen echo reads the latest code (shared with `Msg91OtpAdapter`). */
+export function devOtpKey(phone: string): string {
   return `dev:otp:${phone}`;
 }
 

@@ -771,6 +771,18 @@ const EnvSchema = z.object({
   MSG91_BASE_URL: z.url().default('https://control.msg91.com'),
   MSG91_AUTH_KEY: z.string().optional(),
   MSG91_SENDER_ID: z.string().optional(),
+  /**
+   * Who delivers login codes (`OtpPort`). `dev` writes them to the log (and to
+   * Redis for the on-screen echo); `msg91` sends a real SMS through MSG91's Flow
+   * API using the DLT-registered OTP template below. Separate from
+   * `NOTIFY_SMS_PROVIDER` on purpose: codes never pass through the notification
+   * spine (see `msg91-otp.adapter.ts`).
+   */
+  OTP_PROVIDER: z.enum(['dev', 'msg91']).default('dev'),
+  /** MSG91 template (Flow) id of the DLT-approved login-code SMS. */
+  MSG91_OTP_TEMPLATE_ID: z.string().optional(),
+  /** The template's variable that carries the code, e.g. `otp` for "…is ##otp##…". */
+  MSG91_OTP_VAR: z.string().default('otp'),
 
   /** WhatsApp Cloud API. `WHATSAPP_PHONE_NUMBER_ID` is the sender, not a phone number. */
   WHATSAPP_BASE_URL: z.url().default('https://graph.facebook.com/v21.0'),
@@ -878,6 +890,10 @@ export function assertProductionSafety(env: Env): void {
   // misconfiguration, not a deferral, and it fails at the first send otherwise.
   if (env.NOTIFY_EMAIL_PROVIDER === 'ses' && env.SES_FROM_EMAIL.endsWith('.local')) {
     throw new Error('SES_FROM_EMAIL is still the development placeholder');
+  }
+
+  if (env.OTP_PROVIDER === 'msg91' && (!env.MSG91_AUTH_KEY || !env.MSG91_OTP_TEMPLATE_ID)) {
+    throw new Error('MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID are required when OTP_PROVIDER=msg91');
   }
 
   if (env.NOTIFY_SMS_PROVIDER === 'msg91' && (!env.MSG91_AUTH_KEY || !env.MSG91_SENDER_ID)) {

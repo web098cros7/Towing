@@ -6,6 +6,7 @@ import { AdminAuthzService } from './admin-authz.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { DevOtpAdapter } from './dev-otp.adapter';
+import { Msg91OtpAdapter } from './msg91-otp.adapter';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { KycApprovedGuard } from './kyc-approved.guard';
 import { OTP_PORT } from './otp.port';
@@ -63,9 +64,16 @@ import { TokenService } from './token.service';
         admin: AdminRealmPolicy,
       ) => new RealmPolicyRegistry([fleet, driver, customer, admin]),
     },
-    // Swap for the SMS adapter here when a provider is contracted; nothing in
-    // the login flow knows which implementation it is talking to.
-    { provide: OTP_PORT, useClass: DevOtpAdapter },
+    // `OTP_PROVIDER` picks who delivers login codes; nothing in the login flow
+    // knows which implementation it is talking to.
+    DevOtpAdapter,
+    Msg91OtpAdapter,
+    {
+      provide: OTP_PORT,
+      inject: [ENV, DevOtpAdapter, Msg91OtpAdapter],
+      useFactory: (env: Env, dev: DevOtpAdapter, msg91: Msg91OtpAdapter) =>
+        env.OTP_PROVIDER === 'msg91' ? msg91 : dev,
+    },
   ],
   exports: [
     AuthService,
