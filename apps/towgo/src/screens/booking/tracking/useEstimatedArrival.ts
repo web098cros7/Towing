@@ -37,6 +37,15 @@ function sinceMs(at: string | undefined): number {
  * sends an estimate for the journey now under way.
  */
 export function useEstimatedArrival(tracking: BookingTracking | undefined): string | null {
+  const clock = useArrivalClock(tracking);
+  return clock === null ? null : `${ESTIMATE_PREFIX}${clock}`;
+}
+
+/**
+ * The clock time alone ("10:50 AM"), for copy that words it differently: Home's
+ * trip banner "Drop by 10:50 AM" (Figma `556:21010`). Same rules as above.
+ */
+export function useArrivalClock(tracking: BookingTracking | undefined): string | null {
   const etaSeconds = tracking?.etaSeconds ?? null;
   const at = tracking?.at;
   const status = tracking?.status;
@@ -60,7 +69,5 @@ export function useEstimatedArrival(tracking: BookingTracking | undefined): stri
     else if (etaSeconds !== previous.etaSeconds) setArrivalMs(Date.now() + etaSeconds * 1000);
   }, [at, etaSeconds, status]);
 
-  return arrivalMs === null
-    ? null
-    : `${ESTIMATE_PREFIX}${clockLabel(Math.round(arrivalMs / MINUTE_MS) * MINUTE_MS)}`;
+  return arrivalMs === null ? null : clockLabel(Math.round(arrivalMs / MINUTE_MS) * MINUTE_MS);
 }

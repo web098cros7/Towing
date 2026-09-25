@@ -37,6 +37,7 @@ import type { RootStackParamList } from '@/navigation/types';
 import { splitAddress } from '@/utils/address';
 import { HomeMap, type HomeMapHandle } from './components/HomeMap';
 import { PICKUP_MARKER_ABOVE_POINT } from './components/HomeMapMarkers';
+import { TripInProgressBanner } from './components/TripInProgressBanner';
 
 /**
  * Figma 08 · Home (`225:69`), with screen 07's map (`287:2017`) on a real
@@ -305,6 +306,11 @@ export function HomeScreen() {
           />
         </MiSheetPanel>
       </View>
+
+      {/* 25c Trip in progress banner 557:23471: 22.5 in, 27.4 above the tab bar. */}
+      <TripInProgressBanner
+        style={{ position: 'absolute', left: 22.5, right: 22.5, bottom: 27.4 }}
+      />
     </View>
   );
 }
