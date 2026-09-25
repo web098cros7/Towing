@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RoutePin } from '@/features/booking/components/book-a-tow/RoutePin';
 import { Platform, StyleSheet, View } from 'react-native';
-import * as Location from 'expo-location';
 import { useTheme } from '@towing/theme';
 import {
   MapPreview,
@@ -72,6 +71,8 @@ export interface TrackingMapProps {
   bottomInset: number;
   /** 24's Driver chip label ("Rakesh is here"); `null` until the driver's name is known. */
   driverChipLabel?: string | null;
+  /** Opens 26 · Emergency for this trip (the truck frames' upper map control). */
+  onEmergency?: () => void;
 }
 
 type LiveVariant = Exclude<TrackingMapVariant, 'legacy'>;
@@ -275,6 +276,7 @@ function LiveTripMap({
   sheetTop,
   variant,
   driverChipLabel = null,
+  onEmergency,
 }: TrackingMapProps & { variant: LiveVariant }) {
   const map = useRef<MapPreviewController>(null);
   const [ready, setReady] = useState(false);
@@ -651,24 +653,6 @@ function LiveTripMap({
     setPausedIn(null);
   }, [following, frame]);
 
-  const onLocateMe = useCallback(async () => {
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) return;
-      const current =
-        (await Location.getLastKnownPositionAsync()) ?? (await Location.getCurrentPositionAsync());
-      if (!current) return;
-      // Stop following, or the next position update would pull the camera back.
-      setPausedIn(variant);
-      map.current?.animateToCoordinate({
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-      });
-    } catch {
-      // Location unavailable: the camera stays where it is.
-    }
-  }, [variant]);
-
   return (
     <>
       <MapPreview
@@ -687,16 +671,19 @@ function LiveTripMap({
       />
 
       {/*
-        Locate me: 18 `229:283` 50 at (327, 251), right 16 and 159.8 above the sheet;
-        19 `254:1530` 50 at (327, 242), right 16 and 135.9 above the sheet;
-        25 `236:474` 50 at (327.9, 248), right 15.1 and 140.4 above the sheet.
+        Emergency, in Locate me's place: 18 `229:283` 50 at (327, 251), right 16 and
+        159.8 above the sheet; 19 `254:1530` 50 at (327, 242), right 16 and 135.9
+        above; 25 `236:474` 50 at (327.9, 248), right 15.1 and 140.4 above. Locate me
+        and Recenter did the same job on a trip map, so Locate me became the way to
+        26 · Emergency (owner, 25 Sep 2026).
       */}
-      {truckDesign ? (
+      {truckDesign && onEmergency ? (
         <MiMapButton
-          icon="locate"
+          colorIcon="siren"
           size={50}
-          accessibilityLabel="Locate me"
-          onPress={onLocateMe}
+          iconSize={28}
+          accessibilityLabel="Emergency"
+          onPress={onEmergency}
           style={{
             position: 'absolute',
             right: truckDesign.locate.right,

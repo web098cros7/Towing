@@ -205,11 +205,7 @@ export function TrackingScreen() {
     () => navigation.navigate('Support', { bookingId }),
     [navigation, bookingId],
   );
-  /**
-   * 25's Help chip opens 26 Emergency for this trip. Figma draws no entry to 26;
-   * screens are numbered in flow order, 26 follows 25, and Help is 25's only
-   * control beyond Back and the map's (owner decision).
-   */
+  /** The map's Emergency control opens 26 Emergency for this trip. */
   const openEmergency = useCallback(
     () => navigation.navigate('Emergency', { bookingId }),
     [bookingId, navigation],
@@ -600,6 +596,7 @@ export function TrackingScreen() {
         sheetTop={sheetTop}
         bottomInset={legacyInset}
         driverChipLabel={firstName ? `${firstName} is here` : null}
+        onEmergency={openEmergency}
       />
 
       {/* Back (18 `229:269`, 19 `254:1516`, 23 `236:373`, 24 `299:4110`, 25 `236:460`): Map Control 46 at (16, 49). */}
@@ -612,11 +609,11 @@ export function TrackingScreen() {
       />
       {/*
         Help: 18, 19, 23 and 25 (`236:466`) draw it at (284.8, 48.5), 13.2 from
-        the right edge; 24 `299:4116` at (285, 49), 13 from it. 25's opens 26
-        Emergency, every other one 58 Support.
+        the right edge; 24 `299:4116` at (285, 49), 13 from it. Every one opens 58
+        Support; 26 Emergency has its own map control (owner, 25 Sep 2026).
       */}
       <MiHelpChip
-        onPress={design === 'inTransit25' ? openEmergency : openSupport}
+        onPress={openSupport}
         style={
           showCode
             ? { position: 'absolute', right: 13, top: controlsTop }
