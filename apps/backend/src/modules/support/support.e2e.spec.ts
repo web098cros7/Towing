@@ -274,6 +274,44 @@ describe('support tickets (/v1/support + /v1/admin/support, W15)', () => {
     expect(list.body.total).toBe(0);
   });
 
+  it('takes a one-word first message, as a chat opens with "Hi"', async () => {
+    const created = await createTicket(customerAuth, { body: 'Hi' });
+    const detail = await request(app.getHttpServer())
+      .get(`/v1/support/tickets/${created.body.ticketId as string}`)
+      .set('Authorization', customerAuth)
+      .expect(200);
+    expect(detail.body.messages[0].body).toBe('Hi');
+  });
+
+  it('lets a requester end their own chat, once, and nobody else’s', async () => {
+    const created = await createTicket(customerAuth);
+    const ticketId = created.body.ticketId as string;
+
+    await request(app.getHttpServer())
+      .post(`/v1/support/tickets/${ticketId}/resolve`)
+      .set('Authorization', otherCustomerAuth)
+      .expect(404);
+
+    const ended = await request(app.getHttpServer())
+      .post(`/v1/support/tickets/${ticketId}/resolve`)
+      .set('Authorization', customerAuth)
+      .expect(200);
+    expect(ended.body.status).toBe('resolved');
+    expect(ended.body.resolvedAt).not.toBeNull();
+
+    // Ending it again is a no-op, and the ended chat takes no more messages.
+    const again = await request(app.getHttpServer())
+      .post(`/v1/support/tickets/${ticketId}/resolve`)
+      .set('Authorization', customerAuth)
+      .expect(200);
+    expect(again.body.status).toBe('resolved');
+    await request(app.getHttpServer())
+      .post(`/v1/support/tickets/${ticketId}/messages`)
+      .set('Authorization', customerAuth)
+      .send({ body: 'One more thing' })
+      .expect(409);
+  });
+
   // -------------------------------------------------------------------------
   // Workflow
   // -------------------------------------------------------------------------

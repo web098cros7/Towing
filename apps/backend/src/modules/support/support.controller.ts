@@ -77,6 +77,16 @@ export class SupportController {
   ): Promise<SupportTicketDetail> {
     return this.support.reply(requesterOf(request), id, body);
   }
+
+  /** The requester ends the conversation ("End chat" in the customer app's support chat). */
+  @Post(':id/resolve')
+  @HttpCode(HttpStatus.OK)
+  resolve(
+    @ZodParam(z.uuid(), 'id') id: string,
+    @Req() request: AuthedRequest,
+  ): Promise<SupportTicketDetail> {
+    return this.support.resolveMine(requesterOf(request), id);
+  }
 }
 
 function requesterOf(request: AuthedRequest): TicketRequester {

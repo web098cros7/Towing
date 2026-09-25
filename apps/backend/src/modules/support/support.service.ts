@@ -231,6 +231,37 @@ export class SupportService {
     return this.myDetail(requester, ticketId);
   }
 
+  /**
+   * The requester ends the conversation: the ticket moves to `resolved`, so the
+   * console stops waiting on it and a later message starts a fresh one. Already
+   * resolved or closed is a no-op. No `support.resolved` notification — the
+   * requester is the one who ended it.
+   */
+  async resolveMine(requester: TicketRequester, ticketId: string): Promise<SupportTicketDetail> {
+    const ticket = await this.repo.requesterDetail(requester, ticketId);
+    if (!ticket) throw ApiException.notFound('Ticket not found');
+    if (ticket.status === 'resolved' || ticket.status === 'closed') {
+      return this.myDetail(requester, ticketId);
+    }
+
+    const now = new Date();
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(supportTickets)
+        .set({ status: 'resolved', resolvedAt: now, updatedAt: now })
+        .where(eq(supportTickets.id, ticketId));
+      await tx.insert(supportTicketEvents).values({
+        ticketId,
+        kind: 'status_changed',
+        actorType: 'requester',
+        actorId: requester.requesterId,
+        data: { from: ticket.status, to: 'resolved', via: 'requester_end_chat' },
+      });
+    });
+
+    return this.myDetail(requester, ticketId);
+  }
+
   // -------------------------------------------------------------------------
   // Console rail
   // -------------------------------------------------------------------------

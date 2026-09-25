@@ -145,7 +145,11 @@ export function tripIssueWindowOpen(tripAt: Date | string, now: Date = new Date(
 export const supportTicketCreateRequestSchema = z.object({
   category: supportTicketCategorySchema,
   subject: z.string().trim().min(4).max(160),
-  body: z.string().trim().min(4).max(4000),
+  /**
+   * At least one character: a chat's first message can be a plain "Hi" (it
+   * used to be padded to four as "Chat started: Hi" and shown that way).
+   */
+  body: z.string().trim().min(1).max(4000),
   /** §6.6: "Get help" from a booking attaches the trip. */
   bookingId: z.uuid().optional(),
   /**
