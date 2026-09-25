@@ -55,9 +55,15 @@ export const PICKUP_MARKER_ABOVE_POINT = PILL_H + STEM_H + PIN / 2;
 export const userMarkerAnchor = anchorIn(USER_BOX, USER_POINT);
 export const userMarkerCenterOffset = centerOffsetIn(USER_BOX, USER_POINT);
 
-export function UserLocationMarker() {
+export function UserLocationMarker({ onLayout }: { onLayout?: () => void }) {
   return (
+    // `collapsable={false}`: this box only lays its children out, so Android's
+    // view flattening would remove it, and the map's marker snapshot then
+    // caught the green pill alone, cut off, with no text, stem or pin (device,
+    // 25 Sep 2026). A marker's root must stay a real native view.
     <View
+      collapsable={false}
+      onLayout={onLayout}
       style={{
         width: USER_BOX.width,
         height: USER_BOX.height,

@@ -205,7 +205,12 @@ export const HomeMap = forwardRef<HomeMapHandle, HomeMapProps>(function HomeMap(
     return boundsAround(partner.coordinate, truckGlow, current);
   }, [partner, scale, width]);
 
-  const userSettling = useSettling(customerKey);
+  // Re-snapshot the pickup marker once the map is ready and whenever the marker
+  // lays itself out again: a snapshot taken before either caught a half-drawn
+  // marker (a clipped green pill, device 25 Sep 2026) and kept it.
+  const [userLayouts, setUserLayouts] = useState(0);
+  const onUserLayout = useCallback(() => setUserLayouts((n) => n + 1), []);
+  const userSettling = useSettling(`${customerKey}:${ready}:${userLayouts}`);
   // Re-snapshot when the ETA changes AND when the truck image lands late.
   const [truckLoads, setTruckLoads] = useState(0);
   const onTruckLoad = useCallback(() => setTruckLoads((n) => n + 1), []);
@@ -283,7 +288,7 @@ export const HomeMap = forwardRef<HomeMapHandle, HomeMapProps>(function HomeMap(
             tappable={false}
             accessibilityLabel="Your location"
           >
-            <UserLocationMarker />
+            <UserLocationMarker onLayout={onUserLayout} />
           </Marker>
         ) : null}
       </MapView>
