@@ -32,6 +32,13 @@ export const supportRestSource: SupportDataSource = {
     });
   },
 
+  resolve(ticketId) {
+    return apiFetch<SupportTicketDetail>(`support/tickets/${ticketId}/resolve`, {
+      method: 'POST',
+      idempotent: true,
+    });
+  },
+
   presignAttachment() {
     return apiFetch<{ uploadUrl: string; key: string; expiresAt: string }>(
       'support/tickets/attachments/presign',

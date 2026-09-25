@@ -35,6 +35,17 @@ export function useCreateSupportTicket() {
   });
 }
 
+export function useResolveSupportTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ticketId: string) => supportDataSource.resolve(ticketId),
+    onSuccess: (detail) => {
+      queryClient.setQueryData(supportKeys.detail(detail.id), detail);
+      void queryClient.invalidateQueries({ queryKey: supportKeys.list() });
+    },
+  });
+}
+
 export function useReplySupportTicket(ticketId: string) {
   const queryClient = useQueryClient();
   return useMutation({

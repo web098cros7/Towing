@@ -21,11 +21,7 @@ import { PaymentReview } from './review/PaymentReview';
 import { buildPaymentBill } from './review/paymentBill';
 import { useFreshBooking } from './useFreshBooking';
 import { showPaymentNotice } from './paymentNotice';
-import {
-  usePaymentSession,
-  type PaymentFailure,
-  type PaymentOutcome,
-} from './usePaymentSession';
+import { usePaymentSession, type PaymentFailure, type PaymentOutcome } from './usePaymentSession';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -124,7 +120,10 @@ export function PaymentScreen() {
     if (!paying) setFailure(null);
   }, [paying]);
 
-  const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
+  const openSupport = useCallback(
+    () => navigation.navigate('Support', { bookingId }),
+    [navigation, bookingId],
+  );
 
   // --- Paying ------------------------------------------------------------------------------
 

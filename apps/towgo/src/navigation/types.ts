@@ -133,10 +133,10 @@ export type RootStackParamList = {
   /**
    * Figma 58 · Support: the help hub. Opened by the Support tab, every Help
    * chip and every "Get Help" button. Its FAQ / Help Center rows go to
-   * `HelpCenter`; chat, report-an-issue and contact rows go to `ContactUs`
-   * until 59–61 are rebuilt.
+   * `HelpCenter`; chat and report-an-issue carry `bookingId` on, so help asked
+   * from a trip is about that trip.
    */
-  Support: undefined;
+  Support: { bookingId?: string } | undefined;
   HelpCenter: undefined;
   /** W15: the message form files a ticket; a booking id attaches the trip (§6.6). */
   ContactUs: { bookingId?: string } | undefined;

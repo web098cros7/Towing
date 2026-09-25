@@ -21,6 +21,8 @@ export interface SupportDataSource {
   detail(ticketId: string): Promise<SupportTicketDetail>;
   create(input: SupportTicketCreateRequest): Promise<SupportTicketCreateResponse>;
   reply(ticketId: string, body: string): Promise<SupportTicketDetail>;
+  /** The requester ends the conversation ("End chat"): the ticket becomes `resolved`. */
+  resolve(ticketId: string): Promise<SupportTicketDetail>;
   presignAttachment(): Promise<{ uploadUrl: string; key: string; expiresAt: string }>;
 }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MiButton, MiInfoBanner, MiNavBar, MiScreen, MiSupportCard, mitowLayout } from '@/design';
@@ -35,8 +35,10 @@ export function SupportScreen() {
   // ReportIssue (61), contact → ContactUs, Share Feedback → ShareFeedback (62).
   const openHelpCenter = () => navigation.navigate('HelpCenter');
   const openContactUs = () => navigation.navigate('ContactUs');
-  const openSupportChat = () => navigation.navigate('SupportChat', {});
-  const openReportIssue = () => navigation.navigate('ReportIssue', {});
+  // Opened from a trip (its Help chip), chat and reports are about that trip.
+  const bookingId = useRoute<RouteProp<RootStackParamList, 'Support'>>().params?.bookingId;
+  const openSupportChat = () => navigation.navigate('SupportChat', { bookingId });
+  const openReportIssue = () => navigation.navigate('ReportIssue', { bookingId });
   const openShareFeedback = () => navigation.navigate('ShareFeedback');
 
   return (

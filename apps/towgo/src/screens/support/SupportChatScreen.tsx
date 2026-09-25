@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -17,28 +18,42 @@ import {
 } from '@/design';
 import { usePressablePrimitive } from '@towing/ui';
 import { useTheme } from '@towing/theme';
+import { useProfile } from '@/features/account/api/profile.queries';
 import { useBooking } from '@/features/bookings/api/bookings.queries';
-import { serviceTitle } from '@/features/services/data/serviceTitles';
 import { useSupportContact } from '@/features/app-config/appConfig';
 import {
   useCreateSupportTicket,
   useReplySupportTicket,
+  useResolveSupportTicket,
   useSupportTicket,
 } from '@/features/support/api/support.queries';
+import { supportDataSource } from '@/features/support/api/supportDataSource';
+import { supportKeys } from '@/features/support/api/support.keys';
 import { storage } from '@/lib/storage/storage';
 import type { RootStackParamList } from '@/navigation/types';
 import { dial } from '@/screens/emergency/emergency.data';
 import { ChatComposer } from '@/screens/booking/chat/ChatComposer';
 import { useKeyboardOpen } from '@/screens/booking/chat/useKeyboardOpen';
+import { shortPlace } from '@/utils/address';
 
 /**
  * Figma 60 · Support Chat (`297:3403`), route `SupportChat { bookingId? }`.
  *
- * The conversation IS one support ticket on the W15 rail. The ticket id is kept
- * in MMKV under `support.chatTicketId`; the ticket is polled every 5 s while the
- * screen is focused, so replies from the support console arrive without a
- * refresh. A `resolved`/`closed` ticket (or a 404) is forgotten so the next
- * message starts a fresh one.
+ * The conversation IS one support ticket on the W15 rail, polled every 5 s so
+ * replies from the support console arrive without a refresh. Help asked from a
+ * trip (its Help chip → Support → Start a Live Chat) carries the trip's id: the
+ * Topic strip names it and the chat is that trip's own ticket, kept apart from
+ * a general chat (MMKV `support.chatTicketId` / `support.chatTicketId.<bookingId>`).
+ *
+ * How it behaves (owner, 25 Sep 2026: "we need to improve how chat works"):
+ * - It opens on a greeting from MiTow Support, so an empty chat is not a blank
+ *   screen. The greeting is the app's, not a stored message.
+ * - A sent message shows at once, marked "Sending…", and hands over to the
+ *   server's copy when the ticket answers; a failed one comes back into the composer.
+ * - The customer's words are sent as typed (no "Chat started:" padding).
+ * - "End chat" asks, then resolves the ticket on the server so the console stops
+ *   waiting on it. A chat ended by either side stays readable, says so, and the
+ *   next message starts a new one.
  *
  * Layout: Header `297:3576` (64 tall), optional Topic `297:3594` (12 below the
  * header, 21 side margins), Messages `297:3599` (scroll, 21 side margins, gap 8),
@@ -48,87 +63,131 @@ import { useKeyboardOpen } from '@/screens/booking/chat/useKeyboardOpen';
  */
 const CHAT_TICKET_KEY = 'support.chatTicketId';
 
+const ticketKeyFor = (bookingId: string | undefined) =>
+  bookingId ? `${CHAT_TICKET_KEY}.${bookingId}` : CHAT_TICKET_KEY;
+
+type PendingMessage = { id: string; text: string };
+
 export function SupportChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { bookingId } = useRoute<RouteProp<RootStackParamList, 'SupportChat'>>().params ?? {};
+  const queryClient = useQueryClient();
 
   const { data: booking } = useBooking(bookingId ?? '');
+  const { data: profile } = useProfile();
   const { phoneDial } = useSupportContact();
   const keyboardOpen = useKeyboardOpen();
 
+  const storageKey = ticketKeyFor(bookingId);
   const [ticketId, setTicketId] = useState<string | null>(() => {
-    const stored = storage.getString(CHAT_TICKET_KEY);
+    const stored = storage.getString(storageKey);
     return stored && stored.length > 0 ? stored : null;
   });
   const [draft, setDraft] = useState('');
+  const [pending, setPending] = useState<PendingMessage[]>([]);
 
   const ticketQuery = useSupportTicket(ticketId, 5000);
   const createTicket = useCreateSupportTicket();
   const replyTicket = useReplySupportTicket(ticketId ?? '');
+  const resolveTicket = useResolveSupportTicket();
 
-  // Forget a ticket that has been resolved/closed, or that no longer exists.
+  const status = ticketQuery.data?.status;
+  const ended = status === 'resolved' || status === 'closed';
+
+  const forgetTicket = useCallback(() => {
+    storage.delete(storageKey);
+    setTicketId(null);
+  }, [storageKey]);
+
+  // A ticket that no longer exists is forgotten outright.
   useEffect(() => {
-    if (!ticketId) return;
-    if (ticketQuery.isError) {
-      storage.delete(CHAT_TICKET_KEY);
-      setTicketId(null);
-      return;
-    }
-    const status = ticketQuery.data?.status;
-    if (status === 'resolved' || status === 'closed') {
-      storage.delete(CHAT_TICKET_KEY);
-      setTicketId(null);
-    }
-  }, [ticketId, ticketQuery.isError, ticketQuery.data?.status]);
+    if (ticketId && ticketQuery.isError) forgetTicket();
+  }, [ticketId, ticketQuery.isError, forgetTicket]);
 
   const goBack = useCallback(() => navigation.goBack(), [navigation]);
 
   const sendText = useCallback(
     async (text: string) => {
-      if (ticketId) {
+      if (ticketId && !ended) {
         await replyTicket.mutateAsync(text);
         return;
       }
-      const body = text.length < 4 ? `Chat started: ${text}` : text;
-      const subject = booking
-        ? `Chat with MiTow Support \u00b7 ${booking.reference}`
-        : 'Chat with MiTow Support';
       const created = await createTicket.mutateAsync({
-        category: 'other',
-        subject,
-        body,
+        category: booking ? 'booking' : 'other',
+        subject: booking
+          ? `Chat with MiTow Support · ${booking.reference}`
+          : 'Chat with MiTow Support',
+        body: text,
         bookingId: booking?.id,
       });
-      storage.set(CHAT_TICKET_KEY, created.ticketId);
+      // Read the new ticket before showing it, so the pending bubble hands over
+      // to the server's copy without a blank frame between them.
+      await queryClient.fetchQuery({
+        queryKey: supportKeys.detail(created.ticketId),
+        queryFn: () => supportDataSource.detail(created.ticketId),
+      });
+      storage.set(storageKey, created.ticketId);
       setTicketId(created.ticketId);
     },
-    [ticketId, replyTicket, createTicket, booking],
+    [ticketId, ended, replyTicket, createTicket, booking, queryClient, storageKey],
   );
 
-  const onComposerSend = useCallback(
-    async (text: string) => {
+  const send = useCallback(
+    async (text: string, restoreDraft: boolean) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      setDraft('');
+      const id = `pending-${Date.now()}`;
+      setPending((list) => [...list, { id, text: trimmed }]);
       try {
         await sendText(trimmed);
       } catch {
-        setDraft(text);
-        Alert.alert('Message not sent', 'Please try again.');
+        if (restoreDraft) setDraft(text);
+        Alert.alert('Message not sent', 'Please check your connection and try again.');
+      } finally {
+        setPending((list) => list.filter((message) => message.id !== id));
       }
     },
     [sendText],
   );
 
-  const onShareTrip = useCallback(async () => {
+  const onComposerSend = useCallback(
+    (text: string) => {
+      setDraft('');
+      void send(text, true);
+    },
+    [send],
+  );
+
+  const onShareTrip = useCallback(() => {
     if (!booking) return;
-    const text = `Booking ${booking.reference} · ${booking.originLabel} → ${booking.destinationLabel}`;
-    try {
-      await sendText(text);
-    } catch {
-      Alert.alert('Message not sent', 'Please try again.');
+    const from = shortPlace(booking.originLabel);
+    const to = shortPlace(booking.destinationLabel);
+    const route = from && to ? ` · ${from} → ${to}` : '';
+    void send(`Booking ${booking.reference}${route}`, false);
+  }, [booking, send]);
+
+  const onEndChat = useCallback(() => {
+    if (!ticketId || ended) {
+      goBack();
+      return;
     }
-  }, [booking, sendText]);
+    Alert.alert('End this chat?', 'You can start a new chat any time.', [
+      { text: 'Keep chatting', style: 'cancel' },
+      {
+        text: 'End chat',
+        style: 'destructive',
+        onPress: () =>
+          resolveTicket.mutate(ticketId, {
+            onSuccess: () => {
+              forgetTicket();
+              goBack();
+            },
+            onError: () =>
+              Alert.alert('Could not end the chat', 'Please check your connection and try again.'),
+          }),
+      },
+    ]);
+  }, [ticketId, ended, resolveTicket, forgetTicket, goBack]);
 
   const scrollRef = useRef<ScrollView>(null);
   const positioned = useRef(false);
@@ -140,12 +199,30 @@ export function SupportChatScreen() {
 
   const hasTopic = Boolean(bookingId && booking);
 
-  const messages: ChatMessage[] = (ticketQuery.data?.messages ?? []).map((m) => ({
-    id: m.id,
-    side: m.authorType === 'requester' ? 'outgoing' : 'incoming',
-    text: m.body,
-    time: formatTime(new Date(m.createdAt)),
-  }));
+  const firstName = profile?.name?.trim().split(/\s+/)[0];
+  const openedAt = ticketQuery.data?.createdAt ? new Date(ticketQuery.data.createdAt) : null;
+  const greeting: ChatMessage = {
+    id: 'greeting',
+    side: 'incoming',
+    text: `Hi${firstName ? ` ${firstName}` : ''}, welcome to MiTow Support. How can we help?`,
+    time: formatTime(openedAt ?? new Date()),
+  };
+
+  const messages: ChatMessage[] = [
+    greeting,
+    ...(ticketQuery.data?.messages ?? []).map((m): ChatMessage => ({
+      id: m.id,
+      side: m.authorType === 'requester' ? 'outgoing' : 'incoming',
+      text: m.body,
+      time: formatTime(new Date(m.createdAt)),
+    })),
+    ...pending.map((m): ChatMessage => ({
+      id: m.id,
+      side: 'outgoing',
+      text: m.text,
+      time: 'Sending…',
+    })),
+  ];
 
   return (
     <KeyboardAvoidingView
@@ -157,6 +234,7 @@ export function SupportChatScreen() {
 
         <SupportHeader onBack={goBack} phoneDial={phoneDial} />
 
+        {/* Topic 297:3594: the trip this chat is about. */}
         {hasTopic && booking ? (
           <View
             style={{
@@ -174,7 +252,7 @@ export function SupportChatScreen() {
           >
             <MiColorIcon name="tow-truck" size={30} />
             <MiText variant="strong14" style={{ flex: 1 }}>
-              {`About booking ${booking.reference} · ${serviceTitle(booking.serviceSlug) ?? 'Tow'}`}
+              {`About booking ${booking.reference}`}
             </MiText>
           </View>
         ) : null}
@@ -185,6 +263,7 @@ export function SupportChatScreen() {
           contentContainerStyle={{
             paddingHorizontal: mitowLayout.sideMargin,
             paddingTop: hasTopic ? 2 : 12,
+            paddingBottom: 12,
             gap: 8,
           }}
           onContentSizeChange={onContentSizeChange}
@@ -205,6 +284,11 @@ export function SupportChatScreen() {
               <MiChatBubble side={message.side} message={message.text} time={message.time} />
             </View>
           ))}
+          {ended ? (
+            <MiText variant="label13" color="secondary" align="center" style={{ paddingTop: 4 }}>
+              This chat has ended. Send a message to start a new one.
+            </MiText>
+          ) : null}
         </ScrollView>
 
         {!keyboardOpen ? (
@@ -223,16 +307,13 @@ export function SupportChatScreen() {
             }}
           >
             <MiChip label="Talk to an agent" onPress={() => dial(phoneDial)} />
-            <MiChip label="Share trip details" onPress={() => void onShareTrip()} />
-            <MiChip label="End chat" onPress={goBack} />
+            {/* Only a chat about a trip has trip details to share. */}
+            {booking ? <MiChip label="Share trip details" onPress={onShareTrip} /> : null}
+            <MiChip label="End chat" onPress={onEndChat} />
           </ScrollView>
         ) : null}
 
-        <ChatComposer
-          value={draft}
-          onChangeText={setDraft}
-          onSend={(t) => void onComposerSend(t)}
-        />
+        <ChatComposer value={draft} onChangeText={setDraft} onSend={onComposerSend} />
       </MiScreen>
     </KeyboardAvoidingView>
   );

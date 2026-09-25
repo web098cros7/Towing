@@ -20,7 +20,11 @@ import {
   mitowLayout,
 } from '@/design';
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
-import { useBooking, useCancelBooking, CancellationFeeNotPaidError } from '@/features/bookings/api/bookings.queries';
+import {
+  useBooking,
+  useCancelBooking,
+  CancellationFeeNotPaidError,
+} from '@/features/bookings/api/bookings.queries';
 import { callDriver } from '@/features/calling/callDriver';
 import { openDriverChat } from '@/features/chat/openDriverChat';
 import { useShareTrip } from '@/features/tracking/api/tracking.queries';
@@ -124,7 +128,10 @@ export function BookingDetailsScreen() {
   }, [navigation]);
 
   /** Help `239:558`: 58 Support, as every Help chip does. */
-  const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
+  const openSupport = useCallback(
+    () => navigation.navigate('Support', { bookingId }),
+    [navigation, bookingId],
+  );
 
   /**
    * Status card `239:567` (chevron): the live view of this trip. 20 is usually

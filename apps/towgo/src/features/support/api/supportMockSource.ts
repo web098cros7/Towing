@@ -110,6 +110,22 @@ export const supportMockSource: SupportDataSource = {
     return { ticketId: ticket.id, reference, status: 'open', createdAt: now };
   },
 
+  async resolve(ticketId) {
+    await delay(300);
+    const ticket = tickets.find((row) => row.id === ticketId);
+    if (!ticket) throw new Error('Ticket not found');
+    if (ticket.status === 'resolved' || ticket.status === 'closed') return ticket;
+    const now = new Date().toISOString();
+    const next: SupportTicketDetail = {
+      ...ticket,
+      status: 'resolved',
+      resolvedAt: now,
+      updatedAt: now,
+    };
+    tickets = tickets.map((row) => (row.id === ticketId ? next : row));
+    return next;
+  },
+
   async reply(ticketId, body) {
     await delay(500);
     const ticket = tickets.find((row) => row.id === ticketId);

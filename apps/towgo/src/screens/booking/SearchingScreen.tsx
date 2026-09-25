@@ -13,7 +13,9 @@ import { useSearchProgress } from '@/features/booking/hooks/useSearchProgress';
 import {
   useBooking,
   useCancelBooking,
-  useRetrySearch, CancellationFeeNotPaidError } from '@/features/bookings/api/bookings.queries';
+  useRetrySearch,
+  CancellationFeeNotPaidError,
+} from '@/features/bookings/api/bookings.queries';
 import { bookingsKeys } from '@/features/bookings/api/bookings.keys';
 import type { BookingStatus } from '@/features/bookings/types';
 import type { RootStackParamList } from '@/navigation/types';
@@ -116,7 +118,10 @@ export function SearchingScreen() {
     if (status === 'cancelled') goHome();
   }, [status, navigation, bookingId, goHome]);
 
-  const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
+  const openSupport = useCallback(
+    () => navigation.navigate('Support', { bookingId }),
+    [navigation, bookingId],
+  );
 
   /**
    * §9.1.6 "Cancel — free" during search. The design draws no loading, disabled

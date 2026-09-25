@@ -35,7 +35,11 @@ import {
   MiText,
 } from '@/design';
 import { DriverInfoCard } from '@/features/booking/components/DriverInfoCard';
-import { useBooking, useCancelBooking, CancellationFeeNotPaidError } from '@/features/bookings/api/bookings.queries';
+import {
+  useBooking,
+  useCancelBooking,
+  CancellationFeeNotPaidError,
+} from '@/features/bookings/api/bookings.queries';
 import { callDriver } from '@/features/calling/callDriver';
 import { openDriverChat } from '@/features/chat/openDriverChat';
 import { recordMockCodeShown } from '@/features/tracking/api/mockTripClock';
@@ -45,10 +49,7 @@ import { CancelTripSheet } from '@/features/tracking/components/CancelTripSheet'
 import { ConnectionBanner } from '@/features/tracking/components/ConnectionBanner';
 import { LiveEtaCard } from '@/features/tracking/components/LiveEtaCard';
 import { StatusTimeline, hasTimelinePosition } from '@/features/tracking/components/StatusTimeline';
-import {
-  TrackingMap,
-  type TrackingMapVariant,
-} from '@/features/tracking/components/TrackingMap';
+import { TrackingMap, type TrackingMapVariant } from '@/features/tracking/components/TrackingMap';
 import { useCollectionCode } from '@/features/tracking/hooks/useCollectionCode';
 import { useCollectionCodeHelp } from '@/features/tracking/hooks/useCollectionCodeHelp';
 import { trackingExitFor } from './tracking/trackingExit';
@@ -200,7 +201,10 @@ export function TrackingScreen() {
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('Tabs', { screen: 'Home' });
   }, [navigation]);
-  const openSupport = useCallback(() => navigation.navigate('Support'), [navigation]);
+  const openSupport = useCallback(
+    () => navigation.navigate('Support', { bookingId }),
+    [navigation, bookingId],
+  );
   /**
    * 25's Help chip opens 26 Emergency for this trip. Figma draws no entry to 26;
    * screens are numbered in flow order, 26 follows 25, and Help is 25's only
