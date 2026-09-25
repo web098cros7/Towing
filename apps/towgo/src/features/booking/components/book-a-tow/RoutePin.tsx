@@ -69,8 +69,8 @@ export function PinHead({ kind, size = PIN }: { kind: 'pickup' | 'drop'; size?: 
 /** How tall a label-less `RoutePin` is (head + stem): its tip sits this far below its top. */
 export const ROUTE_PIN_HEIGHT = PIN + STEM;
 
-/** 44, grown 15% (owner, 26 Sep 2026). */
-const NEARBY_TRUCK_SIZE = 44 * 1.15;
+/** 44, grown 15% then 10% more (owner, 26 Sep 2026). */
+const NEARBY_TRUCK_SIZE = 44 * 1.15 * 1.1;
 
 /** A nearby tow truck on the booking map: its own kind, facing the way it is heading. */
 export function NearbyTruck({
