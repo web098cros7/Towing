@@ -132,13 +132,8 @@ export function BookLocationScreen() {
           <PlaceSuggestions suggestions={editing.suggestions} onSelect={editing.selectSuggestion} />
         ) : (
           <>
-            <LocationActions
-              onSelectOnMap={onSelectOnMap}
-              // Drawn enabled. Bookings carry one pickup and one drop (no stops in
-              // the contract) and no add-stop screen is drawn, so the press gives
-              // its feedback and goes nowhere yet.
-              onAddStop={() => {}}
-            />
+            {/* No "Add a stop": bookings carry one pickup and one drop. */}
+            <LocationActions onSelectOnMap={onSelectOnMap} />
 
             <SavedRecentSection
               saved={saved}

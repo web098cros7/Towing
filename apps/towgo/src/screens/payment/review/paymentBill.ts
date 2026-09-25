@@ -32,8 +32,8 @@ import type { PaymentBillLine } from './PaymentReview';
  *   `{ key: 'wallet', label: 'Wallet credit', value: MINUS + formatPaise(walletAppliedPaise),
  *   tone: 'discount' }`.
  * - The minus is U+2212 (as Figma draws "−₹100"), never a hyphen.
- * - While `booking` is undefined: return just Base fare and Distance charge, both with value null
- *   (label "Distance charge").
+ * - While `booking` is undefined: return just Base fare with value null.
+ * - No Distance charge line: distance is inside the base fare, whose label names the km.
  * - keys: 'base', 'distance', 'night', 'highway', 'accident', 'surge', 'booking-discount',
  *   'coupon-discount', 'wallet'.
  *
@@ -48,35 +48,24 @@ export function buildPaymentBill(
   const MINUS = '\u2212';
 
   if (!booking) {
-    // Booking still loading: draw the two always-present lines with placeholder bars.
-    return [
-      { key: 'base', label: 'Base fare', value: null, slotWidth: 37 },
-      { key: 'distance', label: 'Distance charge', value: null, slotWidth: 38 },
-    ];
+    // Booking still loading: the base line with a placeholder bar.
+    return [{ key: 'base', label: 'Base fare', value: null, slotWidth: 37 }];
   }
 
   const { breakdown } = booking;
   const lines: PaymentBillLine[] = [];
 
-  // Base fare: always drawn.
+  // Base fare, naming the distance it covers: the fare formula has no distance term (distance
+  // picks the slab, so it is already inside the base fare), so there is no separate distance
+  // line — an always-empty one read as unfinished (owner, 25 Sep 2026).
   lines.push({
     key: 'base',
-    label: 'Base fare',
+    label:
+      typeof booking.distanceKm === 'number'
+        ? `Base fare (${String(Math.round(booking.distanceKm * 10) / 10)} km)`
+        : 'Base fare',
     value: formatPaise(breakdown.basePaise),
     slotWidth: 37,
-  });
-
-  // Distance charge: always drawn, but the fare formula has no distance term (distance picks the
-  // slab, so it is already inside the base fare). Its value is therefore always null.
-  const distanceLabel =
-    typeof booking.distanceKm === 'number'
-      ? `Distance charge (${String(Math.round(booking.distanceKm * 10) / 10)} km)`
-      : 'Distance charge';
-  lines.push({
-    key: 'distance',
-    label: distanceLabel,
-    value: null,
-    slotWidth: 38,
   });
 
   // Night charge: only when it is actually charged.

@@ -123,25 +123,30 @@ export function tripsLabel(trips: number): string {
 }
 
 /**
- * Figma "4.8 (500+ trips)": `<rating 1 dp> (<count>+ trips)`, always both parts.
- * An unrated driver has no number to put in the drawn format, so the slot is
- * `null` and the row shows its placeholder (data gap: unrated-driver copy).
+ * Figma "4.8 (500+ trips)": `<rating 1 dp> (<count>+ trips)`.
+ *
+ * A driver nobody has rated yet gets words, not a grey bar (owner, 25 Sep 2026:
+ * a new demo driver showed placeholders everywhere): "New driver", or
+ * "New · 10+ trips" once they have trips but no rating.
  */
-export function ratingLabel(rating: number | null, trips: number): string | null {
-  if (rating === null) return null;
+export function ratingLabel(rating: number | null, trips: number): string {
+  if (rating === null) return trips > 0 ? `New · ${tripsLabel(trips)} trips` : 'New driver';
   return `${rating.toFixed(1)} (${tripsLabel(trips)} trips)`;
 }
 
 /**
  * Figma "Tata 407 (Flatbed)". The body type comes from the contract's
  * `vehicleClass`; the make and model only from the app-local extension above.
- * When any of the three is missing the drawn format cannot be filled, so `null`.
+ * With some of it missing, what is known is shown: "Tata 407", or "Flatbed"
+ * alone. `null` only when nothing about the truck is known yet.
  */
 export function vehicleModelLabel(driver: TrackedDriverDisplay | null): string | null {
-  const make = driver?.vehicleMake?.trim();
-  const model = driver?.vehicleModel?.trim();
-  if (!driver?.vehicleClass || !make || !model) return null;
-  return `${make} ${model} (${towMethodLabelFor(driver.vehicleClass)})`;
+  const makeModel = [driver?.vehicleMake?.trim(), driver?.vehicleModel?.trim()]
+    .filter(Boolean)
+    .join(' ');
+  const body = driver?.vehicleClass ? towMethodLabelFor(driver.vehicleClass) : null;
+  if (makeModel && body) return `${makeModel} (${body})`;
+  return makeModel || body || null;
 }
 
 /** Figma "KA 01 AB 1234"; `null` when the server has no plate yet. */

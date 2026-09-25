@@ -12,7 +12,6 @@ import {
   mitowShadows,
   MiButton,
   MiScreen,
-  MiSegmented,
   MiText,
   MiTowLockup,
 } from '@/design';
@@ -25,7 +24,7 @@ import {
 } from './login/dialCodes.data';
 import { LoginDialCodeButton } from './login/LoginDialCodeButton';
 import { LoginMethodField } from './login/LoginMethodField';
-import { LOGIN_METHODS, type LoginMethodKey } from './login/loginMethods.data';
+import { LOGIN_METHODS } from './login/loginMethods.data';
 import { boardTagline, useScaledTypeStyle } from './login/loginType';
 import { pickDialCode } from './login/pickDialCode';
 import { useKeyboardOverlap } from './login/useKeyboardOverlap';
@@ -68,10 +67,8 @@ const SIGN_UP_GAP = 6;
 
 const DIGITS_ONLY = /\D/g;
 
-const SEGMENT_OPTIONS = LOGIN_METHODS.map((method) => ({
-  key: method.key,
-  label: method.segmentLabel,
-}));
+/** A valid Indian mobile: ten digits starting 6–9. */
+const INDIAN_MOBILE = /^[6-9]\d{9}$/;
 
 export function LoginScreen() {
   const theme = useTheme();
@@ -80,19 +77,17 @@ export function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const taglineType = useScaledTypeStyle(boardTagline);
 
-  const [methodKey, setMethodKey] = useState<LoginMethodKey>('mobile');
-  const method = LOGIN_METHODS.find((m) => m.key === methodKey) ?? LOGIN_METHODS[0];
+  // Phone only: the auth API is phone OTP (spec data gap 1), so Figma's Email
+  // segment is not shown until email log-in exists (owner, 25 Sep 2026: no
+  // control a stakeholder can tap that says "not available yet").
+  const method = LOGIN_METHODS.find((m) => m.key === 'mobile') ?? LOGIN_METHODS[0];
   const [dialCode, setDialCode] = useState<LoginDialCode>(DEFAULT_LOGIN_DIAL_CODE);
   const [digits, setDigits] = useState('');
-  const [email, setEmail] = useState('');
   const sendOtp = useSendOtp();
   const inputRef = useRef<TextInput | null>(null);
 
   const mobile = `${dialCode.dialCode}${digits}`;
-  // TEMPORARY: any number is accepted so the flow can be walked end to end
-  // without a real SMS provider. The real rule is /^[6-9]\d{9}$/ (a valid Indian
-  // mobile); restore it before this reaches anyone outside the team.
-  const validMobile = digits.length > 0;
+  const validMobile = INDIAN_MOBILE.test(digits);
 
   const onChangeDigits = useCallback(
     (value: string) => {
@@ -100,10 +95,6 @@ export function LoginScreen() {
     },
     [dialCode.nationalNumberLength],
   );
-
-  const onChangeMethod = useCallback((key: string) => {
-    if (key === 'mobile' || key === 'email') setMethodKey(key);
-  }, []);
 
   const onPressDialCode = useCallback(() => {
     void pickDialCode(LOGIN_DIAL_CODES).then((picked) => {
@@ -118,18 +109,11 @@ export function LoginScreen() {
     // no disabled or loading state, so the button always looks the same; an
     // empty field just puts the cursor in it and a second tap while a request
     // is in flight is ignored.
-    if (methodKey === 'email') {
-      if (!email.trim()) {
-        inputRef.current?.focus();
-        return;
-      }
-      // The auth API is phone OTP only (spec data gap 1): there is no email
-      // log-in to send this to yet.
-      Alert.alert('Email log-in is not available yet', 'Use your mobile number to log in for now.');
-      return;
-    }
     if (sendOtp.isPending) return;
     if (!validMobile) {
+      if (digits.length > 0) {
+        Alert.alert('Check your number', 'Enter your 10-digit mobile number.');
+      }
       inputRef.current?.focus();
       return;
     }
@@ -148,7 +132,7 @@ export function LoginScreen() {
         error instanceof Error ? error.message : 'Something went wrong.',
       );
     }
-  }, [email, methodKey, mobile, navigation, sendOtp, validMobile]);
+  }, [digits.length, mobile, navigation, sendOtp, validMobile]);
 
   // Static-frame fit. Heights are measured, not assumed, because the copy
   // scales with `theme.scaleRatio`.
@@ -273,35 +257,18 @@ export function LoginScreen() {
           }}
         >
           <View onLayout={(event) => setFormHeight(event.nativeEvent.layout.height)}>
-            {/* 6.1 Method segmented control 259:1754. */}
-            <MiSegmented options={SEGMENT_OPTIONS} value={methodKey} onChange={onChangeMethod} />
-
-            {/* 6.2 Field 259:1759: 16 below. */}
-            <View style={{ marginTop: mitowLayout.blockGap }}>
-              {methodKey === 'mobile' ? (
-                <LoginMethodField
-                  key="mobile"
-                  method={method}
-                  value={digits}
-                  onChangeText={onChangeDigits}
-                  onSubmit={submit}
-                  inputRef={inputRef}
-                  maxLength={dialCode.nationalNumberLength}
-                  leading={
-                    <LoginDialCodeButton dialCode={dialCode.dialCode} onPress={onPressDialCode} />
-                  }
-                />
-              ) : (
-                <LoginMethodField
-                  key="email"
-                  method={method}
-                  value={email}
-                  onChangeText={setEmail}
-                  onSubmit={submit}
-                  inputRef={inputRef}
-                />
-              )}
-            </View>
+            {/* 6.2 Field 259:1759 (6.1's Mobile / Email segments are hidden: phone only). */}
+            <LoginMethodField
+              method={method}
+              value={digits}
+              onChangeText={onChangeDigits}
+              onSubmit={submit}
+              inputRef={inputRef}
+              maxLength={dialCode.nationalNumberLength}
+              leading={
+                <LoginDialCodeButton dialCode={dialCode.dialCode} onPress={onPressDialCode} />
+              }
+            />
 
             {/* 6.3 Continue 259:1768: Primary Button, trailing arrow, 16 below. */}
             <MiButton
@@ -346,9 +313,9 @@ export function LoginScreen() {
                 {"Don't have an account?"}
               </MiText>
               <Pressable
-                // Drawn as a tappable link, but no destination exists in Figma
-                // (spec data gap 3): like Home's hamburger, it does nothing yet.
-                onPress={() => {}}
+                // Signing up IS logging in with a new number: the OTP verify
+                // creates the account. So the link puts the cursor in the number.
+                onPress={() => inputRef.current?.focus()}
                 pressScale={theme.motion.pressScale.chip}
                 haptic="light"
                 hitSlop={12}

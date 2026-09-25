@@ -51,18 +51,22 @@ function ActionButton({
 /**
  * Figma 10 Actions row (289:2233): "Select on map" and "Add a stop", flex 1
  * each, gap 10. Both are drawn enabled at full strength.
+ *
+ * "Add a stop" shows only when there is somewhere for it to go: bookings carry
+ * one pickup and one drop, so without `onAddStop` it is left out and "Select on
+ * map" fills the row (owner, 25 Sep 2026: nothing a stakeholder taps may do nothing).
  */
 export function LocationActions({
   onSelectOnMap,
   onAddStop,
 }: {
   onSelectOnMap: () => void;
-  onAddStop: () => void;
+  onAddStop?: () => void;
 }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <ActionButton icon="map" label="Select on map" onPress={onSelectOnMap} />
-      <ActionButton icon="add-stop" label="Add a stop" onPress={onAddStop} />
+      {onAddStop ? <ActionButton icon="add-stop" label="Add a stop" onPress={onAddStop} /> : null}
     </View>
   );
 }

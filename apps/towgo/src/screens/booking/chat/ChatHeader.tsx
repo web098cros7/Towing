@@ -21,15 +21,15 @@ const PHOTO_SIZE = 42;
  * 18's `vehicleModelLabel` is not reused: it adds the body type ("Tata 407
  * (Flatbed)"), which 22 does not draw. The parts are the same data 18 reads: the
  * app-local make and model (mock only, 22 Data gap 2) and the contract's plate
- * through 18's `vehiclePlateLabel`. With any part missing the drawn format cannot
- * be filled, so `null`, and the slot keeps a placeholder bar (22 Data gap 3).
+ * through 18's `vehiclePlateLabel`. With a part missing, what is known is shown
+ * ("KA 01 AB 1234" alone); `null`, and a placeholder bar, only when nothing is.
  */
 export function chatVehicleLabel(driver: TrackedDriverDisplay | null): string | null {
-  const make = driver?.vehicleMake?.trim();
-  const model = driver?.vehicleModel?.trim();
+  const makeModel = [driver?.vehicleMake?.trim(), driver?.vehicleModel?.trim()]
+    .filter(Boolean)
+    .join(' ');
   const plate = vehiclePlateLabel(driver);
-  if (!make || !model || !plate) return null;
-  return `${make} ${model} · ${plate}`;
+  return [makeModel, plate].filter(Boolean).join(' · ') || null;
 }
 
 /**

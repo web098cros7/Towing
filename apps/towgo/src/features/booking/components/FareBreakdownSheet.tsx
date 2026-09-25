@@ -187,11 +187,23 @@ function FareBreakdownBody({
       </View>
 
       <MiCard radius={16} padding={16} gap={14} borderWidth={1.2} elevation="card">
-        <LineItem label="Base fare" value={money(basePaise)} />
-        <LineItem
-          label={`Distance charge (${formatKm(route.distanceKm)} km)`}
-          value={money(distancePaise)}
-        />
+        {/* The live API folds distance into the base fare: then there is no
+            separate distance line ("₹0" read as a bug), and the base fare names
+            the distance it covers. */}
+        {distancePaise ? (
+          <>
+            <LineItem label="Base fare" value={money(basePaise)} />
+            <LineItem
+              label={`Distance charge (${formatKm(route.distanceKm)} km)`}
+              value={money(distancePaise)}
+            />
+          </>
+        ) : (
+          <LineItem
+            label={route.distanceKm ? `Base fare (${formatKm(route.distanceKm)} km)` : 'Base fare'}
+            value={money(basePaise)}
+          />
+        )}
         <LineItem label="Night charge" value={money(breakdown?.nightPaise)} />
         <LineItem
           label={estimate?.couponCode ? `Discount (${estimate.couponCode})` : 'Discount'}

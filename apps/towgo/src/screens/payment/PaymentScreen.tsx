@@ -14,6 +14,7 @@ import { serviceTitle } from '@/features/services/data/serviceTitles';
 import { track } from '@/lib/analytics/analytics';
 import { env } from '@/lib/env';
 import type { RootStackParamList } from '@/navigation/types';
+import { shortPlace } from '@/utils/address';
 import { formatPaise } from '@/utils/format';
 import { ApplyCouponSheet } from './coupon/ApplyCouponSheet';
 import { PaymentFailedView } from './failed/PaymentFailedView';
@@ -235,6 +236,7 @@ export function PaymentScreen() {
       <PaymentReview
         amount={amount}
         serviceTitle={title}
+        serviceSubtitle={routeLine(booking)}
         servicePrice={totalPaise !== null ? formatPaise(totalPaise) : null}
         method={method}
         paying={paying}
@@ -257,4 +259,15 @@ export function PaymentScreen() {
       />
     </>
   );
+}
+
+/** The trip as "Motijheel → Brahmapura" (27's service description); null while it loads. */
+function routeLine(
+  booking: { originLabel: string | null; destinationLabel: string | null } | undefined,
+): string | null {
+  if (!booking) return null;
+  const from = shortPlace(booking.originLabel);
+  const to = shortPlace(booking.destinationLabel);
+  if (from && to) return `${from} → ${to}`;
+  return from ?? to ?? '';
 }

@@ -10,13 +10,16 @@ import type { FareEstimate } from '../../types';
  * "₹1,200 – ₹1,500": two rupee amounts joined by space, U+2013 EN DASH, space.
  *
  * The range ends come from the app-local `totalMinPaise` / `totalMaxPaise`.
- * The contract response carries only `totalPaise`, so without them both ends
- * are that total (a data gap, see the booking report).
+ * The contract response carries only `totalPaise`, so without them the label
+ * is that one amount.
  */
 export function fareRangeLabel(estimate: FareEstimate): string {
   const total = estimate.breakdown.totalPaise;
   const low = estimate.totalMinPaise ?? total;
   const high = estimate.totalMaxPaise ?? total;
+  // One number when the server quotes one: "₹1,200 – ₹1,200" read as a bug
+  // (owner, 25 Sep 2026).
+  if (low === high) return formatPaise(total);
   return `${formatPaise(low)} – ${formatPaise(high)}`;
 }
 

@@ -67,12 +67,13 @@ export type PaymentBillLine = {
  * the intent is in, Total holds its drawn size with a placeholder bar and Pay reads "Pay" (its
  * static part); no spinner is drawn for that wait. The Service price is the booking's total, read
  * fresh; the title is the booked service's name (`serviceTitle`, the words Home and 09 use). The
- * description has no source (Data gap 3), so its line keeps a placeholder bar, as does the
- * title for a service the app does not name.
+ * description is the trip's route ("Motijheel → Brahmapura"); only while the booking loads do
+ * the title and description keep their placeholder bars.
  */
 export function PaymentReview({
   amount,
   serviceTitle,
+  serviceSubtitle,
   servicePrice,
   method,
   paying,
@@ -89,6 +90,8 @@ export function PaymentReview({
   amount: string | null;
   /** The booked service's name ("Tow a Car"); null while unknown (the line keeps its bar). */
   serviceTitle: string | null;
+  /** The trip as "Motijheel → Brahmapura"; null while the booking loads (the line keeps its bar). */
+  serviceSubtitle: string | null;
   /** The booking's total, formatted; null while the booking loads. */
   servicePrice: string | null;
   method: PaymentMethodKind;
@@ -143,6 +146,7 @@ export function PaymentReview({
 
         <ServiceSummary
           title={serviceTitle}
+          subtitle={serviceSubtitle}
           price={servicePrice}
           open={detailsOpen}
           onToggle={onToggleDetails}
@@ -238,6 +242,7 @@ function TotalBlock({ amount }: { amount: string | null }) {
  */
 function ServiceSummary({
   title,
+  subtitle,
   price,
   open,
   onToggle,
@@ -245,6 +250,7 @@ function ServiceSummary({
   billTotal,
 }: {
   title: string | null;
+  subtitle: string | null;
   price: string | null;
   open: boolean;
   onToggle: () => void;
@@ -263,8 +269,8 @@ function ServiceSummary({
       paddingHorizontal={12.8}
       gap={10}
     >
-      {/* Service `243:878`. The subtitle has no source (Data gap 3): a placeholder bar. */}
-      <MiServiceRow title={title} subtitle={null} price={price} />
+      {/* Service `243:878`: the service, and the trip's route under it. */}
+      <MiServiceRow title={title} subtitle={subtitle} price={price} />
 
       {/* Divider `239:716`: 1 tall, border/subtle. */}
       <View style={{ height: 1, backgroundColor: mitowColors.borderSubtle }} />

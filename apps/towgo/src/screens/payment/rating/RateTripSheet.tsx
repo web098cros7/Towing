@@ -62,14 +62,13 @@ const HEADING_SLOT_WIDTH = 351;
 /**
  * The truck line `482:17703`, VERBATIM format: "Tata 407 (Flatbed) · KA 01 AB 1234" — the make
  * and model with its body type, a middle dot, then the plate. Built from the same two label
- * helpers 18's Vehicle Card uses, so the two can never name the truck differently. `null` when
- * either half is missing: half a truck line is not the drawn format, and the slot keeps its size
- * instead (the same rule `vehicleModelLabel` itself follows).
+ * helpers 18's Vehicle Card uses, so the two can never name the truck differently. With a half
+ * missing the other shows alone; `null` (the slot keeps its size) only when neither is known.
  */
 function truckLine(driver: TrackedDriverDisplay | null): string | null {
   const model = vehicleModelLabel(driver);
   const plate = vehiclePlateLabel(driver);
-  return model && plate ? `${model} · ${plate}` : null;
+  return [model, plate].filter(Boolean).join(' · ') || null;
 }
 
 export function RateTripSheet({
