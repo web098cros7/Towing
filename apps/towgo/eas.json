@@ -24,6 +24,19 @@
         "EXPO_PUBLIC_USE_MOCKS": "true"
       },
       "channel": "demo"
+    },
+    "stakeholder": {
+      "extends": "preview",
+      "environment": "development",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_USE_MOCKS": "false",
+        "EXPO_PUBLIC_API_URL": "https://api.mitow.in",
+        "EXPO_PUBLIC_DEV_OTP_ECHO": "true"
+      },
+      "channel": "stakeholder"
     }
   },
   "submit": {
