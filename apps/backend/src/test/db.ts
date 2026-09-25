@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { migrateStepwise } from '../db/migrate-stepwise';
 import postgres from 'postgres';
 import * as schema from '../db/schema';
 import { adminUsers, drivers, fleets, payoutAccounts, users } from '../db/schema';
@@ -87,7 +87,7 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
 
   if (!migrated) {
     // src/test → apps/backend/drizzle, matching src/db/migrate.ts.
-    await migrate(testDb(), { migrationsFolder: resolve(__dirname, '../../drizzle') });
+    await migrateStepwise(testDb(), resolve(__dirname, '../../drizzle'));
     migrated = true;
   }
 

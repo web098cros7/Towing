@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { loadEnv } from '../config/env';
 import { loadDotenv } from '../config/load-dotenv';
+import { migrateStepwise } from './migrate-stepwise';
 
 /**
  * Applies pending migrations, then exits. Run via `pnpm db:migrate`.
@@ -18,9 +18,8 @@ async function main(): Promise<void> {
   const sql = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
 
   try {
-    await migrate(drizzle(sql), {
-      migrationsFolder: resolve(__dirname, '../../drizzle'),
-    });
+    // One transaction per migration: see migrate-stepwise.ts.
+    await migrateStepwise(drizzle(sql), resolve(__dirname, '../../drizzle'));
     console.log('migrations applied');
   } finally {
     await sql.end();
