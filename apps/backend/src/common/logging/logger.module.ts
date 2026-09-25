@@ -93,8 +93,11 @@ const SILENT_PATHS = ['health', 'health/{*splat}', 'metrics'];
           level: env.LOG_LEVEL,
           // pino-pretty is a devDependency and costs a worker thread per
           // process; production ships raw NDJSON straight to the collector.
+          // A demo server runs the production image in development mode
+          // (`deploy.sh demo`), where pino-pretty is not installed: it must
+          // fall back to NDJSON rather than crash on start.
           transport:
-            env.NODE_ENV === 'production'
+            env.NODE_ENV === 'production' || !prettyAvailable()
               ? undefined
               : {
                   target: 'pino-pretty',
@@ -135,3 +138,13 @@ const SILENT_PATHS = ['health', 'health/{*splat}', 'metrics'];
   exports: [LoggerModule],
 })
 export class AppLoggerModule {}
+
+/** Whether pino-pretty is installed (it is a devDependency, absent from the production image). */
+function prettyAvailable(): boolean {
+  try {
+    require.resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+}

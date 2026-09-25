@@ -4,6 +4,7 @@
 # Run this once on a fresh Amazon Linux 2023 t3.micro (or larger) instance.
 # Subsequent updates: just run `cd /home/ec2-user/Towing && ./deploy.sh update`
 # New secrets (DB password, JWT, file signing): `sudo bash deploy.sh rotate-secrets`
+# A demo server (stand-in payments, login code on screen): `sudo bash deploy.sh demo`
 #
 # SECRETS LIVE ONLY IN $ENV_FILE ON THE SERVER. Never write one into this
 # script, the compose file or anything else in the repo: the repo is public.
@@ -12,7 +13,7 @@
 
 set -e
 
-MODE="${1:-fresh}"      # fresh | update | rotate-secrets
+MODE="${1:-fresh}"      # fresh | update | rotate-secrets | demo | production
 REPO="https://github.com/web098cros7/Towing.git"
 APP_DIR="/home/ec2-user/Towing"
 ENV_FILE="/home/ec2-user/.env.production"
@@ -76,6 +77,32 @@ if [ "$MODE" = "rotate-secrets" ]; then
 
   log "Done. $BACKUP still holds the OLD values: delete it once the backend is up."
   exit 0
+fi
+
+# ─── demo | production: which kind of server this is, then an update ─────────
+# `demo` runs the API in development mode, the only mode the stand-in payment,
+# payout and calling providers are allowed in (production refuses them on
+# purpose, which is why the API would not start). The login code is shown on
+# the phone's screen instead of being sent by SMS, so ANYONE can log in to ANY
+# number: a demo server holds test data only. `production` switches back once
+# Razorpay, MSG91 and Exotel exist. Both then continue as a normal update.
+if [ "$MODE" = "demo" ] || [ "$MODE" = "production" ]; then
+  [ -f "$ENV_FILE" ] || { log "ERROR: no $ENV_FILE on this server; run a fresh deploy first"; exit 1; }
+  API_ORIGIN="https://api.mitow.in"
+  if [ "$MODE" = "demo" ]; then
+    log "==> Demo server: development mode, stand-in providers, login code on screen"
+    set_env NODE_ENV development
+    set_env AUTH_DEV_OTP_ECHO true
+  else
+    log "==> Production server"
+    set_env NODE_ENV production
+    set_env AUTH_DEV_OTP_ECHO false
+  fi
+  # The phones reach the API here; photo upload/download links are built from it.
+  set_env PUBLIC_API_URL "$API_ORIGIN"
+  set_env PUBLIC_WS_URL "$API_ORIGIN"
+  chmod 600 "$ENV_FILE"
+  MODE=update
 fi
 
 # ─── 1. System setup (fresh installs only) ───────────────────────────────────
