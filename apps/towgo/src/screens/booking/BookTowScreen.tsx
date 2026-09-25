@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { metresBetween } from '@/utils/bearing';
 import { decodePolyline, type PricingEstimateRequest } from '@towing/api-contracts';
 import {
   MapPreview,
@@ -58,7 +59,6 @@ const SIDE_INSET = 16;
 const BACK_SIZE = 46;
 const RECENTER_SIZE = 50;
 /** Back / pill top (49) to the callout bubble's top (126). */
-const CALLOUT_BELOW_CONTROLS = 77;
 /** Recenter bottom (368) sits 16 above the sheet top (384). */
 const RECENTER_ABOVE_SHEET = 16;
 
@@ -344,6 +344,7 @@ export function BookTowScreen() {
     [routeLine, tripRoute.data?.source],
   );
 
+  const calloutText = routeCalloutText(route);
   const nearby = useNearbyDrivers(pickupCoords);
   const overlays = useMemo<MapOverlay[]>(() => {
     const vehicles =
@@ -379,8 +380,39 @@ export function BookTowScreen() {
         contentKey: dropAddress,
       });
     }
+    // E4 Route callout, ON the route: pinned to the line's halfway point (by
+    // distance along the road), so it moves with the map like Uber's instead of
+    // floating fixed on the screen (owner, 25 Sep 2026). The tail tip is the anchor.
+    const calloutAt = routeMidpoint(routeLine.length > 1 ? routeLine : routePoints);
+    if (calloutAt && dropCoords) {
+      list.push({
+        key: 'route-callout',
+        coordinate: calloutAt,
+        view: (
+          // A marker is a snapshot clipped to its own box: the side and top
+          // padding keep the callout's shadow in; the tail tip is the bottom edge.
+          <View collapsable={false} style={{ paddingHorizontal: 14, paddingTop: 14 }}>
+            <MiMapCallout tail="bottom" width="auto" text={calloutText} />
+          </View>
+        ),
+        anchor: { x: 0.5, y: 1 },
+        zIndex: 4,
+        contentKey: calloutText,
+        includeInFit: false,
+      });
+    }
     return list;
-  }, [nearby.data?.vehicles, nearby.data?.points, pickupCoords, dropCoords, pickupAddress, dropAddress]);
+  }, [
+    nearby.data?.vehicles,
+    nearby.data?.points,
+    pickupCoords,
+    dropCoords,
+    pickupAddress,
+    dropAddress,
+    routeLine,
+    routePoints,
+    calloutText,
+  ]);
 
   /** Recenter: frame pickup, drop and the route again, undoing any pan or zoom. Never moves either point. */
   const recenter = useCallback(() => {
@@ -427,20 +459,6 @@ export function BookTowScreen() {
         }}
         onMapReady={recenter}
       />
-
-      {/* E4 Route callout, always drawn: fixed on screen, bubble centred on the frame (142 + 110 / 2 = 196.5). */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: controlsTop + CALLOUT_BELOW_CONTROLS,
-          left: 0,
-          right: 0,
-          alignItems: 'center',
-        }}
-      >
-        <MiMapCallout tail="bottomLeft" width="auto" text={routeCalloutText(route)} />
-      </View>
 
       {/* E2 Back + E3 Route summary pill at y 49, 16 side insets, gap 10. */}
       <View
@@ -510,7 +528,11 @@ export function BookTowScreen() {
               <>
                 <EstimatedFareRow estimate={estimate.data} onPress={onFarePress} />
 
-                <MiButton tone="yellow" label="Confirm Booking" onPress={() => void confirmBooking()} />
+                <MiButton
+                  tone="yellow"
+                  label="Confirm Booking"
+                  onPress={() => void confirmBooking()}
+                />
               </>
             )}
           </MiSheetPanel>
@@ -583,4 +605,27 @@ function confirmMessage(error: unknown): string {
     default:
       return error.message || 'We could not confirm your booking. Please try again.';
   }
+}
+
+/** The point halfway along a line, by distance travelled (not the average of its vertices). */
+function routeMidpoint(line: readonly MapCoordinate[]): MapCoordinate | null {
+  if (line.length === 0) return null;
+  if (line.length === 1) return line[0]!;
+  const toPoint = (c: MapCoordinate) => ({ lat: c.latitude, lng: c.longitude });
+  const legs = line.slice(1).map((c, i) => metresBetween(toPoint(line[i]!), toPoint(c)));
+  let remaining = legs.reduce((sum, m) => sum + m, 0) / 2;
+  for (let i = 0; i < legs.length; i += 1) {
+    const leg = legs[i]!;
+    if (remaining <= leg && leg > 0) {
+      const t = remaining / leg;
+      const a = line[i]!;
+      const b = line[i + 1]!;
+      return {
+        latitude: a.latitude + (b.latitude - a.latitude) * t,
+        longitude: a.longitude + (b.longitude - a.longitude) * t,
+      };
+    }
+    remaining -= leg;
+  }
+  return line[line.length - 1]!;
 }
