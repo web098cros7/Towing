@@ -200,7 +200,8 @@ function fitPaddingFor(design: TruckDesign, truckRightOfPin: boolean): MapFitPad
  * to the driver's heading as Uber and Rapido draw theirs. Figma's glow, route
  * stub and callout bubble are gone.
  */
-const TRUCK_SIZE = 34;
+// 34, grown 15% (owner, 26 Sep 2026).
+const TRUCK_SIZE = 34 * 1.15;
 /** The route line, Figma 18 `229:257`: text/primary, 4.4. */
 const ROUTE_STROKE = { color: mitowColors.textPrimary, width: 4.4 };
 
