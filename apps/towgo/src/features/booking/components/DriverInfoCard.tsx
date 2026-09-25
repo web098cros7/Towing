@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, View } from 'react-native';
 import { MiLineIcon, MiMapButton, MiText, mitowColors, mitowRadii } from '@/design';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
@@ -55,24 +55,7 @@ export function DriverInfoCard({
         overflow: 'hidden',
       }}
     >
-      <View
-        style={{
-          width: PHOTO_SIZE,
-          height: PHOTO_SIZE,
-          borderRadius: mitowRadii.pill,
-          backgroundColor: mitowColors.surfaceMuted,
-          overflow: 'hidden',
-        }}
-      >
-        {driver?.photoUrl ? (
-          <Image
-            source={{ uri: driver.photoUrl }}
-            resizeMode="cover"
-            style={{ width: PHOTO_SIZE, height: PHOTO_SIZE }}
-            accessibilityLabel={`${driver.name}'s photo`}
-          />
-        ) : null}
-      </View>
+      <DriverPhoto driver={driver} size={PHOTO_SIZE} />
 
       <View style={{ flex: 1, gap: 3.5, overflow: 'hidden' }}>
         {driver ? (
@@ -89,7 +72,10 @@ export function DriverInfoCard({
               variant="bodyS14"
               color="secondary"
               numberOfLines={1}
-              ellipsizeMode="clip"
+              // A larger system font shrinks the line a little rather than
+              // cutting it at "4.3 (40+" (device, 25 Sep 2026).
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
               style={{ flexShrink: 1 }}
             >
               {ratingText}
@@ -116,6 +102,47 @@ export function DriverInfoCard({
           onPress={onMessage}
         />
       </View>
+    </View>
+  );
+}
+
+/**
+ * The driver's photo in a `size` circle (surface/muted). A driver with no photo
+ * yet, or one that fails to load, shows the app's `user` glyph in the circle
+ * instead of an empty disc (owner, 25 Sep 2026). Before the driver is known the
+ * circle stays empty.
+ */
+export function DriverPhoto({ driver, size }: { driver: DriverCardInfo | null; size: number }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const url = driver?.photoUrl && driver.photoUrl !== failed ? driver.photoUrl : null;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: mitowRadii.pill,
+        backgroundColor: mitowColors.surfaceMuted,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      {url ? (
+        <Image
+          source={{ uri: url }}
+          resizeMode="cover"
+          onError={() => setFailed(url)}
+          style={{ width: size, height: size }}
+          accessibilityLabel={`${driver?.name ?? 'Driver'}'s photo`}
+        />
+      ) : driver ? (
+        <MiLineIcon
+          name="user"
+          size={Math.round(size * 0.5)}
+          color={mitowColors.textSecondary}
+          accessibilityLabel={`${driver.name}, no photo`}
+        />
+      ) : null}
     </View>
   );
 }

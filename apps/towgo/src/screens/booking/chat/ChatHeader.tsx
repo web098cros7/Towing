@@ -1,7 +1,8 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 import { usePressablePrimitive } from '@towing/ui';
-import { MiLineIcon, MiMapButton, MiText, mitowColors, mitowRadii } from '@/design';
+import { MiLineIcon, MiMapButton, MiText, mitowColors } from '@/design';
+import { DriverPhoto } from '@/features/booking/components/DriverInfoCard';
 import { SlotPlaceholder } from '@/screens/booking/tracking/SlotPlaceholder';
 import {
   vehiclePlateLabel,
@@ -86,24 +87,10 @@ export function ChatHeader({
         <MiLineIcon name="chevron-left" size={24} />
       </Pressable>
 
-      <View
-        style={{
-          width: PHOTO_SIZE,
-          height: PHOTO_SIZE,
-          borderRadius: mitowRadii.pill,
-          backgroundColor: mitowColors.surfaceMuted,
-          overflow: 'hidden',
-        }}
-      >
-        {driver?.photoUrl ? (
-          <Image
-            source={{ uri: driver.photoUrl }}
-            resizeMode="cover"
-            style={{ width: PHOTO_SIZE, height: PHOTO_SIZE }}
-            accessibilityLabel={`${driver.name}'s photo`}
-          />
-        ) : null}
-      </View>
+      <DriverPhoto
+        driver={driver ? { name: driver.name, photoUrl: driver.photoUrl ?? null } : null}
+        size={PHOTO_SIZE}
+      />
 
       <View style={{ flex: 1, gap: 1 }}>
         {driver ? (
