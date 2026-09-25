@@ -144,6 +144,8 @@ export type RootStackParamList = {
   SupportChat: { bookingId?: string } | undefined;
   /** Figma 61 · Report an Issue. `bookingId` preselects the trip; otherwise the newest booking. */
   ReportIssue: { bookingId?: string } | undefined;
+  /** Figma 62 · Share Feedback: rating, topic and text, filed as a support ticket. */
+  ShareFeedback: undefined;
   /** W15: the requester's own ticket list and one ticket's thread. */
   MyTickets: undefined;
   TicketThread: { ticketId: string };

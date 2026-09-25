@@ -44,6 +44,7 @@ import { usePushRegistration } from '@/features/notifications/push/usePushRegist
 import { SupportScreen } from '@/screens/support/SupportScreen';
 import { SupportChatScreen } from '@/screens/support/SupportChatScreen';
 import { ReportIssueScreen } from '@/screens/support/ReportIssueScreen';
+import { ShareFeedbackScreen } from '@/screens/support/ShareFeedbackScreen';
 import { HelpCenterScreen } from '@/screens/account/HelpCenterScreen';
 import { ContactUsScreen } from '@/screens/account/ContactUsScreen';
 import { MyQuotesScreen } from '@/screens/account/MyQuotesScreen';
@@ -372,6 +373,7 @@ export function RootNavigator() {
               <Stack.Screen name="ContactUs" component={ContactUsScreen} />
               <Stack.Screen name="SupportChat" component={SupportChatScreen} />
               <Stack.Screen name="ReportIssue" component={ReportIssueScreen} />
+              <Stack.Screen name="ShareFeedback" component={ShareFeedbackScreen} />
               <Stack.Screen name="MyTickets" component={MyTicketsScreen} />
               <Stack.Screen name="MyQuotes" component={MyQuotesScreen} />
               <Stack.Screen name="TicketThread" component={TicketThreadScreen} />

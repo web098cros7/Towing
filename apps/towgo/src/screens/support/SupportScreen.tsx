@@ -32,12 +32,12 @@ export function SupportScreen() {
   const { phoneDisplay } = useSupportContact();
 
   // PO decision: FAQ / Help Center → HelpCenter; chat → SupportChat (60), report an issue →
-  // ReportIssue (61), contact → ContactUs. Share Feedback has no designed screen: ContactUs,
-  // provisional.
+  // ReportIssue (61), contact → ContactUs, Share Feedback → ShareFeedback (62).
   const openHelpCenter = () => navigation.navigate('HelpCenter');
   const openContactUs = () => navigation.navigate('ContactUs');
   const openSupportChat = () => navigation.navigate('SupportChat', {});
   const openReportIssue = () => navigation.navigate('ReportIssue', {});
+  const openShareFeedback = () => navigation.navigate('ShareFeedback');
 
   return (
     <MiScreen
@@ -116,7 +116,7 @@ export function SupportScreen() {
             icon="feedback"
             title="Share Feedback"
             subtitle="Help us improve your experience"
-            onPress={openContactUs}
+            onPress={openShareFeedback}
           />
         </View>
 
