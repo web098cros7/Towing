@@ -67,14 +67,16 @@ export function BookLocationScreen() {
     [selectPlace],
   );
 
-  // 13 Pick on Map is drawn for the PICKUP only ("PICKUP LOCATION" /
-  // "Confirm pickup", which sets the pickup), so it always opens for the pickup.
-  // No drop variant is drawn (13 spec Data gap 1); the drop is searched on 10.
+  // 13 Pick on Map opens for the field being worked on: the pickup, or the drop
+  // once the pickup is set or the drop is focused (owner, 25 Sep 2026: the drop
+  // could not be picked on the map). Figma 13 draws the pickup variant; the drop
+  // one reads "DROP LOCATION" / "Confirm drop".
+  const { activeField } = editing;
   const onSelectOnMap = useCallback(() => {
     discardDrafts();
     Keyboard.dismiss();
-    navigation.navigate('MapPicker', { field: 'pickup' });
-  }, [discardDrafts, navigation]);
+    navigation.navigate('MapPicker', { field: activeField });
+  }, [activeField, discardDrafts, navigation]);
 
   const onContinue = useCallback(async () => {
     // Drawn at full strength in every state: an incomplete route moves focus to

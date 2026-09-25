@@ -233,7 +233,7 @@ export function MapPickerScreen() {
       <View onLayout={onCardLayout} style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
         <MiSheetPanel showHandle={false} paddingTop={CARD_PAD_TOP}>
           <MiText variant="overline12" color="secondary" numberOfLines={1}>
-            PICKUP LOCATION
+            {field === 'drop' ? 'DROP LOCATION' : 'PICKUP LOCATION'}
           </MiText>
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: ADDRESS_ICON_GAP }}>
@@ -250,7 +250,10 @@ export function MapPickerScreen() {
             </View>
           </View>
 
-          <MiButton label="Confirm pickup" onPress={onConfirm} />
+          <MiButton
+            label={field === 'drop' ? 'Confirm drop' : 'Confirm pickup'}
+            onPress={onConfirm}
+          />
         </MiSheetPanel>
       </View>
 
