@@ -134,7 +134,10 @@ function LocationRow({
             }}
             placeholder={focused ? placeholder : undefined}
             placeholderTextColor={mitowColors.textPlaceholder}
-            style={[valueStyle, focused ? null : { color: 'transparent' }]}
+            // Hidden at rest with opacity, not a transparent colour: Android keeps
+            // drawing the text under the overlay when only its colour changes
+            // (the two addresses overlapped on device, 25 Sep 2026).
+            style={[valueStyle, focused ? null : { opacity: 0 }]}
             selectionColor={mitowColors.brandYellow}
             cursorColor={mitowColors.textPrimary}
             maxFontSizeMultiplier={1.2}

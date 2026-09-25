@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { View, type LayoutChangeEvent } from 'react-native';
+import Svg, {
+  Circle,
+  Defs,
+  FeGaussianBlur,
+  Filter,
+  G,
+  LinearGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -340,6 +349,7 @@ function PickupAddress({ onPress }: { onPress: () => void }) {
   const resolved = env.useMocks || status === 'ready';
   const address = resolved ? splitAddress(label) : null;
   const placeholder = status === 'locating' ? 'Finding your location…' : 'Use my current location';
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
 
   return (
     <Pressable
@@ -365,27 +375,67 @@ function PickupAddress({ onPress }: { onPress: () => void }) {
           borderRadius: 26,
           overflow: 'hidden',
         }}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setSize((prev) =>
+            prev && prev.width === width && prev.height === height ? prev : { width, height },
+          );
+        }}
       >
-        <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
-          <Defs>
-            <LinearGradient id="pickupWash" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0" stopColor="#FEE176" stopOpacity={0.2} />
-              <Stop offset="1" stopColor="#F3F6F8" stopOpacity={0.2} />
-            </LinearGradient>
-          </Defs>
-          <Rect width="100%" height="100%" fill="url(#pickupWash)" />
-        </Svg>
-        {/* Pickup dot 528:20364: white disc in a 4 status/success ring. */}
-        <View
-          style={{
-            width: 16,
-            height: 16,
-            borderRadius: 8,
-            borderWidth: 4,
-            borderColor: mitowColors.success,
-            backgroundColor: mitowColors.surfacePage,
-          }}
-        />
+        {/* The wash, sized to the pill in points: a percentage-sized Svg drew it as a band
+            across the top only (device, 25 Sep 2026). */}
+        {size ? (
+          <Svg
+            pointerEvents="none"
+            width={size.width}
+            height={size.height}
+            style={{ position: 'absolute', left: 0, top: 0 }}
+          >
+            <Defs>
+              <LinearGradient
+                id="pickupWash"
+                x1="0"
+                y1="0"
+                x2={size.width}
+                y2="0"
+                gradientUnits="userSpaceOnUse"
+              >
+                <Stop offset="0" stopColor="#FEE176" stopOpacity={0.2} />
+                <Stop offset="1" stopColor="#F3F6F8" stopOpacity={0.2} />
+              </LinearGradient>
+            </Defs>
+            <Rect x={0} y={0} width={size.width} height={size.height} fill="url(#pickupWash)" />
+          </Svg>
+        ) : null}
+        {/* Pickup dot 528:20364: a white disc (r 8) in a 4 status/success ring (r 6), under
+            Figma's layer blur 4 (Gaussian σ 2). Drawn in a 24 box, 4 past the 16 slot each side. */}
+        <View style={{ width: 16, height: 16 }}>
+          <Svg width={24} height={24} viewBox="0 0 24 24" style={{ margin: -4 }}>
+            <Defs>
+              <Filter
+                id="pickupDotBlur"
+                x="0"
+                y="0"
+                width="24"
+                height="24"
+                filterUnits="userSpaceOnUse"
+              >
+                <FeGaussianBlur stdDeviation={2} />
+              </Filter>
+            </Defs>
+            <G filter="url(#pickupDotBlur)">
+              <Circle cx={12} cy={12} r={8} fill="#FFFFFF" />
+              <Circle
+                cx={12}
+                cy={12}
+                r={6}
+                stroke={mitowColors.success}
+                strokeWidth={4}
+                fill="none"
+              />
+            </G>
+          </Svg>
+        </View>
         <MiText variant="bodyL155" numberOfLines={1} ellipsizeMode="tail" style={{ flex: 1 }}>
           {address ? (
             <>
